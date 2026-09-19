@@ -740,10 +740,13 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 
 - 中文模式标点键发 **ASCII** 字符进引擎 punctuator 转全角（，
   。配对弯引号）；全角直发绕过 punctuator 会被 librime 丢弃——禁止。
-- 已知异常（存量，非 stroke 引入）：Android 构建的 librime 里**组合中**
-  标点路径不可靠——拼音 `ni`+`,` 整体吞键、stroke 会提交通配派生字
-  （host gcc 构建与空闲路径均正常，真机复现）；笔画 8 键因此走两步流
-  （§9.3a），qwerty 标点槽的同类场景待修（独立 issue）。
+  **例外：组合中**——Android 构建的 librime 组合中标点路径吞键（拼音
+  `ni`+`,` 整体无声丢弃、stroke 会提交通配派生字；host gcc 构建与空闲
+  路径均正常，真机复现，机制未明）。键盘侧统一走两步流
+  （`enginePunct`，与笔画 8 键同一机制，§9.3a）：组合中先按 id 确认池头
+  候选，回声收掉组合后 `commitText` 直发全角标点（`，`/`。`）；raw 变化
+  或 3s 无回声作废。覆盖 qwerty 标点槽三条路（tap/上滑/长按弹层）与
+  全拼、双拼。空闲态仍发 ASCII 走 punctuator。
 - 数字与 CN_ALTS 表指定符号保持半角；CN_ALTS 是第二行/第三行的副字表
   （全拼/双拼共用，表值即最终提交字形）。
 

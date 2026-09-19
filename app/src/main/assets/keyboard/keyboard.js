@@ -1367,8 +1367,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // alt is 。— a tap sends ASCII ',' so the engine's punctuator
             // produces ，(the same already-verified path; sending U+FF0C
             // directly would bypass the punctuator and be dropped).
-            const text = key === '.' && this.isChineseMode() ? ',' : this.applyCase(key);
-            this.call(() => Native.key(text, this.token));
+            // 组合中改走两步流（enginePunct）：Android librime 的组合中
+            // 标点路径吞键（§9.6）。
+            if (key === '.' && this.isChineseMode()) {
+                this.enginePunct(',');
+            } else {
+                const text = this.applyCase(key);
+                this.call(() => Native.key(text, this.token));
+            }
             if (this.shift) { this.shift = false; this.updateLabels(); }
         }
 
@@ -1715,12 +1721,31 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return button;
         }
 
+        /** 中文模式标点进引擎的统一入口（qwerty 标点槽 tap/上滑/长按
+         * 与 stroke 8 键共用）：组合中走两步流——Android 构建的 librime
+         * 组合中标点路径吞键（全拼 ni+',' 整体无声丢弃，真机实锤；host
+         * gcc 构建正常，机制未明，见 keyboard.md §9.6），先按 id 确认池头
+         * 候选，回声收掉组合后 commitText 直发全角标点；空闲态照旧发
+         * ASCII 走引擎 punctuator 转全角。 */
+        enginePunct(ascii) {
+            const fullwidth = ascii === ',' ? '，' : '。';
+            if (this.composing) {
+                const candidate = (this.expandCandidates || []).find(item =>
+                    !String(item.id).startsWith('alt:'));
+                if (candidate) {
+                    this.pendingPunct = { text: fullwidth, raw: this.lastRawInput, at: Date.now() };
+                    this.choosePoolCandidate(candidate);
+                    return;
+                }
+            }
+            this.sendText(ascii);
+        }
+
         /** 笔画键的统一激活入口（点按与长按中格共用——codex 评审 P1：
          * closePopup 的引擎通道原先直发 send 绕过了这里的两个守卫）。
          * 6 键=单通配（码表只派生单 * 行，第二个拦截：回显含 * 或上一
-         * 个 * 还在途）；8 键组合中=两步逗号（Android librime 组合中标点
-         * 路径异常，先按 id 确认池头，组合结束回声后 commitText 直发
-         * 全角 ，）。 */
+         * 个 * 还在途）；8 键=标点（enginePunct：组合中两步流，空闲走
+         * punctuator）。 */
         strokeActivate(digit) {
             const def = STROKE_KEYS[digit];
             if (!def) return;
@@ -1729,14 +1754,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.showToast(t("通配符只能用一个"));
                 return;
             }
-            if (digit === '8' && this.composing) {
-                const candidate = (this.expandCandidates || []).find(item =>
-                    !String(item.id).startsWith('alt:'));
-                if (candidate) {
-                    this.pendingPunct = { text: '，', raw: this.lastRawInput, at: Date.now() };
-                    this.choosePoolCandidate(candidate);
-                    return;
-                }
+            if (digit === '8') {
+                this.enginePunct(',');
+                return;
             }
             if (digit === '6') this.wildcardInFlight = true;
             this.call(() => Native.key(def.code, this.token));
@@ -2439,7 +2459,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             // Native.key() would feed the composition engine
                             // (digits become candidate selectors, uppercase
                             // becomes dead pinyin). commitText bypasses it.
-                            if (this.isChineseMode() && key !== '.') {
+                            if (this.isChineseMode() && key === '.') {
+                                // 标点槽组合中两步流（enginePunct，§9.6）。
+                                this.enginePunct(value);
+                            } else if (this.isChineseMode()) {
                                 this.sendSymbol(value);
                             } else {
                                 this.sendText(value);
@@ -2915,7 +2938,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // literally; English always goes native key.
                 const char = popup.selected.char;
                 if (this.isChineseMode() && (char === ',' || char === '.')) {
-                    this.sendText(char);
+                    // 标点槽组合中两步流（enginePunct，§9.6）。
+                    this.enginePunct(char);
                 } else if (this.isChineseMode()) {
                     this.sendSymbol(char);
                 } else {

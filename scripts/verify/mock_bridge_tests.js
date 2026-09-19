@@ -229,6 +229,50 @@ test('punct-key flicks stay on the engine path (never full-width direct)', () =>
         'punct flicks never bypass the engine');
 });
 
+test('composing punct uses the two-step flow (Android librime swallows mid-composition keys)', {since: '3.50.0'}, () => {
+    // qwerty \u6807\u70b9\u69fd\u7ec4\u5408\u4e2d\u4e24\u6b65\u6d41\uff08\u00a79.6\uff09\uff1aAndroid \u6784\u5efa\u7684 librime \u7ec4\u5408\u4e2d
+    // \u6807\u70b9\u8def\u5f84\u541e\u952e\uff08ni+',' \u65e0\u58f0\u4e22\u5f03\uff0c\u771f\u673a\u5b9e\u9524\uff09\u3002\u952e\u76d8\u4fa7\u5148\u6309 id \u786e\u8ba4\u6c60\u5934\uff0c
+    // \u56de\u58f0\u6536\u6389\u7ec4\u5408\u540e commitText \u76f4\u53d1\u5168\u89d2\u2014\u2014\u4e0e stroke 8 \u952e\u540c\u4e00\u673a\u5236\u3002
+    const world = fresh({ mode: 'pinyin' });
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '\u4f60' }, { id: 'c2', text: '\u62df' }], hasNextPage: false });
+    world.tap(world.key('.'));
+    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 'c1',
+        'composing comma confirms the pool head by id first');
+    equal(world.native.of('key').filter(c => c.args[0] === ',').length, 0,
+        'no ASCII comma enters the engine mid-composition');
+    // \u56de\u58f0\u6536\u6389\u7ec4\u5408 \u2192 \u6302\u8d77\u7684\u5168\u89d2 \uff0c\u76f4\u53d1\u3002
+    world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    const commits = world.native.of('commitText').map(c => c.args[0]);
+    equal(commits[commits.length - 1], '\uff0c',
+        'the full-width comma lands once the echo ends the composition');
+    // \u4e0a\u6ed1\u53e5\u53f7\u540c\u4e00\u6761\u4e24\u6b65\u6d41\uff08\u5168\u89d2 \u3002\uff09\u3002
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'hao', rawInput: 'hao',
+        candidates: [{ id: 'c3', text: '\u597d' }], hasNextPage: false });
+    const dot = world.key('.');
+    world.touchDown(dot, 20, 20);
+    world.move(dot, 20, -30);
+    world.touchUp(dot);
+    world.clock.advance(2);
+    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 'c3',
+        'composing dot flick confirms the head by id');
+    equal(world.native.of('key').filter(c => c.args[0] === '.').length, 0,
+        'no ASCII dot enters the engine mid-composition');
+    world.engineState({ mode: 'pinyin', revision: 4, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    const commits2 = world.native.of('commitText').map(c => c.args[0]);
+    equal(commits2[commits2.length - 1], '\u3002',
+        'the full-width dot lands after the echo');
+    // \u53cc\u62fc\u540c\u4e00\u6807\u70b9\u69fd\uff1a\u540c\u4e00\u6761\u6d41\u3002
+    const dp = fresh({ mode: 'double-pinyin' });
+    dp.engineState({ mode: 'double-pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'd1', text: '\u4f60' }], hasNextPage: false });
+    dp.tap(dp.key('.'));
+    equal(dp.native.of('chooseCandidate').slice(-1)[0].args[1], 'd1',
+        'double pinyin shares the two-step punct flow');
+});
+
 test('composing space confirms the pool head, not the paged highlight', () => {
     const world = fresh({ mode: 'pinyin' });
     world.engineState({ mode: 'pinyin', revision: 7, composing: 'ni', rawInput: 'ni',
