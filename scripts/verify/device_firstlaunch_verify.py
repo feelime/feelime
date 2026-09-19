@@ -11,6 +11,11 @@ this path).
   F4 pinyin composes on the first try
 
 Env: FEELIME_ADB_SERIAL, FEELIME_NEW_APK (the build under test).
+
+Release builds (BuildConfig.DEBUG=false) ship neither the settings test
+fixtures nor DevTools: F1's DOM oracle and F3/F4 (test-field driven) are
+debug-only. On a release APK only F1b (a11y tree) and F2 stay valid - the
+full release smoke recipe lives in verification.md §4a.
 """
 import os
 import re

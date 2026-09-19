@@ -46,9 +46,16 @@ adb install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk
   `.dev` 就用 `.dev` > 正式包名（`device_verify.py::_resolve_pkg`、
   `run-all.sh`、`push-keyboard.sh` 同规则）。**正式包冒烟时显式
   `FEELIME_PKG=com.feelime.ime`**。
-- adb 命令里的组件名一律用全类名（`com.feelime.ime.FeelimeService` 等，
-  类在 namespace 下不随 applicationId 变）——`pkg/.Svc` 缩写按
-  applicationId 展开，`.dev` 包下会拼出不存在的类。
+- **组件名字符串按命令分两类**（类在 namespace `com.feelime.ime` 下，
+  不随 applicationId 变）：
+  - `am start/force-stop` 等：宽松解析，任意形态都行——统一写全类名
+    `{PKG}/com.feelime.ime.FeelimeService`（`.dev` 包下 `pkg/.Svc`
+    缩写会按 applicationId 拼出不存在的类，全类名对两个包都对）。
+  - **`ime enable/set`（ColorOS 实测）按 `flattenToShortString` 精确
+    匹配注册表**：正式包注册形态是缩写 `com.feelime.ime/.FeelimeService`，
+    写全类名反而报 Unknown input method；`.dev` 包类包不同、注册为全类名。
+    一律用 `device_verify.py::IME_SVC`（按 PKG 自动选形态），不要手写
+    组件串。
 
 ## 本机构建环境（不入仓库）
 
@@ -188,16 +195,29 @@ DevTools 合成 TouchEvent 切到符号层（`<123>`）时会触发 qemu **静�
   files/keyboard/built-in` + force-stop 重建副本。
 - **发版必留源码快照**：发布任何版本前，对应源码必须已 commit 并打 tag
   （`v<versionName>`）；发布产物从该 tag 构建，装机冒烟通过才算发布
-  完成（冒烟入口见 docs/testing/verification.md §3）。
+  完成（冒烟入口见 docs/testing/verification.md §3；release 包冒烟走
+  verification.md §4a 的系统级断言——release 没有测试字段与 DevTools）。
+- **Play closed testing 发布**（1.0.2 起 established）：`./gradlew
+  :app:bundlePlayRelease` → 产物在 `app/build/outputs/bundle/playRelease/`。
+  上传前校验三件套：manifest 版本（bundletool dump）、签名证书
+  （`keytool -printcert -jarfile`，须与历届上传密钥一致）、jarsigner
+  verify。上传走 Play Developer API 脚本（机器私有，
+  `~/.config/feelime/scripts/publish-play.py`，SA 密钥 `play-upload.json`，
+  发布名 `feelime-play-release-<ver>.aab` 归档到内网 googleplay 目录并
+  在其 index.html 加产物行）。closed testing = **alpha** 轨道；
+  `--list-tracks` 先看现状，中英 release notes 各 ≤500 字符。
 - **设计文档权威**：产品/交互语义以 `docs/design/keyboard.md` 的节为准，
   代码注释写「design §N」引用它；引用必须指向真实存在的节，改语义
   先改文档再改代码。
 - **候选池语义**：候选条与展开区共享同一累积池，组合 key 变化才重置；
   「确认第 N 候选」类操作一律按 id 走 `chooseCandidate`，与分页游标
   解耦（design §7）。
-- **中文标点直发会丢字**：全角字符绕过 librime punctuator 会被丢弃——
-  句号/逗号键必须发 ASCII 走 `Native.key()`（引擎），其余符号走
-  `commitText`（design §9.6）。
+- **中文标点通道分两态**（design §9.6）：空闲态发 ASCII 走引擎
+  punctuator 转全角（全角直发绕过 punctuator 会被 librime 丢弃）；
+  **组合中**Android 构建的 librime 会吞标点键——一律走 `enginePunct`
+  两步流（按 id 确认池头候选，回声收组合后 `commitText` 直发全角），
+  覆盖 qwerty 标点槽 tap/上滑/长按与 stroke 8 键。其余符号仍走
+  `commitText` 直上屏。
 - **WebView 限制**：`@JavascriptInterface` 代理对象无法从 JS 侧包装
   （静默 no-op）；观察桥调用要换通道（引擎事件 / 宿主编辑器 / native
   日志）。

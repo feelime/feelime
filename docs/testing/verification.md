@@ -56,6 +56,10 @@ ANDROID_HOME=… ./gradlew testDebugUnitTest   # 应用 JVM 套件（direct/play
 
 ## 2. 设备门禁
 
+**设备套件跑 debug 构建**（依赖设置页测试字段与 DevTools，release 都没有
+——release 包冒烟走 §4a）。debug 包名带 `.dev` 后缀，套件的包名/组件串
+统一由 `FEELIME_PKG` / `IME_SVC` 解析（规则见 §4 与 AGENTS.md）。
+
 前置环境变量（`run-all.sh` 第一步会核对装机 APK 与本地字节一致）：
 
 ```bash
@@ -207,6 +211,40 @@ import 其它套件当库（历史教训：height_card 曾被 6 个套件当库�
   `ime enable + set`；卸载重装后 RECORD_AUDIO 需重新授权（部分 OEM 拒绝
   adb 授权，走系统向导）。
 - 引擎数据部署是异步的：全新安装后等 `.ready` 出现再跑套件。
+- **`ime enable/set` 的组件串按 `flattenToShortString` 精确匹配**（ColorOS
+  实测）：正式包必须写缩写 `com.feelime.ime/.FeelimeService`，全类名报
+  Unknown input method；`.dev` 包（类包≠applicationId）注册为全类名。
+  脚本一律用 `device_verify.py::IME_SVC`，不要手写。
+
+### 4a. release 包冒烟（对将发布的 APK 本身）
+
+release（`BuildConfig.DEBUG=false`）**没有**套件依赖的两样东西：设置页
+测试输入字段（fixtures 块不建）与 DevTools（`setWebContentsDebuggingEnabled
+(DEBUG)`）——设备套件直接跑会「test field not found」。冒烟走系统级断言：
+
+1. 安装 release APK（正式签名，与已装的 debug 正式包互斥需先卸）；
+   `am start SetupActivity` 后再 `ime enable/set`（fresh install 直接
+   set 可能枚举不到）。
+2. 首启断言用 firstlaunch 套件中对 release 有效的两项（F1b 设置内容进
+   a11y 树、F2 无设置页 JS 错误），其余项 debug-only。
+3. 键盘链路：打开 app 设置页「输入测试」（uiautomator 按文本找入口，
+   正式功能非 fixtures）→ 聚焦输入框 → `dumpsys input_method` 的
+   `mInputShown=true` → **键盘截图推 qwerty 键位坐标打键**（`nihao`+
+   空格）→ ui_dump 断言 EditText 文本上屏「你好」。
+4. 深层行为（stroke/标点两步流等）在同码 debug 包上跑设备套件覆盖；
+   release 差异面只剩 R8/keep（keep 三件套已 established）。
+
+### 4b. librime 行为排查：引擎侧日志是唯一真相源
+
+「probe 正确而 app 异常」时先看**进程实际进引擎的按键流**——应用层以为
+发了什么不算数。给 `spikes/.../feelime_rime_bridge.cpp` 的
+`min_log_level` 临时改 0 重编 .so，librime 全量 INFO 日志（含
+`process key:` 逐键序列、segmentation/translation 细节）经 stderr 进
+logcat，tag `rime.feelime_m0`；查完还原。绕过 `checkEngineArtifacts`
+gate：临时 .so 需同步改 `third_party/manifest.json` 对应条目的
+sha256+bytes，构建完 `git checkout` 还原两者。实锤案例见
+keyboard.md §9.3a「组合中禁自动追页」（JS 自动翻页产生的隐藏
+PAGE_DOWN 在 librime 侧可见、在应用层不可见）。
 
 ## 5. 记录口径
 
