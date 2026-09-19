@@ -4,6 +4,8 @@ import com.feelime.ime.BOTTOM_PAD_STEPS
 import com.feelime.ime.FEEL_HOLD_STEPS
 import com.feelime.ime.PREF_ASSOCIATION
 import com.feelime.ime.PREF_BOTTOM_PAD_DP
+import com.feelime.ime.PREF_BOTTOM_PAD_DP_LANDSCAPE
+import com.feelime.ime.PREF_BOTTOM_PAD_DP_PORTRAIT
 import com.feelime.ime.PREF_FEEL_HOLD_MS
 import com.feelime.ime.PREF_FEEL_POPUP_SNAP
 import com.feelime.ime.PREF_FEEL_SCRUB_SPEED
@@ -383,6 +385,8 @@ class UserdataBackup(
         private val DISCRETE_INT_KEYS = mapOf(
             "feelime_keyboard" to mapOf(
                 PREF_BOTTOM_PAD_DP to BOTTOM_PAD_STEPS,
+                PREF_BOTTOM_PAD_DP_PORTRAIT to BOTTOM_PAD_STEPS,
+                PREF_BOTTOM_PAD_DP_LANDSCAPE to BOTTOM_PAD_STEPS,
                 PREF_FEEL_SCRUB_SPEED to intArrayOf(1, 2, 3, 4, 5),
                 PREF_FEEL_HOLD_MS to FEEL_HOLD_STEPS,
                 PREF_FEEL_POPUP_SNAP to intArrayOf(0, 1, 2),

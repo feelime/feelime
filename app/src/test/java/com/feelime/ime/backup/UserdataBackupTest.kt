@@ -31,6 +31,8 @@ class UserdataBackupTest {
         val prefs = FakePrefs()
         prefs.put("feelime_ui", "theme", "dark")
         prefs.put("feelime_keyboard", "keyboard_height_portrait", 640)
+        prefs.put("feelime_keyboard", "bottom_pad_dp_portrait", 24)
+        prefs.put("feelime_keyboard", "bottom_pad_dp_landscape", 12)
         prefs.put("feelime_keyboard", "association_on", true)
         prefs.put("feelime_keyboard", "key_sound_on", true)
         prefs.put("feelime_keyboard", "key_haptic_on", false)
@@ -61,6 +63,10 @@ class UserdataBackupTest {
 
         // 类型保真：Int 仍是 Int、Boolean 仍是 Boolean（串型会让读侧崩）。
         assertEquals(640, target.all("feelime_keyboard")["keyboard_height_portrait"])
+        // 方向拆分后的留白两键同样走离散档位校验（mode-fallback §3：
+        // 恢复侧 DISCRETE_INT_KEYS，1/13 这类非法档位不再被范围校验放过）。
+        assertEquals(24, target.all("feelime_keyboard")["bottom_pad_dp_portrait"])
+        assertEquals(12, target.all("feelime_keyboard")["bottom_pad_dp_landscape"])
         assertEquals(true, target.all("feelime_keyboard")["association_on"])
         assertEquals(true, target.all("feelime_keyboard")["key_sound_on"])
         assertEquals(false, target.all("feelime_keyboard")["key_haptic_on"])
@@ -79,6 +85,16 @@ class UserdataBackupTest {
         assertEquals("常用语\t细", restored[0].text)
         assertEquals("code1", restored[0].code)
         assertEquals(3, restored[0].rank)
+    }
+
+    @Test
+    fun restoreRejectsIllegalPadStepsOnBothOrientationKeys() {
+        // 导出全量收集，恢复按 DISCRETE_INT_KEYS 逐档比对：旧单键与方向
+        // 拆分后的两键都拒绝 1/13（round-2 评审要拦的形态）。
+        val json = """{"kind":"${'$'}{UserdataBackup.KIND}","version":2,"appVersion":"9.9.9-test",
+            "settings":{"feelime_keyboard":{"bottom_pad_dp_portrait":13,"bottom_pad_dp_landscape":1}}}"""
+        val result = UserdataBackup(FakePrefs(), newDir()).restore(json.toByteArray())
+        assertTrue(result is UserdataBackup.RestoreResult.Fail)
     }
 
     @Test

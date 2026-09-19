@@ -107,7 +107,7 @@ profiles（按改动面选层，普通批次用 quick ≈ 30min，全量留给�
 | profile | 段 |
 | --- | --- |
 | quick | base、extended、feel-degrade、input-prefs、panel、height-card |
-| input | base、feel-degrade、input-prefs、t9、appearance |
+| input | base、feel-degrade、input-prefs、t9、appearance、stroke |
 | keyboard-js | base、extended、caps-flick、keymap、pool |
 | native-engine | base、extended、backspace、delete |
 | kotlin-service | base、editor、feel-degrade、resource |
@@ -126,7 +126,7 @@ profiles（按改动面选层，普通批次用 quick ≈ 30min，全量留给�
 | 7 | `device_extended_verify`：扩展语言/UI（法/俄/日、符号、候选翻页、主题） |
 | 8 | `device_editor_verify`：宿主编辑器（多行、密码框、imeOptions、日语转换） |
 | 9 | `device_panel_verify`：剪贴板/常用语面板与敏感编辑器行为 |
-| 9a–9q | 各交互专项回归（见 §3 套件清单；9n = 引擎降级，9o = 候选字号/模糊音/联想输入偏好，9p = T9 九宫格，9q = 外观页） |
+| 9a–9r | 各交互专项回归（见 §3 套件清单；9n = 引擎降级，9o = 候选字号/模糊音/联想输入偏好，9p = T9 九宫格，9q = 外观页，9r = 笔画五键） |
 | 10 | `device_resource_verify`：高度/资源预算（APK 体积、数据目录、PSS 增量） |
 | 11 | ASR 回归：AVD 单次正确性 smoke（性能门只在真机成立）；真机五跑严格门限（见下） |
 
@@ -180,8 +180,8 @@ import 其它套件当库（历史教训：height_card 曾被 6 个套件当库�
 | `device_input_prefs` | 输入偏好全链路：候选字号三档到真实候选文字、模糊音五组独立开关切 prism（nian→lian、zan→zhan、fu→hu、le→re、zhon→zhong）与复原、联想 bigram 上屏出接续词 + 连续联想 + 关闭复原 |
 | `device_resource_verify` | 高度顶沿、APK/数据/PSS 预算 |
 | `device_feel_degrade` | 统一降级状态机：注入失败矩阵（超时/工厂/初始化）断言徽标、键入排队回放、重试与自动恢复（9n） |
+| `device_stroke_verify` | 笔画五键：键面/通配/分词造句/句子压后/空格确认/逗号两步/三行弹层/符号行（9r） |
 | `device_appearance_verify` | 外观页：主题/背景图/键帽不透明度/单手压缩等真实控件链路（9q） |
-| `device_stroke_verify` | 笔画五键：键面/通配/分词造句/句子压后/空格确认/逗号两步/三行弹层/符号行（issue #18，尚未接入 run-all 序列，按需单独跑） |
 | `device_upgrade_verify` / `device_firstlaunch_verify` | 发布冒烟：覆盖安装 / 真正首启 |
 | `device_cursor_host_verify` | 光标滑动宿主探针（需 cursor-host 探针 APK，按需单独跑） |
 | `device_models_verify` | 模型导入/下载面（需 models 探针 APK，按需单独跑） |
