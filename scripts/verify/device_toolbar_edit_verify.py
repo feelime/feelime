@@ -160,7 +160,7 @@ def reset_layout():
     time.sleep(0.3)
     d.shell(f"am force-stop {d.PKG}")
     time.sleep(1)
-    d.shell(f"ime set {d.PKG}/com.feelime.ime.FeelimeService")
+    d.shell(f"ime set {d.IME_SVC}")
     time.sleep(0.5)
 
 

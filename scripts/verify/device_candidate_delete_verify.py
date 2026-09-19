@@ -448,9 +448,9 @@ def main():
     time.sleep(1.0)
     # A force-stop can drop Feelime from the default slot; the wizard then
     # HIDES the feature cards including the 语音识别设置 row - re-pin first.
-    d.shell(f"ime enable {d.PKG}/com.feelime.ime.FeelimeService")
+    d.shell(f"ime enable {d.IME_SVC}")
     for _ in range(10):
-        d.shell(f"ime set {d.PKG}/com.feelime.ime.FeelimeService")
+        d.shell(f"ime set {d.IME_SVC}")
         time.sleep(0.6)
         if d.PKG in d.shell("settings get secure default_input_method"):
             break

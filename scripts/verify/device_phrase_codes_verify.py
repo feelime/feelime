@@ -132,7 +132,7 @@ def prepare_readonly():
     d.shell("input keyevent KEYCODE_WAKEUP")
     d.shell("wm dismiss-keyguard")
     d.shell("input keyevent 82")
-    d.shell("ime set " + d.PKG + "/com.feelime.ime.FeelimeService")
+    d.shell("ime set " + d.IME_SVC)
     d.shell("am start -n " + d.PKG +
             "/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(1.5)

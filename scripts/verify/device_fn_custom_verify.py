@@ -169,8 +169,8 @@ def set_orientation(landscape):
     time.sleep(1.8)
     d.shell(f"am force-stop {d.PKG}")
     time.sleep(0.8)
-    d.shell(f"ime enable {d.PKG}/com.feelime.ime.FeelimeService")
-    d.shell(f"ime set {d.PKG}/com.feelime.ime.FeelimeService")
+    d.shell(f"ime enable {d.IME_SVC}")
+    d.shell(f"ime set {d.IME_SVC}")
     d.shell(f"am start -n {d.PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(2.2)
     if not refocus_field():

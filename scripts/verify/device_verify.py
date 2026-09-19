@@ -40,6 +40,15 @@ def _resolve_pkg():
 
 
 PKG = _resolve_pkg()
+
+# shell `ime` 命令按 ComponentName.flattenToShortString 精确匹配注册表
+# （ColorOS 实测）：正式包（applicationId==namespace）注册为 pkg/.Svc
+# 缩写形态，全类名反而不匹配；.dev 包类包不同、无缩写。am start 宽松，
+# 不受影响。
+if PKG == "com.feelime.ime":
+    IME_SVC = f"{PKG}/.FeelimeService"
+else:
+    IME_SVC = f"{PKG}/com.feelime.ime.FeelimeService"
 KEY_BG = (0x5F, 0x5F, 0x5F)
 SPECIAL_BG = (0x41, 0x41, 0x41)
 RESULTS = []
@@ -1157,7 +1166,7 @@ def prepare():
     # 设置不响应，回一次桌面让重进的窗口按新方向布局。
     shell("settings put system accelerometer_rotation 0")
     shell("settings put system user_rotation 0")
-    shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
+    shell(f"ime set {IME_SVC}")
     import re as _re
     if shell("dumpsys input | grep -m1 SurfaceOrientation").strip().endswith("1"):
         shell("input keyevent KEYCODE_HOME")
@@ -1188,7 +1197,7 @@ def prepare():
     if not bounds:
         raise SystemExit("test field not found")
     if PKG not in shell("settings get secure default_input_method"):
-        shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
+        shell(f"ime set {IME_SVC}")
         time.sleep(0.5)
     tap((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2, 1.5)
     close_mode_menu_if_open()
@@ -1246,7 +1255,7 @@ def app_hard_reset():
     time.sleep(0.8)
     shell("am force-stop " + PKG)
     time.sleep(1.5)
-    shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
+    shell(f"ime set {IME_SVC}")
     import re as _re
     if shell("dumpsys input | grep -m1 SurfaceOrientation").strip().endswith("1"):
         shell("input keyevent KEYCODE_HOME")
@@ -1977,7 +1986,7 @@ def case_mode_persistence(kb):
     # persistence must survive process death, not just hide/show.
     shell("am force-stop " + PKG)
     time.sleep(2.0)
-    shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
+    shell(f"ime set {IME_SVC}")
     import re as _re
     if shell("dumpsys input | grep -m1 SurfaceOrientation").strip().endswith("1"):
         shell("input keyevent KEYCODE_HOME")

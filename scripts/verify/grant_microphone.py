@@ -21,6 +21,7 @@ def _resolve_pkg():
 
 
 PKG = _resolve_pkg()
+IME_SVC = f"{PKG}/.FeelimeService" if PKG == "com.feelime.ime" else f"{PKG}/com.feelime.ime.FeelimeService"
 if not SERIAL:
     raise SystemExit("set FEELIME_ADB_SERIAL (adb serial of the test device)")
 
@@ -62,7 +63,7 @@ if not tap_text(xml, ["仅在使用中允许", "使用应用时允许", "允许"
     print("allow button not found, dump head:", xml[:400])
     sys.exit(1)
 time.sleep(1.0)
-sh(f"ime set {PKG}/com.feelime.ime.FeelimeService")
+sh(f"ime set {IME_SVC}")
 out = sh("dumpsys package com.feelime.ime")
 granted = re.search(r"RECORD_AUDIO: granted=(\w+)", out)
 print("RECORD_AUDIO granted =", granted.group(1) if granted else "unknown")

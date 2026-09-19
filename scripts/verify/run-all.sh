@@ -41,6 +41,12 @@ if [ -z "$FEELIME_PKG_RESOLVED" ]; then
     fi
 fi
 PKG="$FEELIME_PKG_RESOLVED"
+# shell `ime` 按 flattenToShortString 精确匹配（同 device_verify.IME_SVC）
+if [ "$PKG" = com.feelime.ime ]; then
+    IME_SVC="$PKG/.FeelimeService"
+else
+    IME_SVC="$PKG/com.feelime.ime.FeelimeService"
+fi
 
 # ---- 段定义（label|kind）。kind: local | device | asr ----
 SEGMENTS=(
@@ -300,8 +306,8 @@ reset_device() {
     adb -s "$FEELIME_ADB_SERIAL" shell pm grant "$PKG" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
     # pm clear 后 IME 需要重新 enable/set；disabled 列表先查（记忆：直接
     # ime enable 可能 unrecognized）。
-    adb -s "$FEELIME_ADB_SERIAL" shell ime enable "$PKG"/com.feelime.ime.FeelimeService >/dev/null 2>&1 || true
-    adb -s "$FEELIME_ADB_SERIAL" shell ime set "$PKG"/com.feelime.ime.FeelimeService >/dev/null \
+    adb -s "$FEELIME_ADB_SERIAL" shell ime enable "$IME_SVC" >/dev/null 2>&1 || true
+    adb -s "$FEELIME_ADB_SERIAL" shell ime set "$IME_SVC" >/dev/null \
         || { echo "reset: ime set failed - the keyboard cannot come up" >&2; exit 2; }
     adb -s "$FEELIME_ADB_SERIAL" shell settings put global hide_error_dialogs 1 >/dev/null
     adb -s "$FEELIME_ADB_SERIAL" shell settings put system accelerometer_rotation 0 >/dev/null
