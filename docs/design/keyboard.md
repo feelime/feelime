@@ -693,6 +693,15 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   长按中格走同一入口 `strokeActivate`（通配/逗号守卫不被弹层绕过）；6 键
   第二个 * 拦截含「在途」标志（连点不等回声也只进一个 *）。空闲 8 键仍
   发 ASCII ',' 走 punctuator；7 键符号行仅空闲可开（组合中让位候选）。
+- **组合中禁自动追页**（2026-09-20）：候选条「池不满自动拉页」的通用
+  机制在 stroke 下每键自动发一次 PAGE_DOWN——笔画候选池只有几条、条
+  恒不满，而 librime 的 Next 键会耗尽 MakeSentence 翻译流并把 selector
+  高亮挪走，composition 直接塌成分段坏态（`那'个` 输入显示「乙hhpzs'p」、
+  候选只剩「乙」；INFO 日志实锤：`translation #0 has been exhausted` +
+  `process key: Next`）。`maybeLoadMoreCandidates` 对 stroke 组合态直接
+  return；拼音候选多、一两页就溢出停止，不受影响。排查时已排除 .so/
+  数据/多会话/setup 序列等全部变量（原生 probe 同链路全对），差异只在
+  JS 侧的自动翻页。
 - **strictReady**：stroke 菜单项要求 hello 的 `engineDataReady.stroke ===
   true` 才可点（旧 APK 不带该字段，宽松的 `!== false` 会给出可点却无效
   的入口）。

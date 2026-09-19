@@ -5849,6 +5849,30 @@ test('stroke pushes sentence candidates back; space/enter confirm by id', {since
     equal(world.native.of('enter').length, 0, 'raw enter never fires while composing');
 });
 
+test('stroke: no auto page-fetch while composing (sentence stream must not be drained)', {since: '3.50.0'}, () => {
+    // 那个 bug 的根因：笔画候选池只有几条、候选条永远不满，渲染后
+    // 「拉到溢出为止」的自动追页会在组合中每键发一次 PAGE_DOWN——
+    // librime 的 Next 耗尽 MakeSentence 翻译流后把 composition 塌成分段
+    // 坏态（那'个 →「乙hhpzs'p」，device + INFO 日志实锤 2026-09-20）。
+    // 组合中一律不追页；拼音的多候选翻页体验不受影响。
+    const stroke = fresh({ mode: 'stroke' });
+    stroke.engineState({ phase: 'READY', mode: 'stroke', revision: 1, composing: '乙一一丿乙丨\'丿',
+        rawInput: '乙一一丿乙丨\'丿',
+        candidates: [{ id: 's0', text: '那个' }, { id: 's1', text: '那' },
+            { id: 's2', text: '尹' }], hasNextPage: true });
+    equal(stroke.native.of('pageNext').length, 0,
+        'stroke composing never auto-fetches the next page');
+    // 组合结束（回声 composing 空）后：追页恢复，条不满照常预拉。
+    stroke.engineState({ phase: 'READY', mode: 'stroke', revision: 2, composing: '',
+        rawInput: '', candidates: [], hasNextPage: true });
+    // 拼音组合中照常预拉（对照：修复只 gate 笔画）。
+    const py = fresh({ mode: 'pinyin' });
+    py.engineState({ phase: 'READY', mode: 'pinyin', revision: 1, composing: 'ni',
+        rawInput: 'ni', candidates: [{ id: 'p0', text: '你' }], hasNextPage: true });
+    equal(py.native.of('pageNext').length, 1,
+        'pinyin composing still pre-fetches when the bar is short');
+});
+
 test('stroke comma: idle feeds the engine, composing confirms head then lands ，', {since: '3.48.0'}, () => {
     const world = fresh({ mode: 'stroke' });
     world.engineState({ phase: 'READY', mode: 'stroke', revision: 1, composing: '一丨',

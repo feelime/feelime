@@ -246,7 +246,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.49.0';
+    const KEYBOARD_VERSION = '3.50.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -6160,6 +6160,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * screen drives the shared native cursor. */
         maybeLoadMoreCandidates() {
             if (!this.expandHasNext || this.loadingMore) return;
+            // 笔画组合中不追页（三个调用点统一在这拦）：候选池本来就只有
+            // 几条（completion 单字 + 压后的句子候选），条永远不满，
+            // 「拉到溢出为止」会在组合中每键自动发一次 PAGE_DOWN——
+            // librime 的 Next 耗尽 MakeSentence 翻译流后还会挪 selector
+            // 高亮，composition 直接塌成分段坏态（那'个 →「乙hhpzs'p」，
+            // device + INFO 日志实锤 2026-09-20）。拼音候选多、一两页就
+            // 溢出停止，不受影响。
+            if (this.mode === 'stroke' && this.composing) return;
             const strip = document.getElementById('expandGrid');
             const bar = document.getElementById('candidates');
             let nearEnd = false;
