@@ -62,7 +62,7 @@ def teardown_overlay():
         time.sleep(1.0)
         state = overlay_state()
         if state and state.get("open"):
-            d.shell("am force-stop com.feelime.ime")
+            d.shell(f"am force-stop {d.PKG}")
             time.sleep(1.5)
 
 

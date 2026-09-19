@@ -152,7 +152,7 @@ def case_bottom_pad():
             break
         # A wedged settings WebView (resumed instance, stale a11y tree)
         # recovers on a cold start.
-        d.shell("am force-stop com.feelime.ime")
+        d.shell(f"am force-stop {d.PKG}")
         time.sleep(1.5)
     if not picked:
         record("pad: 36 dp picked in the system dialog", False)
@@ -196,7 +196,7 @@ def case_bottom_pad():
                 if open_input_page() and pick_select_option("#bottomPadPortrait", "36 dp"):
                     picked2 = True
                     break
-                d.shell("am force-stop com.feelime.ime")
+                d.shell(f"am force-stop {d.PKG}")
                 time.sleep(1.5)
             if picked2:
                 shared.wait_until(
@@ -365,7 +365,7 @@ def case_feel_bilingual():
             break
         # A wedged resumed settings WebView recovers on a cold start
         # (same recovery as the pad case).
-        d.shell("am force-stop com.feelime.ime")
+        d.shell(f"am force-stop {d.PKG}")
         time.sleep(1.5)
     if not opened:
         record("feel i18n: input page opens", False)
@@ -415,7 +415,7 @@ def main():
     d.shell("settings put system user_rotation 0")
     # Cold-start SetupActivity: a resumed instance was created without the
     # fixture extra, and prepare would then find no test field at all.
-    d.shell("am force-stop com.feelime.ime")
+    d.shell(f"am force-stop {d.PKG}")
     time.sleep(1.0)
     d.prepare()
     kb = d.fresh_kb(refocus=True)

@@ -58,14 +58,14 @@ def main():
         enabled = d.shell("ime list -s")
         if f"{PKG}/" in enabled:
             break
-        d.shell(f"ime enable {PKG}/.FeelimeService")
+        d.shell(f"ime enable {PKG}/com.feelime.ime.FeelimeService")
         _time.sleep(1.5)
 
     # NO force-stop, NO ime set yet: the FIRST activity start of the app's
     # life, with a cold process.
     print("== F1/F2: first SetupActivity launch ==")
     d.shell(f"logcat -c")
-    d.shell(f"am start -n {PKG}/.SetupActivity")
+    d.shell(f"am start -n {PKG}/com.feelime.ime.SetupActivity")
     # A fresh install's first WebView load (cold process, first asset read)
     # can take well past 4s on a busy emulator - poll for the render instead
     # of sampling once.
@@ -99,7 +99,7 @@ def main():
     check("F2 no settings-page JS errors", errors in ("0", ""), f"count={errors}")
 
     print("== F3/F4: first keyboard show ==")
-    d.shell(f"ime set {PKG}/.FeelimeService")
+    d.shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
     d.prepare()
     kb = d.fresh_kb()
     check("F3a keyboard geometry visible", bool(kb))

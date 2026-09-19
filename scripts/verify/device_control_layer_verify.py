@@ -132,7 +132,7 @@ def force_portrait_start():
             return
         d.shell("input keyevent 4")  # nudge the window to re-evaluate
         time.sleep(0.8)
-        d.shell(f"am start -n {d.PKG}/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+        d.shell(f"am start -n {d.PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
         time.sleep(1.5)
     raise SystemExit("device did not return to portrait for the Suite")
 
@@ -143,9 +143,9 @@ def pin_feelime_ime():
     ColorOS re-points the default IME at Sogou whenever Feelime is
     force-stopped (editor-suite lesson); a single `ime set` right after such
     a switch can be lost while IMMS tears the old connection down."""
-    adb_shell("ime", "enable", f"{d.PKG}/.FeelimeService")
+    adb_shell("ime", "enable", f"{d.PKG}/com.feelime.ime.FeelimeService")
     for _ in range(10):
-        adb_shell("ime", "set", f"{d.PKG}/.FeelimeService")
+        adb_shell("ime", "set", f"{d.PKG}/com.feelime.ime.FeelimeService")
         time.sleep(0.6)
         if d.PKG in adb_shell("settings", "get", "secure", "default_input_method"):
             return

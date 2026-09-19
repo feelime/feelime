@@ -17,7 +17,29 @@ import time
 SERIAL = __import__("os").environ.get("FEELIME_ADB_SERIAL", "")
 if not SERIAL:
     raise SystemExit("FEELIME_ADB_SERIAL is required (adb serial of the test device)")
-PKG = "com.feelime.ime"
+
+
+def _resolve_pkg():
+    """debug 构建带 .dev 包名后缀（与 Play 正式包共存）：FEELIME_PKG 显式
+    指定 > 设备上装了 .dev 就测 .dev（套件的日常对象是 debug 迭代包）>
+    回落正式包名（报错路径与旧行为一致）。正式包冒烟时显式
+    FEELIME_PKG=com.feelime.ime。"""
+    import os as _os
+    import subprocess as _sp
+    explicit = _os.environ.get("FEELIME_PKG", "").strip()
+    if explicit:
+        return explicit
+    try:
+        out = _sp.run(["adb", "-s", SERIAL, "shell", "pm list packages"],
+                      capture_output=True, timeout=15).stdout.decode()
+        if "package:com.feelime.ime.dev\n" in out:
+            return "com.feelime.ime.dev"
+    except Exception:
+        pass
+    return "com.feelime.ime"
+
+
+PKG = _resolve_pkg()
 KEY_BG = (0x5F, 0x5F, 0x5F)
 SPECIAL_BG = (0x41, 0x41, 0x41)
 RESULTS = []
@@ -1135,12 +1157,12 @@ def prepare():
     # 设置不响应，回一次桌面让重进的窗口按新方向布局。
     shell("settings put system accelerometer_rotation 0")
     shell("settings put system user_rotation 0")
-    shell(f"ime set {PKG}/.FeelimeService")
+    shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
     import re as _re
     if shell("dumpsys input | grep -m1 SurfaceOrientation").strip().endswith("1"):
         shell("input keyevent KEYCODE_HOME")
         time.sleep(1.2)
-    shell(f"am start -n {PKG}/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+    shell(f"am start -n {PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(1.5)
     for attempt in range(8):
         if field_bounds():
@@ -1154,7 +1176,7 @@ def prepare():
             time.sleep(0.6)
             shell("input keyevent 4")
             time.sleep(0.6)
-            shell(f"am start -n {PKG}/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+            shell(f"am start -n {PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
             time.sleep(1.5)
         # The test field is intentionally below the settings menu. Bring that
         # exact accessibility node into the viewport; never substitute the
@@ -1166,7 +1188,7 @@ def prepare():
     if not bounds:
         raise SystemExit("test field not found")
     if PKG not in shell("settings get secure default_input_method"):
-        shell(f"ime set {PKG}/.FeelimeService")
+        shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
         time.sleep(0.5)
     tap((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2, 1.5)
     close_mode_menu_if_open()
@@ -1224,12 +1246,12 @@ def app_hard_reset():
     time.sleep(0.8)
     shell("am force-stop " + PKG)
     time.sleep(1.5)
-    shell(f"ime set {PKG}/.FeelimeService")
+    shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
     import re as _re
     if shell("dumpsys input | grep -m1 SurfaceOrientation").strip().endswith("1"):
         shell("input keyevent KEYCODE_HOME")
         time.sleep(1.2)
-    shell(f"am start -n {PKG}/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+    shell(f"am start -n {PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(3.5)
     global _DT_SOCKET, _DT_PID
     _DT_SOCKET = None
@@ -1955,12 +1977,12 @@ def case_mode_persistence(kb):
     # persistence must survive process death, not just hide/show.
     shell("am force-stop " + PKG)
     time.sleep(2.0)
-    shell(f"ime set {PKG}/.FeelimeService")
+    shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
     import re as _re
     if shell("dumpsys input | grep -m1 SurfaceOrientation").strip().endswith("1"):
         shell("input keyevent KEYCODE_HOME")
         time.sleep(1.2)
-    shell(f"am start -n {PKG}/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+    shell(f"am start -n {PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(3.5)
     scroll_setup_top()
     bounds = remember_field(visible_field_bounds()) or LAST_FIELD_BOUNDS

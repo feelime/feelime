@@ -503,8 +503,8 @@ def main():
     # cannot make the height range appear capped.
     d.shell("settings put system accelerometer_rotation 0")
     d.shell("settings put system user_rotation 0")
-    d.shell("run-as com.feelime.ime sh -c 'rm -f shared_prefs/feelime_keyboard.xml'")
-    d.shell("am force-stop com.feelime.ime")
+    d.shell(f"run-as {d.PKG} sh -c 'rm -f shared_prefs/feelime_keyboard.xml'")
+    d.shell(f"am force-stop {d.PKG}")
     time.sleep(1.0)
     d.prepare()
     keyboard = d.fresh_kb(refocus=True)

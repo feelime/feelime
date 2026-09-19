@@ -158,9 +158,9 @@ def reset_layout():
     })()""")
     print("reset_layout wrote pref:", ok, flush=True)
     time.sleep(0.3)
-    d.shell("am force-stop com.feelime.ime")
+    d.shell(f"am force-stop {d.PKG}")
     time.sleep(1)
-    d.shell(f"ime set {d.PKG}/.FeelimeService")
+    d.shell(f"ime set {d.PKG}/com.feelime.ime.FeelimeService")
     time.sleep(0.5)
 
 

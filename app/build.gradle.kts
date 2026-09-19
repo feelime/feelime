@@ -334,6 +334,12 @@ android {
 
     buildTypes {
         debug {
+            // 与正式包共存（Play/直装 release 是 com.feelime.ime）：debug
+            // 加 .dev 后缀 + 名称带 Dev（src/debug/res 覆盖，locale 语义
+            // 正确），装机互不覆盖——Play 灰度装正式包后真机仍能装 debug
+            // 迭代，两套数据目录独立。verify 套件的 PKG 解析跟随
+            // （device_verify.py 探测逻辑）。
+            applicationIdSuffix = ".dev"
             val debugKeystore = feelimeEnv("FEELIME_DEBUG_KEYSTORE")
             val debugStorePassword = feelimeEnv("FEELIME_DEBUG_STORE_PASSWORD")
             val debugKeyAlias = feelimeEnv("FEELIME_DEBUG_KEY_ALIAS")

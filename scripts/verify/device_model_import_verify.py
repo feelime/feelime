@@ -118,7 +118,7 @@ def voice_page_ready():
 
 
 def launch_settings_voice():
-    d.shell(f"am start -n {PKG}/.SetupActivity")
+    d.shell(f"am start -n {PKG}/com.feelime.ime.SetupActivity")
     ready = wait_until(
         voice_page_ready,
         lambda value: isinstance(value, dict) and value.get("ready"),

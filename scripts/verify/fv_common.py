@@ -539,7 +539,7 @@ def launch_settings(with_fixtures=True):
     # 设置页瞎点（键盘永远唤不起来，2026-09-13 input-prefs v6 实录）。
     # 显式 with_fixtures=False 的套件（settings_entry/height_card）不受影响。
     extra = " --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true" if with_fixtures else ""
-    d.shell(f"am start -n {d.PKG}/.SetupActivity{extra}")
+    d.shell(f"am start -n {d.PKG}/com.feelime.ime.SetupActivity{extra}")
     time.sleep(1.5)
     ready = wait_settings_ready()
     if not ready:

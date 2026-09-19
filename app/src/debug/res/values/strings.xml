@@ -1,0 +1,6 @@
+<resources>
+    <!-- debug 包名后缀 .dev（build.gradle.kts）：名称加 Dev 与正式包在
+         桌面/系统输入法选择器里区分，两包可同时安装。 -->
+    <string name="app_name">Feelime Dev</string>
+    <string name="ime_name">Feelime Dev 中英语音输入法</string>
+</resources>

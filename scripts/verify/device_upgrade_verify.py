@@ -126,8 +126,8 @@ def main():
     # A fresh install's IME component starts DISABLED (enabled=0): without
     # the explicit enable the default falls back to another IME and the keyboard
     # never shows - exactly the "IME dead" symptom. Enable + select.
-    d.shell(f"ime enable {PKG}/.FeelimeService")
-    d.shell(f"ime set {PKG}/.FeelimeService")
+    d.shell(f"ime enable {PKG}/com.feelime.ime.FeelimeService")
+    d.shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
     d.shell(f"am force-stop {PKG}")
     time.sleep(1.0)
 
@@ -171,8 +171,8 @@ def main():
     d.shell(f"logcat -c")
     d.shell(f"am force-stop {PKG}")
     time.sleep(1.0)
-    d.shell(f"ime set {PKG}/.FeelimeService")
-    d.shell(f"am start -n {PKG}/.SetupActivity")
+    d.shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
+    d.shell(f"am start -n {PKG}/com.feelime.ime.SetupActivity")
     time.sleep(3.0)
     xml = d.ui_dump()
     rendered = d.devtools_eval_target(

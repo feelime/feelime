@@ -66,7 +66,7 @@ def has_none(texts, *labels):
 
 def open_settings(wait_page=True):
     """Open the full settings app and poll until its bridge is ready."""
-    d.shell("am start -n com.feelime.ime/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+    d.shell(f"am start -n {d.PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(1.8)
     sev = lambda expr: d.devtools_eval_target("settings/index.html", expr)
     if wait_page:

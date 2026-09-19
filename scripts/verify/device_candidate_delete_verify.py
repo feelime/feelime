@@ -190,7 +190,7 @@ def tap_text(label, scrolls=3):
 
 
 def prefs_read():
-    out = d.shell("run-as com.feelime.ime cat shared_prefs/feelime_asr.xml 2>/dev/null")
+    out = d.shell(f"run-as {d.PKG} cat shared_prefs/feelime_asr.xml 2>/dev/null")
     return out
 
 
@@ -200,7 +200,7 @@ def prefs_switch_state():
 
 
 def clear_asr_prefs():
-    d.shell("run-as com.feelime.ime sh -c 'rm -f shared_prefs/feelime_asr.xml'")
+    d.shell(f"run-as {d.PKG} sh -c 'rm -f shared_prefs/feelime_asr.xml'")
 
 
 def main():
@@ -444,17 +444,17 @@ def main():
 
     # ---- #2 ASR settings sub-page persists the two controls ----
     clear_asr_prefs()
-    d.shell("am force-stop com.feelime.ime")
+    d.shell(f"am force-stop {d.PKG}")
     time.sleep(1.0)
     # A force-stop can drop Feelime from the default slot; the wizard then
     # HIDES the feature cards including the 语音识别设置 row - re-pin first.
-    d.shell("ime enable com.feelime.ime/.FeelimeService")
+    d.shell(f"ime enable {d.PKG}/com.feelime.ime.FeelimeService")
     for _ in range(10):
-        d.shell("ime set com.feelime.ime/.FeelimeService")
+        d.shell(f"ime set {d.PKG}/com.feelime.ime.FeelimeService")
         time.sleep(0.6)
         if d.PKG in d.shell("settings get secure default_input_method"):
             break
-    d.shell("am start -n com.feelime.ime/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+    d.shell(f"am start -n {d.PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(2.5)
     # design §6.2: 语音识别设置 lives in the HTML settings page now - the
     # native Switch/EditText rows are gone. Drive the REAL page controls

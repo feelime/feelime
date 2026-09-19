@@ -278,7 +278,7 @@ def launch_host():
     # Android remembers the last IME per host package.  Select Feelime after
     # the first editor connection has been hidden, otherwise a prior default-IME
     # run can silently replace the selection during the initial show request.
-    selected = d.shell("ime set " + d.PKG + "/.FeelimeService")
+    selected = d.shell("ime set " + d.PKG + "/com.feelime.ime.FeelimeService")
     if "Error" in selected or "Exception" in selected:
         raise RuntimeError("Feelime IME could not be selected: " + selected.strip())
     time.sleep(0.8)
@@ -316,7 +316,7 @@ def show_keyboard():
         # Hide the wrong IME, select Feelime once the host is idle, and let the
         # next button click create a fresh InputConnection.
         input_hidden()
-        selected = d.shell("ime set " + d.PKG + "/.FeelimeService")
+        selected = d.shell("ime set " + d.PKG + "/com.feelime.ime.FeelimeService")
         if "Error" in selected or "Exception" in selected:
             raise RuntimeError("Feelime IME could not be selected: " + selected.strip())
         time.sleep(0.5)

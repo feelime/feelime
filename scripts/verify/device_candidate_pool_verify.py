@@ -36,9 +36,9 @@ def main():
     # readback cooperates) shrinks every row and fakes a regression - start
     # from the stock height. Reset BEFORE prepare() so the IME (re)starts
     # with the stock prefs and DevTools binds to the fresh WebView.
-    d.shell("run-as com.feelime.ime sh -c "
+    d.shell(f"run-as {d.PKG} sh -c "
             "'rm -f shared_prefs/feelime_keyboard.xml'")
-    d.shell("am force-stop com.feelime.ime")
+    d.shell(f"am force-stop {d.PKG}")
     time.sleep(1.2)
     d.prepare()
     kb = d.fresh_kb(refocus=True)

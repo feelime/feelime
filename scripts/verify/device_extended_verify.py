@@ -859,17 +859,17 @@ def main():
     # back (wizard hides the feature cards K0/K6 assert on). Re-enable + re-pin
     # before relaunching so the assertion tests the settings page, not the
     # wizard (on a fresh AVD the IME also starts disabled after reinstall).
-    d.shell(f"ime enable {d.PKG}/.FeelimeService")
+    d.shell(f"ime enable {d.PKG}/com.feelime.ime.FeelimeService")
     # `ime set` right after a force-stop can be silently dropped while IMMS
     # is still tearing the old connection down (the AVD flipped the
     # default to LatinIME and the wizard came back). Poll until the pin
     # actually took before opening the settings page.
     for _ in range(10):
-        d.shell(f"ime set {d.PKG}/.FeelimeService")
+        d.shell(f"ime set {d.PKG}/com.feelime.ime.FeelimeService")
         time.sleep(0.5)
         if d.PKG in d.shell("settings get secure default_input_method"):
             break
-    d.shell(f"am start -n {d.PKG}/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+    d.shell(f"am start -n {d.PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(2.0)
     d.scroll_setup_top()
     default_ime = d.shell("settings get secure default_input_method").strip()

@@ -9,6 +9,18 @@ import sys
 import time
 
 SERIAL = os.environ.get("FEELIME_ADB_SERIAL", os.environ.get("ANDROID_SERIAL", ""))
+
+# debug 构建包名带 .dev 后缀（与正式包共存）：显式 FEELIME_PKG >
+# 设备装了 .dev 用 .dev > 正式包名（与 device_verify._resolve_pkg 同规）。
+def _resolve_pkg():
+    explicit = os.environ.get("FEELIME_PKG", "").strip()
+    if explicit:
+        return explicit
+    out = sh("pm list packages")
+    return "com.feelime.ime.dev" if "package:com.feelime.ime.dev\n" in out else "com.feelime.ime"
+
+
+PKG = _resolve_pkg()
 if not SERIAL:
     raise SystemExit("set FEELIME_ADB_SERIAL (adb serial of the test device)")
 
@@ -34,9 +46,9 @@ def tap_text(xml, needles):
     return False
 
 
-sh("am force-stop com.feelime.ime")
+sh(f"am force-stop {PKG}")
 sh("ime set com.sohu.inputmethod.sogou/.SogouIME")
-sh("am start -n com.feelime.ime/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+sh(f"am start -n {PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
 time.sleep(2.5)
 xml = dump()
 if "授予麦克风权限" not in xml:
@@ -50,7 +62,7 @@ if not tap_text(xml, ["仅在使用中允许", "使用应用时允许", "允许"
     print("allow button not found, dump head:", xml[:400])
     sys.exit(1)
 time.sleep(1.0)
-sh("ime set com.feelime.ime/.FeelimeService")
+sh(f"ime set {PKG}/com.feelime.ime.FeelimeService")
 out = sh("dumpsys package com.feelime.ime")
 granted = re.search(r"RECORD_AUDIO: granted=(\w+)", out)
 print("RECORD_AUDIO granted =", granted.group(1) if granted else "unknown")

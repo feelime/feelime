@@ -56,7 +56,7 @@ def app_data_kb():
     # design §12.3: downloaded voice models also live under files/models -
     # their size is BOUNDED BY THE MANIFEST (sha-verified, ~200 MiB total),
     # so the gate budgets the app's own footprint without them.
-    output = d.shell("run-as com.feelime.ime du -sk files cache files/models 2>/dev/null", timeout=60)
+    output = d.shell(f"run-as {d.PKG} du -sk files cache files/models 2>/dev/null", timeout=60)
     sizes = {}
     for kb_size, name in re.findall(r"^(\d+)\s+(files(?:/models)?|cache)\s*$", output, re.MULTILINE):
         sizes[name] = int(kb_size)

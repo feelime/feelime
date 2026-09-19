@@ -38,6 +38,18 @@ ANDROID_HOME=… ./gradlew :app:assembleDirectDebug
 adb install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk
 ```
 
+**debug 包名带 `.dev` 后缀**（`com.feelime.ime.dev`，名称 "Feelime Dev"），
+与 Play/直装正式包（`com.feelime.ime`）**可同时安装**、数据目录独立。
+配套约定：
+
+- 验证脚本/工具的包名统一走解析：`FEELIME_PKG` 显式指定 > 设备装了
+  `.dev` 就用 `.dev` > 正式包名（`device_verify.py::_resolve_pkg`、
+  `run-all.sh`、`push-keyboard.sh` 同规则）。**正式包冒烟时显式
+  `FEELIME_PKG=com.feelime.ime`**。
+- adb 命令里的组件名一律用全类名（`com.feelime.ime.FeelimeService` 等，
+  类在 namespace 下不随 applicationId 变）——`pkg/.Svc` 缩写按
+  applicationId 展开，`.dev` 包下会拼出不存在的类。
+
 ## 本机构建环境（不入仓库）
 
 仓库面向开源，任何主机名、本机路径、签名凭据都不得入库；它们统一放在

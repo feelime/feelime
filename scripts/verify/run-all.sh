@@ -29,6 +29,19 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 : "${FEELIME_VERIFY_APK:?FEELIME_VERIFY_APK is required (exact installed APK)}"
 : "${FEELIME_ASR_FIXTURE:?FEELIME_ASR_FIXTURE is required (frozen ASR WAV)}"
 
+# debug 构建包名带 .dev 后缀（与正式包共存）：FEELIME_PKG 显式指定 >
+# 设备装了 .dev 用 .dev > 正式包名（与 device_verify._resolve_pkg 同规）。
+FEELIME_PKG_RESOLVED="${FEELIME_PKG:-}"
+if [ -z "$FEELIME_PKG_RESOLVED" ]; then
+    if adb -s "$FEELIME_ADB_SERIAL" shell pm list packages 2>/dev/null \
+        | grep -q '^package:com\.feelime\.ime\.dev$'; then
+        FEELIME_PKG_RESOLVED=com.feelime.ime.dev
+    else
+        FEELIME_PKG_RESOLVED=com.feelime.ime
+    fi
+fi
+PKG="$FEELIME_PKG_RESOLVED"
+
 # ---- 段定义（label|kind）。kind: local | device | asr ----
 SEGMENTS=(
     "1/11 css-lint|local"
@@ -225,7 +238,7 @@ if [[ "$RESUME" == "1" && "$had_resume_state" == "0" ]]; then
 fi
 
 local_apk_sha="$apk_sha"
-device_apk_path=$(adb -s "$FEELIME_ADB_SERIAL" shell pm path com.feelime.ime | sed -n 's/^package://p' | tr -d '\r' | head -1)
+device_apk_path=$(adb -s "$FEELIME_ADB_SERIAL" shell pm path "$PKG" | sed -n 's/^package://p' | tr -d '\r' | head -1)
 [[ -n "$device_apk_path" ]] || { echo "Feelime is not installed on the target" >&2; exit 2; }
 device_apk_sha=$(adb -s "$FEELIME_ADB_SERIAL" shell sha256sum "$device_apk_path" | awk '{print $1}')
 [[ "$local_apk_sha" == "$device_apk_sha" ]] || {
@@ -282,13 +295,13 @@ reset_device() {
     # （pm clear 也会抹掉 files/ 下下载/导入的模型：全量 APK 走 assets 内置
     # 模型不受影响；thin 构建在 reset 后语音段会因无模型挂——用全量 APK 是
     # 本 gate 的前置）。
-    adb -s "$FEELIME_ADB_SERIAL" shell pm clear com.feelime.ime >/dev/null \
+    adb -s "$FEELIME_ADB_SERIAL" shell pm clear "$PKG" >/dev/null \
         || { echo "reset: pm clear failed - is $FEELIME_ADB_SERIAL alive?" >&2; exit 2; }
-    adb -s "$FEELIME_ADB_SERIAL" shell pm grant com.feelime.ime android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
+    adb -s "$FEELIME_ADB_SERIAL" shell pm grant "$PKG" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
     # pm clear 后 IME 需要重新 enable/set；disabled 列表先查（记忆：直接
     # ime enable 可能 unrecognized）。
-    adb -s "$FEELIME_ADB_SERIAL" shell ime enable com.feelime.ime/.FeelimeService >/dev/null 2>&1 || true
-    adb -s "$FEELIME_ADB_SERIAL" shell ime set com.feelime.ime/.FeelimeService >/dev/null \
+    adb -s "$FEELIME_ADB_SERIAL" shell ime enable "$PKG"/com.feelime.ime.FeelimeService >/dev/null 2>&1 || true
+    adb -s "$FEELIME_ADB_SERIAL" shell ime set "$PKG"/com.feelime.ime.FeelimeService >/dev/null \
         || { echo "reset: ime set failed - the keyboard cannot come up" >&2; exit 2; }
     adb -s "$FEELIME_ADB_SERIAL" shell settings put global hide_error_dialogs 1 >/dev/null
     adb -s "$FEELIME_ADB_SERIAL" shell settings put system accelerometer_rotation 0 >/dev/null
@@ -310,9 +323,9 @@ sweep_device() {
         adb -s "$FEELIME_ADB_SERIAL" shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
         sleep 1
     fi
-    adb -s "$FEELIME_ADB_SERIAL" shell am force-stop com.feelime.ime >/dev/null 2>&1 || true
+    adb -s "$FEELIME_ADB_SERIAL" shell am force-stop "$PKG" >/dev/null 2>&1 || true
     adb -s "$FEELIME_ADB_SERIAL" shell \
-        "run-as com.feelime.ime sh -c 'rm -f shared_prefs/*.xml'" \
+        "run-as "$PKG" sh -c 'rm -f shared_prefs/*.xml'" \
         >/dev/null 2>&1 || true
     adb -s "$FEELIME_ADB_SERIAL" shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
 }

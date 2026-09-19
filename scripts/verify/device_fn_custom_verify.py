@@ -167,11 +167,11 @@ def set_orientation(landscape):
     if "Error" in result or "Unknown command" in result:
         raise RuntimeError("cannot lock display rotation: " + result)
     time.sleep(1.8)
-    d.shell("am force-stop com.feelime.ime")
+    d.shell(f"am force-stop {d.PKG}")
     time.sleep(0.8)
-    d.shell("ime enable com.feelime.ime/.FeelimeService")
-    d.shell("ime set com.feelime.ime/.FeelimeService")
-    d.shell("am start -n com.feelime.ime/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+    d.shell(f"ime enable {d.PKG}/com.feelime.ime.FeelimeService")
+    d.shell(f"ime set {d.PKG}/com.feelime.ime.FeelimeService")
+    d.shell(f"am start -n {d.PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(2.2)
     if not refocus_field():
         raise RuntimeError("rotated settings editor could not be focused")
@@ -549,7 +549,7 @@ def main():
     # ---- #7 custom keys: invalid paste errors, valid table renders ----
     # design §15: the JSON editor lives in the HTML settings page now (the
     # in-keyboard strip is gone); drive the page's own DevTools target.
-    d.shell("am start -n com.feelime.ime/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+    d.shell(f"am start -n {d.PKG}/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(2.5)
     sev = lambda expr: d.devtools_eval_target("settings/index.html", expr)
     # The custom-keys card lives on the input sub-page now -

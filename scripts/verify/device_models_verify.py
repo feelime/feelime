@@ -565,7 +565,7 @@ def main():
     d.shell("svc power stayon true")
     d.shell("input keyevent KEYCODE_WAKEUP")
     d.shell("wm dismiss-keyguard")
-    d.shell(f"am start -n {PKG}/.SetupActivity")
+    d.shell(f"am start -n {PKG}/com.feelime.ime.SetupActivity")
     if not wait_settings_ready():
         record("settings WebView ready", False,
                "settings/index.html did not attach; " + diagnostic_snapshot())
