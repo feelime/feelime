@@ -25,8 +25,9 @@ Feelime 是一个 Android 离线输入法：键盘区域由本地 HTML/CSS/JavaS
   [docs/design/appearance.md](docs/design/appearance.md)）
 - **语音输入**：中英混合流式识别 + 整句纠错 + 本地标点恢复，长按空格
   即说即上
-- **中文**：全拼 / 双拼（自然码）、简体、连续造词、独立用户词库、
-  统一候选池（候选条与展开区共用全量候选，拖动自动加载）
+- **中文**：全拼 / 双拼（自然码/小鹤/搜狗/紫光，含模糊音）、T9 九宫格、
+  笔画五键（通配与分词造句）、简体、连续造词、独立用户词库、统一候选池
+  （候选条与展开区共用全量候选，拖动自动加载）、中文联想、单手模式
 - **多语言**：英语、法语、俄语、日语罗马字，离线词典候选
 - **键盘界面可定制**：键盘就是 `app/src/main/assets/keyboard/` 下的
   HTML/CSS/JS——改几个颜色或整层重排，都无需重新打包 APK（debug 构建
@@ -41,8 +42,8 @@ Android SDK）：
 
 ```bash
 ./scripts/setup-assets.sh     # 首次：下载 sherpa-onnx AAR 与模型（SHA-256 校验）
-ANDROID_HOME=… ./gradlew :app:assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+ANDROID_HOME=… ./gradlew :app:assembleDirectDebug
+adb install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk
 ```
 
 词典引擎数据（中文/西文/日语，约 52MB）随仓库分发，构建时
@@ -59,7 +60,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 入口：改 HTML/CSS/JS 后无需重打 APK——
 
 ```bash
-./scripts/push-keyboard.sh    # 只推 HTML/CSS/JS 到设备，秒级生效
+./scripts/push-keyboard.sh --local  # 打包本仓键盘并推到设备，秒级生效
 ```
 
 脚本写入应用私有目录并广播更新，运行中的 Feelime 免重启重载页面。

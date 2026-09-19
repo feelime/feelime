@@ -92,6 +92,7 @@ bash scripts/verify/run-all.sh --from 9g     # 从某段跑到尾
 bash scripts/verify/run-all.sh --resume      # 跳过状态文件里已绿的段
 bash scripts/verify/run-all.sh --profile quick   # 按改动面选段
 FEELIME_GATE_NO_RESET=1 bash scripts/verify/run-all.sh  # 调试：跳过基线复位
+# 另有 FEELIME_GATE_RETRIES=<n>（失败段自动重试次数）与 FEELIME_GATE_NO_RESET
 ```
 
 段选择按 label 前缀匹配，可选中包括本地段在内的任意段，未知段名
@@ -106,7 +107,7 @@ profiles（按改动面选层，普通批次用 quick ≈ 30min，全量留给�
 | profile | 段 |
 | --- | --- |
 | quick | base、extended、feel-degrade、input-prefs、panel、height-card |
-| input | base、feel-degrade、input-prefs、t9 |
+| input | base、feel-degrade、input-prefs、t9、appearance |
 | keyboard-js | base、extended、caps-flick、keymap、pool |
 | native-engine | base、extended、backspace、delete |
 | kotlin-service | base、editor、feel-degrade、resource |
@@ -125,7 +126,7 @@ profiles（按改动面选层，普通批次用 quick ≈ 30min，全量留给�
 | 7 | `device_extended_verify`：扩展语言/UI（法/俄/日、符号、候选翻页、主题） |
 | 8 | `device_editor_verify`：宿主编辑器（多行、密码框、imeOptions、日语转换） |
 | 9 | `device_panel_verify`：剪贴板/常用语面板与敏感编辑器行为 |
-| 9a–9p | 各交互专项回归（见 §3 套件清单；9o = 候选字号/模糊音/联想输入偏好，9p = T9 九宫格） |
+| 9a–9q | 各交互专项回归（见 §3 套件清单；9n = 引擎降级，9o = 候选字号/模糊音/联想输入偏好，9p = T9 九宫格，9q = 外观页） |
 | 10 | `device_resource_verify`：高度/资源预算（APK 体积、数据目录、PSS 增量） |
 | 11 | ASR 回归：AVD 单次正确性 smoke（性能门只在真机成立）；真机五跑严格门限（见下） |
 
@@ -178,7 +179,15 @@ import 其它套件当库（历史教训：height_card 曾被 6 个套件当库�
 | `device_t9_verify` | T9 九宫格（微信式键面）：五列结构/左列常用字符、点按通配回归（94664→中族、9426 歧义）、手势消歧（上滑字面数字、横滑首尾字母、下滑中字母、7 拆分浮层 q/r）、音节条收窄 + 确认键提交、长按全后选、123/emoji 直达、重输、mic scrub 不落空格、空格上屏、回全拼复原 |
 | `device_input_prefs` | 输入偏好全链路：候选字号三档到真实候选文字、模糊音五组独立开关切 prism（nian→lian、zan→zhan、fu→hu、le→re、zhon→zhong）与复原、联想 bigram 上屏出接续词 + 连续联想 + 关闭复原 |
 | `device_resource_verify` | 高度顶沿、APK/数据/PSS 预算 |
+| `device_feel_degrade` | 统一降级状态机：注入失败矩阵（超时/工厂/初始化）断言徽标、键入排队回放、重试与自动恢复（9n） |
+| `device_appearance_verify` | 外观页：主题/背景图/键帽不透明度/单手压缩等真实控件链路（9q） |
+| `device_stroke_verify` | 笔画五键：键面/通配/分词造句/句子压后/空格确认/逗号两步/三行弹层/符号行（issue #18，尚未接入 run-all 序列，按需单独跑） |
 | `device_upgrade_verify` / `device_firstlaunch_verify` | 发布冒烟：覆盖安装 / 真正首启 |
+| `device_cursor_host_verify` | 光标滑动宿主探针（需 cursor-host 探针 APK，按需单独跑） |
+| `device_models_verify` | 模型导入/下载面（需 models 探针 APK，按需单独跑） |
+| `device_punctuation_verify` | 标点探针（punctuation-probe 宿主，按需单独跑） |
+| `device_settings_entry_verify` | 系统入口/设置专项（依赖 model_import，按需单独跑） |
+| `device_voice_stop_verify` | 生产语音停/取消专项（真实编辑器+触摸，按需单独跑） |
 | `device_model_import_verify` | 模型本地导入（SAF 选择器 → 校验 → 安装 → 麦克风） |
 | `device_asr_production_verify` | 生产录音链路（模拟器音频注入 → 真实 InputConnection） |
 | `archive/check_*.py` | 一次性探针（0.17.6 终端时代遗产，诊断用，不进 run-all） |

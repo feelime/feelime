@@ -174,8 +174,10 @@ rime 预热（round-2 B2.6 风险清单）→ backlog；自动循环重试 → �
     纳入 demo 验收；
   - `applyKbHeight` 上报不变（内容单位）；heightBounds 拖拽边界按内容
     单位不变。
-- 备份：UserdataBackup INT_KEYS 登记 + **离散集合校验 {0,12,24,36,48}**
-  （round-2：仅范围校验会放过 1/13）。
+- 备份：UserdataBackup INT_KEYS 登记；**离散集合校验 {0,12,24,36,48}
+  目前只覆盖旧单键 `bottom_pad_dp`**——方向拆分后的 `bottom_pad_dp_
+  portrait/landscape` 两键尚未进 DISCRETE_INT_KEYS（恢复时走范围校验
+  兜底，1/13 可被收下；已知缺口，待补登记）。
 - 设置页「键盘与输入」select 一行（双语）。
 - demo-first：真实源码 demo，深浅 × 横竖 × 0/24/48 截图发布确认后进收尾。
 

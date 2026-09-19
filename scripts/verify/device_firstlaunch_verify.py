@@ -63,7 +63,7 @@ def main():
         enabled = d.shell("ime list -s")
         if f"{PKG}/" in enabled:
             break
-        d.shell(f"ime enable {PKG}/com.feelime.ime.FeelimeService")
+        d.shell(f"ime enable {d.IME_SVC}")
         _time.sleep(1.5)
 
     # NO force-stop, NO ime set yet: the FIRST activity start of the app's
@@ -104,7 +104,7 @@ def main():
     check("F2 no settings-page JS errors", errors in ("0", ""), f"count={errors}")
 
     print("== F3/F4: first keyboard show ==")
-    d.shell(f"ime set {PKG}/com.feelime.ime.FeelimeService")
+    d.shell(f"ime set {d.IME_SVC}")
     d.prepare()
     kb = d.fresh_kb()
     check("F3a keyboard geometry visible", bool(kb))

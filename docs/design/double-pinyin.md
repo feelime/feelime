@@ -60,7 +60,7 @@ shipped 逐字节一致，两新方案源（original-schemas）重编也与 asse
   「搜狗 / 微软」。
 - EngineFactory.DOUBLE_PINYIN 按该 pref 选 schema id；
   isModeReady(DOUBLE_PINYIN) 按同一 schema 文件判断。
-- 设置页「键盘与输入 → 双拼方案」三选一（state.dpScheme +
+- 设置页「键盘与输入 → 双拼方案」四选一（state.dpScheme +
   setDoublePinyinScheme，BAD_DP_SCHEME 报错事件）。切换后桥接层广播
   ACTION_DP_SCHEME_CHANGED：IME 若正处于双拼会话则 recreateEngineSession
   换 schema（同词库换入的卡点位），随后重推 hello；非双拼会话下次建会话
@@ -75,13 +75,13 @@ shipped 逐字节一致，两新方案源（original-schemas）重编也与 asse
 
 ### 2.4 键盘与键位图
 
-- generate-keyboard-data.py 对三个 schema 各产出两份生成物：
+- generate-keyboard-data.py 对四个 schema（自然码/小鹤/搜狗/紫光）各产出两份生成物：
   keyboard.js 的 DP_INITIAL_FINALS（首键→第二键解析变体表，golden 测试
   逐方案对着 prism 校验），settings/dp-data.js 的键位图（settings 页是
   APK 资产，不经 keyboard 更新包的 4 文件白名单）。键位图行序
   10/9/`;zxcvbnm`——`;` 在第三行行首，对应宽键真实位置。
 - 键盘按 hello 的 dpScheme 取变体表并切换宽键形态：ziranma/flypy =
-  分词（emit `'`），sogou = ing（emit `;`）。未知 id 回落自然码。
+  分词（emit `'`），sogou/ziguang = ing（emit `;`）。未知 id 回落自然码。
 - 键盘快捷面板的「双拼键位」入口移除；键位图搬到设置页双拼方案卡片，
   随方案选择即时重画（声母/零声母说明逐方案 i18n）。
 

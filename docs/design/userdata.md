@@ -26,7 +26,7 @@
   "favorites": [
     { "id": "f12", "time": 1730000000000, "text": "常用语", "code": "cyy", "rank": 1 }
   ],
-  "webviewStores": { "feelime_theme": "dark" },
+  "webviewStores": { "feelime_ui_locale": "zh" },
   "userdb": {
     "rime": { "user.yaml": "<base64>" },
     "mozc": { "user_dictionary.db": "<base64>" }
@@ -103,8 +103,10 @@
   的恢复值顶掉。拉取只接受真正的键值对象（数组/字符串等异常载荷不算
   「空备份」，不触发删除；native 正常产出 JSONObject）。
   「先拉后推」保证导入与修改两个方向都收敛，页面不在时也不丢恢复值。
-- 白名单：`feelime_theme`、`feelime_ui_locale`、`feelime_scrub_speed`、
-  `feelime_quick_pair`、`feelime_menu_modes`、`feelime_mode_order`。
+- 白名单：`feelime_ui_locale`、`feelime_scrub_speed`、
+  `feelime_quick_pair`、`feelime_menu_modes`、`feelime_mode_order`
+  （`feelime_theme` 已迁原生 theme_mode，localStorage 旧值只是迁移来源、
+  不在备份白名单）。
 - 旧原生（无 pushStores/getStores）上运行新键盘 JS：全部 `typeof`
   探测后调用，绝不抛错。
 

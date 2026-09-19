@@ -28,9 +28,11 @@ history collection.
 
 - **Fully offline**: speech recognition (sherpa-onnx) and the Chinese
   engine (librime) run on-device
-- **Chinese**: full Pinyin / double pinyin (Ziranma), simplified output,
+- **Chinese**: full Pinyin / double pinyin (Ziranma / Flypy / Sogou /
+  Ziguang, with fuzzy-pinyin groups), T9 keypad, 5-key stroke input
+  (wildcard and word-split sentence building), simplified output,
   consecutive word coinage, per-engine user lexicons, a unified candidate
-  pool shared by the bar and the expand grid
+  pool, next-word association and one-handed mode
 - **Multilingual**: English, French, Russian, Japanese romaji with offline
   dictionary candidates
 - **Voice input**: bilingual streaming recognition, final-pass correction,
@@ -47,11 +49,11 @@ A standard Android development environment is enough (Linux/macOS with
 
 ```bash
 ./scripts/setup-assets.sh     # first run: fetch the sherpa-onnx AAR + models (SHA-256 verified)
-ANDROID_HOME=… ./gradlew :app:assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+ANDROID_HOME=… ./gradlew :app:assembleDirectDebug
+adb install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk
 ```
 
-The dictionary engine data (Chinese/Western/Japanese, ~52 MB) ships with the
+The dictionary engine data (Chinese/Western/Japanese/association, ~66 MB) ships with the
 repository; `checkEngineArtifacts` verifies every file's SHA-256 at build
 time. Regenerate via the pinned pipeline — see
 [AGENTS.md "词典引擎数据"](AGENTS.md) (Chinese).
@@ -68,7 +70,7 @@ The keyboard lives in `app/src/main/assets/keyboard/`
 without rebuilding the APK:
 
 ```bash
-./scripts/push-keyboard.sh    # push HTML/CSS/JS to the device, reloads instantly
+./scripts/push-keyboard.sh --local  # package the repo keyboard and push, instant reload
 ```
 
 Keyboard packages are signature- and capability-checked and activated

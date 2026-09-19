@@ -4,6 +4,7 @@
 本文档的节号，改语义时先改这里再改代码。配套阅读：
 
 - 外观与视觉规范（配色体系、新增元素的约束）：[appearance.md](appearance.md)
+- 中文联想（bigram 后继词）：[association.md](association.md)
 - 最终需求清单（产品必须做什么）：[../product/requirements.md](../product/requirements.md)
 - 验证方法与门禁：[../testing/verification.md](../testing/verification.md)
 
@@ -90,7 +91,8 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   顶部留白，**不占独立高度**——组合态与空闲态键盘总高相同，避免抖动。
 - 行高随键盘总高自动缩放（`applyHeight`），字号取 `min(原字号, 键高×系数)`，
   永不溢出键面；高度增加时四行等分新增空间，不设 60px 行高上限。
-- 候选字号 17px；preedit 10px；工具圆钮 32px 圆形；主字母 22px w400。
+- 候选字号 17px 基值（三档 ×1/1.2/1.35，issue #2）；preedit 13px 基值
+  （三档缩放，issue #8）；工具圆钮 32px 圆形；主字母 22px w400。
 - **底部留白**：用户可为终端等场景把键盘整体抬高——`--kb-bottom-pad`
   （0/12/24/36/48dp，原生换算 px 下发）只作用于 `#softKeyboard` 的
   padding-bottom，加在内容之外：行高预算（`applyHeight`/
@@ -98,9 +100,9 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   一致（UI-18）；高度上下限仍按内容高口径。
 - **长按角标**：仅「长按有隐藏功能」的键右上角画一枚 4px 圆点
   （`--key-subtext`，`::after` 绘制，不占布局）——123（九宫格）、中英
-  切换（模式菜单）、Shift（锁定）、控制层 Ctrl/Alt/Win/Fn（组合卡）；
-  连发类长按（⌫/enter/方向格）与字母弹层不画，满屏角标只余噪声
-  （用户评审定稿）。
+  切换（模式菜单）、Shift（锁定）、控制层 Ctrl/Alt/Win/Fn（组合卡）、
+  空格（长按语音）；连发类长按（⌫/enter/方向格）与字母弹层不画，满屏
+  角标只余噪声（用户评审定稿）。
 
 ### 1.3 输入态（composing）
 
@@ -119,13 +121,21 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 ### 2.1 工具栏（candidateBar）
 
 ```
-[F logo(完整设置)] [控制键层] [🌐 切换系统输入法] [候选区/preedit] [剪贴板] [常用语] [×/˅(组合态)] [麦克风] [收起]
+[F logo(快捷设置)] [控制键层] [🌐 切换系统输入法] [候选区/preedit] [剪贴板] [常用语] [×/˅(组合态)] [麦克风] [收起]
 ```
 
 - 组合态隐藏 logo/控制键/🌐/剪贴板/常用语/收起，保留 ×（清组合）、˅
   （收起组合保留候选）与麦克风；候选区全量渲染累积池（§7.1）。
 - 控制键层入口与 Fn 见 §11；🌐 调 `Native.switchInputMethod` 唤起系统
-  输入法选择器。
+  输入法选择器；F logo 打开键盘内快捷设置面板（§6.1），完整设置齿轮在
+  面板内。
+- **工具栏编辑模式（issue #15）**：长按工具/空白进编辑——左右两组可
+  自定义布局：仓库点按添加工具、× 移除、拖拽排序、溢出自动隐藏；可
+  上栏的开关工具（色彩/振动/声音/联想/单手）在栏内即点即生效。布局经
+  `setQuickPref('toolbarLayout')` 落盘（JSON，左右各 ≤4 项）。
+- **单手模式侧条（issue #15）**：键盘左/右缘压缩出侧边条——方向键
+  （`editorCursor`）、全选/剪切/复制/粘贴（`editorAction`，宿主编辑
+  action 通道）。
 
 ### 2.2 底行
 
@@ -134,21 +144,22 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 - 中英切换键：大字为当前模式简称（中/英/拼/双…），右下小字预告点击后的
   目标（§9.5 的目标计算）；长按弹模式菜单；控制键 Fn 态下十二个字母键
   主字形换成 F1..F12（§11）。
-- 标点键：中文态主字「，」（tap 发 ASCII `,` 走引擎 punctuator 转
-  全角，§9.6）、上滑「。」；英文态 `'`/`.` 双行。中文长按弹层列出
-  CN_ALTS 里的字形并走同一引擎通道（直接 commit 全角会被 librime
-  丢弃——全角直发禁令）。
+- 标点键：中文态主字「，」（空闲 tap 发 ASCII `,` 走引擎 punctuator 转
+  全角；组合中两步流，§9.6）、上滑「。」；英文态 `.` 主字/`,` 角标。中文长按弹层：标点槽
+  弹 ，。（enginePunct 同 tap）；字母键弹层的 CN_ALTS 字形走
+  `sendSymbol` 字面直上屏（全角经引擎会被丢弃，字面 commit 不受影响）。
 
 ### 2.3 模式菜单（modeMenu）
 
 长按切换键弹出，单列紧凑行（缩写在前的双 span，当前模式 accent 绿），
-条目 = §9.5 的可用模式集合 + 主题行（跟随系统/浅色/深色）。几何遵守
+条目 = §9.5 的可用模式集合（主题切换在快捷设置的色彩模式 tile，
+§6.1）。几何遵守
 §0 浮层锚定（右缘对齐触发键、贴上沿、不够高退到窗口顶 + 滚动）。
 
 ### 2.4 符号层
 
 - 底部横向分类条（两侧渐隐 mask + 相邻类目露头作滑动暗示）：
-  `常用 / 定制 / 最近 / 引号 / 货币 / 数学 / 方向 / 序号 / 拼音 / 假名 / 希腊`，
+  `常用 / 定制 / 最近 / 引号 / 货币 / 数学 / 方向 / 序号 / 拼音 / 平假名 / 片假名 / 希腊`，
   按当前模式选默认表（中文模式默认中文表，英文模式默认英文表）；
   已在「常用」tab 再点一次「常用」= 中/英两表互换：tab 右下角小字
   `中`/`En` 标识当前表（借模式切换键的双写语法），切换输入模式后复位；
@@ -168,11 +179,12 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 ### 2.5 顶部扩展带（floatBand）
 
 - 原生 IME 窗口高度 = 键盘高度 + `floatBand`（约 200dp，横屏按
-  `min(200dp, 真实屏×30%)` 收缩）；WebView 透明背景，HTML 顶部预留
-  `#floatBand` 透明区。
+  `min(200dp, 真实屏×30%)` 收缩）；WebView 透明背景，HTML 顶部由
+  `--band` 变量预留透明区（无独立元素）。
 - 平时完全透明、不触摸（应用只让位到键盘顶）；浮层开启时经桥
   `setOverlayOpen(true)` 通知原生翻转触摸放行（`TOUCHABLE_INSETS_VISIBLE`），
-  浮层（模式菜单/组合卡/行操作菜单/确认卡/编辑卡/高度卡）进带并可点。
+  浮层（模式菜单/组合卡/行操作菜单/编辑卡/高度卡）进带并可点；确认卡
+  定位在键盘区上方（不入带）。
 - 扩展带对用户不可见时必须真正透明：键盘区背景由 `--bg` 提供。
 
 ### 2.6 九宫格数字键盘与 emoji
@@ -280,8 +292,9 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   位置控制在 keyboard.js `injectFavoriteCandidates` 的**引擎池内**先排
   （纯符号词——无字母无数字——挪到 index 2），再走常用语/变体 overlay
   组装：常用语 rank 位次与空格确认的池头语义不被符号挪动二次改写；中文
-  自定义词（含汉字/字母）保持引擎排位（quality=1 组第 1）。池前缀（前
-  3 项 id 签名）变化时展开层全量重绘——增量水位线只认追加，不认前缀改写。
+  自定义词（含汉字/字母）保持引擎排位（quality=1 组第 1）。已渲染前缀
+  （max(expandRendered, 3) 项 id 签名）变化时展开层全量重绘——增量水位线
+  只认追加，不认前缀改写。
 - **热生效**：stabledb 只在引擎生命周期加载一次（切 schema 重建会话不重
   读）。任何词条/开关变更走 `RimeTextEngine.reloadGlobal`（finalize +
   重新 init，synchronized(gate) 串行；换代 epoch 防 closeNative 对悬垂
@@ -340,12 +353,12 @@ Native（SharedPreferences，应用私有）：
 | `feelime_custom_keys` | 定制键表 JSON + enabled（§15，单一事实源） |
 | `feelime_quick_pair` / `feelime_menu_modes` / `feelime_mode_order` | 快捷切换对 / 长按菜单勾选 / 菜单顺序 |
 | `feelime_engine` / `feelime_smoke` / `feelime_bg` | 引擎数据与内部标记 |
+| `theme_mode` 等 | 主题真相源已迁原生（`feelime_keyboard` 的 theme_mode/preeditBold 等，localStorage 旧值仅迁移来源） |
 
 键盘 WebView（localStorage）：
 
 | key | 内容 |
 |---|---|
-| `feelime_theme` | 用户主题偏好（auto/light/dark） |
 | `feelime_system_theme` | 最近一次系统主题（首帧防闪，§13） |
 | `feelime_kb_height_<orientation>` | 高度卡确认值（内容高口径，≥120 视为新格式） |
 | `feelime_symbol_recent` | 最近符号 |
@@ -357,24 +370,27 @@ Native（SharedPreferences，应用私有）：
 
 ### 5.1 方法表
 
-JS→Native（全部 token 门控 + 输入校验；id 一律 `[0-9a-f]{1,16}` 白名单，
-文本 1..2000 code point 且拒绝孤立代理对/NUL）：
+JS→Native（全部 token 门控 + 输入校验；面板 id `[0-9a-f]{1,16}`、候选 id
+另有 `[0-9a-f:]`（96 字符上限），文本 1..2000 code point 且拒绝孤立代理对/NUL）：
 
 | 组 | 方法 |
 | --- | --- |
-| 文本 | `key`、`commitText`、`backspace`、`enter`、`moveCursor`、`clearComposing`、`setComposition` |
+| 文本 | `key`、`commitText`、`backspace`、`enter`、`space`、`moveCursor`、`clearComposing`、`setComposition`、`keyFeedback`（按键声/振动，§6.1） |
 | 候选 | `chooseCandidate`、`pageNext`、`pagePrevious`、`deleteCandidate`、`deleteHighlightedCandidate` |
-| 面板 | `getClipboard`、`removeClipboard`、`clearClipboard`、`getFavorites`、`favoritesAdd/Update/Remove/Move`、`panelInput`、`panelFlush`、`panelSelection`、`copyText` |
+| 面板 | `getClipboard`、`removeClipboard`、`clearClipboard`、`getFavorites`、`favoritesAdd/Update/Remove/Move`、`panelInput`、`panelFlush`、`panelSelection`、`commitAssoc`（联想词点击，§3a） |
+| 编辑器（单手侧条，§2.8） | `editorCursor`（方向键）、`editorAction`（全选/剪切/复制/粘贴） |
 | 控制键 | `keyEvent`、`keyEventPhysical`（§11，keycode 白名单 + meta 位白名单 + 限流） |
-| 语音 | `requestMic`、`cancelVoice`（启停经状态事件） |
-| 模式 | `selectMode`、`switchInputMethod`、`hideKeyboard`、`requestState` |
+| 语音 | `startVoice`、`stopVoice`、`cancelVoice`（启停经状态事件） |
+| 模式/浮层 | `selectMode`、`switchInputMethod`、`hideKeyboard`、`requestState`、`setOverlayOpen`（§2.5） |
 | 高度 | `setKeyboardHeight` |
-| 更新 | `reloadKeyboard`、`restoreBuiltInKeyboard`、`keyboardReady`（握手，§5.3/§8） |
-| 设置 | `openSetup`、`customKeys`、`setCustomKeys` |
+| 更新 | `reloadKeyboard`、`keyboardReady`（握手，§5.3/§8）（`restoreBuiltInKeyboard` 是设置页桥） |
+| 设置 | `openSetup`、`customKeys`、`setCustomKeys`、`setQuickPref`（§6.1）、`pushStores`/`getStores`（备份镜像，§4） |
 
-Native→JS 事件：`hello`（§5.3）、引擎状态（候选/组合）、`onEditorInfo`、
-`onClipboard`、`onFavorites`、语音状态（listening/partial/final/error）、
-`onUpdateStatus`。
+（`copyText` 属设置页 SettingsBridge，不在键盘 ImeBridge。）
+
+Native→JS 事件：`hello`（§5.3）、引擎状态 `onEngineState`（候选/组合）、
+`onEditorInfo`、`onClipboard`、`onFavorites`、`onAssoc`（联想词）、语音状态
+`onNativeState`（listening/partial/final/error 的 state+message 通道）。
 
 ### 5.2 文本提交与 preedit 语义
 
@@ -412,7 +428,7 @@ Native→JS 事件：`hello`（§5.3）、引擎状态（候选/组合）、`onE
 | `safeBottom` | 底部导航/手势区 inset（CSS px，§14） |
 | `floatBand` | 顶部扩展带高度（CSS px，§2.5） |
 | `heightDefault` / `heightFloor` / `heightCeil` | 默认/最小/最大键盘内容高（§14） |
-| 引擎与面板数据 | 模式、候选、剪贴板/常用语快照、更新状态 |
+| 引擎与面板数据 | 模式、双拼方案、降级/预热状态、键盘偏好回读、engineDataReady |
 
 - `@JavascriptInterface` 代理对象无法从 JS 侧包装（静默 no-op）：观察桥
   调用要换通道（引擎事件 / 宿主编辑器 / native 日志）。
@@ -436,26 +452,30 @@ Native→JS 事件：`hello`（§5.3）、引擎状态（候选/组合）、`onE
 ### 6.1 快捷设置（键盘面板内）
 
 设置面板是键盘内流内区块（打开时替换按键层，观感是「换了一页」）。
-3.38.0 起首页为微信式 2×4 方块网格（横向滑动翻页，native scroll-snap +
-翻页圆点），工具栏保持原样（齿轮 = 完整设置），网格末尾另有「完整设置」
+3.38.0 起首页为微信式 2×4 方块网格（横向滑动翻页：JS 手势接管跟手拖动、
+松手一次最多翻一屏——CSS scroll-snap 已显式关闭，防与拖动手势竞争；
+翻页圆点保留），工具栏保持原样（齿轮 = 完整设置），网格末尾另有「完整设置」
 大方块。方块即状态：点按直接生效并重渲染回读；tile 分四类——
 
 - 循环档（点按轮换）：色彩模式（auto/浅/深，tile 状态行跟随）、候选字号
-  （标准/大/更大）、界面语言（跟随系统/中文/English）、底部留白
-  （0–48dp，按当前横竖屏落盘）、长按时长（200–600ms）、滑动选字
-  （松/标准/紧）、双拼方案（自然码/小鹤/搜狗）。
-- 开关：中文联想、按键声音、按键振动（开 = 图标与状态行着色）。
+  （标准/大/更大）、拼音字号（标准/大/特大，issue #8）、界面语言（跟随
+  系统/中文/English）、底部留白（0–48dp，按当前横竖屏落盘）、长按时长
+  （200–600ms）、滑动选字（松/标准/紧）、单手模式（关/左手/右手）、
+  双拼方案（自然码/小鹤/搜狗/紫光，四档）。
+- 开关：中文联想、按键声音、按键振动（开 = 图标与状态行着色）、
+  键帽不透明度（编辑工具栏的溢出开关工具，随布局落盘）。
 - 动作：键盘高度（拉起拖动调节卡）、完整设置（关面板 + openSetup）。
 - 子页导航：快捷切换（勾选切换对）、长按菜单（勾选+排序）、定制键盘
   （JSON 粘贴）。与主键盘重复的能力（语音听写、剪贴板）不进面板。
 
-原生偏好写入走 `ImeBridge.setQuickPref(key, value, token)`（白名单：
-association/keySound/keyHaptic/candidateFont/bottomPad/holdMs/popupSnap/
-uiLocale/dpScheme），落盘后广播 `ACTION_KEYBOARD_PREFS_CHANGED`（双拼
+原生偏好写入走 `ImeBridge.setQuickPref(key, value, token)`（白名单 16 键：
+association/keySound/keyHaptic/candidateFont/preeditFont/preeditBold/
+keyOpacity/themeMode/oneHand/sideContent/toolbarLayout/bottomPad/holdMs/
+popupSnap/uiLocale/dpScheme），落盘后广播 `ACTION_KEYBOARD_PREFS_CHANGED`（双拼
 方案广播 `ACTION_DP_SCHEME_CHANGED` 触发引擎重建），receiver 重推 hello
 让方块回读；hello 新增 `keySound`/`keyHaptic`。旧 APK 没有该方法时
 tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快捷对勾选、
-长按菜单勾选+排序）为子页。双拼键位图随三方案（自然码/小鹤/搜狗）在
+长按菜单勾选+排序）为子页。双拼键位图随四方案（自然码/小鹤/搜狗/紫光）在
 设置 app（keyboard.md §6.2 / double-pinyin.md §2.4）；「光标移动速度」
 同样收编进设置 app 的手感微调组（UI-19）。
 
@@ -470,10 +490,11 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   `SettingsBridge` 与 IME 桥同款 token 握手（§5.3）+ 全量 state 推送；
   主题 token 与键盘同源（§1.1）。
 - 结构：首页（输入法状态 + 分组入口 + 输入测试入口）→ 二级页：键盘与
-  输入（双拼键位图/定制键盘/**手感微调**：底部留白 0–48dp、长按
-  时长 200–600ms、光标横滑速度 1–5x、弹层吸附 松/标准/紧——档位在
-  桥端校验，非法值具名报错）、语音识别、键盘热更新、关于（版本信息
-  一键复制 + 第三方许可）、输入测试。`showPage` 切换，不上 hash 路由；
+  输入（双拼键位图/候选符号词三级页/定制键盘/**手感微调**：底部留白
+  0–48dp、长按时长 200–600ms、光标横滑速度 1–5x、弹层吸附 松/标准/紧
+  ——档位在桥端校验，非法值具名报错）、外观（主题/背景图/键帽不透明度/
+  单手压缩比例，issue #15）、语音识别、键盘热更新、备份（userdata 导入
+  导出，userdata.md）、关于（版本信息一键复制 + 第三方许可）、输入测试。`showPage` 切换，不上 hash 路由；
   系统返回键在二级页先回首页。手感项保存即经
   ACTION_KEYBOARD_PREFS_CHANGED 广播触发 hello 重推，键盘免重开生效。
 - 输入测试/调试区仅 debug 显式开关（EXTRA_SHOW_FIXTURES）启动时可见，
@@ -613,7 +634,8 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 | 模式 | 引擎 | 语义 |
 | --- | --- | --- |
 | 英文 Direct | DirectTextEngine | 逐键立即上屏，无组合 |
-| 全拼 / 双拼（自然码） | librime（RimeTextEngine） | §9.3 |
+| 全拼 / 双拼（自然码/小鹤/搜狗/紫光） | librime（RimeTextEngine） | §9.3 |
+| T9 九宫格 | librime（RimeTextEngine，独立 schema） | §2.7 / t9.md |
 | 笔画五键 | librime（RimeTextEngine） | §9.3a |
 | 法语 / 俄语 | Hunspell（HunspellTextEngine） | §9.2 |
 | 日语 | Mozc（MozcTextEngine） | §9.4 |
@@ -633,7 +655,7 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   同一组合，不在撇号处提前提交。
 - 首字符重音变体（§7.3）；连排重音组合经原生 `unicode-compose-v1`。
 
-### 9.3 中文（librime：全拼 / 自然码双拼）
+### 9.3 中文（librime：全拼 / 双拼四方案）
 
 - schema 固化在 `engine-data/rime`（简体输出：`simplifier` filter +
   `reset: 1` + uniquifier——translator 级 opencc 配置无效）；双拼用户
@@ -648,11 +670,9 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 - 连续造词：选首候选后有剩余输入时保持组合（preedit 如「你hk」），
   引擎仅在组合清空时补 ENTER——有剩余输入时补 ENTER 会把「已确认部分+
   剩余原文」整体上屏。
-- 分词键（'）在双拼无 abbrev 支持时不产出垃圾候选（双拼槽位恢复 shift）；
-  全拼 `x'an` 走声母简拼聚合（§7.2）。
-
-- 分词键（'）在双拼无 abbrev 支持时不产出垃圾候选（双拼槽位恢复 shift）；
-  全拼 `x'an` 走声母简拼聚合（§7.2）。
+- 分词键（'）：中文模式（含双拼）的 wide 槽固定为分词键；搜狗/紫光
+  双拼该槽是 `ing` 字母键（发 `;`）；非中文模式才是 Shift。全拼 `x'an`
+  走声母简拼聚合（§7.2）。
 - **T9 九宫格**共用本节引擎链路：独立 schema `luna_pinyin_t9`（首/末字母
   保护 × 26 + xlit 的混合拼写 algebra，prism 约 140KB）、键盘侧五列键面与
   手势仲裁、音节候选条与 setComposition 组合重写、BridgeContract 对 T9
@@ -845,7 +865,8 @@ TYPE_NULL 假 InputConnection 会对删除调用假成功——不做行为探�
   点）。组合落地即消费 shift；shift 单独武装时字母照旧走一次大写，不进
   组合通道；长按锁定的 CapsLock 不参与组合（物理键盘同语义）。
 - **发送通道**：`keyEvent(code, meta)` 走 keycode 白名单（A..Z、
-  F1..F12、Esc/Tab/Home/End/PgUp/PgDn/方向/DEL/PERIOD/F4）+ meta 白名单
+  F1..F12、Esc/Tab/Home/End/PgUp/PgDn/方向/DEL/PERIOD/F4、Enter/Space/
+  Backspace（定制 DSL 与 Fn 层）、裸 Ctrl/Alt/Meta 左键（武装态二次点击））+ meta 白名单
   （SHIFT|ALT|CTRL|META 位，组合时补 `META_*_LEFT_ON` 物理左键形态）；
   **凡 meta≠0 的组合一律走 `keyEventPhysical` 物理四连发**（左修饰
   DOWN → 键 DOWN → 键 UP → 修饰 UP，逆序释放，eventTime 递增）——单

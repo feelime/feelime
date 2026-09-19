@@ -18,12 +18,12 @@ app/src/main/assets/settings/   完整设置页（HTML，不参与键盘热更�
 app/src/main/java/com/feelime/ime/   IME 服务、Bridge、引擎、面板、更新（Kotlin）
 app/src/main/res/               图标与资源（ic_launcher.xml 与 docs/branding 同源）
 scripts/verify/                 自动化验证套件（mock / css lint / 设备门禁）
-scripts/research/               ASR 回归门禁、Hunspell 前缀索引生成等工具
+scripts/research/               ASR 回归门禁、Hunspell 前缀索引生成、native
+                                词典引擎 pinned 构建管线与验证脚本
 docs/                           文档（见 docs/README.md 的主题索引）
 tools/                          真实源码预览（keyboard-preview / settings-preview）
 spikes/                         独立 Gradle 工程：librime 引擎冒烟、ASR 基线
 test-fixtures/                  验证测试数据（旧代键盘源码、双拼键位表）
-scripts/research/               native 词典引擎 pinned 构建管线与验证脚本
 third_party/                    许可证清单与来源闭包
 ```
 
@@ -34,7 +34,7 @@ third_party/                    许可证清单与来源闭包
                                    #   安装到 ~/.config/feelime，全 worktree 共享）
 ANDROID_HOME=… ./gradlew :app:assembleDirectDebug
                                    # 构建（产物 app/build/outputs/apk/direct/debug/）
-./scripts/push-keyboard.sh         # 键盘热更新：只推 HTML/CSS/JS，不重装 APK
+./scripts/push-keyboard.sh --local # 键盘热更新：打包本仓键盘并推到设备（裸调需要 zip 参数）
 adb install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk
 ```
 
@@ -136,7 +136,7 @@ bash scripts/verify/run-all.sh    # 全量门禁（--list/--resume/--from/--prof
 
 ## 词典引擎数据（engine-data）
 
-`app/src/main/assets/engine-data/`（rime/hunspell/mozc 数据，约 52MB）随仓库
+`app/src/main/assets/engine-data/`（rime/hunspell/mozc/assoc 数据，约 66MB）随仓库
 分发，构建时 `checkEngineArtifacts` 按 `third_party/manifest.json` 与
 `MANIFEST.json` 的 SHA-256 逐文件核对。再生成走 pinned 管线（输入全部是
 上游开源归档，哈希钉死）：
