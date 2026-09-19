@@ -24,11 +24,15 @@
 ## 3. 触发与展示
 
 - 挂点在 service 的 engine listener：`event.state.commit` 非空且模式为
-  全拼/双拼且开关开启时，把 `assoc` 词列表并入当次 `onEngineState` payload。
-  其他事件不带该字段，键盘保留现有联想直到组合开始。
-- 键盘：组合（composing）非空时联想让位给引擎候选；组合为空时展示联想词
-  （候选条内独立样式）。
-- 清空时机：组合开始、编辑器切换（onStartInput 推空列表）、模式切换、关闭开关。
+  全拼/双拼/T9/笔画且开关开启时，把 `assoc` 词列表并入当次 `onEngineState`
+  payload。其他事件不带该字段，键盘保留现有联想直到组合开始。
+- 键盘：组合（composing）非空时联想让位给引擎候选；组合为空时展示联想词，
+  样式与引擎候选完全同款（用户定稿 2026-09-20：不做灰字/圆点等降调标识，
+  class `candidate assoc` 仅作测试定位用）。
+- 清空时机：组合开始、编辑器切换（onStartInput 推空列表）、**键盘收起**
+  （onFinishInputView 推空，onStartInputView 再兜一次——同编辑器收起再弹出
+  不走 onStartInput，不清的话联想词与工具栏让位态原样残留，device 复现
+  2026-09-20）、模式切换、关闭开关。
 - 点击联想词：`Native.commitAssoc(word, token)` → coordinator.pasteExternal
   写入编辑器 → 立即以该词为前词计算下一轮联想并推送（连续联想）。
 

@@ -527,7 +527,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
                     (
                         event.stamp.mode == com.feelime.ime.engine.InputMode.PINYIN ||
                             event.stamp.mode == com.feelime.ime.engine.InputMode.DOUBLE_PINYIN ||
-                            event.stamp.mode == com.feelime.ime.engine.InputMode.T9
+                            event.stamp.mode == com.feelime.ime.engine.InputMode.T9 ||
+                            // 笔画（issue #18）：上屏的也是汉字文本，联想表
+                            // 按文本后继查询，与输入模式无关。
+                            event.stamp.mode == com.feelime.ime.engine.InputMode.STROKE
                         )
                 ) {
                     pushAssoc(com.feelime.ime.engine.AssociationStore.next(applicationContext, committed))
@@ -775,13 +778,22 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         // Toolbar edit is modal: hiding the keyboard cancels it (snapshot
         // rollback, nothing saved). Same-editor re-shows skip onStartInput
         // /resetToHome, so this hide path is the only reliable hook.
+        // 联想词同理（association.md §3）：它是「上屏词的后继」，键盘收起
+        // 后上下文已断——不清的话同编辑器再弹出时联想词和工具栏让位态
+        // 原样残留（device 复现 2026-09-20）。onStartInputView 再兜一次，
+        // 覆盖此处 evaluate 因 WebView 正在 detach 而丢失的场合。
         evaluate("window.Feelime && window.Feelime.cancelTouches && window.Feelime.cancelTouches()")
         evaluate("window.Feelime && window.Feelime.cancelToolbarEdit && window.Feelime.cancelToolbarEdit()")
+        clearAssociation()
         super.onFinishInputView(finishingInput)
     }
 
     override fun onStartInputView(editorInfo: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(editorInfo, restarting)
+        // 收起时（onFinishInputView）已清过一次联想；restarting 弹出时若那
+        // 次 evaluate 没到达（WebView detach 竞态），这里是可靠兜底——
+        // onStartInputView 对同编辑器再弹出必然触发。
+        clearAssociation()
         onBottomInsetChanged()
         // A pref change while the keyboard was hidden cannot re-measure
         // (its requestLayout landed on a non-visible view) — re-measure once
