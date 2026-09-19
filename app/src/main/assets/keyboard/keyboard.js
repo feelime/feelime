@@ -246,7 +246,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.48.0';
+    const KEYBOARD_VERSION = '3.49.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -2627,19 +2627,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.openT9Popup(button, cells, { grid: true });
         }
 
-        /** 笔画长按（issue #18）：三格一行——左符号 · 数字 · 右符号。中格
-         * 预选=点按同义（发部件编码进引擎，不拖直接松手不改变输入，与
-         * T9 弹层惯例一致）；显示数字、提交编码（send 字段），左右符号
-         * literal 直上屏。无字母行/大写行（笔画无此语义）。 */
+        /** 笔画长按（issue #18，用户定稿 2026-09-19）：与 T9 同款三排——
+         * 小写字母组 / 左符号 · 数字 · 右符号 / 大写字母组。字母组沿用
+         * T9 的数字键位分配（2=abc…9=wxyz，拨号键盘肌肉记忆），上屏规
+         * 则同 T9：字母（含大写）与符号 literal 直上屏（commitText），中
+         * 格数字=点按同义（发部件编码，send 字段），预选中格、相对跟手。
+         * 1 键无字母组：退回单排 符号·数字·符号。 */
         openStrokeHoldPopup(button) {
-            const def = STROKE_KEYS[button.dataset.key] || {};
+            const key = button.dataset.key;
+            const def = STROKE_KEYS[key] || {};
             const syms = def.syms || [];
-            const cells = [
+            const letters = (LAYOUTS.t9.alts[key] || '').split('');
+            const middle = [
                 { char: syms[0], literal: true },
-                { char: button.dataset.key, send: def.code },
+                { char: key, send: def.code },
                 { char: syms[1], literal: true },
             ].filter(cell => cell.char);
-            this.openT9Popup(button, cells, { middle: true });
+            const cells = letters.length
+                ? [...letters.map(ch => ({ char: ch, literal: true })),
+                   ...middle,
+                   ...letters.map(ch => ({ char: ch.toUpperCase(), literal: true }))]
+                : middle;
+            this.openT9Popup(button, cells, letters.length ? { grid: true } : { middle: true });
         }
 
         /** T9 浮层：长按=三行大小写+符号弹层（opts.grid）；7/9 下滑=拆分

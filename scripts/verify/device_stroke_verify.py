@@ -179,16 +179,18 @@ def main():
     field = (d.field_text_retry() or "").strip()
     record("stroke: up-swipe commits literal 5", field == "5", f"field={field!r}")
 
-    # ===== 长按三格浮层：符号·数字·符号，中格预选=点按同义 =====
+    # ===== 长按三排浮层（同 T9）：小写 jkl / 、 5 ： / 大写 JKL，中格预选 =====
     d.clear_field(kb)
     if d.synth_touch("start", x5, y5) == "ok":
         time.sleep(0.65)  # holdMs 350 + 余量
         items = ev("[...document.querySelectorAll('#keyPopup .kp-item')]"
                    ".map(i => i.textContent)") or []
+        rows = ev("[...document.querySelectorAll('#keyPopupInner .kp-row')].length")
         sel = ev("(() => { const s = document.querySelector('#keyPopup .kp-item.sel');"
                  " return s ? s.textContent : null; })()")
-        record("stroke: long-press offers symbol/digit/symbol",
-               items == ["、", "5", "："], f"cells={items}")
+        record("stroke: long-press offers the T9-style three rows",
+               items == ["j", "k", "l", "、", "5", "：", "J", "K", "L"] and rows == 3,
+               f"cells={items} rows={rows}")
         record("stroke: middle digit cell is preselected", sel == "5", f"sel={sel!r}")
         # 松手不拖=点按同义：发 z（乙），数字不进引擎。
         d.synth_touch("end", x5, y5)
@@ -196,23 +198,23 @@ def main():
         record("stroke: popup release feeds the stroke code",
                preedit() == "乙", f"preedit={preedit()!r}")
     else:
-        record("stroke: long-press offers symbol/digit/symbol", False, "synth_touch unavailable")
+        record("stroke: long-press offers the T9-style three rows", False, "synth_touch unavailable")
 
-    # ===== 长按拖左=左符号 literal 直上屏（相对跟手）=====
+    # ===== 长按拖上排=小写字母 literal 直上屏（相对跟手，T9 同款）=====
     d.clear_field(kb)
     if d.synth_touch("start", x5, y5) == "ok":
         time.sleep(0.65)
         scale = d._DT_SCALE
-        d.synth_touch("move", x5 - 40 * scale, y5)
+        d.synth_touch("move", x5 - 34 * scale, y5 - 46 * scale)
         sel = ev("(() => { const s = document.querySelector('#keyPopup .kp-item.sel');"
                  " return s ? s.textContent : null; })()")
-        d.synth_touch("end", x5 - 40 * scale, y5)
+        d.synth_touch("end", x5 - 34 * scale, y5 - 46 * scale)
         time.sleep(0.5)
         field = (d.field_text_retry() or "").strip()
-        record("stroke: left drag lands the left symbol literally",
-               sel == "、" and field == "、", f"sel={sel!r} field={field!r}")
+        record("stroke: up-left drag lands the lowercase letter literally",
+               sel == "j" and field == "j", f"sel={sel!r} field={field!r}")
     else:
-        record("stroke: left drag lands the left symbol literally", False, "synth_touch unavailable")
+        record("stroke: up-left drag lands the lowercase letter literally", False, "synth_touch unavailable")
 
     # ===== 7 键=@#. 符号行：开/点选/工具栏复原 =====
     d.clear_field(kb)

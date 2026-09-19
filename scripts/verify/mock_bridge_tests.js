@@ -5654,7 +5654,7 @@ test('stroke flicks: up commits the literal digit, other directions dead', {sinc
     equal(world.native.of('commitText').slice(-1)[0].args[0], '0', 'mic up-flick commits literal 0');
 });
 
-test('stroke long-press popup: symbol/digit/symbol, middle preselected', {since: '3.48.0'}, () => {
+test('stroke long-press popup: T9-style three rows, middle preselected', {since: '3.48.0'}, () => {
     const world = fresh({ mode: 'stroke' });
     world.engineState({ phase: 'READY', mode: 'stroke', revision: 1, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
@@ -5667,12 +5667,13 @@ test('stroke long-press popup: symbol/digit/symbol, middle preselected', {since:
     const three = world.key('3');
     world.touchDown(three);
     world.clock.advance(360);
+    // 三排（用户定稿 2026-09-19，同 T9）：小写 def / （ 3 ） / 大写 DEF。
     const items = [...world.document.querySelectorAll('.kp-item')];
-    equal(items.map(i => i.textContent).join(','), '（,3,）',
-        'popup offers left-symbol/digit/right-symbol');
-    equal([...world.document.querySelectorAll('#keyPopupInner .kp-row')].length, 0,
-        'stroke popup is a single row (no letter grid)');
-    assert(items[1].classList.contains('sel'), 'middle cell (digit) is preselected');
+    equal(items.map(i => i.textContent).join(','), 'd,e,f,（,3,）,D,E,F',
+        'popup offers lowercase / symbol-digit-symbol / uppercase (T9 grid)');
+    equal([...world.document.querySelectorAll('#keyPopupInner .kp-row')].length, 3,
+        'three rows in the stroke grid popup');
+    assert(items[4].classList.contains('sel'), 'middle digit cell is preselected');
     // 松手不拖=与点按同义：发部件编码，数字本身不进引擎（会变成候选
     // 选择器）。
     world.touchUp(three);
@@ -5681,7 +5682,8 @@ test('stroke long-press popup: symbol/digit/symbol, middle preselected', {since:
         'release on the middle feeds the stroke code');
     equal(world.native.of('key').filter(c => c.args[0] === '3').length, 0,
         'the display digit never enters the engine');
-    // 相对跟手：手指左移一格 → 左符号 literal 直上屏。
+    // 相对跟手上排左格 = 小写字母 literal 直上屏（T9 同款：弹层字母
+    // 不参与组合）。
     const worldL = fresh({ mode: 'stroke' });
     worldL.engineState({ phase: 'READY', mode: 'stroke', revision: 1, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
@@ -5689,12 +5691,25 @@ test('stroke long-press popup: symbol/digit/symbol, middle preselected', {since:
     const threeL = worldL.key('3');
     worldL.touchDown(threeL, 20, 20);
     worldL.clock.advance(360);
-    worldL.move(threeL, 20 - 34, 20);
+    worldL.move(threeL, 20 - 34, 20 - 46);
     const itemsL = [...worldL.document.querySelectorAll('.kp-item')];
-    assert(itemsL[0].classList.contains('sel'), 'highlight follows the finger to the left cell');
-    worldL.touchUp(threeL, 20 - 34, 20);
-    equal(worldL.native.of('commitText').slice(-1)[0].args[0], '（',
-        'left symbol lands literally');
+    assert(itemsL[0].classList.contains('sel'), 'highlight follows the finger up-left');
+    worldL.touchUp(threeL, 20 - 34, 20 - 46);
+    equal(worldL.native.of('commitText').slice(-1)[0].args[0], 'd',
+        'a lowercase letter lands literally');
+    equal(worldL.native.of('key').filter(c => c.args[0] === 'd').length, 0,
+        'popup letters never enter the stroke engine');
+    // 1 键无字母组（拨号键盘没有）：退回单排 符号·数字·符号。
+    const world1 = fresh({ mode: 'stroke' });
+    world1.engineState({ phase: 'READY', mode: 'stroke', revision: 1, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    pinCard(world1);
+    const one = world1.key('1');
+    world1.touchDown(one);
+    world1.clock.advance(360);
+    const items1 = [...world1.document.querySelectorAll('.kp-item')];
+    equal(items1.map(i => i.textContent).join(','), '！,1,？',
+        'key 1 (no letter group) falls back to a single row');
 });
 
 test('stroke guards survive the long-press popup path (codex P1)', {since: '3.48.0'}, () => {
