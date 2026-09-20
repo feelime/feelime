@@ -1443,10 +1443,15 @@ function renderCustomPhrases(state) {
         renderPhraseList();
         const imported = phrases.importedCount || 0;
         const note = $("dictImportNote");
-        if (note && !note.textContent) {
-            note.textContent = imported
-                ? t("input.phrases.importedCount", [imported])
-                : "";
+        if (note) {
+            // 导入事件的具体消息（含截断说明）优先保留；归零（清空）时
+            // 旧消息必须撤掉——否则「Imported 4 entries」在清空后仍挂着
+            // （glm-flash 真机验证抓到的 UI bug）。
+            if (imported === 0 || !note.textContent) {
+                note.textContent = imported
+                    ? t("input.phrases.importedCount", [imported])
+                    : "";
+            }
         }
         const clear = $("btnClearImportedDict");
         if (clear) clear.hidden = imported === 0;
