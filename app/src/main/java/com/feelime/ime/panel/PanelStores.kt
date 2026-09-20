@@ -136,7 +136,17 @@ class ClipboardStore(private val context: Context) {
             ) ?: return
             prefs.edit().putString(KEY, PanelCodec.serialize(next)).apply()
         }
+        // New content landed (listener or focus re-capture): let the
+        // service push so an open clipboard panel hot-refreshes instead
+        // of waiting for the next getClipboard pull.
+        onChanged?.invoke()
     }
+
+    /** Fired after a capture actually persisted a new entry. The service
+     * wires this to pushClipboard(); null by default keeps the store
+     * self-contained in tests. */
+    @Volatile
+    var onChanged: (() -> Unit)? = null
 
     fun items(): List<PanelItem> = synchronized(prefs) {
         PanelCodec.parse(prefs.getString(KEY, "").orEmpty())

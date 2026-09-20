@@ -372,6 +372,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         editorPort = InputConnectionEditorPort(this)
         clipboardStore = com.feelime.ime.panel.ClipboardStore(applicationContext)
         favoritesStore = com.feelime.ime.panel.FavoritesStore(applicationContext)
+        // A capture that actually persisted (listener copy or focus
+        // re-capture) pushes immediately: an open clipboard panel
+        // hot-refreshes instead of waiting for the next getClipboard.
+        clipboardStore.onChanged = { main.post { pushClipboard() } }
         // Panel-side freshness: mutations made in SetupActivity must reach an
         // open favorites tab on the keyboard . Removals through the
         // panel push themselves; this listener covers the Setup->panel
