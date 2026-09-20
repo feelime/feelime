@@ -705,6 +705,29 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   保护 × 26 + xlit 的混合拼写 algebra，prism 约 140KB）、键盘侧五列键面与
   手势仲裁、音节候选条与 setComposition 组合重写、BridgeContract 对 T9
   模式放行数字——详见 docs/design/t9.md。
+- **用户词库态（issue #23，2026-09-21 设备端编译换装）**：设置→词库→
+  「基底词库」卡，SAF 选本地 `.dict.yaml`（≤150MB，需含「词⇥码」行），
+  `BaseDictInstaller` 在 `files/rime-user/` 现场生成编译源（umbrella
+  `luna_pinyin.dict.yaml`（name 恒为 luna_pinyin，import_tables 指向
+  `rime-dict-source/`）+ 31 份模糊音变体 schema（模板改写 algebra 段并
+  **同时变体化 schema_id 与 translator/prism 行**——prism 名决定产物名，
+  `BaseDictFiles.variantSchema`）+ 最小 `default.yaml`（仅 schema_list，
+  驱动 SchemaListUpdate）），`rimeStartMaintenance(true)` 设备端重编
+  **37 个 schema**（luna + 31 变体 + 双拼 4 + T9；笔画与拼音基底无关不
+  重编，shared 产物继续用）。产物落 `files/rime-user/build/`——traits 的
+  显式 staging_dir（librime 对它不追加 build/），运行时按 staging > shared
+  解析，天然覆盖内置 frost；编译后 user 根的 yaml 源全删、用户源挪
+  `files/rime-user-dict/` 留档（不进 userdata 备份，build/ 产物同理——
+  可再生且恢复后词库状态本来就要复位；mozc 的 build/ 不受排除影响）。
+  换装/恢复经 `ACTION_BASE_DICT_CHANGED` 走 reloadGlobal + 会话重建。
+  **maintenance 语义边界**（上游行为，UI 明示）：编译期间 librime 服务
+  整体 disabled（中文输入暂不可用），且 finalize 内部会 join 编译线程——
+  编译期间任何 reloadGlobal 都会 ANR，customPhrases/baseDict 两个 receiver
+  以 `isBuilding()` 拦截，换装广播统一在 building 清零后发。**事务性**：
+  prefs `installing` 标记 + `sweepPending`（FeelimeService onCreate 与
+  installBlocking 前置清扫）——进程中断后引擎初始化前全量回滚内置，
+  半截产物不进运行时；产物校验（38 个必需文件缺一即回滚）、15 分钟超时
+  （超时后仍轮询至部署线程自然收尾再 join 回滚，不强杀）。
 
 ### 9.3a 笔画五键（issue #18）
 
