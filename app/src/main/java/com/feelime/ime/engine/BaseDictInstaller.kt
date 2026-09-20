@@ -220,6 +220,21 @@ object BaseDictInstaller {
             rollback(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
         }
 
+        // maintenance 前整引擎重载（finalize+init，真机第二轮钉死）：
+        // librime 的 config 组件按资源 id 缓存弱引用 ConfigData
+        // （config_component.cc GetConfigData），运行中的引擎持有
+        // "default" 与各 schema 的旧配置引用（当时 build/ 为空），
+        // 不重载的话 WorkspaceUpdate 读 schema_list 命中缓存零 IO、
+        // SchemaUpdate 的 compiled schema 同理——读回的全是旧世界，
+        // 编译要么整体失败要么拿旧配置编出错位 prism。重载后组件表
+        // 重建、缓存清空，部署器以 staging 现场真读盘。代价与
+        // maintenance 语义一致：编译期间中文输入暂不可用。
+        runCatching { RimeTextEngine.reloadGlobal(context) }
+            .onFailure {
+                rollback(context)
+                return InstallResult("BASE_DICT_ENGINE_NOT_READY", changed = true)
+            }
+
         // maintenance：full_check=true（staging 里已有同名产物时也要重编）。
         // 期间 librime 服务 disabled——中文输入暂不可用（上游语义）。
         if (!NativeSmoke.rimeStartMaintenance(true)) {
