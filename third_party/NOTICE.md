@@ -10,8 +10,15 @@ source method and exact archive identity are recorded in `source-closure.json`.
   zlib dependencies carry Apache-2.0, BSD-3-Clause and Zlib texts respectively.
   Mozc dictionary inputs additionally retain their upstream per-file
   NAIST/IPAdic/ICOT/Okinawa notices.
-- Rime prelude, essay, and luna-pinyin data: LGPL-3.0-only. Corresponding source
-  archives and Feelime modifications must be offered with a release.
+- Rime prelude, essay, and luna-pinyin schema data: LGPL-3.0-only. Corresponding
+  source archives and Feelime modifications must be offered with a release.
+- rime-frost (白霜拼音, gaboolic/rime-frost@96278d8): GPL-3.0. The base Chinese
+  lexicon is built from a slimmed import set of its cn_dicts (8105/41448/base/
+  ext/others/corrections; upstream tencent/cell/GB18030 tables dropped) via the
+  repository umbrella `scripts/research/rime-dicts/rime-frost-umbrella.dict.yaml`,
+  host-compiled with the pinned deployer. Distributing the APK therefore requires
+  GPL-3.0 compliance for the whole offering (the app itself moved MIT -> GPL-3.0
+  with this change).
 - Hunspell: Feelime selects the MPL-1.1 option. French dictionary: MPL-2.0.
   Russian dictionary: its upstream BSD-like notice must be reproduced.
 - Boost, glog, yaml-cpp, LevelDB, marisa-trie, OpenCC, RapidJSON 1.1.0, bundled darts-clone,

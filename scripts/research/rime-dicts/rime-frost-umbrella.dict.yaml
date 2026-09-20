@@ -1,0 +1,20 @@
+# Rime dictionary
+# encoding: utf-8
+#
+# Feelime 基底词库（issue #39，2026-09-20 定案）：rime-frost（白霜拼音，
+# gaboolic/rime-frost@96278d8，GPL-3.0）瘦身组合——上游默认挂载里去掉
+# tencent 词向量/cell 分类词库/GB18030 大字表（A/B 实测零首选命中贡献，
+# table.bin 63.4MB→19.4MB）。name 保持 luna_pinyin：fuzzy m1-m31/双拼/T9
+# 全部 schema 引用同一词典名，一份 table 全模式换装。
+---
+name: luna_pinyin
+version: "frost-96278d8-feelime"
+sort: by_weight
+import_tables:
+  - cn_dicts/8105
+  - cn_dicts/41448
+  - cn_dicts/base
+  - cn_dicts/ext
+  - cn_dicts/others
+  - cn_dicts/corrections
+...

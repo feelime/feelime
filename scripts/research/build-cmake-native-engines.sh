@@ -44,6 +44,11 @@ extract_into rime-stroke-1e8fff9b9494ddec23b0cbc526bcfd8171a6fd48.tar.gz "$work/
 patch --silent -d "$work/src/rime-data/luna-pinyin" -p1 \
   < "$repo_root/scripts/research/patches/luna-pinyin-zh-hans-reset.patch"
 
+# 基底词库（issue #39）：rime-frost 瘦身组合。luna-pinyin 仓继续提供
+# schema（含 zh_hans reset patch），dict 由 frost 源 + 仓库 umbrella 覆盖。
+mkdir -p "$work/src/rime-data/rime-frost"
+extract_into rime-frost-96278d8.tar.gz "$work/src/rime-data/rime-frost"
+
 extract_into hunspell-f143a42a0b95578c39f8657101624ed44dea6514.tar.gz "$work/src/hunspell/hunspell"
 cp -R "$repo_root/spikes/native-engine-smoke/native-src/hunspell/." "$work/src/hunspell/"
 
@@ -79,6 +84,17 @@ cp "$repo_root/spikes/native-engine-smoke/original-schemas/ziranma_double_pinyin
 cp "$repo_root/spikes/native-engine-smoke/original-schemas/double_pinyin_flypy.schema.yaml" "$rime_shared/"
 cp "$repo_root/spikes/native-engine-smoke/original-schemas/double_pinyin_sogou.schema.yaml" "$rime_shared/"
 cp "$repo_root/spikes/native-engine-smoke/original-schemas/double_pinyin_ziguang.schema.yaml" "$rime_shared/"
+# 基底词库换装（issue #39）：frost 六件进 shared/cn_dicts，仓库 umbrella
+# （name 仍是 luna_pinyin——fuzzy m1-m31/双拼/T9 全部 schema 引用同一词典
+# 名）覆盖 luna 自带 dict。prism/table 同场成对编译（syllable_id 耦合，
+# 跨词库混搭会词频错位——A/B 实测 51.7% 命中）。
+mkdir -p "$rime_shared/cn_dicts"
+for piece in 8105 41448 base ext others corrections; do
+  cp "$work/src/rime-data/rime-frost/cn_dicts/$piece.dict.yaml" "$rime_shared/cn_dicts/"
+done
+cp "$repo_root/scripts/research/rime-dicts/rime-frost-umbrella.dict.yaml" \
+  "$rime_shared/luna_pinyin.dict.yaml"
+
 # 笔画（issue #18）：派生词典（上游 stroke.dict.yaml + essay 频次，仓库
 # 脚本裁剪/加权/单通配派生）与仓库原创 schema 进同一编译现场。
 python3 "$repo_root/scripts/generate-stroke-dict.py" \
@@ -93,6 +109,12 @@ deployer="$work/build/rime-host/librime/bin/rime_deployer"
 "$deployer" --compile "$rime_shared/double_pinyin_sogou.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
 "$deployer" --compile "$rime_shared/double_pinyin_ziguang.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
 "$deployer" --compile "$rime_shared/feelime_stroke.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
+# 模糊音 prism 矩阵（issue #39 起纳入正式链路）：31 个 mask 变体必须与
+# 本现场 table 同场编译。语义校验（prism.txt 拼写集合）在生成器里，
+# byte 级会因 marisa 构建顺序差百字节，不做 cmp。
+python3 "$repo_root/scripts/generate-fuzzy-prisms.py" \
+  --shared "$rime_shared" --deployer "$deployer" --out "$rime_build/fuzzy"
+mkdir -p "$work/artifacts/rime-data"
 mkdir -p "$work/artifacts/rime-data"
 for output in \
   luna_pinyin.table.bin luna_pinyin.prism.bin luna_pinyin.reverse.bin \
@@ -108,6 +130,8 @@ for output in \
   stroke.prism.bin stroke.table.bin; do
   cp "$rime_build/$output" "$work/artifacts/rime-data/"
 done
+mkdir -p "$work/artifacts/rime-data/fuzzy"
+cp "$rime_build/fuzzy"/luna_pinyin_fuzzy_m*.prism.bin "$work/artifacts/rime-data/fuzzy/"
 # 笔画四件与仓库登记资产逐字节比对——dict/schema 是仓库形态（生成器/
 # 原创源文件，部署直接读源码 yaml），prism/table 是编译产物；全部可再
 # 生成且必须就是被 third_party 清单审计的那几份字节。

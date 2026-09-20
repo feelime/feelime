@@ -29,6 +29,12 @@ fetch rime-stroke-1e8fff9b9494ddec23b0cbc526bcfd8171a6fd48.tar.gz \
 fetch rime-luna-pinyin-56b934b099dfbeab842320f13aa8b461a6ab3e42.tar.gz \
   https://github.com/rime/rime-luna-pinyin/archive/56b934b099dfbeab842320f13aa8b461a6ab3e42.tar.gz \
   876c7ba559794f476abf7195a255aea29000cee281e6f5ec664928dce018bd90
+# 基底词库（issue #39）：rime-frost（白霜拼音，GPL-3.0）瘦身组合的
+# 源数据。上游默认挂载中 tencent/cell/GB18030 未采用（A/B 实测零首选
+# 命中贡献、table 63MB→19MB），cn_dicts 六件在 build 脚本里挑选。
+fetch rime-frost-96278d8.tar.gz \
+  https://codeload.github.com/gaboolic/rime-frost/tar.gz/96278d8 \
+  ee4d2438bef22896dbad1d1027970370c53e3ffee3dd82a03f6615838036efbb
 fetch glog-7b134a5c82c0c0b5698bb6bf7a835b230c5638e4.tar.gz \
   https://github.com/google/glog/archive/7b134a5c82c0c0b5698bb6bf7a835b230c5638e4.tar.gz \
   9c48c7c631be5af3502a19d06ebdb5c2f67d8d0bf216f896848089c1792e6193

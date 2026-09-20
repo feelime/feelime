@@ -255,6 +255,31 @@ sha256+bytes，构建完 `git checkout` 还原两者。实锤案例见
 keyboard.md §9.3a「组合中禁自动追页」（JS 自动翻页产生的隐藏
 PAGE_DOWN 在 librime 侧可见、在应用层不可见）。
 
+### 4c. 词库换装/重编（issue #39 流程）
+
+基底词库与全部 prism 必须成对同场编译（syllable_id 耦合；旧 prism 配新
+table 实测词频错位到 51.7% 命中）。重编链路（host，无需 NDK）：
+
+1. `scripts/research/fetch-native-engine-inputs.sh` 拉齐 pinned 源（含
+   `rime-frost-96278d8.tar.gz`）。
+2. 组装 shared 现场（prelude/essay/luna-pinyin schema + frost cn_dicts
+   六件 + 仓内 umbrella 覆盖 `luna_pinyin.dict.yaml`；双拼/T9/fuzzy
+   schema 从 assets 拷入），用 pinned host deployer
+   （`build-cmake-native-engines.sh` 的 host-deployer 段单独构建）
+   `--compile` 各 schema。
+3. 模糊音矩阵：`scripts/generate-fuzzy-prisms.py --shared <现场>
+   --deployer <bin>`；`--verify` 用 prism.txt 拼写集合做语义校验
+   （byte 级会因 marisa 构建顺序差百字节，属预期）。
+4. T9：先 `scripts/generate-t9-syllables.py`（读新 `table.txt` 重写
+   keyboard.js 内联块，KEYBOARD_VERSION 两处 bump），再
+   `FEELIME_T9_DEPLOYER=… FEELIME_T9_SHARED=… scripts/generate-t9-schema.py
+   --compile`（顺带更新 engine-data MANIFEST）。
+5. 双拼键位图：`scripts/generate-keyboard-data.py`（prism.txt 派生，
+   mock 有 golden 校验）。
+6. `assets/engine-data/MANIFEST.json` 全量重算 sha/bytes；
+   `third_party/manifest.json` 的 outputs 同步（checkEngineArtifacts
+   gate 校验的就是它）。A/B 评测见 `scripts/research/dict-ab/README.md`。
+
 ## 5. 记录口径
 
 验证记录绑定：被测产物（APK/键盘包 SHA-256）、运行环境（设备/模拟器）、

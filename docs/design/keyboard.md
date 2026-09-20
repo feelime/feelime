@@ -661,6 +661,16 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   `reset: 1` + uniquifier——translator 级 opencc 配置无效）；双拼用户
   词库独立命名（`translator/user_dict`），与全拼不共享 userdb；用户词
   频次权重高于静态词典（连续造词后重打排第一）。
+- **基底词库 = rime-frost 瘦身组合**（issue #39，2026-09-20）：
+  gaboolic/rime-frost@96278d8（GPL-3.0）cn_dicts 的
+  8105/41448/base/ext/others/corrections 六件，仓库 umbrella
+  `scripts/research/dicts/rime-frost-umbrella.dict.yaml`（name 保持
+  `luna_pinyin`——fuzzy m1-m31/双拼/T9 全部 schema 引用同一词典名）。
+  A/B 选型与复跑方法见 `scripts/research/dict-ab/README.md`（frost 瘦身
+  95.3% 首选命中 vs 旧 luna 89.0%，table 19.4MB）。词库换装时 prism/
+  table **必须成对同场重编**（含 31 个模糊音变体：
+  `scripts/generate-fuzzy-prisms.py`；T9：`scripts/generate-t9-schema.py
+  --compile`，env `FEELIME_T9_DEPLOYER/FEELIME_T9_SHARED` 指现场）。
 - 零声母自然码主打法是**全拼**（啊=aa、爱=ai、安=an、恩=en、二=er），
   O 系（OJ/OL…）只是兼容派生；键位参考图由 schema 的拼写代数生成
   （`scripts/generate-keyboard-data.py`，`--check` 校验源码一致）。

@@ -9,8 +9,14 @@ NOTICE、精确版本与产物哈希绑定记录在源码仓库 third_party/ 目
 - 中文引擎：librime（BSD-3-Clause）及其内嵌依赖
   （Boost/glog/yaml-cpp/LevelDB/marisa-trie/OpenCC/RapidJSON 等，
   许可证文本见仓库 third_party/licenses/rime/）。
-- Rime prelude/essay/luna-pinyin 数据：LGPL-3.0-only。发布时随包
-  提供对应源码归档（见仓库 source-closure.json 中的绑定）。
+- Rime prelude/essay/luna-pinyin 数据（schema 等）：LGPL-3.0-only。发布时
+  随包提供对应源码归档（见仓库 source-closure.json 中的绑定）。
+- 中文基底词库：rime-frost 白霜拼音（gaboolic/rime-frost，GPL-3.0，
+  https://github.com/gaboolic/rime-frost）。本应用采用其 cn_dicts 的
+  裁剪组合（8105/41448/base/ext/others/corrections），经仓库内 umbrella
+  词典用 pinned rime_deployer 编译为 table.bin 分发。感谢白霜拼音的
+  语料词频重统与长期维护。基于 GPL-3.0 词库分发，本应用整体以
+  GPL-3.0 提供（对应源码即本仓库）。
 - 日文引擎：Mozc（BSD-3-Clause）；其静态链接的 Abseil
   （Apache-2.0）、Protobuf（BSD-3-Clause）、zlib（Zlib）以及词典
   文件的 NAIST/IPAdic/ICOT/Okinawa 逐文件声明均予保留。

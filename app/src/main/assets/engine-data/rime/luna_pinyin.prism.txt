@@ -178,7 +178,6 @@ d	da	c	-0.693147
 	dian	c	-0.693147	
 	diao	c	-0.693147	
 	die	c	-0.693147	
-	din	c	-0.693147	
 	ding	c	-0.693147	
 	diu	c	-0.693147	
 	dong	c	-0.693147	
@@ -208,7 +207,6 @@ dian	dian	-	0
 diao	diao	-	0	
 die	die	-	0	
 dign	ding	-	-4.60517	
-din	din	-	0	
 ding	ding	-	0	
 dioa	diao	-	-4.60517	
 diou	diu	-	-4.60517	
@@ -381,6 +379,7 @@ j	ji	c	-0.693147
 	juan	c	-0.693147	
 	jue	c	-0.693147	
 	jun	c	-0.693147	
+	junding	c	-0.693147	
 jain	jian	-	-4.60517	
 jaing	jiang	-	-4.60517	
 jaio	jiao	-	-4.60517	
@@ -406,10 +405,14 @@ juan	juan	-	0
 jue	jue	-	0	
 juen	jun	-	-4.60517	
 jun	jun	-	0	
+jundign	junding	-	-4.60517	
+junding	junding	-	0	
 jv	ju	-	-4.60517	
 jvan	juan	-	-4.60517	
 jve	jue	-	-4.60517	
 jvn	jun	-	-4.60517	
+jvndign	junding	-	-9.21034	
+jvnding	junding	-	-4.60517	
 k	ka	c	-0.693147	
 	kai	c	-0.693147	
 	kan	c	-0.693147	

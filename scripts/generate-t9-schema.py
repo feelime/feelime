@@ -22,6 +22,7 @@ librime 音节图对混合输入原生枚举切分。coverage_patches() 模拟�
                 会在构建期审计一致性）
 """
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -32,8 +33,13 @@ SRC = pathlib.Path("app/src/main/assets/engine-data/rime/luna_pinyin.schema.yaml
 DST = pathlib.Path("app/src/main/assets/engine-data/rime/luna_pinyin_t9.schema.yaml")
 PRISM_DST = pathlib.Path("app/src/main/assets/engine-data/rime/luna_pinyin_t9.prism.bin")
 MANIFEST = pathlib.Path("app/src/main/assets/engine-data/MANIFEST.json")
-DEPLOYER = pathlib.Path.home() / "tmp/pinned/build-host/librime/bin/rime_deployer"
-SHARED = pathlib.Path.home() / "tmp/fv-t9-hybrid/shared"
+# 词库换装/重编现场与 pinned deployer 可用环境变量覆盖（默认沿用历史路径）。
+DEPLOYER = pathlib.Path(os.environ.get(
+    "FEELIME_T9_DEPLOYER",
+    str(pathlib.Path.home() / "tmp/pinned/build-host/librime/bin/rime_deployer")))
+SHARED = pathlib.Path(os.environ.get(
+    "FEELIME_T9_SHARED",
+    str(pathlib.Path.home() / "tmp/fv-t9-hybrid/shared")))
 
 # 26 个字母 → 9 键位（T9 标准布局：7=PQRS，9=WXYZ）。
 XLIT = "xlit/abcdefghijklmnopqrstuvwxyz/22233344455566677778889999/"

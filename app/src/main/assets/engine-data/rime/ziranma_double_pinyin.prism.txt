@@ -90,7 +90,6 @@ d	dou	c	-0.693147
 	dao	c	-0.693147	
 	dai	c	-0.693147	
 	dian	c	-0.693147	
-	din	c	-0.693147	
 	duo	c	-0.693147	
 	dun	c	-0.693147	
 	diu	c	-0.693147	
@@ -117,7 +116,6 @@ dj	dan	-	0
 dk	dao	-	0	
 dl	dai	-	0	
 dm	dian	-	0	
-dn	din	-	0	
 do	duo	-	0	
 dp	dun	-	0	
 dq	diu	-	0	
@@ -295,6 +293,7 @@ j	jiao	c	-0.693147
 	jie	c	-0.693147	
 	jing	c	-0.693147	
 	ji	c	-0.693147	
+	junding	c	-0.693147	
 jc	jiao	-	0	
 jd	jiang	-	0	
 ji	ji	-	0	
@@ -306,6 +305,7 @@ jr	juan	-	0
 js	jiong	-	0	
 jt	jue	-	0	
 ju	ju	-	0	
+jundy	junding	-	0	
 jv	ju	-	0	
 jw	jia	-	0	
 jx	jie	-	0	

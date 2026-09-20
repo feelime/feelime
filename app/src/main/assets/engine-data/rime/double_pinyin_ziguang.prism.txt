@@ -122,7 +122,6 @@ d	ding	c	-0.693147
 	deng	c	-0.693147	
 	den	c	-0.693147	
 	dia	c	-0.693147	
-	din	c	-0.693147	
 	dou	c	-0.693147	
 	da	c	-0.693147	
 	de	c	-0.693147	
@@ -150,7 +149,6 @@ dt	deng	-	0
 du	du	-	0	
 dw	den	-	0	
 dx	dia	-	0	
-dy	din	-	0	
 dz	dou	-	0	
 f	fiao	c	-0.693147	
 	fong	c	-0.693147	
@@ -302,6 +300,7 @@ j	jing	c	-0.693147
 	jin	c	-0.693147	
 	ji	c	-0.693147	
 	ju	c	-0.693147	
+	junding	c	-0.693147	
 j;	jing	-	0	
 jb	jiao	-	0	
 jd	jie	-	0	
@@ -314,6 +313,7 @@ jl	juan	-	0
 jm	jun	-	0	
 jn	jue	-	0	
 ju	ju	-	0	
+jund;	junding	-	0	
 jv	ju	-	0	
 jx	jia	-	0	
 jy	jin	-	0	

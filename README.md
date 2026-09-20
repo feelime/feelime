@@ -112,7 +112,9 @@ sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8
 
 ## 许可证
 
-[MIT](LICENSE)。语音能力来自
+[GPL-3.0](LICENSE)（1.0.19 及之前的历史版本以 MIT 发布）。内置中文词库
+来自 [rime-frost（白霜拼音）](https://github.com/gaboolic/rime-frost)
+（GPL-3.0，裁剪组合，见 [third_party/](third_party/)）；语音能力来自
 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)，中文引擎为
 [librime](https://github.com/rime/librime)；第三方组件的完整清单见
 [third_party/](third_party/) 与 [NOTICE](NOTICE)。

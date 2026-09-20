@@ -41,10 +41,10 @@
     "toolchainManifestSha256": "bb38d0a3f1e92f5466f046e8c7653df2df2d7be6ea2056bc34d852d2e1607516"
   },
   "licenseBundle": {
-    "fileCount": 36,
+    "fileCount": 44,
     "root": "third_party/licenses",
     "treeDigestCommand": "find third_party/licenses -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum",
-    "treeSha256": "8b96ea8bd39262e41187507695e0a8ed8c9d009feb3d1c8b51d897bb3453dada",
+    "treeSha256": "da14b2459e2a81b5c5f9dd46945db1ba4656eb3615cdd855c49409e343c8ad72",
     "zlibLicenseSha256": "ee1e64c3fcad42e638318e43217d89791e1e61a50a1a2fa516ccee8725909d1e"
   },
   "originalComponents": [
@@ -165,25 +165,27 @@
       "buildRecipe": "cmake-native",
       "bytes": 22344,
       "path": "app/src/main/assets/engine-data/rime/ziranma_double_pinyin.prism.bin",
-      "sha256": "89ffda87a368a36eb8db0ecee177f998bb6c24a05bc40d5fbabf0c02f2444038",
+      "sha256": "c20563fbac53311b3161d9d56163601eef6c22c50834cd24c1d63ef70cbb1bc5",
       "sources": [
-        "rime-prelude",
+        "feelime-original-schema",
         "rime-essay",
+        "rime-frost",
         "rime-luna-pinyin",
-        "feelime-original-schema"
+        "rime-prelude"
       ]
     },
     {
       "apkPath": "assets/engine-data/rime/ziranma_double_pinyin.prism.txt",
       "buildRecipe": "cmake-native",
-      "bytes": 13406,
+      "bytes": 13417,
       "path": "app/src/main/assets/engine-data/rime/ziranma_double_pinyin.prism.txt",
-      "sha256": "9f7a15c1d38194250c0332bb9dd325e8d03a0280e15eb2db99bcd4b1ba0b5683",
+      "sha256": "acc36a533f55fc31c22d61226c020505408e6806a683c4b5a2b271a79036e3a9",
       "sources": [
-        "rime-prelude",
+        "feelime-original-schema",
         "rime-essay",
+        "rime-frost",
         "rime-luna-pinyin",
-        "feelime-original-schema"
+        "rime-prelude"
       ]
     },
     {
@@ -193,43 +195,47 @@
       "path": "app/src/main/assets/engine-data/rime/ziranma_double_pinyin.schema.yaml",
       "sha256": "ac60c13a00eae405d57cb98cc7801d44c95865ccf76119390c7aa845c87ef6a5",
       "sources": [
-        "feelime-original-schema"
+        "feelime-original-schema",
+        "rime-frost"
       ]
     },
     {
       "apkPath": "assets/engine-data/rime/luna_pinyin.prism.bin",
       "buildRecipe": "cmake-native",
-      "bytes": 31728,
+      "bytes": 31800,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.prism.bin",
-      "sha256": "7d189de553bc37a6003cfff05c52d37a043095d2c79edea2f74a71e6cf016337",
+      "sha256": "bd3f46536fdbda087e75e21d28c80a437c727e30887e9142465aeb829ea6e185",
       "sources": [
-        "rime-prelude",
         "rime-essay",
-        "rime-luna-pinyin"
+        "rime-frost",
+        "rime-luna-pinyin",
+        "rime-prelude"
       ]
     },
     {
       "apkPath": "assets/engine-data/rime/luna_pinyin.prism.txt",
       "buildRecipe": "cmake-native",
-      "bytes": 20222,
+      "bytes": 20318,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.prism.txt",
-      "sha256": "3d7078bdd7c30fc453677c39f21dfe1f66eb977ecff35f18d6c348436ca2a65b",
+      "sha256": "3dbafe647d02da2dcb2de5b492822cf47e82b5617105a0357f79183d908ece72",
       "sources": [
-        "rime-prelude",
         "rime-essay",
-        "rime-luna-pinyin"
+        "rime-frost",
+        "rime-luna-pinyin",
+        "rime-prelude"
       ]
     },
     {
       "apkPath": "assets/engine-data/rime/luna_pinyin.reverse.bin",
       "buildRecipe": "cmake-native",
-      "bytes": 252760,
+      "bytes": 253668,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.reverse.bin",
-      "sha256": "bd314158c00bf36c9ba8f7321d7e6ab6dfbdaa283b11c4856adfd2f58a781179",
+      "sha256": "2b6ca277c1bb4b39ca43d40e9f6cb40047d210f71589326cb3b1029501fb4e4b",
       "sources": [
-        "rime-prelude",
         "rime-essay",
-        "rime-luna-pinyin"
+        "rime-frost",
+        "rime-luna-pinyin",
+        "rime-prelude"
       ]
     },
     {
@@ -239,30 +245,33 @@
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.schema.yaml",
       "sha256": "2ef49c09687dc4c0d4dfc13339c2a5445ff2062cac134eb96ba4d6643608bb9a",
       "sources": [
-        "rime-prelude",
         "rime-essay",
-        "rime-luna-pinyin"
+        "rime-frost",
+        "rime-luna-pinyin",
+        "rime-prelude"
       ]
     },
     {
       "apkPath": "assets/engine-data/rime/luna_pinyin.table.bin",
       "buildRecipe": "cmake-native",
-      "bytes": 13011464,
+      "bytes": 19352244,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.table.bin",
-      "sha256": "55a54e8e55deaade0e4d7646a7ad2b8602901f4007b60c637d993468eff64e03",
+      "sha256": "0024406390e10067c72087b751fdd26bd02a79804170c53f5c6982a8f3b8a595",
       "sources": [
         "rime-essay",
+        "rime-frost",
         "rime-luna-pinyin"
       ]
     },
     {
       "apkPath": "assets/engine-data/rime/luna_pinyin.table.txt",
       "buildRecipe": "cmake-native",
-      "bytes": 12263660,
+      "bytes": 17965512,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.table.txt",
-      "sha256": "7213f6acfe24af622f82eb50fa84578d807fcb9378c6288368afa6f7eebb212b",
+      "sha256": "4ed14c3cc779a4e7922601a87771dd9100fefc82c79bae13d6962a74480839f7",
       "sources": [
         "rime-essay",
+        "rime-frost",
         "rime-luna-pinyin"
       ]
     },
@@ -840,6 +849,24 @@
       "name": "zlib",
       "origin": "https://github.com/madler/zlib",
       "revision": "1.3.1"
+    },
+    {
+      "apkPaths": [
+        "assets/engine-data/rime/*"
+      ],
+      "archive": "rime-frost-96278d8.tar.gz",
+      "archiveBytes": 94897982,
+      "archiveSha256": "ee4d2438bef22896dbad1d1027970370c53e3ffee3dd82a03f6615838036efbb",
+      "buildRecipe": "cmake-native",
+      "correspondingSource": "verified input archive plus reproducible host deploy command",
+      "license": "GPL-3.0",
+      "licenseFiles": [
+        "third_party/licenses/rime-data/rime-frost-GPL-3.0.txt"
+      ],
+      "modified": "slimmed import set (8105/41448/base/ext/others/corrections; tencent/cell/GB18030 dropped) via repo umbrella, host-compiled data",
+      "name": "rime-frost",
+      "origin": "https://github.com/gaboolic/rime-frost",
+      "revision": "96278d8"
     }
   ],
   "status": "closed-for-g1-review",

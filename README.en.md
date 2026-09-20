@@ -109,7 +109,10 @@ full methodology, suite list and platform quirks. 中文文档：
 
 ## License
 
-[MIT](LICENSE). Speech by
-[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), Chinese by
+[GPL-3.0](LICENSE) (releases up to 1.0.19 were published under MIT).
+The bundled Chinese lexicon comes from
+[rime-frost](https://github.com/gaboolic/rime-frost) (GPL-3.0, slimmed
+import set — see [third_party/](third_party/)); speech by
+[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), Chinese engine by
 [librime](https://github.com/rime/librime); full third-party list in
 [third_party/](third_party/) and [NOTICE](NOTICE).
