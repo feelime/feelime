@@ -190,20 +190,32 @@ object BaseDictInstaller {
             return InstallResult("BASE_DICT_EMPTY", changed = false)
         }
 
-        // 编译现场：umbrella + 31 变体 schema + default.yaml。
+        // 编译现场：umbrella + 31 变体 schema + default.yaml，双落位
+        // （librime resolver 语义，真机首验 2 秒空转定罪）：
+        // - user 根 = 源形态：source resolver（user→shared）从这里读
+        //   schema 源、umbrella 词典源；
+        // - staging（user/build）= deployed 形态：WorkspaceUpdate 读
+        //   default.yaml 的 schema_list、SchemaUpdate 读 compiled schema
+        //   都走 deployed resolver（staging→prebuilt），user 根的 yaml
+        //   它们看不见——不落 staging 就是「schema list not defined」
+        //   整体失败 / 变体「not requiring a dictionary」静默跳过，零产物。
+        // staging 的变体副本随后被 DictCompiler 的 compiled schema 输出
+        // 覆盖；luna/双拼/T9 的 compiled schema 由 prebuilt（shared）兜底。
         val template = engineTemplate(context) ?: run {
             rollback(context); return InstallResult("BASE_DICT_ENGINE_NOT_READY", changed = true)
         }
         runCatching {
+            val staging = File(user, "build").apply { mkdirs() }
             File(user, BaseDictFiles.UMBRELLA_FILE).writeText(
                 BaseDictFiles.umbrellaYaml(sha.take(12), lines),
             )
             (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
-                File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(
-                    BaseDictFiles.variantSchema(template, mask),
-                )
+                val variant = BaseDictFiles.variantSchema(template, mask)
+                File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(variant)
+                File(staging, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(variant)
             }
             File(user, BaseDictFiles.DEFAULT_FILE).writeText(BaseDictFiles.defaultYaml())
+            File(staging, BaseDictFiles.DEFAULT_FILE).writeText(BaseDictFiles.defaultYaml())
         }.onFailure {
             rollback(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
         }
@@ -316,6 +328,10 @@ object BaseDictInstaller {
         (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
             File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").delete()
         }
+        // staging 的编译期 default.yaml 一并删（运行时不需要 schema_list）；
+        // staging 的变体 schema yaml 不删——那是 DictCompiler 输出的
+        // compiled schema，与 prism 产物配套、运行时 schema 组件要读。
+        File(File(user, "build"), BaseDictFiles.DEFAULT_FILE).delete()
         val sourceDir = File(user, BaseDictFiles.SOURCE_DIR)
         if (keepSource) {
             // 留档目录（在 rime-user 之外，天然不进 userdata 备份）。

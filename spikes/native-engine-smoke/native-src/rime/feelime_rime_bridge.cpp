@@ -67,7 +67,11 @@ FEELIME_EXPORT int feelime_rime_initialize(const char* shared_data_dir,
   traits.distribution_code_name = "feelime-native-smoke";
   traits.distribution_version = "1";
   traits.app_name = "rime.feelime_m0";
-  traits.min_log_level = 2;
+  // 0 = INFO 及以上：debuggable 构建（.dev）的 native stderr 由系统转发
+  // 进 logcat，librime deployer 的编译决策日志因此可见（#23 真机取证：
+  // level=2 时 maintenance 静默失败无法定位）。release 构建的 stderr 是
+  // /dev/null，无通路但保留同样开销水平；发版前如有关注再收紧。
+  traits.min_log_level = 0;
   traits.log_dir = "";
   api->setup(&traits);
   api->initialize(&traits);

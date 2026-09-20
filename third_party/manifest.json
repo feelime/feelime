@@ -300,7 +300,7 @@
       "buildRecipe": "cmake-native",
       "bytes": 4931680,
       "path": "app/src/main/jniLibs/arm64-v8a/libfeelime_rime.so",
-      "sha256": "7465f23e88078886c1fac3e949ef5a7e1afe23f28ad06aca00c58f20ddf7ac3d",
+      "sha256": "00695bd1a564bafbe4672d1087aa2991360d22ece827887db8d1ee1ffcd9ce2e",
       "sources": [
         "librime",
         "darts-clone",
