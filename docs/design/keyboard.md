@@ -711,15 +711,30 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   `luna_pinyin.dict.yaml`（name 恒为 luna_pinyin，import_tables 指向
   `rime-dict-source/`）+ 31 份模糊音变体 schema（模板改写 algebra 段并
   **同时变体化 schema_id 与 translator/prism 行**——prism 名决定产物名，
-  `BaseDictFiles.variantSchema`）+ 最小 `default.yaml`（仅 schema_list，
-  驱动 SchemaListUpdate）），`rimeStartMaintenance(true)` 设备端重编
-  **37 个 schema**（luna + 31 变体 + 双拼 4 + T9；笔画与拼音基底无关不
-  重编，shared 产物继续用）。产物落 `files/rime-user/build/`——traits 的
-  显式 staging_dir（librime 对它不追加 build/），运行时按 staging > shared
-  解析，天然覆盖内置 frost；编译后 user 根的 yaml 源全删、用户源挪
+  `BaseDictFiles.variantSchema`）+ `default.yaml`（以 assets/rime-compile/
+  的 frost 完整模板为底、只替换 schema_list 为重编清单）+ `symbols.yaml`
+  模板拷贝），`rimeStartMaintenance(true)` 设备端重编 **37 个 schema**
+  （luna + 31 变体 + 双拼 4 + T9；笔画与拼音基底无关不重编，shared 产物
+  继续用）。产物落 `files/rime-user/build/`——traits 的显式 staging_dir
+  （librime 对它不追加 build/），运行时按 staging > shared 解析，天然
+  覆盖内置 frost；编译后 user 根的 yaml 源全删、用户源挪
   `files/rime-user-dict/` 留档（不进 userdata 备份，build/ 产物同理——
   可再生且恢复后词库状态本来就要复位；mozc 的 build/ 不受排除影响）。
   换装/恢复经 `ACTION_BASE_DICT_CHANGED` 走 reloadGlobal + 会话重建。
+  **librime 设备端编译的三个坑（真机四轮定位，改配置不改上游）**：
+  ① resolver 双轨——源形态（schema 源/umbrella/import_tables）走
+  user→shared，deployed 形态（WorkspaceUpdate 读 schema_list、
+  SchemaUpdate 读 compiled schema）走 staging→prebuilt **看不见 user
+  根**，default.yaml 与变体 schema 必须双落位（user 根 + staging）；
+  ② config 组件按资源 id 缓存弱引用 ConfigData，运行中的引擎持有
+  default/各 schema 的旧配置引用——maintenance 前必须先整引擎
+  reloadGlobal（finalize+init 清缓存），否则部署器读回命中旧空配置、
+  schema 编译静默跳过；③ schema 编译链（ConfigBuilder+
+  LegacyPresetConfigPlugin）要解析 shared schema 保留的
+  `import_preset: default / symbols`，编译现场必须有带 menu/key_binder/
+  punctuator 等全段的 default.yaml 与 symbols.yaml（assets/rime-compile/
+  模板，不在 engine-data 下，不影响运行时 shared）。真机实测：frost 六件
+  合并 66 万词条编译约 30 秒。
   **maintenance 语义边界**（上游行为，UI 明示）：编译期间 librime 服务
   整体 disabled（中文输入暂不可用），且 finalize 内部会 join 编译线程——
   编译期间任何 reloadGlobal 都会 ANR，customPhrases/baseDict 两个 receiver
