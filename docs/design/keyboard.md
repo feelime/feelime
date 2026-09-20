@@ -308,8 +308,10 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   前后端同值。
 - 备份：custom-phrases.json 与 custom_phrase.txt 都在 rime-user 下，随
   整目录进出备份。
-- **词库导入（issue #37，2026-09-20）**：设置「候选符号词」卡可 SAF 选
-  rime `.dict.yaml` 导入——`DictYamlImporter` 只取「词<TAB>码」行（头部
+- **词库导入（issue #37，2026-09-20）**：设置首页「**词库**」一级入口的
+  二级页可 SAF 选 rime `.dict.yaml` 导入（验收反馈后从「候选符号词」卡
+  迁出独立成页；issue #23/#40 的自定义基底词库将来同放此页）——
+  `DictYamlImporter` 只取「词<TAB>码」行（头部
   无 TAB 键值/注释天然跳过；码去空格转小写，词 ≤32 字、码 1-48 位
   [a-z]；上限 5000 条，与手管词去重时手管优先），进 custom-phrases.json
   的 **imported 段**（与手管 items 并列但独立：三级页 CRUD 只动 items，
@@ -317,6 +319,13 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   （导入词多音节居多，双拼变体展开只作用于单音节码）。语义是**叠加**
   而非换基底：不带原词频、quality 1 附加候选；整配置兼容与基底替换的
   分层结论见 issue #22/#23。
+- **动态日期时间候选（issue #22）**：`DYNAMIC_INPUT_CODES` 注入
+  date/time/week（拉丁码 head:true，池头空格直选）与 riqi/shijian/
+  xingqi（拼音码，排引擎首候选之后）；双拼只认拉丁码（riqi 在双拼是
+  真音节输入），T9/笔画不注入；id `dyn:` 前缀走 overlay 直发通道。
+  带设置开关「键盘与输入 → 日期时间候选」：pref `dynamic_datetime_on`
+  默认开，关掉经 hello `dynamicDateTimeOn=false` 在 keyboard.js 注入前
+  整体 gate（拉丁/拼音码同停）。
 
 
 
