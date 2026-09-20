@@ -108,6 +108,11 @@
         <div class="pc-card">
             <textarea id="phraseCardInput" class="phrase-input pc-input" rows="2" maxlength="200"
                       placeholder="输入常用内容" data-i18n-placeholder="输入常用内容" aria-label="常用语内容" data-i18n-aria-label="常用语内容"></textarea>
+            <!-- issue #19：编辑常用语时从最近剪贴板取内容（取最新一条，
+                 超 200 字截断）。 -->
+            <button id="phraseCardPaste" class="pc-paste-btn" type="button"
+                    aria-label="从剪贴板粘贴" data-i18n-aria-label="从剪贴板粘贴"
+                    data-i18n="从剪贴板粘贴">从剪贴板粘贴</button>
             <label class="pc-code-label" for="phraseCardCode"><span data-i18n="输入码">输入码</span> <small data-i18n="留空时自动生成">留空时自动生成</small></label>
             <!-- The code field shares one row with the rank stepper -
                  the code input narrows and the freed space holds 位次 -/+. -->

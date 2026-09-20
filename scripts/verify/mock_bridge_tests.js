@@ -1601,6 +1601,81 @@ test('symbol reorder keeps the expanded grid in sync across pages (issue #17, re
     world.clock.advance(2);
 });
 
+test('phrase card pastes from the latest clipboard entry (issue #19)', {since: '3.51.0'}, () => {
+    const world = fresh();
+    world.hello();
+    world.tap(world.$('favoritesButton'));
+    world.tap(world.document.getElementById('panelManage'));
+    assert(!world.$('phraseCard').hidden, 'card open');
+    // 无剪贴板 → toast，不动字段。
+    world.tap(world.document.getElementById('phraseCardPaste'));
+    equal(world.document.getElementById('phraseCardInput').value, '',
+        'empty clipboard leaves the field untouched');
+    assert(world.$('toast').classList.contains('open'), 'toast explains the empty clipboard');
+    // 有剪贴板 → 最新一条填入。
+    world.clipboard([{ id: 'c1', time: 2, text: ' Meeting notes' },
+        { id: 'c0', time: 1, text: 'old' }]);
+    world.tap(world.document.getElementById('phraseCardPaste'));
+    equal(world.document.getElementById('phraseCardInput').value, ' Meeting notes',
+        'latest clipboard entry lands in the field');
+    // 超长截断到 200 字。
+    world.clipboard([{ id: 'c2', time: 3, text: 'x'.repeat(250) }]);
+    world.tap(world.document.getElementById('phraseCardPaste'));
+    equal(world.document.getElementById('phraseCardInput').value.length, 200,
+        'oversized entry truncates to the 200-char cap');
+});
+
+test('dynamic date/time candidates ride the overlay pool (issue #22)', {since: '3.51.0'}, () => {
+    const world = fresh();
+    world.hello();
+    const bar = () => [...world.$('candidates').querySelectorAll('.candidate')]
+        .map(b => b.textContent);
+    // 拉丁码 → 池头（date 的拼音候选是废句，日期值就是用户要的）。
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'date', rawInput: 'date',
+        candidates: [{ id: 'c1', text: '嗒' }], hasNextPage: false });
+    const dateBar = bar();
+    assert(/^\d{4}-\d{2}-\d{2}$/.test(dateBar[0]), 'ISO date takes the pool head');
+    assert(dateBar.some(text => /\d{4}年\d+月\d+日 星期./.test(text)), 'CJK date+week offered');
+    assert(dateBar.some(text => /\d{4}年\d+月\d+日/.test(text) && !text.includes('星期')),
+        'plain CJK date offered');
+    // 点选走 overlay 通道：清组合 + commitText 直上屏。
+    [...world.$('candidates').querySelectorAll('.candidate')]
+        .find(b => /^\d{4}-\d{2}-\d{2}$/.test(b.textContent)).click();
+    equal(world.native.of('clearComposing').length, 1, 'composition cleared');
+    const commit = world.native.of('commitText').slice(-1)[0];
+    assert(/^\d{4}-\d{2}-\d{2}$/.test(commit.args[0]), 'date committed literally');
+    equal(world.native.of('chooseCandidate').length, 0, 'engine channel never sees dyn ids');
+    // 拼音码 → 引擎首候选之后（用户打 riqi 多半要「日期」本词）。
+    world.engineState({ mode: 'pinyin', revision: 2, composing: 'riqi', rawInput: 'riqi',
+        candidates: [{ id: 'c1', text: '日期' }], hasNextPage: false });
+    const riqiBar = bar();
+    equal(riqiBar[0], '日期', 'engine head stays first on the pinyin code');
+    assert(riqiBar.slice(1).some(text => /^\d{4}-\d{2}-\d{2}$/.test(text)),
+        'date values sit after the head');
+    // 引擎已给出的文本不重复注入（星期日 不双格）。
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'xingqi', rawInput: 'xingqi',
+        candidates: [{ id: 'c1', text: '星期日' }], hasNextPage: false });
+    equal(bar().filter(text => text === '星期日').length, 1, 'engine duplicates suppressed');
+    // time 码 + 继续输入失配即消失。
+    world.engineState({ mode: 'pinyin', revision: 4, composing: 'time', rawInput: 'time',
+        candidates: [], hasNextPage: false });
+    assert(bar().some(text => /^\d{2}:\d{2}$/.test(text)), 'time offers HH:mm');
+    world.engineState({ mode: 'pinyin', revision: 5, composing: 'times', rawInput: 'times',
+        candidates: [{ id: 'c2', text: '提' }], hasNextPage: false });
+    assert(!bar().some(text => /^\d{2}:\d{2}$/.test(text)), 'non-matching raw drops the overlay');
+    // 双拼只认拉丁码（riqi 在双拼是真实音节输入）；T9/笔画不注入。
+    world.engineState({ mode: 'double-pinyin', revision: 6, composing: 'date', rawInput: 'date',
+        candidates: [], hasNextPage: false });
+    assert(bar().some(text => /^\d{4}-\d{2}-\d{2}$/.test(text)), 'double pinyin keeps latin codes');
+    world.engineState({ mode: 'double-pinyin', revision: 7, composing: 'riqi', rawInput: 'riqi',
+        candidates: [{ id: 'c1', text: '日期' }], hasNextPage: false });
+    assert(!bar().some(text => /^\d{4}-\d{2}-\d{2}$/.test(text)),
+        'double pinyin drops the pinyin code');
+    world.engineState({ mode: 'stroke', revision: 8, composing: '13', rawInput: '13',
+        candidates: [], hasNextPage: false });
+    assert(!bar().some(text => /^\d{4}-\d{2}-\d{2}$/.test(text)), 'stroke never injects');
+});
+
 test('phrase card edits the rank with +/- steppers', {since: '3.25.0'}, () => {
     const world = fresh();
     world.hello();

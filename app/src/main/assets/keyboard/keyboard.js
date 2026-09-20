@@ -24,6 +24,9 @@
         "笔画 Stroke": "Stroke",
         "重输": "Restart",
         "该键盘还在准备中": "That keyboard is still preparing",
+        "从剪贴板粘贴": "Paste from clipboard",
+        "剪贴板为空": "Clipboard is empty",
+        "已截断至 200 字": "Truncated to 200 characters",
         "通配符只能用一个": "Only one wildcard at a time",
         "日本語 Romaji": "Japanese",
         "常用": "Common",
@@ -246,7 +249,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.50.0';
+    const KEYBOARD_VERSION = '3.51.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -254,6 +257,63 @@
     function isSymbolicText(text) {
         if (!text) return false;
         return [...String(text)].every(ch => !/\p{L}/u.test(ch) && !/\p{N}/u.test(ch));
+    }
+
+    /** 动态日期时间候选（issue #22 分层结论，rime date.lua 等价体验）：
+     *  输入码精确命中时在候选池注入运行时生成的 overlay 条目（dyn: 前缀，
+     *  点击 clearComposing + commitText 直上屏）。拉丁码（date/time/week）
+     *  放池头——这些 raw 在拼音/双拼下只有废句候选，池头让空格直选；
+     *  拼音码（riqi 等）放引擎首候选之后——用户打 riqi 多半要「日期」
+     *  本词，日期值候选做次选。双拼下 riqi 是真实音节输入（ri'qi=日期），
+     *  拼音码只在全拼注册。 */
+    const DYNAMIC_INPUT_CODES = {
+        date: { kind: 'date', head: true },
+        time: { kind: 'time', head: true },
+        week: { kind: 'week', head: true },
+        riqi: { kind: 'date', head: false },
+        shijian: { kind: 'time', head: false },
+        xingqi: { kind: 'week', head: false },
+        xingq: { kind: 'week', head: false },
+    };
+    const dynamicWeekNames = ['日', '一', '二', '三', '四', '五', '六'];
+
+    function dynamicCandidatesFor(raw, mode) {
+        if (mode !== 'pinyin' && mode !== 'double-pinyin') return [];
+        let spec = DYNAMIC_INPUT_CODES[raw];
+        if (!spec) return [];
+        if (!spec.head && mode !== 'pinyin') return [];
+        const now = new Date();
+        const pad = value => String(value).padStart(2, '0');
+        let texts;
+        if (spec.kind === 'date') {
+            const y = now.getFullYear();
+            const m = now.getMonth() + 1;
+            const d = now.getDate();
+            const iso = `${y}-${pad(m)}-${pad(d)}`;
+            texts = [
+                iso,
+                `${y}/${pad(m)}/${pad(d)}`,
+                `${y}年${m}月${d}日`,
+                `${y}年${m}月${d}日 星期${dynamicWeekNames[now.getDay()]}`,
+                `${y}${pad(m)}${pad(d)}`,
+            ];
+        } else if (spec.kind === 'time') {
+            const hh = now.getHours();
+            texts = [
+                `${pad(hh)}:${pad(now.getMinutes())}`,
+                `${pad(hh)}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+                `${hh < 12 ? '上午' : '下午'}${hh % 12 || 12}:${pad(now.getMinutes())}`,
+            ];
+        } else {
+            const name = dynamicWeekNames[now.getDay()];
+            texts = [`星期${name}`, `周${name}`, now.getDay() === 0 ? '星期天' : `礼拜${name}`];
+        }
+        return texts.map((text, index) => ({
+            id: `dyn:${spec.kind}-${index}`,
+            text,
+            dynamic: true,
+            head: spec.head,
+        }));
     }
 /** 工具栏可编辑 icon 目录（issue #15 编辑模式）：id → 按钮 DOM id。
  *  logo（左）与收起（右）固定不可编辑；组合态工具（清除/展开）与
@@ -1132,6 +1192,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('phraseCardSave').addEventListener('click', () => this.savePanelEditor());
             document.getElementById('phraseCardCancel').addEventListener('click', () => this.closePanelEditor());
             document.getElementById('phraseCardClose').addEventListener('click', () => this.closePanelEditor());
+            // issue #19：正文区旁的「从剪贴板粘贴」——取最近一条剪贴板
+            // 文本填入（超 200 字截断），敏感编辑器下 native 置空列表，
+            // 自然落到「剪贴板为空」提示。
+            document.getElementById('phraseCardPaste').addEventListener('click', () => this.pastePhraseFromClipboard());
             // 位次 stepper - exact code matches splice into their
             // 1-based candidate slot (min 1; the pool clamps large values).
             const nudgeRank = step => {
@@ -5814,6 +5878,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         injectFavoriteCandidates() {
             const rawEngine = this.expandCandidates.filter(candidate =>
                 !String(candidate.id).startsWith('fav:') &&
+                !String(candidate.id).startsWith('dyn:') &&
                 !String(candidate.id).startsWith('alt:'));
             // 符号词条重排（issue #17）先于 overlay 组装：custom_phrase 通道
             // 的符号/emoji 词在引擎侧受 initial_quality 的 0/1 悬崖支配（第
@@ -5854,6 +5919,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             const raw = (this.lastRawInput || '').replace(/ /g, '').toLowerCase();
             const engineTexts = new Set(engine.map(candidate => candidate.text));
+            // 动态日期时间候选（dyn:）：引擎不会给出这些文本，但拼音码
+            // （xingqi → 星期日）撞词时去重，避免同文双格。
+            const dyn = (raw ? dynamicCandidatesFor(raw, this.mode) : [])
+                .filter(item => !engineTexts.has(item.text));
             const exact = [];
             const prefix = [];
             if (raw) {
@@ -5888,8 +5957,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // candidate, ties keep list order side by side, and a rank past
             // the pool end clamps to the tail.
             const pool = [
+                ...dyn.filter(item => item.head),
                 ...engine.slice(0, 1),
                 ...variants,
+                ...dyn.filter(item => !item.head),
                 ...prefix,
                 ...engine.slice(1),
             ];
@@ -5910,11 +5981,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** Single pick funnel for pool entries: engine ids ride the engine
-         * channel; overlay favorites clear the composition and commit;
+         * channel; overlay entries (favorites, dynamic date/time dyn:)
+         * clear the composition and commit;
          * accent variants swap the first character and KEEP the
          * composition alive - pick é on "ete" and it becomes "éte",
          * still composing (iOS-style, via the atomic setComposition). */
         choosePoolCandidate(candidate) {
+            if (candidate && String(candidate.id).startsWith('dyn:')) {
+                this.call(() => Native.clearComposing(this.token));
+                this.call(() => Native.commitText(candidate.text, this.token));
+                return;
+            }
             if (candidate && String(candidate.id).startsWith('fav:')) {
                 this.call(() => Native.clearComposing(this.token));
                 this.call(() => Native.commitText(candidate.text, this.token));
@@ -6786,6 +6863,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             card.style.top = top + 'px';
         }
 
+        /** issue #19：编辑卡「从剪贴板粘贴」——取最近一条剪贴板文本
+         * 填入正文（>200 字截断并提示）。敏感编辑器下 native 把剪贴板
+         * 列表置空（隐私边界不变），落到「剪贴板为空」。 */
+        pastePhraseFromClipboard() {
+            const input = document.getElementById('phraseCardInput');
+            if (!input) return;
+            const latest = (this.clipboardItems || []).find(item => item && item.text);
+            if (!latest) {
+                this.showToast(t("剪贴板为空"));
+                return;
+            }
+            const text = String(latest.text);
+            input.value = text.length > 200 ? text.slice(0, 200) : text;
+            this.rememberPanelSelection(input);
+            if (text.length > 200) this.showToast(t("已截断至 200 字"));
+        }
+
         closePanelEditor() {
             const editor = document.getElementById('panelEditor');
             const input = document.getElementById('panelEditorInput');
@@ -6911,6 +7005,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * Only Chinese modes have a librime user lexicon to delete from. */
         bindCandidateLongPress(button, candidate, onLongPress) {
             if (!this.isChineseMode()) return;
+            // overlay 条目（fav:/dyn:/alt:）不在引擎词库里——删自造词的
+            // seek 拿这些 id 只会假动作（菜单/确认框都误导），不挂长按。
+            if (/^(fav|dyn|alt):/.test(String(candidate.id))) return;
             this.bindItemLongPress(button, () => {
                 onLongPress();
                 this.openCandidateMenu(candidate, button);
