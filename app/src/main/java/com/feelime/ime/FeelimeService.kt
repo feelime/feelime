@@ -208,10 +208,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
 
     /** 设置页保存自定义短语（issue #17）：txt 已落盘，stabledb 只在引擎
      *  生命周期加载一次（session 重建不重读），先整引擎 finalize+init
-     *  再重建会话。引擎未起（如刚装完直接进设置页）时只留会话重建。 */
+     *  再重建会话。引擎未起（如刚装完直接进设置页）时只留会话重建。
+     *  P1-4：基底词库编译中时跳过——finalize 会 join 编译线程（ANR），
+     *  编译完成的换装广播会带着新短语一起重载。 */
     private val customPhrasesReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             if (intent?.action != ACTION_CUSTOM_PHRASES_CHANGED) return
+            if (com.feelime.ime.engine.BaseDictInstaller.isBuilding()) {
+                android.util.Log.w("FeelimeBridge", "customPhrases during base-dict build, skip reload")
+                return
+            }
             onMain {
                 runCatching {
                     com.feelime.ime.engine.RimeTextEngine.reloadGlobal(applicationContext)
@@ -223,10 +229,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
     }
 
     /** 基底词库换装/恢复（issue #23）：maintenance 产物已落 rime-user/build
-     *  （或已删除），整引擎重载让 librime 按新目录状态重新解析词典。 */
+     *  （或已删除），整引擎重载让 librime 按新目录状态重新解析词典。
+     *  P1-4：编译进行中（isBuilding）时严禁 reloadGlobal——finalize 内部
+     *  join 编译线程，主线程会冻到编译结束（ANR）。安装器保证换装广播
+     *  在 building 清零后才发，这里再拦一道兜底。 */
     private val baseDictReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             if (intent?.action != com.feelime.ime.engine.BaseDictInstaller.ACTION_BASE_DICT_CHANGED) return
+            if (com.feelime.ime.engine.BaseDictInstaller.isBuilding()) {
+                android.util.Log.w("FeelimeBridge", "baseDictChanged during build, skip reload")
+                return
+            }
             onMain {
                 runCatching {
                     com.feelime.ime.engine.RimeTextEngine.reloadGlobal(applicationContext)
@@ -381,6 +394,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
             if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
         }
         Diagnostics.refresh(this)
+        // P1-5：上次基底词库编译若被进程中断（installing 标记残留），
+        // 在任何引擎初始化之前回滚到内置——半截产物不能进运行时。
+        com.feelime.ime.engine.BaseDictInstaller.sweepPending(this)
         UiLanguage.preferences(this)
             .registerOnSharedPreferenceChangeListener(uiLanguageListener)
         engine = AsrEngine(applicationContext, this)

@@ -355,9 +355,13 @@ class RimeTextEngine(
                     else EngineCode.ENGINE_INIT_FAILED,
                 )
             val user = File(context.filesDir, "rime-user").apply { mkdirs() }
-            android.util.Log.i("FeelimeEngine", "rime global init: rimeInitialize shared=${dataRoot} user=${user.path}")
+            // staging = <user>/build：librime 对显式 staging_dir 不追加
+            // build/（直接用），maintenance 产物与运行时的 staging 优先解析
+            // 共用这一个目录（issue #23 设备端编译的落点契约）。
+            val staging = File(user, "build").apply { mkdirs() }
+            android.util.Log.i("FeelimeEngine", "rime global init: rimeInitialize shared=${dataRoot} user=${user.path} staging=${staging.path}")
             val startedAt = android.os.SystemClock.elapsedRealtime()
-            if (!NativeSmoke.rimeInitialize(File(dataRoot, "rime").path, user.path)) {
+            if (!NativeSmoke.rimeInitialize(File(dataRoot, "rime").path, user.path, staging.path)) {
                 throw EngineFailure(EngineCode.ENGINE_INIT_FAILED)
             }
             android.util.Log.i("FeelimeEngine", "rime global init done in ${android.os.SystemClock.elapsedRealtime() - startedAt}ms")

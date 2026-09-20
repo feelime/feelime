@@ -68,7 +68,7 @@ class UserdataBackup(
         // userdb / favorites / webviewStores 即使为空也要写出：备份表达
         // 「导出方的完整状态」，空列表的恢复语义就是清空目标（覆盖）。
         val userdb = JSONObject()
-        collectDir(File(filesDir, RIME_USER_DIR))?.let { userdb.put("rime", it) }
+        collectDir(File(filesDir, RIME_USER_DIR), excludeBuild = true)?.let { userdb.put("rime", it) }
         collectDir(File(filesDir, MOZC_USER_DIR))?.let { userdb.put("mozc", it) }
         val root = JSONObject()
             .put("kind", KIND)
@@ -269,16 +269,16 @@ class UserdataBackup(
      * 稀疏库能缩到几百字节；压不动的小文件保持 v1 的纯 base64 字符串。
      * LOCK/LOG/LOG.old 是 leveldb 可再生文件，跳过。空目录/不存在返回
      * null（导出里就不写这个键）。 */
-    private fun collectDir(dir: File): JSONObject? {
+    /** [excludeBuild] 只对 rime 目录开：基底词库的设备端编译产物
+     *  （issue #23）是几十 MB 的可再生 table/prism，恢复后词库状态本来
+     *  就要复位，不进备份；mozc 的 build/ 不是这回事，不排除。 */
+    private fun collectDir(dir: File, excludeBuild: Boolean = false): JSONObject? {
         if (!dir.isDirectory) return null
         val out = JSONObject()
         dir.walkTopDown().filter { it.isFile }.forEach { file ->
             val relative = file.relativeTo(dir).invariantSeparatorsPath
             if (file.name in REGENERABLE_FILES) return@forEach
-            // 基底词库的设备端编译产物（issue #23）：几十 MB 的 table/prism
-            // 由用户源重新编译可再生，且恢复后词库状态本来就要复位——
-            // 不进备份，导出体积不膨胀。
-            if (relative.startsWith("build/")) return@forEach
+            if (excludeBuild && relative.startsWith("build/")) return@forEach
             out.put(relative, encodeUserdbFile(file.readBytes()))
         }
         return if (out.length() > 0) out else null

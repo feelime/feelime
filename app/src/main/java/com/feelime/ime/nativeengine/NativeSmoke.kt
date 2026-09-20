@@ -15,7 +15,10 @@ object NativeSmoke {
         ruAff: String,
         ruDic: String,
     ): String
-    @JvmStatic external fun rimeInitialize(sharedDir: String, userDir: String): Boolean
+    /** stagingDir = librime 的显式 staging 目录（maintenance 产物落点，
+     *  运行时按 staging > prebuilt > shared 顺序解析）；传 <user>/build。
+     *  null/空串回落 user 目录（兼容旧行为）。 */
+    @JvmStatic external fun rimeInitialize(sharedDir: String, userDir: String, stagingDir: String?): Boolean
     /** issue #23: spawn librime's deployer thread (dict/prism rebuild) against
      *  the initialize() traits; bins land in <user>/build shadowing shared. */
     @JvmStatic external fun rimeStartMaintenance(fullCheck: Boolean): Boolean

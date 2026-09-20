@@ -44,7 +44,8 @@ FEELIME_EXPORT int feelime_rime_has_required_api() {
 }
 
 FEELIME_EXPORT int feelime_rime_initialize(const char* shared_data_dir,
-                                         const char* user_data_dir) {
+                                         const char* user_data_dir,
+                                         const char* staging_dir) {
   if (shared_data_dir == nullptr || user_data_dir == nullptr) {
     return 0;
   }
@@ -57,7 +58,11 @@ FEELIME_EXPORT int feelime_rime_initialize(const char* shared_data_dir,
   traits.shared_data_dir = shared_data_dir;
   traits.user_data_dir = user_data_dir;
   traits.prebuilt_data_dir = shared_data_dir;
-  traits.staging_dir = user_data_dir;
+  // librime uses an EXPLICIT staging_dir verbatim (it does not append
+  // "build/"). Point it at <user>/build so maintenance products land
+  // exactly where the runtime's staging-first resolution expects them,
+  // instead of polluting the user root next to the yaml sources.
+  traits.staging_dir = staging_dir != nullptr ? staging_dir : user_data_dir;
   traits.distribution_name = "Feelime native smoke";
   traits.distribution_code_name = "feelime-native-smoke";
   traits.distribution_version = "1";

@@ -64,6 +64,9 @@ class BaseDictFilesTest {
     fun variantMask1OnlyCarriesPingzhaoshe() {
         val out = BaseDictFiles.variantSchema(template, 1)
         assertTrue(out.contains("schema_id: luna_pinyin_fuzzy_m1"))
+        // P1-2：prism 名决定编译产物名，必须与 schema_id 一起变体化。
+        assertTrue(out.contains("prism: luna_pinyin_fuzzy_m1"))
+        assertTrue(!out.contains("prism: luna_pinyin_fuzzy\n"))
         assertTrue(out.contains("- \"derive/^([zcs])h/\$1/\""))
         assertTrue(out.contains("- \"derive/^([zcs])([^h])/\$1h\$2/\""))
         // 其它组不得出现（模板预置的 n/l、鼻音规则被剔除且未重插）。
@@ -79,6 +82,7 @@ class BaseDictFilesTest {
         // m19 = 平翘舌 + n/l + 鼻音（迁移默认组合，与模板预置同集）。
         val out = BaseDictFiles.variantSchema(template, 19)
         assertTrue(out.contains("schema_id: luna_pinyin_fuzzy_m19"))
+        assertTrue(out.contains("prism: luna_pinyin_fuzzy_m19"))
         assertEquals(1, Regex("derive/\\^\\(\\[zcs\\]\\)h/").findAll(out).count())
         assertTrue(out.contains("- \"derive/^n/l/"))
         assertTrue(out.contains("- \"derive/ang\$/an/"))

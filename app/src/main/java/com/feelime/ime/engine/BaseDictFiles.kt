@@ -77,8 +77,12 @@ object BaseDictFiles {
         COMPILE_SCHEMAS.forEach { append("  - schema: $it\n") }
     }
 
-    /** 变体 schema：模板的 algebra 段整段重写 + schema_id 变体化。
-     *  模板自带 m19 组合的模糊规则，剔除后按 mask 重插（Python 原型同法）。 */
+    /** 变体 schema：algebra 段整段重写 + schema_id 与 translator/prism
+     *  变体化。prism 名决定编译产物名（schema_id 不参与）——31 个变体
+     *  必须各自 `prism: luna_pinyin_fuzzy_m{N}` 才能产出物化机制期望的
+     *  `_mN.prism.bin`（codex review P1-2；Python 原型是编完逐个改名，
+     *  这里在 schema 里一次到位）。模板自带 m19 组合的模糊规则，剔除后
+     *  按 mask 重插（Python 原型同法）。 */
     fun variantSchema(template: String, mask: Int): String {
         require(mask in MASK_MIN..MASK_MAX) { "mask out of range: $mask" }
         val algebra = algebraFor(spellerAlgebra(template), mask)
@@ -89,15 +93,18 @@ object BaseDictFiles {
         require(end > start) { "template lacks the alphabet anchor" }
         val rewritten = template.substring(0, start) +
             "  algebra:\n" + body + template.substring(end)
-        return rewriteSchemaId(rewritten, "${FuzzyPinyin.SCHEMA_ID}_m$mask")
+        val variantId = "${FuzzyPinyin.SCHEMA_ID}_m$mask"
+        return rewriteLine(rewritten, "schema_id", variantId)
+            .let { rewriteLine(it, "prism", variantId) }
     }
 
-    private fun rewriteSchemaId(text: String, schemaId: String): String {
-        // schema_id: luna_pinyin_fuzzy → 变体 id（只改这一行；文件名由调用方控制）。
-        // schema: 段内是 2 空格缩进，锚行首空白而非顶格。
-        val regex = Regex("""^(\s*schema_id:\s*).+$""", RegexOption.MULTILINE)
-        require(regex.containsMatchIn(text)) { "template lacks schema_id" }
-        return regex.replace(text) { it.groupValues[1] + schemaId }
+    /** 改写段内 2 空格缩进的单值行（schema_id/prism；只动第一个匹配）。 */
+    private fun rewriteLine(text: String, key: String, value: String): String {
+        val regex = Regex("""^(\s*$key:\s*)\S.*$""", RegexOption.MULTILINE)
+        val match = regex.find(text)
+            ?: throw IllegalArgumentException("template lacks a $key line")
+        return text.substring(0, match.range.first) +
+            match.groupValues[1] + value + text.substring(match.range.last + 1)
     }
 
     /** 提取 speller: 段内的 algebra 列表项（编译形态 yaml 是 4 空格缩进）。 */

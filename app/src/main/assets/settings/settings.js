@@ -69,7 +69,7 @@ const I18N = {
         "dict.base.builtin": "内置 rime-frost（白霜拼音）",
         "dict.base.custom": "自定义：{0}",
         "dict.base.stageCopy": "正在读取词库文件…",
-        "dict.base.stageCompile": "正在编译词库，可离开此页，完成后自动换装",
+        "dict.base.stageCompile": "正在编译词库（期间中文输入暂不可用），可离开此页，完成后自动换装",
         "dict.base.elapsed": "已编译 {0} 秒",
         "page.appearance": "外观",
         "themeMode.auto": "跟随系统",
@@ -476,7 +476,7 @@ const I18N = {
         "dict.base.builtin": "Built-in rime-frost",
         "dict.base.custom": "Custom: {0}",
         "dict.base.stageCopy": "Reading the dictionary file…",
-        "dict.base.stageCompile": "Compiling - you can leave this page; the keyboard swaps over when done",
+        "dict.base.stageCompile": "Compiling (Chinese input pauses meanwhile) - you can leave this page; the keyboard swaps over when done",
         "dict.base.elapsed": "{0}s elapsed",
         "page.appearance": "Appearance",
         "themeMode.auto": "Follow system",
@@ -1628,17 +1628,20 @@ $("btnBaseDictRevert").addEventListener("click", () => call("clearBaseDict"));
 
 /** 基底编译是黑盒（librime maintenance），无百分比——用阶段 + 已耗时
  *  提示；用户可离开页面，完成/失败由 dictBaseDone/dictBaseError 收尾。 */
+function dictBaseStageText(stage, elapsedMs) {
+    const seconds = Math.round((elapsedMs || 0) / 1000);
+    const label = stage === "COPYING" ? t("dict.base.stageCopy") : t("dict.base.stageCompile");
+    return stage === "COPYING" ? label : `${label}（${t("dict.base.elapsed", [seconds])}）`;
+}
+
 function onDictBaseProgress(event) {
     const building = $("dictBaseBuilding");
     building.hidden = false;
-    const seconds = Math.round((event.elapsedMs || 0) / 1000);
-    const stage = event.stage === "COPYING" ? t("dict.base.stageCopy") : t("dict.base.stageCompile");
-    building.textContent = event.stage === "COPYING"
-        ? stage
-        : `${stage}（${t("dict.base.elapsed", [seconds])}）`;
+    building.textContent = dictBaseStageText(event.stage, event.elapsedMs);
 }
 
-/** state.baseDict: {mode: builtin|custom, building, name, installedAt}。 */
+/** state.baseDict: {mode, building, stage, elapsedMs, name, installedAt}——
+ *  编译中离开再进设置页，提示行从 state 快照恢复（不丢进度文本）。 */
 function renderDictBase(state) {
     const base = state.baseDict || {};
     const current = $("dictBaseCurrent");
@@ -1649,8 +1652,11 @@ function renderDictBase(state) {
         : t("dict.base.builtin");
     $("btnBaseDictRevert").hidden = base.mode !== "custom" || base.building;
     $("btnBaseDictPick").disabled = !!base.building;
-    // building 行的文本由 dictBaseProgress 事件维护；state 说没在编就收起。
     $("dictBaseBuilding").hidden = !base.building;
+    if (base.building) {
+        $("dictBaseBuilding").textContent =
+            dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+    }
 }
 $("btnClearImportedDict").addEventListener("click", () => call("clearImportedDict"));
 $("btnCancelPhraseEdit").addEventListener("click", resetPhraseForm);

@@ -109,7 +109,9 @@ class UserdataBackupTest {
 
         val json = backup.export().toString()
         assertTrue(json.contains("user.yaml"))
-        assertTrue(json.contains("build/main.table.bin"))
+        // issue #23：基底词库的设备端编译产物（rime build/）可再生、恢复后
+        // 词库状态本来就要复位——不进备份，导出体积不膨胀。
+        assertFalse(json.contains("build/main.table.bin"))
 
         val target = newDir()
         val targetBackup = UserdataBackup(FakePrefs(), target)
@@ -122,10 +124,21 @@ class UserdataBackupTest {
 
         // IME 的换入点：swap 之后暂存清空、正式目录就位、幂等。
         assertTrue(targetBackup.applyPendingUserdb())
-        assertTrue(File(target, "rime-user/build/main.table.bin").isFile)
+        assertTrue(File(target, "rime-user/user.yaml").isFile)
         assertFalse(File(target, "rime-user.import").exists())
         assertFalse(targetBackup.hasPendingUserdb())
         assertFalse(targetBackup.applyPendingUserdb())
+    }
+
+    @Test
+    fun mozcBuildFilesStillBackedUp() {
+        // build/ 排除只对 rime 开（#23 编译产物）；mozc 的 build/ 不是
+        // 可再生产物，必须照常进导出。
+        val files = newDir()
+        val build = File(File(files, "mozc-user"), "build").apply { mkdirs() }
+        File(build, "userdb.ldb").writeBytes(byteArrayOf(9))
+        val json = UserdataBackup(FakePrefs(), files).export().toString()
+        assertTrue(json.contains("build/userdb.ldb"))
     }
 
     @Test

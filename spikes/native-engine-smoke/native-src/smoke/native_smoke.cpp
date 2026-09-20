@@ -8,7 +8,7 @@
 extern "C" {
 const char* feelime_rime_version();
 int feelime_rime_has_required_api();
-int feelime_rime_initialize(const char*, const char*);
+int feelime_rime_initialize(const char*, const char*, const char*);
 int feelime_rime_start_maintenance(int);
 int feelime_rime_is_maintenance_mode();
 void feelime_rime_join_maintenance();
@@ -62,7 +62,7 @@ Java_com_feelime_ime_nativeengine_NativeSmoke_runRime(
     JNIEnv* env, jclass, jstring shared_dir, jstring user_dir) {
   const std::string shared = from_java(env, shared_dir);
   const std::string user = from_java(env, user_dir);
-  const int initialized = feelime_rime_initialize(shared.c_str(), user.c_str());
+  const int initialized = feelime_rime_initialize(shared.c_str(), user.c_str(), nullptr);
   const std::uintptr_t session = initialized ? feelime_rime_create_session("luna_pinyin") : 0;
   for (char c : std::string("nihao")) {
     if (session != 0) feelime_rime_process_key(session, c, 0);
@@ -128,10 +128,12 @@ Java_com_feelime_ime_nativeengine_NativeSmoke_runHunspell(
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_feelime_ime_nativeengine_NativeSmoke_rimeInitialize(
-    JNIEnv* env, jclass, jstring shared_dir, jstring user_dir) {
+    JNIEnv* env, jclass, jstring shared_dir, jstring user_dir, jstring staging_dir) {
   const std::string shared = from_java(env, shared_dir);
   const std::string user = from_java(env, user_dir);
-  return feelime_rime_initialize(shared.c_str(), user.c_str()) != 0;
+  const std::string staging = staging_dir != nullptr ? from_java(env, staging_dir) : std::string();
+  return feelime_rime_initialize(shared.c_str(), user.c_str(),
+                                 staging.empty() ? nullptr : staging.c_str()) != 0;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
