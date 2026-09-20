@@ -2133,20 +2133,6 @@ body[data-bg-image="on"] #settingsPanel { background: transparent; }
  * pc-actions/pc-btn/pc-ghost/pc-main) - the #phraseCard prefixes left the
  * height card's buttons un-flexed and squeezed at UA defaults. */
 .pc-actions { display: flex; gap: 8px; margin-top: 8px; }
-/* issue #19：编辑卡「从剪贴板粘贴」——正文下方的小幽灵按钮。 */
-.pc-paste-btn {
-    display: block;
-    width: fit-content;
-    margin-top: 6px;
-    padding: 4px 10px;
-    border: 0;
-    border-radius: 6px;
-    background: var(--special);
-    color: var(--text);
-    font-size: 12px;
-    line-height: normal;
-}
-.pc-paste-btn:active { background: var(--pressed); }
 .pc-btn {
     flex: 1;
     border: 0;

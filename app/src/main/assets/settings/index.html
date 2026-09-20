@@ -78,6 +78,10 @@
         <span class="entry-label"><span data-i18n="entry.input.title">键盘与输入</span><small data-i18n="entry.input.subtitle">双拼 · 定制键盘</small></span>
         <span class="entry-chevron" aria-hidden="true">›</span>
       </button>
+      <button class="entry" type="button" data-target="dict">
+        <span class="entry-label"><span data-i18n="entry.dict.title">词库</span><small data-i18n="entry.dict.subtitle">导入 rime 词库 · 叠加候选</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
       <button class="entry" type="button" data-target="voice">
         <span class="entry-label"><span data-i18n="entry.voice.title">语音识别</span><small data-i18n="entry.voice.subtitle">语音模型 · 识别设置</small></span>
         <span class="entry-chevron" aria-hidden="true">›</span>
@@ -235,24 +239,21 @@
       </label>
     </section>
 
+    <section class="card" id="sec-datetime" aria-labelledby="datetimeTitle">
+      <div class="section-heading"><h2 id="datetimeTitle" data-i18n="input.datetime.title">日期时间候选</h2><span class="eyebrow" data-i18n="input.datetime.badge">输入</span></div>
+      <label class="row switch-row no-rule" for="dynamicDateTimeOn">
+        <span class="row-label"><span data-i18n="input.datetime.enable">打 date/time/week 出日期时间</span><small data-i18n="input.datetime.hint">候选条直接给当前日期、时间、星期（全拼打 riqi/shijian/xingqi 也出）；不需要可关。</small></span>
+        <input type="checkbox" id="dynamicDateTimeOn" class="toggle">
+      </label>
+    </section>
+
     <section class="card" id="sec-phrases" aria-labelledby="phrasesTitle">
       <div class="section-heading"><h2 id="phrasesTitle" data-i18n="input.phrases.title">候选符号词</h2><span class="eyebrow" data-i18n="input.phrases.badge">输入</span></div>
-      <label class="row switch-row" for="phrasesOn">
+      <label class="row switch-row no-rule" for="phrasesOn">
         <span class="row-label"><span data-i18n="input.phrases.enable">附加符号/emoji 候选</span><small data-i18n="input.phrases.hint">打 shang 出 ↑、dui 出 ✓ 这类符号词，排在候选第 3 位附近；全拼和双拼通用。</small></span>
         <input type="checkbox" id="phrasesOn" class="toggle">
       </label>
       <button class="btn" id="btnManagePhrases" type="button" data-i18n="input.phrases.manage">管理词条</button>
-      <div class="row language-row" style="margin-top:10px">
-        <span class="row-label">
-          <span data-i18n="input.phrases.importTitle">导入词库（.dict.yaml）</span>
-          <small data-i18n="input.phrases.importHint">rime 词库文件的词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。</small>
-        </span>
-      </div>
-      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn" id="btnImportDict" type="button" data-i18n="input.phrases.importBtn">选择文件导入</button>
-        <button class="btn ghost-btn" id="btnClearImportedDict" type="button" hidden data-i18n="input.phrases.clearBtn">清空导入词</button>
-        <span class="save-note" id="dictImportNote" role="status" aria-live="polite"></span>
-      </div>
     </section>
 
     <section class="card" id="sec-dp" aria-labelledby="dpTitle">
@@ -399,6 +400,33 @@
         <span class="save-note" id="customNote" role="status" aria-live="polite"></span>
       </div>
       <p class="hint" data-i18n="input.custom.note">保存在本机，键盘下次载入时生效。</p>
+    </section>
+  </main>
+</div>
+
+<!-- 词库（issue #37 验收反馈）：一级入口的二级页，承接原候选符号词卡里
+     的 rime .dict.yaml 叠加导入；用户自定义基底词库（issue #23/#40）将来
+     也落在这个页。 -->
+<div class="page" data-page="dict" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
+    <h2 class="page-title" data-i18n="page.dict">词库</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-dict-import" aria-labelledby="dictImportTitle">
+      <div class="section-heading"><h2 id="dictImportTitle" data-i18n="dict.import.title">导入词库</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <div class="row language-row no-rule">
+        <span class="row-label">
+          <span data-i18n="dict.import.enable">rime 词库文件（.dict.yaml）</span>
+          <small data-i18n="input.phrases.importHint">词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。</small>
+        </span>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="btnImportDict" type="button" data-i18n="input.phrases.importBtn">选择文件导入</button>
+        <button class="btn ghost-btn" id="btnClearImportedDict" type="button" hidden data-i18n="input.phrases.clearBtn">清空导入词</button>
+        <span class="save-note" id="dictImportNote" role="status" aria-live="polite"></span>
+      </div>
+      <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码 逐行导入，上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。</p>
     </section>
   </main>
 </div>
@@ -612,6 +640,85 @@
 
     <section class="card" id="sec-notices" aria-labelledby="noticesTitle">
       <div class="section-heading"><h2 id="noticesTitle" data-i18n="about.noticesTitle">第三方许可与组件说明</h2><span class="eyebrow" data-i18n="about.legalBadge">许可</span></div>
+      <button class="entry" type="button" id="btnOpenLicenses">
+        <span class="entry-label"><span data-i18n="about.openLicenses">开源许可与致谢</span><small data-i18n="about.openLicensesHint">组件清单 · 上游链接 · 完整说明</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+    </section>
+  </main>
+</div>
+
+<!-- 开源许可与致谢（三级页，关于下）：排版化的组件清单，完整原文
+     仍取 state.notices（assets third-party/THIRD_PARTY_NOTICES.txt）。
+     组件行的名称/许可证/链接是专有名词，不进 i18n；用途句双语。 -->
+<div class="page" data-page="licenses" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="about" data-i18n-aria="nav.backAbout" aria-label="返回关于">‹</button>
+    <h2 class="page-title" data-i18n="page.licenses">开源许可与致谢</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-license-self" aria-labelledby="licenseSelfTitle">
+      <div class="section-heading"><h2 id="licenseSelfTitle" data-i18n="licenses.self.title">本应用许可</h2><span class="eyebrow">GPL-3.0</span></div>
+      <p class="hint" data-i18n="licenses.self.note">Feelime 整体以 GPL-3.0 提供：内置中文基底词库来自 rime-frost（同样 GPL-3.0），对应源码即应用源码仓库。</p>
+    </section>
+
+    <section class="card" id="sec-license-components" aria-labelledby="licenseComponentsTitle">
+      <div class="section-heading"><h2 id="licenseComponentsTitle" data-i18n="licenses.components.title">致谢组件</h2><span class="eyebrow" data-i18n="licenses.components.badge">开源</span></div>
+      <p class="hint" data-i18n="licenses.thanks">Feelime 站在以下开源项目的肩膀上，特此致谢；点击链接可跳转上游。</p>
+      <div class="rows">
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>rime-frost 白霜拼音</b><span class="license-badge">GPL-3.0</span></span>
+            <small><span data-i18n="licenses.cmp.frost">中文基底词库（语料词频重统）</span> · <a href="https://github.com/gaboolic/rime-frost" target="_blank" rel="noopener">github.com/gaboolic/rime-frost</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>librime</b><span class="license-badge">BSD-3</span></span>
+            <small><span data-i18n="licenses.cmp.librime">中文输入引擎（内嵌 Boost/OpenCC/marisa-trie 等）</span> · <a href="https://github.com/rime/librime" target="_blank" rel="noopener">github.com/rime/librime</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>Rime luna-pinyin · prelude · essay</b><span class="license-badge">LGPL-3.0</span></span>
+            <small><span data-i18n="licenses.cmp.rimedata">Rime 方案与数据文件</span> · <a href="https://github.com/rime" target="_blank" rel="noopener">github.com/rime</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>sherpa-onnx</b><span class="license-badge">Apache-2.0</span></span>
+            <small><span data-i18n="licenses.cmp.sherpa">离线语音识别运行时与模型</span> · <a href="https://github.com/k2-fsa/sherpa-onnx" target="_blank" rel="noopener">github.com/k2-fsa/sherpa-onnx</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>Mozc</b><span class="license-badge">BSD-3</span></span>
+            <small><span data-i18n="licenses.cmp.mozc">日文引擎（Abseil/Protobuf/zlib 等随附）</span> · <a href="https://github.com/google/mozc" target="_blank" rel="noopener">github.com/google/mozc</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>Hunspell</b><span class="license-badge">MPL-1.1</span></span>
+            <small><span data-i18n="licenses.cmp.hunspell">拼写检查（法/俄词典随附）</span> · <a href="https://github.com/hunspell/hunspell" target="_blank" rel="noopener">github.com/hunspell/hunspell</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name"><b>OkHttp · Okio</b><span class="license-badge">Apache-2.0</span></span>
+            <small><span data-i18n="licenses.cmp.okhttp">模型下载网络（仅下载时联网）</span> · <a href="https://github.com/square/okhttp" target="_blank" rel="noopener">github.com/square/okhttp</a></small>
+          </span>
+        </div>
+        <div class="row license-row">
+          <span class="row-label">
+            <span class="license-name" data-i18n="licenses.cmp.othersName">其余内嵌依赖</span>
+            <small data-i18n="licenses.cmp.others">Commons Compress、yaml-cpp、LevelDB、RapidJSON 等 · 见下方完整说明</small>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="sec-license-full" aria-labelledby="licenseFullTitle">
+      <div class="section-heading"><h2 id="licenseFullTitle" data-i18n="licenses.full.title">完整说明</h2><span class="eyebrow" data-i18n="about.legalBadge">许可</span></div>
       <details>
         <summary data-i18n="about.expandNotices">展开完整说明</summary>
         <pre class="notices" id="noticesText"></pre>

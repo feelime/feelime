@@ -84,6 +84,7 @@ class MockSettingsNative {
     setCandidateFont(...a) { this._rec('setCandidateFont', a); }
     setFuzzyPinyinMask(...a) { this._rec('setFuzzyPinyinMask', a); }
     setAssociation(...a) { this._rec('setAssociation', a); }
+    setDynamicDateTime(...a) { this._rec('setDynamicDateTime', a); }
     saveCustomPhrases(...a) { this._rec('saveCustomPhrases', a); }
     setDiagnostics(...a) { this._rec('setDiagnostics', a); }
     exportDiagnostics(...a) { this._rec('exportDiagnostics', a); }
@@ -580,14 +581,14 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     const hiddenMap = () => Object.fromEntries(
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
-        home: false, appearance: true, input: true, phrases: true, voice: true, update: true,
-        backup: true, about: true, test: true,
+        home: false, appearance: true, input: true, dict: true, phrases: true, voice: true, update: true,
+        backup: true, about: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
-        home: true, appearance: true, input: true, phrases: true, voice: false, update: true,
-        backup: true, about: true, test: true,
+        home: true, appearance: true, input: true, dict: true, phrases: true, voice: false, update: true,
+        backup: true, about: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', world.token], 'reportPage(page name) on sub-page');
 
@@ -947,6 +948,23 @@ test('association toggle reflects state and commits with the token', () => {
     change.handler({ target: box });
     equal(world.lastCall('setAssociation').args, [true, world.token],
         'association toggle + token');
+});
+
+test('datetime candidates toggle defaults on and commits with the token', () => {
+    const world = new SettingsWorld();
+    // 缺字段（旧 native 的 state）与 true 都按开处理。
+    world.push({ ...BASE_STATE });
+    equal(world.$('dynamicDateTimeOn').checked, true, 'missing field falls back to on');
+    world.push({ ...BASE_STATE, dynamicDateTimeOn: false });
+    equal(world.$('dynamicDateTimeOn').checked, false, 'explicit off renders off');
+
+    const box = world.$('dynamicDateTimeOn');
+    const change = box.listeners.find(listener => listener.type === 'change');
+    assert(change, '#dynamicDateTimeOn has a change listener');
+    box.checked = false;
+    change.handler({ target: box });
+    equal(world.lastCall('setDynamicDateTime').args, [false, world.token],
+        'datetime toggle + token');
 });
 
 test('key feedback toggles reflect state and commit with the token (default off)', () => {

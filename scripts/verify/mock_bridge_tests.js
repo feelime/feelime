@@ -1601,30 +1601,6 @@ test('symbol reorder keeps the expanded grid in sync across pages (issue #17, re
     world.clock.advance(2);
 });
 
-test('phrase card pastes from the latest clipboard entry (issue #19)', {since: '3.51.0'}, () => {
-    const world = fresh();
-    world.hello();
-    world.tap(world.$('favoritesButton'));
-    world.tap(world.document.getElementById('panelManage'));
-    assert(!world.$('phraseCard').hidden, 'card open');
-    // 无剪贴板 → toast，不动字段。
-    world.tap(world.document.getElementById('phraseCardPaste'));
-    equal(world.document.getElementById('phraseCardInput').value, '',
-        'empty clipboard leaves the field untouched');
-    assert(world.$('toast').classList.contains('open'), 'toast explains the empty clipboard');
-    // 有剪贴板 → 最新一条填入。
-    world.clipboard([{ id: 'c1', time: 2, text: ' Meeting notes' },
-        { id: 'c0', time: 1, text: 'old' }]);
-    world.tap(world.document.getElementById('phraseCardPaste'));
-    equal(world.document.getElementById('phraseCardInput').value, ' Meeting notes',
-        'latest clipboard entry lands in the field');
-    // 超长截断到 200 字。
-    world.clipboard([{ id: 'c2', time: 3, text: 'x'.repeat(250) }]);
-    world.tap(world.document.getElementById('phraseCardPaste'));
-    equal(world.document.getElementById('phraseCardInput').value.length, 200,
-        'oversized entry truncates to the 200-char cap');
-});
-
 test('dynamic date/time candidates ride the overlay pool (issue #22)', {since: '3.51.0'}, () => {
     const world = fresh();
     world.hello();
@@ -1674,6 +1650,25 @@ test('dynamic date/time candidates ride the overlay pool (issue #22)', {since: '
     world.engineState({ mode: 'stroke', revision: 8, composing: '13', rawInput: '13',
         candidates: [], hasNextPage: false });
     assert(!bar().some(text => /^\d{4}-\d{2}-\d{2}$/.test(text)), 'stroke never injects');
+});
+
+test('dynamic date/time candidates respect the settings toggle', {since: '3.54.0'}, () => {
+    // 设置开关（验收反馈）：hello 带 dynamicDateTimeOn=false 时拉丁码与
+    // 拼音码通道整体停；缺字段（旧 APK hello）按默认开。
+    const world = fresh();
+    world.hello({ dynamicDateTimeOn: false });
+    const bar = () => [...world.$('candidates').querySelectorAll('.candidate')]
+        .map(b => b.textContent);
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'date', rawInput: 'date',
+        candidates: [{ id: 'c1', text: '嗒' }], hasNextPage: false });
+    equal(JSON.stringify(bar()), JSON.stringify(['嗒']), 'latin code overlay fully off');
+    world.engineState({ mode: 'pinyin', revision: 2, composing: 'riqi', rawInput: 'riqi',
+        candidates: [{ id: 'c2', text: '日期' }], hasNextPage: false });
+    equal(JSON.stringify(bar()), JSON.stringify(['日期']), 'pinyin code overlay off too');
+    world.hello();
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'date', rawInput: 'date',
+        candidates: [{ id: 'c1', text: '嗒' }], hasNextPage: false });
+    assert(/^\d{4}-\d{2}-\d{2}$/.test(bar()[0]), 'missing field falls back to on');
 });
 
 test('phrase card edits the rank with +/- steppers', {since: '3.25.0'}, () => {

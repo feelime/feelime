@@ -43,6 +43,8 @@ const I18N = {
         "nav.back": "返回首页",
         "entry.input.title": "键盘与输入",
         "entry.input.subtitle": "双拼 · 定制键盘",
+        "entry.dict.title": "词库",
+        "entry.dict.subtitle": "导入 rime 词库 · 叠加候选",
         "entry.voice.title": "语音识别",
         "entry.voice.subtitle": "语音模型 · 识别设置",
         "entry.update.title": "键盘热更新",
@@ -54,6 +56,11 @@ const I18N = {
         "entry.test.title": "输入测试",
         "entry.test.subtitle": "唤起键盘试一试",
         "page.input": "键盘与输入",
+        "page.dict": "词库",
+        "dict.badge": "叠加",
+        "dict.import.title": "导入词库",
+        "dict.import.enable": "rime 词库文件（.dict.yaml）",
+        "dict.import.note": "词<TAB>码 逐行导入，上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。",
         "page.appearance": "外观",
         "themeMode.auto": "跟随系统",
         "themeMode.light": "浅色",
@@ -78,12 +85,15 @@ const I18N = {
         "input.assoc.badge": "输入",
         "input.assoc.enable": "选词后联想下一个词",
         "input.assoc.hint": "上屏后在候选条给出高频接续词，点击可连续联想；只在全拼/双拼生效。",
+        "input.datetime.title": "日期时间候选",
+        "input.datetime.badge": "输入",
+        "input.datetime.enable": "打 date/time/week 出日期时间",
+        "input.datetime.hint": "候选条直接给当前日期、时间、星期（全拼打 riqi/shijian/xingqi 也出）；不需要可关。",
         "input.phrases.title": "候选符号词",
         "input.phrases.badge": "输入",
         "input.phrases.enable": "附加符号/emoji 候选",
         "input.phrases.hint": "打 shang 出 ↑、dui 出 ✓ 这类符号词，排在候选第 3 位附近；全拼和双拼通用。",
         "input.phrases.manage": "管理词条",
-        "input.phrases.importTitle": "导入词库（.dict.yaml）",
         "input.phrases.importHint": "rime 词库文件的词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。",
         "input.phrases.importBtn": "选择文件导入",
         "input.phrases.clearBtn": "清空导入词",
@@ -201,6 +211,25 @@ const I18N = {
         "about.noticesTitle": "第三方许可与组件说明",
         "about.legalBadge": "许可",
         "about.expandNotices": "展开完整说明",
+        "about.openLicenses": "开源许可与致谢",
+        "about.openLicensesHint": "组件清单 · 上游链接 · 完整说明",
+        "page.licenses": "开源许可与致谢",
+        "nav.backAbout": "返回关于",
+        "licenses.self.title": "本应用许可",
+        "licenses.self.note": "Feelime 整体以 GPL-3.0 提供：内置中文基底词库来自 rime-frost（同样 GPL-3.0），对应源码即应用源码仓库。",
+        "licenses.components.title": "致谢组件",
+        "licenses.components.badge": "开源",
+        "licenses.thanks": "Feelime 站在以下开源项目的肩膀上，特此致谢；点击链接可跳转上游。",
+        "licenses.full.title": "完整说明",
+        "licenses.cmp.frost": "中文基底词库（语料词频重统）",
+        "licenses.cmp.librime": "中文输入引擎（内嵌 Boost/OpenCC/marisa-trie 等）",
+        "licenses.cmp.rimedata": "Rime 方案与数据文件",
+        "licenses.cmp.sherpa": "离线语音识别运行时与模型",
+        "licenses.cmp.mozc": "日文引擎（Abseil/Protobuf/zlib 等随附）",
+        "licenses.cmp.hunspell": "拼写检查（法/俄词典随附）",
+        "licenses.cmp.okhttp": "模型下载网络（仅下载时联网）",
+        "licenses.cmp.othersName": "其余内嵌依赖",
+        "licenses.cmp.others": "Commons Compress、yaml-cpp、LevelDB、RapidJSON 等 · 见下方完整说明",
         "test.title": "试输入一段文字",
         "test.badge": "测试",
         "test.placeholder": "点这里唤起 Feelime 试一试",
@@ -411,6 +440,8 @@ const I18N = {
         "nav.back": "Back to home",
         "entry.input.title": "Keyboard & input",
         "entry.input.subtitle": "Double pinyin · Custom keyboard",
+        "entry.dict.title": "Lexicon",
+        "entry.dict.subtitle": "Import rime dicts · Extra candidates",
         "entry.backup.title": "Backup & restore",
         "entry.backup.subtitle": "Settings · Phrases · Lexicons",
         "entry.voice.title": "Voice recognition",
@@ -422,6 +453,11 @@ const I18N = {
         "entry.test.title": "Input test",
         "entry.test.subtitle": "Wake Feelime and try it",
         "page.input": "Keyboard & input",
+        "page.dict": "Lexicon",
+        "dict.badge": "Overlay",
+        "dict.import.title": "Import a dictionary",
+        "dict.import.enable": "rime dictionary file (.dict.yaml)",
+        "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice.",
         "page.appearance": "Appearance",
         "themeMode.auto": "Follow system",
         "themeMode.light": "Light",
@@ -446,12 +482,15 @@ const I18N = {
         "input.assoc.badge": "Input",
         "input.assoc.enable": "Suggest the next word after a commit",
         "input.assoc.hint": "Shows frequent followers in the candidates bar after a word commits; tap to keep the chain going. Full/Double Pinyin only.",
+        "input.datetime.title": "Date & time candidates",
+        "input.datetime.badge": "Input",
+        "input.datetime.enable": "Type date/time/week for quick stamps",
+        "input.datetime.hint": "The candidates bar offers the current date, time and weekday (full pinyin riqi/shijian/xingqi works too); turn off if unwanted.",
         "input.phrases.title": "Symbol candidates",
         "input.phrases.badge": "Input",
         "input.phrases.enable": "Symbol / emoji candidates",
         "input.phrases.hint": "Adds words like ↑ for shang and ✓ for dui near candidate #3; works in full and double Pinyin.",
         "input.phrases.manage": "Manage entries",
-        "input.phrases.importTitle": "Import lexicon (.dict.yaml)",
         "input.phrases.importHint": "Entries from a rime dictionary join the candidates as an overlay (the built-in lexicon stays; original frequencies are not carried). Importing again replaces the previous import.",
         "input.phrases.importBtn": "Pick a file",
         "input.phrases.clearBtn": "Clear imported",
@@ -569,6 +608,25 @@ const I18N = {
         "about.noticesTitle": "Third-party licenses & components",
         "about.legalBadge": "Licenses",
         "about.expandNotices": "Show full notices",
+        "about.openLicenses": "Open-source licenses & credits",
+        "about.openLicensesHint": "Components · Upstream links · Full notices",
+        "page.licenses": "Licenses & credits",
+        "nav.backAbout": "Back to about",
+        "licenses.self.title": "This app's license",
+        "licenses.self.note": "Feelime as a whole is offered under GPL-3.0: the built-in Chinese base lexicon comes from rime-frost (also GPL-3.0), and the corresponding source is the app's source repository.",
+        "licenses.components.title": "Credits",
+        "licenses.components.badge": "Open source",
+        "licenses.thanks": "Feelime stands on the shoulders of these open-source projects; tap a link to visit the upstream.",
+        "licenses.full.title": "Full notices",
+        "licenses.cmp.frost": "Chinese base lexicon (re-curated word frequencies)",
+        "licenses.cmp.librime": "Chinese input engine (bundles Boost/OpenCC/marisa-trie etc.)",
+        "licenses.cmp.rimedata": "Rime schemas & data files",
+        "licenses.cmp.sherpa": "Offline speech recognition runtime & models",
+        "licenses.cmp.mozc": "Japanese engine (Abseil/Protobuf/zlib bundled)",
+        "licenses.cmp.hunspell": "Spell checking (FR/RU dictionaries bundled)",
+        "licenses.cmp.okhttp": "Networking for model downloads (online only while downloading)",
+        "licenses.cmp.othersName": "Other bundled dependencies",
+        "licenses.cmp.others": "Commons Compress, yaml-cpp, LevelDB, RapidJSON etc. · see the full notices below",
         "test.title": "Type a test sentence",
         "test.badge": "Test",
         "test.placeholder": "Tap here to wake Feelime and try it",
@@ -759,7 +817,7 @@ const I18N = {
     },
 };
 
-const PAGES = ["home", "appearance", "input", "phrases", "voice", "update", "backup", "about", "test"];
+const PAGES = ["home", "appearance", "input", "dict", "phrases", "voice", "update", "backup", "about", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -1102,6 +1160,9 @@ function renderDoublePinyin(state) {
     });
     if (document.activeElement !== $("associationOn")) {
         $("associationOn").checked = !!state.associationOn;
+    }
+    if (document.activeElement !== $("dynamicDateTimeOn")) {
+        $("dynamicDateTimeOn").checked = state.dynamicDateTimeOn !== false;
     }
     $("dpNote").textContent = t(`input.double.note.${select.value}`);
     renderDpKeymap(select.value);
@@ -1530,6 +1591,7 @@ $("phrasesOn").addEventListener("change", event => {
     setNote("phrasesNote", t("phrases.note.saved"));
 });
 $("btnManagePhrases").addEventListener("click", () => showPage("phrases"));
+$("btnOpenLicenses").addEventListener("click", () => showPage("licenses"));
 // 词库导入（issue #37）：SAF 选择 .dict.yaml → 壳侧解析进 imported 段。
 $("btnImportDict").addEventListener("click", () => call("openDictDocument"));
 $("btnClearImportedDict").addEventListener("click", () => call("clearImportedDict"));
@@ -1809,6 +1871,7 @@ $("btnCustomTemplate").addEventListener("click", () => {
 $("btnCheckUpdate").addEventListener("click", () => call("checkUpdate", $("updateSource").value));
 $("autoUpdateCheck").addEventListener("change", event => call("setAutoUpdateCheck", event.target.checked));
 $("associationOn").addEventListener("change", event => call("setAssociation", event.target.checked));
+$("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateTime", event.target.checked));
 $("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));
 $("keyHaptic").addEventListener("change", event => call("setKeyHaptic", event.target.checked));
 document.querySelectorAll("input[data-fuzzy-bit]").forEach(box => {

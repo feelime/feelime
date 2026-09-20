@@ -290,6 +290,9 @@ h3 { margin: 0; font-size: 14px; font-weight: 650; }
 }
 
 .row:last-child { border-bottom: none; }
+/* 行后紧跟按钮（如候选符号词卡的「管理词条」）时，行底线会紧贴按钮
+ * 像一条黏住的分隔线——该行显式去线。 */
+.row.no-rule { border-bottom: none; }
 
 .row-label {
     display: flex;
@@ -531,6 +534,36 @@ details summary {
     color: var(--card-sub);
     font: 11px/1.6 var(--mono);
     white-space: pre-wrap;
+}
+
+/* --- licenses page ----------------------------------------------------- */
+
+/* 组件行：名称加粗 + 许可证小徽章（用 eyebrow 的强调色系）。 */
+.license-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 14px;
+}
+
+.license-badge {
+    padding: 1px 7px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--accent-text);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    white-space: nowrap;
+}
+
+/* 上游链接：整页只在这一页出现 <a>，外跳由壳转系统浏览器。 */
+.license-row a,
+#sec-license-self a {
+    color: var(--accent-text);
+    text-decoration: underline;
+    word-break: break-all;
 }
 
 @media (max-width: 380px) {

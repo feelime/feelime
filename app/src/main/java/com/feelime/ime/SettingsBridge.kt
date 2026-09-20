@@ -257,6 +257,14 @@ fun readAssociation(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_ASSOCIATION, false)
 
+/** 日期时间快捷候选开关（issue #22，验收反馈）：默认开——date/time/
+ *  week 动态候选不是人人都用，设置里可整体关掉。 */
+const val PREF_DYNAMIC_DATETIME = "dynamic_datetime_on"
+
+fun readDynamicDateTime(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_DYNAMIC_DATETIME, true)
+
 /** 按键反馈开关（issue #5 问题 2，借鉴 WeType「按键效果」）：
  * 声音/触感各自独立，默认都关。 */
 const val PREF_KEY_SOUND = "key_sound_on"
@@ -515,6 +523,7 @@ class SettingsBridge(
                 put("importedCount", state.imported.size)
             })
             .put("associationOn", readAssociation(context))
+            .put("dynamicDateTimeOn", readDynamicDateTime(context))
             .put("keySound", readKeySoundEnabled(context))
             .put("keyHaptic", readKeyHapticEnabled(context))
             .put("bottomPadPortrait", readBottomPadPortraitDp(context))
@@ -1172,6 +1181,18 @@ class SettingsBridge(
     fun setAssociation(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_ASSOCIATION, on).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 日期时间快捷候选开关：落盘 + 广播重推 hello，键盘侧
+     *  dynamicCandidatesFor 直接按 hello 字段 gate。 */
+    @JavascriptInterface
+    fun setDynamicDateTime(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_DYNAMIC_DATETIME, on).apply()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

@@ -196,11 +196,21 @@ class SetupActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 // 外观预览的键盘 iframe（?preview=1）是唯一放行的子 frame；
                 // 其余一切导航（主 frame 含内）全部拒绝，设置页不允许漂移。
+                // 例外（许可三级页）：http(s) 链接转系统浏览器打开，页面
+                // 本体不跳转——组件致谢的上游链接只有这一条外跳通道。
                 override fun shouldOverrideUrlLoading(
                     view: WebView?,
                     request: android.webkit.WebResourceRequest?,
                 ): Boolean {
                     val url = request?.url ?: return true
+                    if (url.scheme == "http" || url.scheme == "https") {
+                        runCatching {
+                            startActivity(android.content.Intent(
+                                android.content.Intent.ACTION_VIEW, url,
+                            ))
+                        }
+                        return true
+                    }
                     return !(request.isForMainFrame == false
                         && url.scheme == "file"
                         && url.path?.startsWith("/android_asset/keyboard/") == true)
@@ -275,9 +285,14 @@ class SetupActivity : AppCompatActivity() {
             // not finish the activity mid-navigation. The page re-reports
             // its state after showPage lands anyway.
             if (bridge.onSubPage) {
-                // 逐级返回（issue #17 三级页）：phrases → input → home；
-                // 其余子页与设计 §6.2 一律回 home。
-                val parent = if (bridge.subPageName == "phrases") "input" else "home"
+                // 逐级返回（issue #17 三级页）：phrases → input、
+                // licenses → about（验收反馈：许可三级页）；其余子页与
+                // 设计 §6.2 一律回 home。
+                val parent = when (bridge.subPageName) {
+                    "phrases" -> "input"
+                    "licenses" -> "about"
+                    else -> "home"
+                }
                 bridge.onSubPage = false
                 bridge.evaluate(
                     "window.FeelimeSettings && window.FeelimeSettings.showPage" +

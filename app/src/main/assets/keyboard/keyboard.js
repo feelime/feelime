@@ -24,9 +24,6 @@
         "笔画 Stroke": "Stroke",
         "重输": "Restart",
         "该键盘还在准备中": "That keyboard is still preparing",
-        "从剪贴板粘贴": "Paste from clipboard",
-        "剪贴板为空": "Clipboard is empty",
-        "已截断至 200 字": "Truncated to 200 characters",
         "通配符只能用一个": "Only one wildcard at a time",
         "日本語 Romaji": "Japanese",
         "常用": "Common",
@@ -251,7 +248,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.53.0';
+    const KEYBOARD_VERSION = '3.54.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -471,8 +468,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         themeSun: 'M12 8.2a3.8 3.8 0 110 7.6 3.8 3.8 0 010-7.6zM12 1.5a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM12 19.5a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM3 10.5a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM21 10.5a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM5.6 4.1a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM18.4 4.1a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM5.6 16.9a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM18.4 16.9a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0z',
         themeMoon: 'M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z',
         assoc: 'M5 4h14a2 2 0 012 2v9a2 2 0 01-2 2H10l-5 4V6a2 2 0 012-2zm2 4h10v2H7V8zm0 4h6v2H7v-2z',
-        // 工具栏「数字键盘」直达 icon：3×3 九宫格点阵（与键面语义同构）。
-        numpad: 'M3 3h5v5H3zM10 3h4v5h-4zM17 3h4v5h-4zM3 10h5v4H3zM10 10h4v4h-4zM17 10h4v4h-4zM3 17h5v4H3zM10 17h4v4h-4zM17 17h4v4h-4z',
         sound: 'M3 9v6h4l5 4V5L7 9H3zm11.5 3a3.5 3.5 0 00-2-3.16v6.32a3.5 3.5 0 002-3.16zM12.5 3.8v2.1a6.2 6.2 0 010 12.2v2.1a8.3 8.3 0 000-16.4z',
         vibrate: 'M8 2h8a1 1 0 011 1v18a1 1 0 01-1 1H8a1 1 0 01-1-1V3a1 1 0 011-1zm1 2v16h6V4H9zM3 8h2v8H3V8zm16 0h2v8h-2V8z',
         height: 'M12 2l4.5 5.5h-9L12 2zm0 20l-4.5-5.5h9L12 22zM6 11h12v2H6v-2z',
@@ -489,17 +484,35 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         gear: 'M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96a7.03 7.03 0 00-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z',
     };
     const SVG_NS = 'http://www.w3.org/2000/svg';
+    // 少数 icon 用文字字形而非几何 path：数字键盘的九宫格点阵被反馈
+    // 「含义不明（像二维码）」，「123」数字本身一眼可读（iOS 数字键
+    // 同款语义）。文字走 <text>，其余 icon 保持单 path 实心填充。
+    const ICON_TEXTS = { numpad: '123' };
     const ICONS = {};
-    for (const [name, pathData] of Object.entries(ICON_PATHS)) {
+    // 文字 icon 不在 ICON_PATHS 里，构建源要并上它们（否则 ICONS.numpad
+    // 缺席，cloneNode 时才炸）。
+    for (const name of [...Object.keys(ICON_PATHS), ...Object.keys(ICON_TEXTS)]) {
+        const pathData = ICON_PATHS[name];
         const svg = document.createElementNS(SVG_NS, 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('width', '22');
         svg.setAttribute('height', '22');
         svg.setAttribute('fill', 'currentColor');
         svg.setAttribute('aria-hidden', 'true');
-        const path = document.createElementNS(SVG_NS, 'path');
-        path.setAttribute('d', pathData);
-        svg.append(path);
+        if (ICON_TEXTS[name]) {
+            const text = document.createElementNS(SVG_NS, 'text');
+            text.setAttribute('x', '12');
+            text.setAttribute('y', '17');
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('font-size', '13');
+            text.setAttribute('font-weight', '700');
+            text.textContent = ICON_TEXTS[name];
+            svg.append(text);
+        } else {
+            const path = document.createElementNS(SVG_NS, 'path');
+            path.setAttribute('d', pathData);
+            svg.append(path);
+        }
         ICONS[name] = svg;
     }
 
@@ -1198,10 +1211,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('phraseCardSave').addEventListener('click', () => this.savePanelEditor());
             document.getElementById('phraseCardCancel').addEventListener('click', () => this.closePanelEditor());
             document.getElementById('phraseCardClose').addEventListener('click', () => this.closePanelEditor());
-            // issue #19：正文区旁的「从剪贴板粘贴」——取最近一条剪贴板
-            // 文本填入（超 200 字截断），敏感编辑器下 native 置空列表，
-            // 自然落到「剪贴板为空」提示。
-            document.getElementById('phraseCardPaste').addEventListener('click', () => this.pastePhraseFromClipboard());
             // 位次 stepper - exact code matches splice into their
             // 1-based candidate slot (min 1; the pool clamps large values).
             const nudgeRank = step => {
@@ -5933,8 +5942,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const raw = (this.lastRawInput || '').replace(/ /g, '').toLowerCase();
             const engineTexts = new Set(engine.map(candidate => candidate.text));
             // 动态日期时间候选（dyn:）：引擎不会给出这些文本，但拼音码
-            // （xingqi → 星期日）撞词时去重，避免同文双格。
-            const dyn = (raw ? dynamicCandidatesFor(raw, this.mode) : [])
+            // （xingqi → 星期日）撞词时去重，避免同文双格。设置开关关掉
+            // 时整体不注入（date/time/week 与拼音码一起停）。
+            const dyn = (raw && this.dynamicDateTimeOn !== false
+                ? dynamicCandidatesFor(raw, this.mode) : [])
                 .filter(item => !engineTexts.has(item.text));
             const exact = [];
             const prefix = [];
@@ -6876,23 +6887,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             card.style.top = top + 'px';
         }
 
-        /** issue #19：编辑卡「从剪贴板粘贴」——取最近一条剪贴板文本
-         * 填入正文（>200 字截断并提示）。敏感编辑器下 native 把剪贴板
-         * 列表置空（隐私边界不变），落到「剪贴板为空」。 */
-        pastePhraseFromClipboard() {
-            const input = document.getElementById('phraseCardInput');
-            if (!input) return;
-            const latest = (this.clipboardItems || []).find(item => item && item.text);
-            if (!latest) {
-                this.showToast(t("剪贴板为空"));
-                return;
-            }
-            const text = String(latest.text);
-            input.value = text.length > 200 ? text.slice(0, 200) : text;
-            this.rememberPanelSelection(input);
-            if (text.length > 200) this.showToast(t("已截断至 200 字"));
-        }
-
         closePanelEditor() {
             const editor = document.getElementById('panelEditor');
             const input = document.getElementById('panelEditorInput');
@@ -7320,6 +7314,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyToolbarLayout();
             this.associationOn = !!payload.associationOn;
             if (!this.associationOn) this.assocWords = [];
+            // 日期时间候选开关：native 默认开，旧 APK 的 hello 不带字段
+            // 也按开处理（!== false 容错）。
+            this.dynamicDateTimeOn = payload.dynamicDateTimeOn !== false;
             if (payload.uiLanguage === 'auto' || payload.uiLanguage === 'zh' || payload.uiLanguage === 'en') {
                 this.uiLanguageChoice = payload.uiLanguage;
             }
