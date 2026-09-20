@@ -2268,14 +2268,21 @@ test('leaving the strip clears the editing key height (3.20.0 form)', {until: '3
     assert(!world.$('panelLayer').hidden, 'panel restored');
 });
 
-test('leaving the editor via a panel tab clears the editing key height', {since: '3.21.0'}, () => {
+test('panel tab switch keeps the editing card; closing it clears the editing state', {since: '3.21.0'}, () => {
     const world = fresh();
     world.tap(world.$('favoritesButton'));
     world.tap(world.document.getElementById('panelManage'));
     assert(!world.$('phraseCard').hidden, 'editing on (card open)');
+    // 3.55.0 语义反转（验收反馈）：面板成为编辑卡的取材区，tab 切换
+    // 不再退出编辑——卡与 editing class 都保持。
     world.tap(world.document.querySelector('[data-panel-tab="clipboard"]'));
+    assert(!world.$('phraseCard').hidden, 'card survives the tab switch');
+    assert(world.document.body.classList.contains('editing'),
+        'editing class kept while the card is open');
+    // 真正关卡（取消）才清 editing。
+    world.tap(world.document.getElementById('phraseCardCancel'));
     assert(!world.document.body.classList.contains('editing'),
-        'editing class dropped on tab switch');
+        'editing class dropped when the card closes');
 });
 
 test('double-pinyin key map lives in the settings app now', {since: '3.29.0'}, () => {
@@ -3904,6 +3911,48 @@ test('remove and clear clipboard hit the bridge with hex ids', () => {
     equal(world.native.of('commitText').length, 0, 'remove must not paste');
     world.tap(world.$('panelClear'));
     equal(world.native.of('clearClipboard').length, 1, 'clearClipboard called');
+});
+
+test('empty panel collapses the list block instead of a blank slab', {since: '3.55.0'}, () => {
+    const world = fresh();
+    world.clipboard([]);
+    world.tap(world.$('clipboardButton'));
+    assert(!world.$('panelLayer').hidden, 'panel open');
+    equal(world.$('panelLayer').dataset.empty, '1', 'empty state marks the layer');
+    assert(!world.$('panelEmpty').hidden, 'hint line visible');
+    world.clipboard([{ id: 'a1', time: 1, text: '有内容了' }]);
+    equal(world.$('panelLayer').dataset.empty, undefined, 'content clears the mark');
+});
+
+test('phrase card stays open while the panel picks content (验收反馈)', {since: '3.55.0'}, () => {
+    const world = fresh();
+    world.tap(world.$('favoritesButton'));
+    world.tap(world.document.getElementById('panelManage'));
+    assert(!world.$('phraseCard').hidden, 'card open from add');
+    // 卡开着时点剪贴板：面板切列表，卡不收。
+    world.tap(world.$('clipboardButton'));
+    assert(!world.$('panelLayer').hidden, 'panel shows the clipboard list');
+    assert(!world.$('phraseCard').hidden, 'card survives the tab switch');
+    assert(world.$('phraseCard').classList.contains('open'), 'card still editing');
+    // 点条目 → 填进「常用内容」，不上屏；面板关、卡留。
+    world.clipboard([{ id: 'c1', time: 1, text: '面板取材的内容' }]);
+    const row = world.document.querySelectorAll('.panel-item')[0];
+    world.tap(row);
+    equal(world.document.getElementById('phraseCardInput').value, '面板取材的内容',
+        'item text lands in the card field');
+    equal(world.native.of('commitText').length, 0, 'nothing committed to the editor');
+    assert(world.$('panelLayer').hidden, 'panel closes after the pick');
+    assert(!world.$('phraseCard').hidden, 'card stays for code/rank');
+    // 超长条目按 200 字截断（>2000 才禁用，200-2000 之间填充+截断）。
+    world.tap(world.$('clipboardButton'));
+    world.clipboard([{ id: 'c2', time: 2, text: 'y'.repeat(250) }]);
+    world.tap(world.document.querySelectorAll('.panel-item')[0]);
+    equal(world.document.getElementById('phraseCardInput').value.length, 200,
+        'pick truncates to the 200-char cap');
+    // 取材关面板不得释放编辑卡的输入重定向（closePanel 的坑）。
+    const redirects = world.native.of('panelInput');
+    assert(redirects.length === 0 || redirects[redirects.length - 1].args[0] === true,
+        'input redirect still armed after the pick');
 });
 
 test('P3b panel rows use native clicks (no touch handlers)', () => {

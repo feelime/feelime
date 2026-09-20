@@ -24,6 +24,7 @@
         "笔画 Stroke": "Stroke",
         "重输": "Restart",
         "该键盘还在准备中": "That keyboard is still preparing",
+        "已截断至 200 字": "Truncated to 200 characters",
         "通配符只能用一个": "Only one wildcard at a time",
         "日本語 Romaji": "Japanese",
         "常用": "Common",
@@ -248,7 +249,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.54.0';
+    const KEYBOARD_VERSION = '3.55.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -6568,7 +6569,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // tear the editor strip down before the list shows.
             // Review P2 + Review P2: one teardown for
             // every flag and layer the strip owns.
-            this.clearEditorStrip();
+            // EXCEPT while the floating phrase card is open: the panel
+            // then acts as the card's content picker (验收反馈) - the card
+            // and its input redirect must survive the tab switch, and
+            // item taps fill the card's 常用内容 field instead of
+            // committing to the editor.
+            if (!this.phraseCardOpen()) this.clearEditorStrip();
             this.closeItemMenu();
             // The panel REPLACES the toolbar row instead of adding
             // another line to the keyboard - its own head carries the tabs.
@@ -6586,7 +6592,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         closePanel() {
-            if (this.settingsInputFocus) this.setPanelInput(false);
+            // 编辑卡还开着时面板只是取材完毕回键盘：卡的输入重定向
+            // （setPanelInput）继续有效，不能在这里释放。
+            if (this.settingsInputFocus && !this.phraseCardOpen()) this.setPanelInput(false);
             this.panelOpen = false;
             document.getElementById('panelLayer').hidden = true;
             document.getElementById('candidateBar').hidden = false;
@@ -6600,8 +6608,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const list = document.getElementById('panelList');
             const empty = document.getElementById('panelEmpty');
             list.replaceChildren();
+            const layer = document.getElementById('panelLayer');
             const items = this.panelTab === 'clipboard' ? this.clipboardItems : this.favoriteItems;
             empty.hidden = items.length > 0;
+            // 空态不铺整块列表背景（验收反馈）：列表收起、提示只占一行，
+            // 其余空间透出键盘背景，不再是一大块空面板。
+            if (items.length) delete layer.dataset.empty;
+            else layer.dataset.empty = '1';
             if (!items.length) {
                 empty.textContent = this.panelTab === 'clipboard'
                     ? t("剪贴板已开启，复制的内容将在这里显示")
@@ -6617,6 +6630,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
                 const commit = () => {
                     if (tooLong) return;
+                    // 编辑卡开着时面板是取材区：条目填充进「常用内容」
+                    // 输入框而不是上屏（验收反馈 #19 的第三版语义）。
+                    if (this.phraseCardOpen()) {
+                        this.fillPhraseCardFromPanel(item.text);
+                        return;
+                    }
                     this.call(() => Native.commitText(item.text, this.token));
                     this.closePanel();
                 };
@@ -6839,6 +6858,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * still works: the card textarea keeps the .phrase-input class.
          * The custom-JSON editor keeps the legacy strip until it moves to
          * the full settings page (design §15/§6.2). */
+        /** The floating phrase card is mid-edit (add or update) - panel
+         * items then act as its content picker instead of committing. */
+        phraseCardOpen() {
+            return document.getElementById('phraseCard').classList.contains('open');
+        }
+
+        /** Fill the phrase card's 常用内容 field from a panel item
+         * (clipboard history / favorites), then close the panel back to
+         * the keyboard - the card stays open for the code/rank steps.
+         * Mirrors the retired paste button: 200-char cap with a toast. */
+        fillPhraseCardFromPanel(text) {
+            const input = document.getElementById('phraseCardInput');
+            if (!input) return;
+            const value = String(text);
+            input.value = [...value].slice(0, 200).join('');
+            this.rememberPanelSelection(input);
+            this.reportPanelSelection();
+            if ([...value].length > 200) this.showToast(t("已截断至 200 字"));
+            this.closePanel();
+            input.focus();
+        }
+
         openPanelEditor(item) {
             this.panelEditItem = item || null;
             this.customEditRow = null;

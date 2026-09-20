@@ -26,6 +26,7 @@
     --danger: #ff6b6b;
     --recording: #ff4d4d;
     --panel: #2a2a2a;
+    --panel-rgb: 42 42 42;
     --pill: #3d3d3d;
     --logo-bg: #4d4d4d;
     --icon: #989898;
@@ -62,6 +63,7 @@ html.theme-light {
     --danger: #d93025;
     --recording: #e5484d;
     --panel: #f4f5f7;
+    --panel-rgb: 244 245 247;
     --pill: #ffffff;
     --logo-bg: #fcfcfc;
     --icon: #787878;
@@ -96,6 +98,7 @@ html.theme-dark {
         --danger: #d93025;
         --recording: #e5484d;
         --panel: #f4f5f7;
+        --panel-rgb: 244 245 247;
         --pill: #ffffff;
         --logo-bg: #fcfcfc;
         --icon: #787878;
@@ -1116,7 +1119,7 @@ body.landscape .num-grid { gap: 3px; }
 .panel-tabs {
     flex: none;
     display: flex;
-    background: var(--panel);
+    background: rgb(var(--panel-rgb) / var(--key-alpha));
     border-radius: 16px;
     padding: 2px;
 }
@@ -1140,9 +1143,15 @@ body.landscape .num-grid { gap: 3px; }
     min-height: 0;
     overflow-y: auto;
     border-radius: 10px;
-    background: var(--panel);
+    /* 候选列表块与键帽同材质（验收反馈）：背景按「按键不透明度」
+     * 合成，壁纸上与键帽一致地透，不再是一块死色。 */
+    background: rgb(var(--panel-rgb) / var(--key-alpha));
     padding: 4px;
 }
+/* 空态不铺列表块（验收反馈）：提示只占一行，列表整个收起，
+ * 剩余空间透出键盘背景。 */
+#panelLayer[data-empty] #panelList { display: none; }
+#panelLayer[data-empty] #panelEmpty { flex: none; padding: 14px 0 18px; }
 .panel-item {
     display: flex;
     align-items: center;
