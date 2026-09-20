@@ -105,6 +105,8 @@
         "按键声音": "Key sound",
         "按键振动": "Key vibration",
         "单手模式": "One-handed",
+        "数字键盘": "Number pad",
+        "Emoji": "Emoji",
         "左手": "Left hand",
         "右手": "Right hand",
         "全选": "Select all",
@@ -249,7 +251,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.52.0';
+    const KEYBOARD_VERSION = '3.53.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -324,12 +326,14 @@ const TOOL_CATALOG = {
     clipboard: 'clipboardButton',
     favorites: 'favoritesButton',
     mic: 'mic',
-    // 开关型工具：默认不上栏，只待在编辑仓库里由用户添加（动态创建）。
+    // 开关型/动作型工具：默认不上栏，只待在编辑仓库里由用户添加（动态创建）。
     theme: 'toolTheme',
     vibrate: 'toolVibrate',
     sound: 'toolSound',
     assoc: 'toolAssoc',
     onehand: 'toolOneHand',
+    numpad: 'toolNumpad',
+    emoji: 'toolEmoji',
 };
 const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'mic'] };
     const MIN_NATIVE_API = 1;
@@ -467,6 +471,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         themeSun: 'M12 8.2a3.8 3.8 0 110 7.6 3.8 3.8 0 010-7.6zM12 1.5a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM12 19.5a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM3 10.5a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM21 10.5a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM5.6 4.1a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM18.4 4.1a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM5.6 16.9a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0zM18.4 16.9a1.5 1.5 0 1 1 0 3.0a1.5 1.5 0 1 1 0 -3.0z',
         themeMoon: 'M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z',
         assoc: 'M5 4h14a2 2 0 012 2v9a2 2 0 01-2 2H10l-5 4V6a2 2 0 012-2zm2 4h10v2H7V8zm0 4h6v2H7v-2z',
+        // 工具栏「数字键盘」直达 icon：3×3 九宫格点阵（与键面语义同构）。
+        numpad: 'M3 3h5v5H3zM10 3h4v5h-4zM17 3h4v5h-4zM3 10h5v4H3zM10 10h4v4h-4zM17 10h4v4h-4zM3 17h5v4H3zM10 17h4v4h-4zM17 17h4v4h-4z',
         sound: 'M3 9v6h4l5 4V5L7 9H3zm11.5 3a3.5 3.5 0 00-2-3.16v6.32a3.5 3.5 0 002-3.16zM12.5 3.8v2.1a6.2 6.2 0 010 12.2v2.1a8.3 8.3 0 000-16.4z',
         vibrate: 'M8 2h8a1 1 0 011 1v18a1 1 0 01-1 1H8a1 1 0 01-1-1V3a1 1 0 011-1zm1 2v16h6V4H9zM3 8h2v8H3V8zm16 0h2v8h-2V8z',
         height: 'M12 2l4.5 5.5h-9L12 2zm0 20l-4.5-5.5h9L12 22zM6 11h12v2H6v-2z',
@@ -4354,9 +4360,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyToolbarLayout();
         }
 
-        /** 开关型工具（色彩模式/振动/声音/联想/单手）：index.html 没有静
-         *  态节点，这里动态创建，初始只待在编辑仓库里，由用户上栏。点击
-         *  行为 = 快捷设置同名 tile 的 toggle；状态用 state-on 底色。 */
+        /** 开关型/动作型工具（色彩模式/振动/声音/联想/单手 + 数字键盘/
+         *  Emoji 直达）：index.html 没有静态节点，这里动态创建，初始只
+         *  待在编辑仓库里，由用户上栏。开关型的点击 = 快捷设置同名 tile
+         *  的 toggle、状态用 state-on 底色；动作型直达对应键区视图。 */
         buildToggleTools() {
             const defs = [
                 { key: 'theme', id: 'toolTheme', icon: 'theme', label: '色彩模式' },
@@ -4364,6 +4371,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 { key: 'sound', id: 'toolSound', icon: 'sound', label: '按键声音' },
                 { key: 'assoc', id: 'toolAssoc', icon: 'assoc', label: '中文联想' },
                 { key: 'onehand', id: 'toolOneHand', icon: 'onehand', label: '单手模式' },
+                { key: 'numpad', id: 'toolNumpad', icon: 'numpad', label: '数字键盘' },
+                { key: 'emoji', id: 'toolEmoji', icon: 'smiley', label: 'Emoji' },
             ];
             const pool = document.getElementById('toolbarEditorGrid');
             defs.forEach(({ key, id, icon, label }) => {
@@ -4382,6 +4391,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 b.append(svg);
                 b.addEventListener('click', () => {
                     if (this.toolbarEdit) return;
+                    // 动作型（直达键区视图）：等价长按 123 / t9 的笑脸键，
+                    // 收起候选组合由 showNumpad 自己的层切换兜底。
+                    if (key === 'numpad') { this.showNumpad(); return; }
+                    if (key === 'emoji') { this.emojiView = true; this.showNumpad(); return; }
                     this.toggleExtraTool(key);
                 });
                 if (pool) pool.append(b);

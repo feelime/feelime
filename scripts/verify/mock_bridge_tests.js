@@ -2761,9 +2761,10 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(w.$('toolbarEditor').hidden, false, 'editor section visible');
 
     // 默认 5 个工具全在栏上（left=[ctrl,ime] right=[clipboard,favorites,mic]）；
-    // 仓库里是 5 个默认不上栏的开关型工具（动态创建）。
-    equal(w.$('toolbarEditorGrid').children.length, 5, 'pool starts with the 5 toggle tools');
-    ['toolTheme', 'toolVibrate', 'toolSound', 'toolAssoc', 'toolOneHand'].forEach(id => {
+    // 仓库里是 7 个默认不上栏的开关型/动作型工具（动态创建）。
+    equal(w.$('toolbarEditorGrid').children.length, 7, 'pool starts with the 7 extra tools');
+    ['toolTheme', 'toolVibrate', 'toolSound', 'toolAssoc', 'toolOneHand',
+     'toolNumpad', 'toolEmoji'].forEach(id => {
         assert(w.$(id), id + ' created');
     });
 
@@ -2779,7 +2780,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(x);
     w.touchUp(x);
     equal(kb().toolbarRight.join(','), 'clipboard,mic', '× removes favorites from right group');
-    equal(w.$('toolbarEditorGrid').children.length, 6, 'removed tool joins the 5 toggle tools');
+    equal(w.$('toolbarEditorGrid').children.length, 8, 'removed tool joins the 7 extra tools');
 
     // 点仓库里的 favorites 加回（right 组未满 → 追加到队尾）。
     // 编辑态点仓库只做「上工具栏」：favorites 的 click 直连
@@ -2792,7 +2793,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(fav);
     w.touchUp(fav);
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'pool tap appends to right group');
-    equal(w.$('toolbarEditorGrid').children.length, 5, 'pool back to the 5 toggle tools');
+    equal(w.$('toolbarEditorGrid').children.length, 7, 'pool back to the 7 extra tools');
 
     // 「完成」退出并持久化。
     w.tap(w.$('toolbarEditDone'));
@@ -2816,13 +2817,13 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(xOf('mic'));
     w.touchUp(xOf('mic'));
     equal(kb().toolbarRight.join(','), 'clipboard', 'two removals land both in the pool');
-    equal(w.$('toolbarEditorGrid').children.length, 7,
-        'pool holds both removed tools + 5 toggle tools (no innerHTML wipe)');
+    equal(w.$('toolbarEditorGrid').children.length, 9,
+        'pool holds both removed tools + 7 extra tools (no innerHTML wipe)');
     w.tap(w.$('toolbarEditCancel'));
     equal(kb().toolbarLeft.join(','), 'ctrl,ime', 'cancel restores left snapshot');
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'cancel restores right snapshot');
-    equal(w.$('toolbarEditorGrid').children.length, 5,
-        'pool drains back to the 5 toggle tools after cancel');
+    equal(w.$('toolbarEditorGrid').children.length, 7,
+        'pool drains back to the 7 extra tools after cancel');
     equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'toolbarLayout').length, 1,
         'cancel never saves');
 
@@ -2839,7 +2840,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
             w.touchUp(x);
         });
     equal(kb().toolbarLeft.length + kb().toolbarRight.length, 0, 'bar fully stripped');
-    equal(w.$('toolbarEditorGrid').children.length, 10, 'all ten tools in the pool');
+    equal(w.$('toolbarEditorGrid').children.length, 12, 'all twelve tools in the pool');
     w.tap(w.$('toolbarEditDone'));
     equal(kb().toolbarEdit, false, 'empty layout saves fine');
     w.touchDown(w.$('candidateBar'));
@@ -2892,7 +2893,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(st.toolbarRight.includes('ime'), true, 'ime lands in the right group');
     equal(st.toolbarLeft.length, 1, 'left group keeps one (the displaced tool)');
     equal(st.toolbarLeft.length + st.toolbarRight.length, 5, 'no tool lost in the swap');
-    equal(poolNow.children.length, 5, 'pool back to the toggle tools only');
+    equal(poolNow.children.length, 7, 'pool back to the extra tools only');
     w.tap(w.$('toolbarEditCancel'));
 });
 
@@ -2925,7 +2926,8 @@ test('toolbar audit: a lost tool is forced back into the pool (issue #15)', () =
 
     // 兜底完整性:10 颗工具此刻都能在 bar 或 pool 找到。
     const all = ['ctrlTool','imeSwitchButton','clipboardButton','favoritesButton','mic',
-        'toolTheme','toolVibrate','toolSound','toolAssoc','toolOneHand'];
+        'toolTheme','toolVibrate','toolSound','toolAssoc','toolOneHand',
+        'toolNumpad','toolEmoji'];
     const lost = all.filter(id => {
         const el = w.$(id);
         return !el || (!el.closest('#candidateBar') && !el.closest('#toolbarEditorGrid'));
@@ -2933,11 +2935,37 @@ test('toolbar audit: a lost tool is forced back into the pool (issue #15)', () =
     equal(lost.length, 0, 'no tool is unreachable after audit: ' + lost.join(','));
 });
 
+test('numpad/emoji toolbar tools jump straight to the key view (issue #38)', {since: '3.53.0'}, () => {
+    const w = fresh();
+    w.hello({ toolbarLayout: JSON.stringify(
+        { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'numpad'] }) });
+    assert(w.$('toolNumpad'), 'numpad tool created');
+    assert(w.$('toolNumpad').closest('#candidateBar'), 'numpad tool is on the bar');
+    // 数字键盘直达：九宫格层起、字母层收、emoji 子视图不劫持。
+    w.tap(w.$('toolNumpad'));
+    equal(w.$('numPadLayer').hidden, false, 'nine-pad layer shown');
+    equal(w.$('qwertyLayer').hidden, true, 'letter layer hidden');
+    equal(w.$('numPadLayer').querySelectorAll('.emoji-area').length, 0,
+        'plain numpad view has no emoji area');
+    // 回到字母层，emoji 直达：九宫格 + emoji 子视图。
+    w.tap(w.document.querySelector('#numPadLayer [data-role="numpad-back"]'));
+    equal(w.$('qwertyLayer').hidden, false, 'back returns to letters');
+    w.tap(w.$('toolEmoji'));
+    equal(w.$('numPadLayer').hidden, false, 'emoji tool opens the nine-pad');
+    assert(w.$('numPadLayer').querySelector('.emoji-area'), 'emoji sub-view rendered');
+    assert(w.$('numPadLayer').querySelector('.emoji-key'), 'emoji keys rendered');
+    // 仓库形态：默认不上栏的 emoji 工具待在编辑仓库里可被添加。
+    const w2 = fresh();
+    w2.hello({});
+    assert(w2.$('toolEmoji').closest('#toolbarEditorGrid'), 'emoji tool waits in the pool');
+});
+
 test('added toolbar tools hide while composing in every mode (issue #15)', () => {
     // 全拼/双拼/T9/日语/法语/俄语：隐藏逻辑在共用的 updateComposing 里，
     // 每种模式的 composing 都必须点亮；mic 是语音 stop 入口，必须保留。
     const modes = ['pinyin', 'double-pinyin', 't9', 'japanese', 'french', 'russian'];
-    const toggleTools = ['toolTheme', 'toolVibrate', 'toolSound', 'toolAssoc', 'toolOneHand'];
+    const toggleTools = ['toolTheme', 'toolVibrate', 'toolSound', 'toolAssoc', 'toolOneHand',
+        'toolNumpad', 'toolEmoji'];
     let rev = 100;
     modes.forEach(mode => {
         const w = fresh();
