@@ -83,6 +83,11 @@ const I18N = {
         "input.phrases.enable": "附加符号/emoji 候选",
         "input.phrases.hint": "打 shang 出 ↑、dui 出 ✓ 这类符号词，排在候选第 3 位附近；全拼和双拼通用。",
         "input.phrases.manage": "管理词条",
+        "input.phrases.importTitle": "导入词库（.dict.yaml）",
+        "input.phrases.importHint": "rime 词库文件的词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。",
+        "input.phrases.importBtn": "选择文件导入",
+        "input.phrases.clearBtn": "清空导入词",
+        "input.phrases.importedCount": "已导入 {0} 条",
         "page.phrases": "候选符号词",
         "nav.backInput": "返回键盘与输入",
         "phrases.list.title": "词条",
@@ -446,6 +451,11 @@ const I18N = {
         "input.phrases.enable": "Symbol / emoji candidates",
         "input.phrases.hint": "Adds words like ↑ for shang and ✓ for dui near candidate #3; works in full and double Pinyin.",
         "input.phrases.manage": "Manage entries",
+        "input.phrases.importTitle": "Import lexicon (.dict.yaml)",
+        "input.phrases.importHint": "Entries from a rime dictionary join the candidates as an overlay (the built-in lexicon stays; original frequencies are not carried). Importing again replaces the previous import.",
+        "input.phrases.importBtn": "Pick a file",
+        "input.phrases.clearBtn": "Clear imported",
+        "input.phrases.importedCount": "{0} entries imported",
         "page.phrases": "Symbol candidates",
         "nav.backInput": "Back to Keyboard & input",
         "phrases.list.title": "Entries",
@@ -934,6 +944,9 @@ window.FeelimeSettings = {
                 break;
             case "customPhrasesError":
                 setNote("phrasesNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
+                break;
+            case "dictImported":
+                setNote("dictImportNote", event.message || "");
                 break;
             case "dpSchemeError":
                 setNote("dpNote", eventText(event, "error.INVALID_DP_SCHEME"));
@@ -1428,6 +1441,15 @@ function renderCustomPhrases(state) {
         }));
         if (document.activeElement !== $("phrasesOn")) $("phrasesOn").checked = !!phrases.enabled;
         renderPhraseList();
+        const imported = phrases.importedCount || 0;
+        const note = $("dictImportNote");
+        if (note && !note.textContent) {
+            note.textContent = imported
+                ? t("input.phrases.importedCount", [imported])
+                : "";
+        }
+        const clear = $("btnClearImportedDict");
+        if (clear) clear.hidden = imported === 0;
     }
 }
 
@@ -1503,6 +1525,9 @@ $("phrasesOn").addEventListener("change", event => {
     setNote("phrasesNote", t("phrases.note.saved"));
 });
 $("btnManagePhrases").addEventListener("click", () => showPage("phrases"));
+// 词库导入（issue #37）：SAF 选择 .dict.yaml → 壳侧解析进 imported 段。
+$("btnImportDict").addEventListener("click", () => call("openDictDocument"));
+$("btnClearImportedDict").addEventListener("click", () => call("clearImportedDict"));
 $("btnCancelPhraseEdit").addEventListener("click", resetPhraseForm);
 $("btnSavePhrase").addEventListener("click", () => {
     if (!phraseStateReady()) return;

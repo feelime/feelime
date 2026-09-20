@@ -19,6 +19,12 @@ import java.io.File
  *
  * 开关关闭或词条清空时删除 txt（引擎侧自然不出词），json 保留——
  * 用户的增删改结果不因开关丢失。
+ *
+ * 词库导入（issue #22/#37，2026-09-20）：json 另有 imported 段——
+ * rime .dict.yaml 导入的词条（设置页 SAF 选择，DictYamlImporter 解析），
+ * 与手管理的 items 同一 txt 通道但独立列表：三级页的增删改 UI 只作用于
+ * items，导入表有自己的「清空」入口。码长上限比 UI 手输宽（48 vs 16）：
+ * 多音节词的完整拼音串更长；派生规则同 items（单音节展开双拼变体）。
  */
 object CustomPhraseStore {
     private const val JSON_FILE = "custom-phrases.json"
@@ -43,7 +49,11 @@ object CustomPhraseStore {
     fun txtFile(context: Context): File =
         File(File(context.filesDir, "rime-user"), TXT_FILE)
 
-    data class State(val enabled: Boolean, val items: List<Pair<String, String>>)
+    data class State(
+        val enabled: Boolean,
+        val items: List<Pair<String, String>>,
+        val imported: List<Pair<String, String>> = emptyList(),
+    )
 
     /** 读取真相源；json 不存在时（首装/升级）种子写入默认表并派生 txt。 */
     fun load(context: Context): State {
@@ -62,7 +72,15 @@ object CustomPhraseStore {
                 val code = item.optString("code")
                 if (text.isNotEmpty() && code.isNotEmpty()) items.add(text to code)
             }
-            State(root.optBoolean("enabled", true), items)
+            val imported = ArrayList<Pair<String, String>>()
+            val importedArray = root.optJSONArray("imported") ?: JSONArray()
+            for (i in 0 until importedArray.length()) {
+                val item = importedArray.optJSONObject(i) ?: continue
+                val text = item.optString("text")
+                val code = item.optString("code")
+                if (text.isNotEmpty() && code.isNotEmpty()) imported.add(text to code)
+            }
+            State(root.optBoolean("enabled", true), items, imported)
         } catch (_: Exception) {
             State(true, DEFAULT_ITEMS)
         }
@@ -70,20 +88,29 @@ object CustomPhraseStore {
 
     /** 落盘 json + 派生/删除 txt。seed=true 时跳过 enabled 持久化语义
      * （首装默认开，行为一致，仅日志区分）。 */
-    fun save(context: Context, enabled: Boolean, items: List<Pair<String, String>>, seed: Boolean = false) {
+    fun save(
+        context: Context,
+        enabled: Boolean,
+        items: List<Pair<String, String>>,
+        imported: List<Pair<String, String>> = emptyList(),
+        seed: Boolean = false,
+    ) {
         val root = JSONObject()
             .put("version", 1)
             .put("enabled", enabled)
             .put("items", JSONArray().apply {
                 items.forEach { (text, code) -> put(JSONObject().put("text", text).put("code", code)) }
             })
+            .put("imported", JSONArray().apply {
+                imported.forEach { (text, code) -> put(JSONObject().put("text", text).put("code", code)) }
+            })
         val dir = jsonFile(context).parentFile
         dir?.mkdirs()
         jsonFile(context).writeText(root.toString())
-        deriveTxt(context, enabled, items)
+        deriveTxt(context, enabled, items + imported)
         android.util.Log.i(
             "FeelimeCustomPhrase",
-            "saved seed=$seed enabled=$enabled items=${items.size} txt=${txtFile(context).exists()}",
+            "saved seed=$seed enabled=$enabled items=${items.size} imported=${imported.size} txt=${txtFile(context).exists()}",
         )
     }
 

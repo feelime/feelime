@@ -301,6 +301,8 @@ class SettingsBridge(
         fun openModelDocument(modelId: String)
         /** Launch ACTION_OPEN_DOCUMENT for a local keyboard ZIP package. */
         fun openKeyboardDocument() = Unit
+        /** Launch ACTION_OPEN_DOCUMENT for a rime .dict.yaml lexicon import. */
+        fun openDictDocument() = Unit
         /** Launch ACTION_CREATE_DOCUMENT for the userdata backup (userdata.md §1). */
         fun createBackupDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a userdata backup file. */
@@ -510,6 +512,7 @@ class SettingsBridge(
                         put(JSONObject().put("text", text).put("code", code))
                     }
                 })
+                put("importedCount", state.imported.size)
             })
             .put("associationOn", readAssociation(context))
             .put("keySound", readKeySoundEnabled(context))
@@ -1213,11 +1216,95 @@ class SettingsBridge(
             )
             return@guarded
         }
-        com.feelime.ime.engine.CustomPhraseStore.save(context, enabled, items)
+        // 手管 items 全量重发不触碰导入段（imported 由导入/清空入口专管）。
+        val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+        com.feelime.ime.engine.CustomPhraseStore.save(
+            context, enabled, items, imported = state.imported,
+        )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
         )
         pushState()
+    }
+
+    /** 词库导入（issue #37）：SAF 选中的 rime .dict.yaml 解析后进
+     *  CustomPhraseStore 的 imported 段（替换式——再导一次即换表）。
+     *  与 saveCustomPhrases 同一重载链路（广播 + state 重推）。
+     *  Called by SetupActivity after ACTION_OPEN_DOCUMENT returns. */
+    fun importDictFromUri(uri: Uri) = synchronized(lifecycleLock) {
+        if (closed) return
+        worker.execute {
+            val result = runCatching {
+                context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
+                    val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+                    com.feelime.ime.engine.DictYamlImporter.parse(
+                        it, existing = state.items.toSet(),
+                    )
+                } ?: return@execute pushDictImportedEvent(0, 0, "DICT_READ_FAILED")
+            }.getOrElse {
+                Log.w(TAG, "dict import read failed", it)
+                return@execute pushDictImportedEvent(0, 0, "DICT_READ_FAILED")
+            }
+            if (result.items.isEmpty()) {
+                pushDictImportedEvent(0, result.skipped, "DICT_EMPTY")
+                return@execute
+            }
+            val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+            com.feelime.ime.engine.CustomPhraseStore.save(
+                context, state.enabled, state.items, imported = result.items,
+            )
+            context.sendBroadcast(
+                Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
+            )
+            pushDictImportedEvent(
+                result.items.size,
+                result.skipped + result.truncated,
+                if (result.truncated > 0) "DICT_TRUNCATED" else null,
+            )
+            pushState()
+        }
+    }
+
+    /** SAF 选择器由宿主 Activity 起（Host.openDictDocument），token 走
+     *  guarded 只做存活校验。 */
+    @JavascriptInterface
+    fun openDictDocument(token: String) = guarded(token) {
+        host.openDictDocument()
+    }
+
+    /** 清空导入词（手管 items 不动）。 */
+    @JavascriptInterface
+    fun clearImportedDict(token: String) = guarded(token) {
+        val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+        if (state.imported.isEmpty()) return@guarded
+        com.feelime.ime.engine.CustomPhraseStore.save(
+            context, state.enabled, state.items, imported = emptyList(),
+        )
+        context.sendBroadcast(
+            Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    private fun pushDictImportedEvent(count: Int, skipped: Int, warnCode: String?) {
+        val message = when (warnCode) {
+            "DICT_READ_FAILED" -> t(context, "读取文件失败", "Failed to read the file")
+            "DICT_EMPTY" -> t(context, "没有可导入的词条", "No importable entries found")
+            "DICT_TRUNCATED" -> t(
+                context,
+                "已导入 $count 条（超出上限的部分被截断，共跳过 $skipped 行）",
+                "Imported $count entries (rest truncated, $skipped lines skipped)",
+            )
+            else -> t(context, "已导入 $count 条", "Imported $count entries")
+        }
+        pushEvent(
+            JSONObject()
+                .put("type", "dictImported")
+                .put("count", count)
+                .put("skipped", skipped)
+                .put("code", warnCode ?: "OK")
+                .put("message", message),
+        )
     }
 
     /** 按键反馈开关（issue #5 问题 2）：落盘生效（键盘每次按键都调

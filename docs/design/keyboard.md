@@ -308,6 +308,15 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   前后端同值。
 - 备份：custom-phrases.json 与 custom_phrase.txt 都在 rime-user 下，随
   整目录进出备份。
+- **词库导入（issue #37，2026-09-20）**：设置「候选符号词」卡可 SAF 选
+  rime `.dict.yaml` 导入——`DictYamlImporter` 只取「词<TAB>码」行（头部
+  无 TAB 键值/注释天然跳过；码去空格转小写，词 ≤32 字、码 1-48 位
+  [a-z]；上限 5000 条，与手管词去重时手管优先），进 custom-phrases.json
+  的 **imported 段**（与手管 items 并列但独立：三级页 CRUD 只动 items，
+  导入是替换式，另有「清空导入词」入口）。派生 txt 两段同规则展开
+  （导入词多音节居多，双拼变体展开只作用于单音节码）。语义是**叠加**
+  而非换基底：不带原词频、quality 1 附加候选；整配置兼容与基底替换的
+  分层结论见 issue #22/#23。
 
 
 

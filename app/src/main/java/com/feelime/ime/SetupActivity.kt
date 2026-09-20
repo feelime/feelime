@@ -115,6 +115,14 @@ class SetupActivity : AppCompatActivity() {
         if (uri != null) bridge.installKeyboardFromUri(uri)
     }
 
+    /** ACTION_OPEN_DOCUMENT for importing a rime .dict.yaml lexicon
+     * (issue #37: 叠加进 custom_phrase 通道的词表导入). */
+    private val dictOpenLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) bridge.importDictFromUri(uri)
+    }
+
     /** ACTION_CREATE_DOCUMENT for the userdata backup export
      * (docs/design/userdata.md §1). The bridge writes through the granted
      * stream immediately; no persisted grant. */
@@ -362,6 +370,21 @@ class SetupActivity : AppCompatActivity() {
                         "application/octet-stream",
                     ))
                 }.onFailure { Log.w(TAG, "model picker launch dropped", it) }
+            }
+        }
+
+        override fun openDictDocument() {
+            if (!canTouchWebView()) return
+            runOnUiThread {
+                if (!canTouchWebView()) return@runOnUiThread
+                runCatching {
+                    dictOpenLauncher.launch(arrayOf(
+                        "text/*",
+                        "application/octet-stream",
+                        "application/yaml",
+                        "application/x-yaml",
+                    ))
+                }.onFailure { Log.w(TAG, "dict picker launch dropped", it) }
             }
         }
 

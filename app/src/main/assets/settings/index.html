@@ -242,6 +242,17 @@
         <input type="checkbox" id="phrasesOn" class="toggle">
       </label>
       <button class="btn" id="btnManagePhrases" type="button" data-i18n="input.phrases.manage">管理词条</button>
+      <div class="row language-row" style="margin-top:10px">
+        <span class="row-label">
+          <span data-i18n="input.phrases.importTitle">导入词库（.dict.yaml）</span>
+          <small data-i18n="input.phrases.importHint">rime 词库文件的词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。</small>
+        </span>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="btnImportDict" type="button" data-i18n="input.phrases.importBtn">选择文件导入</button>
+        <button class="btn ghost-btn" id="btnClearImportedDict" type="button" hidden data-i18n="input.phrases.clearBtn">清空导入词</button>
+        <span class="save-note" id="dictImportNote" role="status" aria-live="polite"></span>
+      </div>
     </section>
 
     <section class="card" id="sec-dp" aria-labelledby="dpTitle">
