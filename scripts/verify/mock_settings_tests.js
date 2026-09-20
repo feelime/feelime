@@ -85,6 +85,8 @@ class MockSettingsNative {
     setFuzzyPinyinMask(...a) { this._rec('setFuzzyPinyinMask', a); }
     setAssociation(...a) { this._rec('setAssociation', a); }
     setDynamicDateTime(...a) { this._rec('setDynamicDateTime', a); }
+    openBaseDictDocument(...a) { this._rec('openBaseDictDocument', a); }
+    clearBaseDict(...a) { this._rec('clearBaseDict', a); }
     saveCustomPhrases(...a) { this._rec('saveCustomPhrases', a); }
     setDiagnostics(...a) { this._rec('setDiagnostics', a); }
     exportDiagnostics(...a) { this._rec('exportDiagnostics', a); }
@@ -965,6 +967,47 @@ test('datetime candidates toggle defaults on and commits with the token', () => 
     change.handler({ target: box });
     equal(world.lastCall('setDynamicDateTime').args, [false, world.token],
         'datetime toggle + token');
+});
+
+test('base dictionary card renders builtin/custom/building and wires the actions (issue #23)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    // builtin 态：内置文案 + 恢复按钮隐藏 + 换装可点。
+    assert(world.$('dictBaseCurrent').textContent.includes('rime-frost'),
+        'builtin shows the built-in lexicon');
+    equal(world.$('btnBaseDictRevert').hidden, true, 'revert hidden on builtin');
+    equal(world.$('btnBaseDictPick').disabled, false, 'pick enabled on builtin');
+    equal(world.$('dictBaseBuilding').hidden, true, 'building hint hidden');
+
+    // custom 态：文件名 + 恢复按钮出现。
+    world.push({ ...BASE_STATE, baseDict: { mode: 'custom', building: false,
+        name: 'rime-ice.base.dict.yaml', installedAt: 1758300000000 } });
+    assert(world.$('dictBaseCurrent').textContent.includes('rime-ice.base.dict.yaml'),
+        'custom shows the imported name');
+    equal(world.$('btnBaseDictRevert').hidden, false, 'revert visible on custom');
+
+    // building 态：提示行显示 + 两个按钮都不可用。
+    world.push({ ...BASE_STATE, baseDict: { mode: 'builtin', building: true } });
+    equal(world.$('dictBaseBuilding').hidden, false, 'building hint visible');
+    equal(world.$('btnBaseDictPick').disabled, true, 'pick disabled while building');
+    equal(world.$('btnBaseDictRevert').hidden, true, 'revert hidden while building');
+
+    // 事件：进度文案（阶段 + 已耗时）与完成收尾。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 32000 });
+    assert(world.$('dictBaseBuilding').textContent.includes('32'),
+        'elapsed seconds surface in the hint');
+    world.FeelimeSettings().onEvent({ type: 'dictBaseDone',
+        message: '基底词库换装完成' });
+    equal(world.$('dictBaseBuilding').hidden, true, 'done collapses the hint');
+    equal(world.$('dictBaseNote').textContent, '基底词库换装完成', 'note carries the message');
+
+    // 按钮接线（带 token）。
+    world.$('btnBaseDictPick').click();
+    equal(world.lastCall('openBaseDictDocument').args, [world.token], 'pick opens the SAF picker');
+    world.push({ ...BASE_STATE, baseDict: { mode: 'custom', building: false, name: 'x' } });
+    world.$('btnBaseDictRevert').click();
+    equal(world.lastCall('clearBaseDict').args, [world.token], 'revert clears the base dict');
 });
 
 test('key feedback toggles reflect state and commit with the token (default off)', () => {

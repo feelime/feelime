@@ -123,6 +123,18 @@ class SetupActivity : AppCompatActivity() {
         if (uri != null) bridge.importDictFromUri(uri)
     }
 
+    /** ACTION_OPEN_DOCUMENT for the base dictionary (issue #23: device-side
+     *  rebuild via librime maintenance). Display name comes from the URI's
+     *  last segment; the bridge streams it into rime-user staging. */
+    private val baseDictOpenLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "dict.yaml"
+            bridge.installBaseDict(uri, name)
+        }
+    }
+
     /** ACTION_CREATE_DOCUMENT for the userdata backup export
      * (docs/design/userdata.md §1). The bridge writes through the granted
      * stream immediately; no persisted grant. */
@@ -400,6 +412,21 @@ class SetupActivity : AppCompatActivity() {
                         "application/x-yaml",
                     ))
                 }.onFailure { Log.w(TAG, "dict picker launch dropped", it) }
+            }
+        }
+
+        override fun openBaseDictDocument() {
+            if (!canTouchWebView()) return
+            runOnUiThread {
+                if (!canTouchWebView()) return@runOnUiThread
+                runCatching {
+                    baseDictOpenLauncher.launch(arrayOf(
+                        "text/*",
+                        "application/octet-stream",
+                        "application/yaml",
+                        "application/x-yaml",
+                    ))
+                }.onFailure { Log.w(TAG, "base-dict picker launch dropped", it) }
             }
         }
 

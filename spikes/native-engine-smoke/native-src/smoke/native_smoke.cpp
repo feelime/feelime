@@ -9,6 +9,9 @@ extern "C" {
 const char* feelime_rime_version();
 int feelime_rime_has_required_api();
 int feelime_rime_initialize(const char*, const char*);
+int feelime_rime_start_maintenance(int);
+int feelime_rime_is_maintenance_mode();
+void feelime_rime_join_maintenance();
 std::uintptr_t feelime_rime_create_session(const char*);
 int feelime_rime_process_key(std::uintptr_t, int, int);
 int feelime_rime_select_candidate(std::uintptr_t, std::size_t);
@@ -129,6 +132,23 @@ Java_com_feelime_ime_nativeengine_NativeSmoke_rimeInitialize(
   const std::string shared = from_java(env, shared_dir);
   const std::string user = from_java(env, user_dir);
   return feelime_rime_initialize(shared.c_str(), user.c_str()) != 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_feelime_ime_nativeengine_NativeSmoke_rimeStartMaintenance(
+    JNIEnv*, jclass, jboolean full_check) {
+  return feelime_rime_start_maintenance(full_check ? 1 : 0) != 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_feelime_ime_nativeengine_NativeSmoke_rimeIsMaintenanceMode(
+    JNIEnv*, jclass) {
+  return feelime_rime_is_maintenance_mode() != 0;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_feelime_ime_nativeengine_NativeSmoke_rimeJoinMaintenance(JNIEnv*, jclass) {
+  feelime_rime_join_maintenance();
 }
 
 extern "C" JNIEXPORT jlong JNICALL

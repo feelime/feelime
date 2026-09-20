@@ -61,6 +61,16 @@ const I18N = {
         "dict.import.title": "导入词库",
         "dict.import.enable": "rime 词库文件（.dict.yaml）",
         "dict.import.note": "词<TAB>码 逐行导入，上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。",
+        "dict.base.title": "基底词库",
+        "dict.base.badge": "基底",
+        "dict.base.hint": "换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。",
+        "dict.base.pick": "选择词库文件换装",
+        "dict.base.revert": "恢复内置词库",
+        "dict.base.builtin": "内置 rime-frost（白霜拼音）",
+        "dict.base.custom": "自定义：{0}",
+        "dict.base.stageCopy": "正在读取词库文件…",
+        "dict.base.stageCompile": "正在编译词库，可离开此页，完成后自动换装",
+        "dict.base.elapsed": "已编译 {0} 秒",
         "page.appearance": "外观",
         "themeMode.auto": "跟随系统",
         "themeMode.light": "浅色",
@@ -458,6 +468,16 @@ const I18N = {
         "dict.import.title": "Import a dictionary",
         "dict.import.enable": "rime dictionary file (.dict.yaml)",
         "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice.",
+        "dict.base.title": "Base dictionary",
+        "dict.base.badge": "Base",
+        "dict.base.hint": "Swap the whole lexicon: pick a rime dictionary file (.dict.yaml, e.g. from rime-ice) and it recompiles on this device (a few minutes); fuzzy/double-pinyin/T9 rebuild with it. Built-in can be restored anytime.",
+        "dict.base.pick": "Pick a dictionary file",
+        "dict.base.revert": "Restore built-in",
+        "dict.base.builtin": "Built-in rime-frost",
+        "dict.base.custom": "Custom: {0}",
+        "dict.base.stageCopy": "Reading the dictionary file…",
+        "dict.base.stageCompile": "Compiling - you can leave this page; the keyboard swaps over when done",
+        "dict.base.elapsed": "{0}s elapsed",
         "page.appearance": "Appearance",
         "themeMode.auto": "Follow system",
         "themeMode.light": "Light",
@@ -1006,6 +1026,14 @@ window.FeelimeSettings = {
             case "dictImported":
                 setNote("dictImportNote", event.message || "");
                 break;
+            case "dictBaseProgress":
+                onDictBaseProgress(event);
+                break;
+            case "dictBaseDone":
+            case "dictBaseError":
+                setNote("dictBaseNote", event.message || "");
+                $("dictBaseBuilding").hidden = true;
+                break;
             case "dpSchemeError":
                 setNote("dpNote", eventText(event, "error.INVALID_DP_SCHEME"));
                 break;
@@ -1073,6 +1101,7 @@ function render(state) {
     renderAsr(state);
     renderCustom(state);
     renderCustomPhrases(state);
+    renderDictBase(state);
     renderUpdate(state);
     renderAbout(state);
 }
@@ -1594,6 +1623,35 @@ $("btnManagePhrases").addEventListener("click", () => showPage("phrases"));
 $("btnOpenLicenses").addEventListener("click", () => showPage("licenses"));
 // 词库导入（issue #37）：SAF 选择 .dict.yaml → 壳侧解析进 imported 段。
 $("btnImportDict").addEventListener("click", () => call("openDictDocument"));
+$("btnBaseDictPick").addEventListener("click", () => call("openBaseDictDocument"));
+$("btnBaseDictRevert").addEventListener("click", () => call("clearBaseDict"));
+
+/** 基底编译是黑盒（librime maintenance），无百分比——用阶段 + 已耗时
+ *  提示；用户可离开页面，完成/失败由 dictBaseDone/dictBaseError 收尾。 */
+function onDictBaseProgress(event) {
+    const building = $("dictBaseBuilding");
+    building.hidden = false;
+    const seconds = Math.round((event.elapsedMs || 0) / 1000);
+    const stage = event.stage === "COPYING" ? t("dict.base.stageCopy") : t("dict.base.stageCompile");
+    building.textContent = event.stage === "COPYING"
+        ? stage
+        : `${stage}（${t("dict.base.elapsed", [seconds])}）`;
+}
+
+/** state.baseDict: {mode: builtin|custom, building, name, installedAt}。 */
+function renderDictBase(state) {
+    const base = state.baseDict || {};
+    const current = $("dictBaseCurrent");
+    const when = base.installedAt
+        ? new Date(base.installedAt).toLocaleString() : "";
+    current.textContent = base.mode === "custom" && base.name
+        ? `${t("dict.base.custom", [base.name])} · ${when}`
+        : t("dict.base.builtin");
+    $("btnBaseDictRevert").hidden = base.mode !== "custom" || base.building;
+    $("btnBaseDictPick").disabled = !!base.building;
+    // building 行的文本由 dictBaseProgress 事件维护；state 说没在编就收起。
+    $("dictBaseBuilding").hidden = !base.building;
+}
 $("btnClearImportedDict").addEventListener("click", () => call("clearImportedDict"));
 $("btnCancelPhraseEdit").addEventListener("click", resetPhraseForm);
 $("btnSavePhrase").addEventListener("click", () => {

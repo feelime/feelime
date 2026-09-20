@@ -413,6 +413,24 @@
     <h2 class="page-title" data-i18n="page.dict">词库</h2>
   </header>
   <main>
+    <!-- 基底词库（issue #23）：整库换装，设备端 librime maintenance 现场编译。
+         与下方「导入词库」（叠加词条）是两个通道：换基底 vs 加词条。 -->
+    <section class="card" id="sec-dict-base" aria-labelledby="dictBaseTitle">
+      <div class="section-heading"><h2 id="dictBaseTitle" data-i18n="dict.base.title">基底词库</h2><span class="eyebrow" data-i18n="dict.base.badge">基底</span></div>
+      <div class="row language-row no-rule">
+        <span class="row-label">
+          <span id="dictBaseCurrent">内置 rime-frost（白霜拼音）</span>
+          <small data-i18n="dict.base.hint">换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。</small>
+        </span>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="btnBaseDictPick" type="button" data-i18n="dict.base.pick">选择词库文件换装</button>
+        <button class="btn ghost-btn" id="btnBaseDictRevert" type="button" hidden data-i18n="dict.base.revert">恢复内置词库</button>
+        <span class="save-note" id="dictBaseNote" role="status" aria-live="polite"></span>
+      </div>
+      <p class="hint" id="dictBaseBuilding" hidden></p>
+    </section>
+
     <section class="card" id="sec-dict-import" aria-labelledby="dictImportTitle">
       <div class="section-heading"><h2 id="dictImportTitle" data-i18n="dict.import.title">导入词库</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
       <div class="row language-row no-rule">

@@ -222,6 +222,21 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         }
     }
 
+    /** 基底词库换装/恢复（issue #23）：maintenance 产物已落 rime-user/build
+     *  （或已删除），整引擎重载让 librime 按新目录状态重新解析词典。 */
+    private val baseDictReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action != com.feelime.ime.engine.BaseDictInstaller.ACTION_BASE_DICT_CHANGED) return
+            onMain {
+                runCatching {
+                    com.feelime.ime.engine.RimeTextEngine.reloadGlobal(applicationContext)
+                }
+                coordinator.recreateEngineSession { }
+                pushBridgeHello()
+            }
+        }
+    }
+
     /** 设置页改动键盘侧偏好（底部留白/手感参数，mode-fallback §3/§4）：
      *  值已由设置页落盘，这里重推 hello（运行中的键盘即时采用），并让
      *  FixedHeightInputView 按新留白重新测量——否则键盘可见时 JS 立刻把
@@ -407,6 +422,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         registerReceiver(
             customPhrasesReceiver,
             android.content.IntentFilter(ACTION_CUSTOM_PHRASES_CHANGED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        registerReceiver(
+            baseDictReceiver,
+            android.content.IntentFilter(com.feelime.ime.engine.BaseDictInstaller.ACTION_BASE_DICT_CHANGED),
             androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         registerReceiver(
@@ -846,6 +866,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         unregisterReceiver(dpSchemeReceiver)
         unregisterReceiver(fuzzyPinyinReceiver)
         unregisterReceiver(customPhrasesReceiver)
+        unregisterReceiver(baseDictReceiver)
         unregisterReceiver(keyboardPrefsReceiver)
         unregisterReceiver(voicePermissionReceiver)
         UiLanguage.preferences(this)

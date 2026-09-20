@@ -54,14 +54,23 @@ object EngineDataStore {
 
     /** 模糊音开启时返回 schema id，并把该掩码的预编译 prism 物化为
      * schema 期望的文件名（运行时只加载 prism，不重跑 algebra）。
-     * 掩码为 0 或数据未就绪/变体缺失时返回 null（调用方回落严格全拼）。 */
+     * 掩码为 0 或数据未就绪/变体缺失时返回 null（调用方回落严格全拼）。
+     * 变体源两处（issue #23 基底换装）：用户自定义词库的设备端编译产物
+     * （`rime-user/build/`，与用户 table 同场编译，优先）或内置 frost 的
+     * 预编译变体（shared 根）。物化目标仍是 shared 根的 active 名——
+     * librime 按 user/build > shared 顺序找 prism，但 active 由本机制
+     * 管理（不在 MANIFEST、不进 build）。 */
     fun fuzzySchemaId(context: Context): String? {
         val mask = FuzzyPinyin.mask(context)
         if (mask == 0) return null
         val root = readyRoot(context) ?: return null
-        val variant = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}_m$mask.prism.bin")
-        val active = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}.prism.bin")
         if (!File(root, "rime/${FuzzyPinyin.SCHEMA_ID}.schema.yaml").isFile) return null
+        val userVariant = File(
+            context.filesDir, "rime-user/build/${FuzzyPinyin.SCHEMA_ID}_m$mask.prism.bin",
+        )
+        val sharedVariant = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}_m$mask.prism.bin")
+        val variant = userVariant.takeIf { it.isFile } ?: sharedVariant
+        val active = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}.prism.bin")
         if (!variant.isFile) return null
         // active 不在 MANIFEST 里，长度相等的内容损坏无法被启动校验发现：
         // 以内容一致为准，不一致就一律从已校验的变体重新物化

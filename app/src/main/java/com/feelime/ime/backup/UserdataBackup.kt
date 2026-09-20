@@ -275,6 +275,10 @@ class UserdataBackup(
         dir.walkTopDown().filter { it.isFile }.forEach { file ->
             val relative = file.relativeTo(dir).invariantSeparatorsPath
             if (file.name in REGENERABLE_FILES) return@forEach
+            // 基底词库的设备端编译产物（issue #23）：几十 MB 的 table/prism
+            // 由用户源重新编译可再生，且恢复后词库状态本来就要复位——
+            // 不进备份，导出体积不膨胀。
+            if (relative.startsWith("build/")) return@forEach
             out.put(relative, encodeUserdbFile(file.readBytes()))
         }
         return if (out.length() > 0) out else null

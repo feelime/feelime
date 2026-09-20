@@ -311,6 +311,8 @@ class SettingsBridge(
         fun openKeyboardDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a rime .dict.yaml lexicon import. */
         fun openDictDocument() = Unit
+        /** Launch ACTION_OPEN_DOCUMENT for a base dictionary (.dict.yaml). */
+        fun openBaseDictDocument() = Unit
         /** Launch ACTION_CREATE_DOCUMENT for the userdata backup (userdata.md §1). */
         fun createBackupDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a userdata backup file. */
@@ -512,6 +514,7 @@ class SettingsBridge(
             .put("mic", JSONObject().put("granted", micGranted()))
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(context))
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
+            .put("baseDict", com.feelime.ime.engine.BaseDictInstaller.statusJson(context))
             .put("customPhrases", JSONObject().apply {
                 val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
                 put("enabled", state.enabled)
@@ -1303,6 +1306,37 @@ class SettingsBridge(
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 基底词库换装（issue #23）：SAF 选择器由宿主起（Host.openBaseDictDocument）。
+     *  编译在 BaseDictInstaller 自己的单线程上跑，事件经 [pushEvent] 直推。 */
+    @JavascriptInterface
+    fun openBaseDictDocument(token: String) = guarded(token) {
+        host.openBaseDictDocument()
+    }
+
+    /** Called by SetupActivity after the base-dict SAF picker returns. */
+    fun installBaseDict(uri: android.net.Uri, displayName: String) = synchronized(lifecycleLock) {
+        if (closed) return
+        if (com.feelime.ime.engine.BaseDictInstaller.isBuilding()) return
+        com.feelime.ime.engine.BaseDictInstaller.installAsync(
+            context, uri, displayName,
+            pushEvent = { payload -> pushEvent(payload) },
+            onFinished = { pushState() },
+        )
+        pushState()
+    }
+
+    /** 恢复内置 frost 词库（删设备端编译产物 + 留档源）。 */
+    @JavascriptInterface
+    fun clearBaseDict(token: String) = guarded(token) {
+        if (com.feelime.ime.engine.BaseDictInstaller.isBuilding()) return@guarded
+        com.feelime.ime.engine.BaseDictInstaller.revertAsync(
+            context,
+            pushEvent = { payload -> pushEvent(payload) },
+            onFinished = { pushState() },
         )
         pushState()
     }

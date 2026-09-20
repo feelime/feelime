@@ -37,7 +37,10 @@ FEELIME_EXPORT int feelime_rime_has_required_api() {
          api->create_session != nullptr && api->process_key != nullptr &&
          api->get_context != nullptr && api->get_commit != nullptr &&
          api->select_candidate_on_current_page != nullptr &&
-         api->destroy_session != nullptr && api->finalize != nullptr;
+         api->destroy_session != nullptr && api->finalize != nullptr &&
+         api->start_maintenance != nullptr &&
+         api->join_maintenance_thread != nullptr &&
+         api->is_maintenance_mode != nullptr;
 }
 
 FEELIME_EXPORT int feelime_rime_initialize(const char* shared_data_dir,
@@ -67,8 +70,30 @@ FEELIME_EXPORT int feelime_rime_initialize(const char* shared_data_dir,
   return 1;
 }
 
-FEELIME_EXPORT std::uintptr_t feelime_rime_create_session(const char* schema_id) {
+// ---- Deployment maintenance (issue #23: user base-dict rebuild on device).
+// start_maintenance spawns librime's deployer thread against the traits dirs
+// configured at initialize() time (staging_dir == user_data_dir), producing
+// table/prism/reverse bins under <user>/build that shadow the shared copy.
+FEELIME_EXPORT int feelime_rime_start_maintenance(int full_check) {
   std::lock_guard<std::mutex> lock(g_mutex);
+  if (!g_initialized) {
+    return 0;
+  }
+  return rime_get_api()->start_maintenance(full_check);
+}
+
+FEELIME_EXPORT int feelime_rime_is_maintenance_mode() {
+  return rime_get_api()->is_maintenance_mode();
+}
+
+FEELIME_EXPORT void feelime_rime_join_maintenance() {
+  // Deliberately NOT under g_mutex: join blocks for minutes on big dicts.
+  // Holding the lock would freeze every engine call (the keyboard must keep
+  // serving the OLD dict while the rebuild runs).
+  rime_get_api()->join_maintenance_thread();
+}
+
+FEELIME_EXPORT std::uintptr_t feelime_rime_create_session(const char* schema_id) {  std::lock_guard<std::mutex> lock(g_mutex);
   if (!g_initialized) {
     return 0;
   }
