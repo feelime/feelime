@@ -350,8 +350,9 @@ def settings_payload(selector):
     return sev(expression)
 
 
-def settings_geometry(selector):
-    payload = settings_payload(selector)
+def settings_geometry(selector, payload=None):
+    if payload is None:
+        payload = settings_payload(selector)
     if not payload or payload.get("width", 0) <= 0 or payload.get("height", 0) <= 0:
         return None
     inner_w = float(payload.get("innerWidth") or 0)
@@ -436,10 +437,26 @@ def settings_tap(selector, wait=0.7, scroll=True):
     # An open IME plus the native test editor can leave only 200 CSS pixels
     # for the page, so reaching controls below the model rows takes >4 swipes.
     geometry = None
+    nudge_swipes = 0
     for _ in range(12):
-        geometry = settings_geometry(selector)
+        # issue #24: fresh 首启时 WebView 布局间歇塌缩——元素存在、JS
+        # ready，但 rect 全 0。干等走不出去（12×0.5s 后照样失败）；
+        # 实测滚动一次即可触发重排恢复，这里对「元素在但量不出」补
+        # 一次滚动兜底（JS 没 ready 的 payload=None 仍走 sleep）。
+        payload = settings_payload(selector)
+        collapsed = bool(payload) and payload.get("width", 0) <= 0
+        geometry = settings_geometry(selector, payload)
         if not geometry:
-            time.sleep(0.5)
+            if collapsed and scroll and nudge_swipes < 3:
+                nudge_swipes += 1
+                print(f"settings_tap: collapsed rect on {selector}, "
+                      f"nudge-reflow swipe #{nudge_swipes}", flush=True)
+                # 1080p 设备（AVD/ace 套件目标）设置窗口中段固定坐标，
+                # 与下方按元素 rect 推导的滚动同款手势。
+                d.shell("input swipe 540 1500 540 700 260", timeout=15)
+                time.sleep(0.8)
+            else:
+                time.sleep(0.5)
             continue
         point, (left, top, right, bottom) = geometry
         width, height = right - left, bottom - top
