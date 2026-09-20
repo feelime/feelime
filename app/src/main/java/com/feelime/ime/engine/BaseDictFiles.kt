@@ -26,6 +26,17 @@ object BaseDictFiles {
     const val UMBRELLA_FILE = "luna_pinyin.dict.yaml"
     const val DEFAULT_FILE = "default.yaml"
 
+    /** 编译现场的完整配置模板（assets/rime-compile/，frost 原版）。
+     *  schema 编译链（ConfigBuilder + LegacyPresetConfigPlugin）要解析
+     *  schema 里的 import_preset: default / symbols——最小 default.yaml
+     *  只有 schema_list 会让全部 schema 的 config 构建失败（真机第三轮
+     *  定罪：36 schema 报 failed to include section，build/ 里连
+     *  compiled default 都没有）。模板不在 engine-data 下，运行时
+     *  shared 目录不受影响。 */
+    const val ASSETS_DEFAULT = "rime-compile/default.yaml"
+    const val ASSETS_SYMBOLS = "rime-compile/symbols.yaml"
+    const val SYMBOLS_FILE = "symbols.yaml"
+
     /** 五组模糊规则（FuzzyPinyin 的位定义；双向 derive；与 Python 原型一致）。 */
     private val GROUPS = listOf(
         1 to listOf("derive/^([zcs])h/\$1/", "derive/^([zcs])([^h])/\$1h\$2/"),
@@ -70,11 +81,27 @@ object BaseDictFiles {
         append("# source entries: $lineCount\n")
     }
 
-    fun defaultYaml(): String = buildString {
-        append("# issue #23 compile-time schema list - deleted after maintenance.\n")
-        append("config_version: \"feelime-base-dict-1\"\n")
-        append("schema_list:\n")
-        COMPILE_SCHEMAS.forEach { append("  - schema: $it\n") }
+    /** 以 frost 完整 default.yaml 为底，把 schema_list 段替换为本次要重编
+     *  的 37 项。其余段（menu/navigator/selector/key_binder/…）原样保留
+     *  ——schema 编译链 include 它们。 */
+    fun defaultYaml(frostTemplate: String): String {
+        val start = frostTemplate.indexOf("\nschema_list:")
+        require(start >= 0) { "template lacks schema_list" }
+        val afterHeader = start + 1 // keep the leading \n
+        // 段结束 = 下一个顶格 key（跳过缩进行/注释/空行）。
+        var end = frostTemplate.length
+        val topKey = Regex("""^[A-Za-z_][\w/]*:""", RegexOption.MULTILINE)
+        for (match in topKey.findAll(frostTemplate, afterHeader + "schema_list:".length)) {
+            end = match.range.first
+            break
+        }
+        val ours = buildString {
+            append("schema_list:\n")
+            append("# issue #23 device-side rebuild list - deleted after maintenance.\n")
+            COMPILE_SCHEMAS.forEach { append("  - schema: $it\n") }
+        }
+        return frostTemplate.substring(0, afterHeader) + ours +
+            frostTemplate.substring(end)
     }
 
     /** 变体 schema：algebra 段整段重写 + schema_id 与 translator/prism

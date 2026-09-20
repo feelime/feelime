@@ -48,7 +48,7 @@ class BaseDictFilesTest {
 
     @Test
     fun defaultListsEveryRecompiledSchema() {
-        val yaml = BaseDictFiles.defaultYaml()
+        val yaml = BaseDictFiles.defaultYaml(frostDefaultTemplate)
         // 1 luna + 31 fuzzy variants + 4 double pinyin + 1 t9 = 37.
         val schemas = Regex("- schema: (\\S+)").findAll(yaml).map { it.groupValues[1] }.toList()
         assertEquals(37, schemas.size)
@@ -58,7 +58,32 @@ class BaseDictFilesTest {
         assertTrue("luna_pinyin_t9" in schemas)
         assertTrue("ziranma_double_pinyin" in schemas)
         assertTrue("feelime_stroke" !in schemas) // 笔画不重编，shared 产物继续用
+        // frost 模板的其余段原样保留（schema 编译链 include 它们）。
+        assertTrue(yaml.contains("menu:"))
+        assertTrue(yaml.contains("page_size: 8"))
+        assertTrue(yaml.contains("config_version: '0.50'"))
+        // frost 自己的方案不得残留。
+        assertTrue(!yaml.contains("rime_frost"))
     }
+
+    /** frost default.yaml 的骨架（真实模板的关键形态：注释、schema_list、
+     *  后续顶格段 menu）。 */
+    private val frostDefaultTemplate = """
+        # Rime default settings
+        # encoding: utf-8
+
+        config_version: '0.50'
+
+        schema_list:
+          # 可以直接删除或注释不需要的方案
+          - schema: rime_frost             # 白霜拼音（全拼）
+          - schema: rime_frost_double_pinyin          # 自然码双拼
+          - schema: rime_frost_t9                     # 仓·九键拼音
+
+        # 菜单
+        menu:
+          page_size: 8  # 候选词个数
+    """.trimIndent()
 
     @Test
     fun variantMask1OnlyCarriesPingzhaoshe() {

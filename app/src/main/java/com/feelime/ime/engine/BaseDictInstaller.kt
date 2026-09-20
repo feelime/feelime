@@ -204,6 +204,19 @@ object BaseDictInstaller {
         val template = engineTemplate(context) ?: run {
             rollback(context); return InstallResult("BASE_DICT_ENGINE_NOT_READY", changed = true)
         }
+        // 完整 default.yaml / symbols.yaml 模板（frost 原版，assets/rime-compile）：
+        // schema 编译链 include default:menu/key_binder/… 与 symbols:punctuator。
+        val assets = context.assets
+        val defaultYaml = runCatching {
+            BaseDictFiles.defaultYaml(assets.open(BaseDictFiles.ASSETS_DEFAULT).bufferedReader().readText())
+        }.getOrNull() ?: run {
+            rollback(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
+        }
+        val symbolsYaml = runCatching {
+            assets.open(BaseDictFiles.ASSETS_SYMBOLS).bufferedReader().readText()
+        }.getOrNull() ?: run {
+            rollback(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
+        }
         runCatching {
             val staging = File(user, "build").apply { mkdirs() }
             File(user, BaseDictFiles.UMBRELLA_FILE).writeText(
@@ -214,8 +227,12 @@ object BaseDictInstaller {
                 File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(variant)
                 File(staging, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(variant)
             }
-            File(user, BaseDictFiles.DEFAULT_FILE).writeText(BaseDictFiles.defaultYaml())
-            File(staging, BaseDictFiles.DEFAULT_FILE).writeText(BaseDictFiles.defaultYaml())
+            // default 双落位：user 根 = ConfigBuilder 的源（include 解析），
+            // staging = SchemaListUpdate 的 deployed 直读。
+            File(user, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
+            File(staging, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
+            // symbols 只需 user 根（编译链的源解析）。
+            File(user, BaseDictFiles.SYMBOLS_FILE).writeText(symbolsYaml)
         }.onFailure {
             rollback(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
         }
@@ -339,6 +356,7 @@ object BaseDictInstaller {
 
     private fun cleanupCompileSources(user: File, keepSource: Boolean) {
         File(user, BaseDictFiles.DEFAULT_FILE).delete()
+        File(user, BaseDictFiles.SYMBOLS_FILE).delete()
         File(user, BaseDictFiles.UMBRELLA_FILE).delete()
         (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
             File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").delete()

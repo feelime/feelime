@@ -124,13 +124,19 @@ class SetupActivity : AppCompatActivity() {
     }
 
     /** ACTION_OPEN_DOCUMENT for the base dictionary (issue #23: device-side
-     *  rebuild via librime maintenance). Display name comes from the URI's
-     *  last segment; the bridge streams it into rime-user staging. */
+     *  rebuild via librime maintenance). Display name via DISPLAY_NAME query
+     *  —— SAF 的 lastPathSegment 是 document id（真机实测「msf:491」），
+     *  不是文件名。 */
     private val baseDictOpenLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri != null) {
-            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "dict.yaml"
+            val name = runCatching {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+                }
+            }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/') ?: "dict.yaml"
             bridge.installBaseDict(uri, name)
         }
     }
