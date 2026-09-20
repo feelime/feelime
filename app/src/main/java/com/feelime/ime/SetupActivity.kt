@@ -175,6 +175,10 @@ class SetupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         destroyed = false
+        // P1-5 补口（真机第 5 轮 G 段定罪）：force-stop 中断安装后直接开
+        // 设置页不走 FeelimeService.onCreate，卡片会残留误导性的「自定义」
+        // 态——这里也扫一遍（幂等，prefs 无 installing 标记即 no-op）。
+        com.feelime.ime.engine.BaseDictInstaller.sweepPending(this)
         pendingModelImportId = savedInstanceState?.getString(KEY_PENDING_MODEL_IMPORT_ID)
         rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

@@ -135,15 +135,21 @@ object BaseDictInstaller {
         return json
     }
 
-    /** 引擎初始化前的事务恢复（FeelimeService onCreate 调）：上次编译被
-     *  进程中断（installing 标记残留）→ 全量回滚，运行时只能见到完整的
-     *  旧库或新库（codex review P1-5）。 */
+    /** 引擎初始化前的事务恢复（FeelimeService/SetupActivity onCreate 调）：
+     *  上次编译被进程中断（installing 标记残留）→ 全量回滚，运行时只能
+     *  见到完整的旧库或新库（codex review P1-5；真机第 5 轮 G 段证明
+     *  两条入口都要挂——只挂 service 时 force-stop 后开设置页看到
+     *  误导性的「自定义」态）。幂等：无标记即 no-op。 */
     fun sweepPending(context: Context) {
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_INSTALLING, false)) return
         android.util.Log.w("FeelimeBaseDict", "sweeping interrupted install -> builtin")
         runCatching { revert(context) }
             .onFailure { android.util.Log.w("FeelimeBaseDict", "sweep: ${it.message}") }
+        // 回滚后若 IME 服务活着（SetupActivity 入口时可能），发广播让其
+        // 立即重载回内置；service 启动早期 receiver 未注册，广播无人收
+        // 也无害（后续 init 自然落到 shared）。
+        context.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(context.packageName))
     }
 
     // ---- blocking core (worker thread) ------------------------------------
