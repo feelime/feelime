@@ -776,6 +776,11 @@ class MockNative {
     panelInput(active, token) {
         this._record('panelInput', [active, token]);
     }
+    // 手写识别（issue #28，design/handwriting.md §3）：只记录调用；
+    // 结果由测试经 world.context.window.Feelime.onInkCandidates 注入。
+    recognizeInk(reqId, payload, token) {
+        this._record('recognizeInk', [reqId, payload, token]);
+    }
     hideKeyboard(token) {
         this._record('hideKeyboard', [token]);
     }

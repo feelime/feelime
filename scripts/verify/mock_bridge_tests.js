@@ -1335,7 +1335,7 @@ test('settings sub-pages: nav, key map, back (requirements 1+6)', {since: '3.33.
     assert(world.document.body.classList.contains('settings-page'),
         'settings-page hides the regular tools');
     // pair sub-page: still six keyboards, tick BEFORE the name .
-    equal(world.document.querySelectorAll('#pairEditor .pair-row').length, 8, 'pair page rows (t9+stroke joined)');
+    equal(world.document.querySelectorAll('#pairEditor .pair-row').length, 9, 'pair page rows (t9+stroke+handwriting)');
     const pairRow = world.document.querySelector('#pairEditor .pair-row');
     assert(pairRow.children[0].classList.contains('pair-tick'),
         'pair tick precedes the name');
@@ -1345,7 +1345,7 @@ test('settings sub-pages: nav, key map, back (requirements 1+6)', {since: '3.33.
     equal(world.document.querySelectorAll('#pairEditor').length, 0, 'back returns home');
     // menu sub-page: tick + name + drag handle LAST.
     world.tap(world.tile('长按菜单'));
-    equal(world.document.querySelectorAll('#menuEditor .pair-row').length, 8, 'menu page rows (t9+stroke joined)');
+    equal(world.document.querySelectorAll('#menuEditor .pair-row').length, 9, 'menu page rows (t9+stroke+handwriting)');
     const menuRow = world.document.querySelector('#menuEditor .pair-row');
     assert(menuRow.children[0].classList.contains('pair-tick'), 'menu tick first');
     assert(menuRow.children[menuRow.children.length - 1].classList.contains('pair-drag'),
@@ -1977,7 +1977,7 @@ test('long-press menu filters to the enabled keyboards', {since: '3.33.0'}, () =
     world.storage.set('feelime_menu_modes', JSON.stringify([]));
     world.context.window.Feelime.closeModeMenu();
     world.context.window.Feelime.toggleModeMenu();
-    equal(world.$('modeMenu').children.length, 8, 'empty set falls back to all (t9+stroke joined)');
+    equal(world.$('modeMenu').children.length, 9, 'empty set falls back to all (t9+stroke+handwriting)');
 });
 
 test('phrase editor strip + item menu hit the bridge', {since: '3.21.0'},  ()=> {
@@ -2388,7 +2388,7 @@ test('mode menu lists all modes; selecting emits selectMode', {since: '3.33.0'},
     world.touchUp(toggle);
     assert(world.$('modeMenu').classList.contains('open'), 'menu open');
     const items = [...world.$('modeMenu').children];
-    equal(items.length, 8, '8 modes (theme moved to the settings panel; t9+stroke joined)');
+    equal(items.length, 9, '9 modes (theme moved to the settings panel; t9+stroke+handwriting joined)');
     equal(items[0].textContent, 'En英文 Direct', 'first item: shorthand leads, title follows');
     world.tap(items[0]);
     equal(world.native.of('selectMode').length, 0, 'direct is current, no call');
@@ -6120,6 +6120,189 @@ test('stroke menu item requires an explicit ready=true from hello', {since: '3.4
     ready.tap(item);
     equal(ready.native.of('selectMode').filter(c => c.args[0] === 'stroke').length, 1,
         'ready item selects stroke');
+});
+
+// ---------------------------------------------------------------- handwriting (issue #28)
+
+const HANDWRITING_READY = { pinyin: true, 'double-pinyin': true, t9: true, stroke: true,
+    handwriting: true, japanese: true, french: true, russian: true };
+
+/** 进入手写模式 + 在书写区画一笔（move 采样点列），返回该 world。 */
+function handwritingWorld(overrides) {
+    const world = fresh(Object.assign({ mode: 'handwriting', engineDataReady: HANDWRITING_READY }, overrides));
+    return world;
+}
+
+function inkStroke(world, points) {
+    const pad = world.$('inkPad');
+    assert(pad, 'ink pad rendered');
+    world.touchDown(pad, points[0][0], points[0][1]);
+    points.slice(1).forEach(point => world.move(pad, point[0], point[1]));
+    world.touchUp(pad, points[points.length - 1][0], points[points.length - 1][1]);
+}
+
+test('handwriting: menu entry gated by strictReady (missing field = no entry)', () => {
+    // 旧 APK 的 hello 不带 handwriting 字段：菜单项渲染成 preparing 且不可点。
+    const legacy = fresh();
+    legacy.context.window.Feelime.toggleModeMenu();
+    const item = [...legacy.$('modeMenu').children][5];
+    assert(item.classList.contains('preparing'), 'missing ready field renders preparing');
+    legacy.tap(item);
+    equal(legacy.native.of('selectMode').filter(c => c.args[0] === 'handwriting').length, 0,
+        'preparing handwriting is not clickable');
+    // hello 明确 true 才可选。
+    const ready = fresh({ engineDataReady: HANDWRITING_READY });
+    ready.context.window.Feelime.toggleModeMenu();
+    const readyItem = [...ready.$('modeMenu').children][5];
+    equal(readyItem.textContent, '手手写 Handwriting', 'shorthand leads, title follows');
+    ready.tap(readyItem);
+    equal(ready.native.of('selectMode').filter(c => c.args[0] === 'handwriting').length, 1,
+        'ready handwriting selects');
+});
+
+test('handwriting: pad renders canvas plus control row, no letter keys', () => {
+    const world = handwritingWorld();
+    assert(world.$('inkCanvas'), 'canvas present');
+    assert(world.$('inkHint'), 'hint present');
+    assert(world.$('modeToggle'), 'mode toggle present');
+    assert(world.$('enterKey'), 'enter key present');
+    equal(world.document.querySelectorAll('#qwertyLayer .kb-letter').length, 0,
+        'no letter keys in the pad layout');
+    // 识别前不发任何手写请求。
+    equal(world.native.of('recognizeInk').length, 0, 'no ink traffic before writing');
+});
+
+test('handwriting: idle 600ms after stroke sends one recognizeInk with a valid payload', () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30], [80, 40]]);
+    equal(world.native.of('recognizeInk').length, 0, 'nothing sent while the pen is down');
+    world.clock.advance(599);
+    equal(world.native.of('recognizeInk').length, 0, 'still pending at 599ms');
+    world.clock.advance(1);
+    const calls = world.native.of('recognizeInk');
+    equal(calls.length, 1, 'one call after the idle window');
+    equal(calls[0].args[2], 'tok-1', 'session token attached');
+    const payload = JSON.parse(calls[0].args[1]);
+    assert(Number.isFinite(payload.w) && payload.w > 0, 'payload w is a positive number');
+    assert(Number.isFinite(payload.h) && payload.h > 0, 'payload h is a positive number');
+    assert(Array.isArray(payload.strokes) && payload.strokes.length === 1, 'one stroke in the payload');
+    assert(payload.strokes[0].length >= 3, 'sampled points kept');
+    payload.strokes[0].forEach(point => {
+        assert(Array.isArray(point) && point.length === 2 &&
+            Number.isFinite(point[0]) && Number.isFinite(point[1]),
+        'point is a finite [x, y] pair');
+    });
+    equal(world.context.window.Feelime.debugState().inkReqId, 1, 'request id advanced');
+    // 同一笔不重复发送（计时器是一次性的）。
+    world.clock.advance(2000);
+    equal(world.native.of('recognizeInk').length, 1, 'no duplicate request');
+});
+
+test('handwriting: a new stroke cancels the pending request (reqId mismatch drops it)', () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    // 未到 600ms 就落第二笔：第一笔的未决请求被撤（只发一次、reqId 推进）。
+    inkStroke(world, [[90, 20], [110, 30], [120, 40]]);
+    equal(world.native.of('recognizeInk').length, 0, 'pending request withdrawn');
+    world.clock.advance(600);
+    equal(world.native.of('recognizeInk').length, 1, 'one request for both strokes');
+    equal(world.native.of('recognizeInk')[0].args[0], 1, 'request id advanced to 1');
+    // reqId 失配的迟到结果整包丢弃。
+    world.context.window.Feelime.onInkCandidates({
+        reqId: 999, candidates: [{ text: '旧', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children.length, 0, 'stale reqId dropped');
+    // 现请求的结果正常渲染。
+    world.context.window.Feelime.onInkCandidates({
+        reqId: 1, candidates: [{ text: '新', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children[0].textContent, '新', 'current reqId rendered');
+});
+
+test('handwriting: candidates render into the bar; picking commits and clears', () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.clock.advance(600);
+    const reqId = world.context.window.Feelime.debugState().inkReqId;
+    world.context.window.Feelime.onInkCandidates({
+        reqId,
+        candidates: [
+            { text: '感', score: 0.7 }, { text: '憾', score: 0.2 }, { text: '咸', score: 0.1 },
+        ],
+        error: null,
+    });
+    const bar = world.$('candidates');
+    equal(bar.children.length, 3, 'three candidates rendered');
+    equal(bar.children[0].textContent, '感', 'top candidate first');
+    world.tap(bar.children[1]);
+    const commits = world.native.of('commitText').filter(c => c.args[0] === '憾');
+    equal(commits.length, 1, 'pick commits the chosen text');
+    equal(commits[0].args[1], 'tok-1', 'commit carries the token');
+    equal(world.$('candidates').children.length, 0, 'bar cleared after the pick');
+    equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes cleared');
+});
+
+test('handwriting: engine noise does not wipe ink candidates; errors toast without blocking', () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.clock.advance(600);
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [{ text: '十', score: 1 }],
+        error: null,
+    });
+    // 按键通道的空引擎事件（Direct 承载退格/空格）不得洗掉识别候选。
+    world.engineState({ composing: '', rawInput: '', candidates: [], revision: 7,
+        hasPreviousPage: false, hasNextPage: false });
+    equal(world.$('candidates').children.length, 1, 'ink candidates survive engine events');
+    // 不可用/失败只提示，不动书写与候选。
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [], error: 'unavailable',
+    });
+    assert(world.$('toast').classList.contains('open'), 'unavailable toasts');
+    equal(world.$('candidates').children.length, 1, 'candidates kept on error');
+    // 空候选（无 error）是合法结果：整条清空。
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [], error: null,
+    });
+    equal(world.$('candidates').children.length, 0, 'empty result clears the bar');
+});
+
+test('handwriting: long-press on the pad clears strokes and candidates', () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.clock.advance(600);
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [{ text: '中', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children.length, 1, 'candidate present before the clear');
+    const pad = world.$('inkPad');
+    world.touchDown(pad, 30, 30);
+    world.clock.advance(360);
+    world.touchUp(pad, 30, 30);
+    equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes cleared');
+    equal(world.$('candidates').children.length, 0, 'candidates cleared');
+    equal(world.native.of('recognizeInk').length, 1, 'no new request from the hold');
+});
+
+test('handwriting: leaving the mode clears ink state', () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.clock.advance(600);
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [{ text: '工', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children.length, 1, 'candidate present before leaving');
+    // 模式菜单 → direct（原生随后重推 hello 落新键面）。
+    world.context.window.Feelime.toggleModeMenu();
+    world.tap([...world.$('modeMenu').children][0]);
+    world.hello({ mode: 'direct', engineDataReady: HANDWRITING_READY });
+    equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes reset');
+    assert(!world.$('inkCanvas'), 'pad unrendered after leaving');
 });
 
 console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
