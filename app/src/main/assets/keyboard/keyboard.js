@@ -803,6 +803,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 手写控制行键高（CSS px）：固定值，不参与 --kb-row-h 预算（键盘
     // 高度调节的弹性全部给书写面板）。
     const INK_CONTROL_ROW_H = 46;
+    // 手写标点上滑弹层的网格（round-3，4×2）：键面上已有的 ，。不重复
+    // 入格，收常用中文标点（wetype 同款「更多标点」入口）。
+    const INK_PUNCT_GRID = [
+        ['！', '？', '；', '：'],
+        ['、', '……', '——', '·'],
+    ];
     // 手写停笔→识别的触发延时档位（设置页「手写」区块，hello 下发）。
     // 实时识别（模型 v2 后推理毫秒级，issue #32）：每笔 touchend 立即识别，
     // 候选随笔画刷新（wetype 同款体验）。识别时机不再可配（停顿档已被
@@ -2000,18 +2006,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             hint.textContent = t("在此手写 · 长按清空");
             pad.append(canvas, hint);
             this.bindInkPad(pad);
-            const controls = document.createElement('div');
-            controls.className = 'ink-controls';
-            controls.append(this.specialKey('backspace', ICONS.backspace,
-                () => this.call(() => Native.backspace(this.token)),
-                'ink-key kb-special', 'repeat'));
-            // 空格保留 mic 长按通道（.kb-key[data-key] 手势层认它）。
-            controls.append(this.spaceKey());
-            // 中英键保留：手写没有别的模式出口（wetype 的出口是顶部
-            // 工具栏的切键盘 icon；我们的模式菜单只挂在这颗键上）。
-            controls.append(this.cnEnKey());
-            controls.append(this.enterKey());
-            layout.append(pad, controls);
+            if (this.landscape) {
+                // 横屏（§9.1）：native 钳半屏、纵向没有底行的余量——
+                // 右窄列并成两列四行，globe 不占格（工具栏的切换键走
+                // 同一通道，见 inkBottomKeys）。
+                const rail = document.createElement('div');
+                rail.className = 'ink-rail';
+                rail.append(...this.inkSideKeys(), ...this.inkBottomKeys(false));
+                layout.append(pad, rail);
+            } else {
+                // 竖屏（wetype round-3）：书写面板是主区，右侧窄列
+                // 退格/，/。/中英，底行 符号/数字/空格/globe/换行。
+                const side = document.createElement('div');
+                side.className = 'ink-side';
+                side.append(...this.inkSideKeys());
+                const main = document.createElement('div');
+                main.className = 'ink-main';
+                main.append(pad, side);
+                const bottom = document.createElement('div');
+                bottom.className = 'ink-bottom';
+                bottom.append(...this.inkBottomKeys());
+                layout.append(main, bottom);
+            }
             layer.append(layout);
             this.updateLabels();
             // 旋转/换模式后按当前几何重建画布分辨率并重放既有笔迹。
@@ -2020,6 +2036,176 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 宽度推面板高度（离开模式由 renderMode → applyModeHeight
             // 还原用户高度）。
             this.applyModeHeight();
+        }
+
+        /** 右窄列（round-3，wetype 形态）：退格（上）+ 逗号 + 句号 +
+         * 中英。标点键点按直上屏、上滑弹更多标点（bindInkPunct）；
+         * 中英键必须保留——手写没有别的模式出口（wetype 的出口在顶部
+         * 工具栏，我们的模式菜单只挂在这颗键上）。 */
+        inkSideKeys() {
+            return [
+                this.specialKey('backspace', ICONS.backspace,
+                    () => this.call(() => Native.backspace(this.token)),
+                    'ink-key kb-special', 'repeat'),
+                this.inkPunctKey('，'),
+                this.inkPunctKey('。'),
+                this.cnEnKey(),
+            ];
+        }
+
+        /** 底行：符号（符号面板）/ 123（九宫格）/ 空格（宽；候选条有
+         * 手写候选时=确认 top1，见 spaceKey）/ globe（系统输入法选择
+         * 器，与工具栏切换键同一通道）/ 换行。横屏不设 globe 格
+         * （includeIme=false）：八键恰两列四行。 */
+        inkBottomKeys(includeIme = true) {
+            const keys = [
+                this.specialKey('ink-symbols', t("符号"),
+                    () => this.showSymbols(), 'ink-key kb-special'),
+                this.specialKey('ink-numpad', '123',
+                    () => this.showNumpad(), 'ink-key kb-special'),
+                // 空格保留 mic 长按通道（.kb-key[data-key] 手势层认它）。
+                this.spaceKey(),
+            ];
+            if (includeIme) {
+                const ime = this.specialKey('ink-ime', ICONS.lang,
+                    () => this.call(() => Native.switchInputMethod(this.token)),
+                    'ink-key kb-special');
+                ime.setAttribute('aria-label', t("切换输入法"));
+                keys.push(ime);
+            }
+            keys.push(this.enterKey());
+            return keys;
+        }
+
+        /** 标点键（，/。）：字面上屏 + 上滑弹层入口。独立手势层
+         * （不挂 bindTouch）——长按/重复通道这里都不要，且 touchstart
+         * 必须 stopPropagation：根级 setupFlick 只认 bindTouch 记下的
+         * touchOrigin，书写区的既有惯例（同 bindInkPad）。 */
+        inkPunctKey(char) {
+            const button = document.createElement('button');
+            button.className = 'kb-key kb-special ink-key ink-punct';
+            button.dataset.role = 'ink-punct';
+            button.dataset.inkPunct = char;
+            button.setAttribute('aria-label', char);
+            button.textContent = char;
+            this.bindInkPunct(button, char);
+            return button;
+        }
+
+        /** 标点键手势：点按=该标点直上屏（sendSymbol，手写无组合、
+         * 不经引擎 punctuator）；上滑超阈值=拉起更多标点的网格弹层
+         * （openInkPunctPopup），手指压在哪格选哪格，松手没选中=无
+         * 输入（wetype 同款，无长按竞争）。 */
+        bindInkPunct(button, char) {
+            const OPEN_PX = 30;
+            let touchId = null;
+            let startY = 0;
+            let opened = false;
+            button.addEventListener('touchstart', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                // 第二根手指不接手进行中的手势。
+                if (touchId !== null) return;
+                const touch = event.changedTouches[0];
+                touchId = touch.identifier;
+                startY = touch.clientY;
+                opened = false;
+                button.classList.add('active-touch');
+                this.nativeKeyFeedback();
+            }, { passive: false });
+            button.addEventListener('touchmove', event => {
+                if (touchId === null) return;
+                const touch = Array.from(event.changedTouches).find(
+                    item => item.identifier === touchId);
+                if (!touch) return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (!opened) {
+                    if (startY - touch.clientY < OPEN_PX) return;
+                    opened = true;
+                    this.openInkPunctPopup(button);
+                }
+                this.moveInkPopup(touch);
+            }, { passive: false });
+            const release = event => {
+                if (touchId === null) return;
+                const touch = event.changedTouches && Array.from(event.changedTouches).find(
+                    item => item.identifier === touchId);
+                if (!touch) return;
+                touchId = null;
+                button.classList.remove('active-touch');
+                if (!opened) {
+                    this.sendSymbol(char);
+                    return;
+                }
+                // 弹层语义：选中格由 closePopup 提交（literal 直上屏），
+                // 未选中=取消，不落键面标点。
+                if (this.popup) this.closePopup(false);
+            };
+            button.addEventListener('touchend', release, { passive: false });
+            button.addEventListener('touchcancel', event => {
+                if (touchId === null) return;
+                if (event.changedTouches && !Array.from(event.changedTouches).some(
+                    item => item.identifier === touchId)) return;
+                touchId = null;
+                button.classList.remove('active-touch');
+                if (this.popup) this.closePopup(true);
+            });
+            // 触摸路径已自己提交/取消；click 只兜鼠标与无障碍入口
+            // （touchend 已 preventDefault，合成 click 不会跟在触摸后）。
+            button.addEventListener('click', () => {
+                if (touchId !== null || opened) return;
+                this.sendSymbol(char);
+            });
+        }
+
+        /** 标点上滑弹层（round-3）：4×2 网格（键面上已有的 ，。不在
+         * 格内）。与长按弹层的差异：入口是上滑手势；选中用
+         * elementFromPoint 绝对命中（手指物理滑进格子）；无预选格——
+         * 松手没落在格子上=无输入，所以也没有「松手撤销」提示。 */
+        openInkPunctPopup(button) {
+            const popup = document.getElementById('keyPopup');
+            const inner = document.getElementById('keyPopupInner');
+            inner.classList.add('kp-grid');
+            inner.replaceChildren();
+            const cells = [];
+            INK_PUNCT_GRID.forEach(row => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'kp-row';
+                row.forEach(char => {
+                    const item = document.createElement('div');
+                    item.className = 'kp-item';
+                    item.textContent = char;
+                    rowEl.append(item);
+                    cells.push({ item, char, literal: true });
+                });
+                inner.append(rowEl);
+            });
+            popup.classList.add('open');
+            const rect = button.getBoundingClientRect();
+            const left = Math.max(4, Math.min(innerWidth - popup.offsetWidth - 4,
+                rect.left + rect.width / 2 - popup.offsetWidth / 2));
+            popup.style.left = left + 'px';
+            // 贴键上沿：上滑路径越短，误触越少。
+            popup.style.top = Math.max(2, rect.top - popup.offsetHeight - 6) + 'px';
+            this.popup = { key: 'ink-punct', cells, selected: null,
+                cancelled: false, enginePath: true, absolute: true };
+        }
+
+        /** 上滑弹层的选中：指针压在哪格选哪格（弹层格子不重叠、不透明，
+         * rect 命中与 elementFromPoint 等价，且在 mock 的合成几何下同样
+         * 可测），离开网格=取消选中——不弹「松手撤销」，没选过谈不上
+         * 撤销；松手无选中=无输入。 */
+        moveInkPopup(touch) {
+            if (!this.popup) return;
+            const cell = this.popup.cells.find(cell => {
+                const rect = cell.item.getBoundingClientRect();
+                return touch.clientX >= rect.left && touch.clientX <= rect.right &&
+                    touch.clientY >= rect.top && touch.clientY <= rect.bottom;
+            }) || null;
+            this.popup.selected = cell;
+            this.popup.cells.forEach(item =>
+                item.item.classList.toggle('sel', item === this.popup.selected));
         }
 
         /** 手写模式的高度预算（竖屏）：面板宽高比钉在 1.6:1（wetype
@@ -3419,6 +3605,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         movePopup(touch) {
             if (!this.popup) return;
+            // 手写标点上滑弹层（round-3）：绝对命中模式——手指压在哪格
+            // 选哪格，无预选格、无相对跟手、无「松手撤销」（没选过谈
+            // 不上撤销）。根级手势层是 capture、先进这里；键面 handler
+            // 的同名调用幂等。
+            if (this.popup.absolute) {
+                this.moveInkPopup(touch);
+                return;
+            }
             // 拆分浮层（T9 7/9 下滑）：下左/下右按两格中点判定，
             // 不做距离取消——下滑开层后继续向左下/右下即选中。
             if (this.popup.split) {
@@ -3493,7 +3687,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const inner = document.getElementById('keyPopupInner');
             inner.style.transform = '';
             inner.style.opacity = '';
-            inner.classList.remove('t9-row', 't9-grid3');
+            inner.classList.remove('t9-row', 't9-grid3', 'kp-grid');
             document.getElementById('keyPopup').classList.remove('open');
             this.showPopupCancelTip(false);
             if (cancel || popup?.cancelled) return;

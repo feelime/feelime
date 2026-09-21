@@ -895,6 +895,21 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 #keyPopupInner.t9-grid3 .kp-item { background: var(--key); box-shadow: none; }
 /* 选中格必须压回上面的 ID 优先级覆盖，否则高亮只剩深色文字看不见。 */
 #keyPopupInner.t9-grid3 .kp-item.sel { background: var(--accent); }
+/* 手写标点上滑弹层（round-3）：4×2 网格卡片，形态与 t9-grid3 同款
+ * （卡片底 + 格子换 --key 做对比）。选中格用 .sel，无预选格。 */
+#keyPopupInner.kp-grid {
+    max-width: none;
+    flex-wrap: nowrap;
+    flex-direction: column;
+    gap: 5px;
+    padding: 6px;
+    border-radius: 12px;
+    background: var(--panel);
+    box-shadow: 0 6px 24px #000c;
+}
+#keyPopupInner.kp-grid .kp-row { display: flex; gap: 5px; justify-content: center; }
+#keyPopupInner.kp-grid .kp-item { background: var(--key); box-shadow: none; font-size: 17px; }
+#keyPopupInner.kp-grid .kp-item.sel { background: var(--accent); }
 /* 滑出浮层卡片边界时的「松手撤销」提示（showPopupCancelTip 挂在浮层
  * 上方中线，不跟手）。卡片底色 + 描边：黑底白字在暗色键盘上看不清。 */
 #keyPopupCancelTip {
@@ -919,54 +934,81 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 body.landscape .t9-grid { gap: 4px 5px; }
 /* T9 空格键：长按圆点（::after）挪到左上角，右上角留给字面 0 角标。 */
 #spaceKey.t9-space::after { right: auto; left: 3px; }
-/* ===== 手写键面（issue #28，design/handwriting.md）：大块书写面板 +
- * 底部控制行。书写面板是键区里唯一的弹性块（flex:1），竖屏目标宽高比
- * 1.6:1（wetype 984×590 口径）——键盘总高由 JS 推到 chrome + 控制行 +
- * 面板（applyModeHeight）。控制行高固定 --ink-row-h（JS 单一来源写入），
+/* ===== 手写键面（issue #28，design/handwriting.md）：round-3 起为
+ * wetype 形态——书写面板是主区（.ink-main 里唯一的弹性块），右侧窄列
+ * 退格/，/。/中英，底行 符号/数字/空格/globe/换行。竖屏目标宽高比
+ * 1.6:1（wetype 984×590 口径）——键盘总高由 JS 推到 chrome + 底行 +
+ * 主区（applyModeHeight）。底行高固定 --ink-row-h（JS 单一来源写入），
  * 不吃 --kb-row-h 预算：applyHeight 在视图被瞬时量高时烘焙出的陈旧行
  * 变量再也压不塌书写区（重唤折叠 P1 的根因通道被结构性拆除）。
- * 横屏总高被 native 钳在半屏、纵向没有余量，改左右布局：面板竖向铺满，
- * 控制键在右列三等分。 ===== */
+ * 横屏总高被 native 钳在半屏、纵向没有底行的余量：右列改两列四行
+ * （.ink-rail，底行键并入），globe 留给工具栏的同一通道。 ===== */
 .ink-layout {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    gap: 5px;
+}
+.ink-main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 5px;
 }
 .ink-pad {
     position: relative;
     flex: 1;
     min-height: 0;
-    margin-bottom: 5px;
     border-radius: var(--radius-key);
     background: var(--key);
     overflow: hidden;
 }
-.ink-controls {
+/* 右窄列：退格/，/。/中英 纵向四等分。 */
+.ink-side {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 58px;
+}
+/* 底行：符号/数字/空格（宽）/globe/换行，高固定（--ink-row-h）。 */
+.ink-bottom {
     flex: none;
     display: flex;
     gap: 5px;
     /* 键高 JS 写入（--ink-row-h），缺省值仅兜 mock/旧 DOM。 */
     height: var(--ink-row-h, 46px);
 }
-.ink-controls .kb-key {
-    height: var(--ink-row-h, 46px);
-    min-height: 0;
-    /* 宽窄沿用键面自带的 .kb-wide-* 比例（退格 1.4 / 空格 4.15 /
-     * 中英 1.15 / 回车 2.25），行内不再各写一份。 */
+/* 窄列/底行的键高不消费 --kb-row-h：键盘高度调节的弹性全部留给
+ * 书写面板（§8.4 结构性解耦在本键面的体现）。 */
+.ink-side .kb-key,
+.ink-bottom .kb-key,
+.ink-rail .kb-key {
     flex: 1;
     min-width: 0;
-}
-body.landscape .ink-layout { flex-direction: row; }
-body.landscape .ink-pad { margin-bottom: 0; }
-body.landscape .ink-controls {
-    flex-direction: column;
+    min-height: 0;
     height: auto;
-    align-self: stretch;
-    width: 84px;
+}
+.ink-bottom .kb-key { height: var(--ink-row-h, 46px); }
+/* 空格在底行占大头（wetype 同款比例），其余键一倍宽。 */
+.ink-bottom #spaceKey { flex: 3.1; }
+.ink-punct { font-size: 19px; }
+body.landscape .ink-layout { flex-direction: row; }
+/* 横屏右列：退格/， ‖ 。/中英 ‖ 符号/123 ‖ 空格/换行 两列四行。 */
+body.landscape .ink-rail {
+    flex: none;
+    display: flex;
+    flex-flow: row wrap;
+    align-content: stretch;
+    gap: 4px;
+    width: 116px;
     margin-left: 4px;
 }
-body.landscape .ink-controls .kb-key { height: auto; flex: 1; }
+body.landscape .ink-rail .kb-key {
+    flex: 0 0 calc(50% - 2px);
+    height: calc(25% - 3px);
+}
 .ink-canvas {
     /* 绝对定位铺满书写区：canvas 是替换元素，静态布局会把位图尺寸
      * （inkResize 按 devicePixelRatio 写入的 width/height 属性）当作

@@ -6405,6 +6405,99 @@ test('handwriting: the mode pushes its panel height and leaves restore the store
     equal(restored[restored.length - 1].args[0], 0, 'leaving resets to the stored height');
 });
 
+// ---- round-3（issue #28 三轮）：wetype 布局（右窄列+底行）、标点上滑
+// 弹层、空格确认 top1、手写联想（onAssoc 不再被手写分支吞掉）
+
+test('handwriting round-3: wetype layout - side column plus bottom row, no letter keys', () => {
+    const world = handwritingWorld();
+    const layer = world.$('qwertyLayer');
+    // 右窄列：退格 / ，/。 / 中英（模式出口必须保留）。
+    const side = world.document.querySelector('.ink-side');
+    assert(side, 'side column rendered');
+    const sideRoles = [...side.children].map(el => el.dataset.role);
+    equal(sideRoles.join(','), 'backspace,ink-punct,ink-punct,cnEn', 'side column roles');
+    equal(side.querySelectorAll('[data-ink-punct]').length, 2, 'two slide-up punct keys');
+    equal(side.children[1].dataset.inkPunct, '，', 'comma key glyph');
+    equal(side.children[2].dataset.inkPunct, '。', 'period key glyph');
+    // 底行：符号 / 123 / 空格 / globe / 换行。
+    const bottom = world.document.querySelector('.ink-bottom');
+    assert(bottom, 'bottom row rendered');
+    const roleOf = el => el.dataset.role || (el.id === 'spaceKey' ? 'space' : '(none)');
+    const roles = [...bottom.children].map(roleOf);
+    equal(roles.join(','), 'ink-symbols,ink-numpad,space,ink-ime,enter', 'bottom row roles');
+    equal(bottom.children[0].textContent, '符号', 'symbols entry labelled');
+    equal(bottom.children[1].textContent, '123', 'numpad entry labelled');
+    equal(bottom.children[3].getAttribute('aria-label'), '切换输入法', 'globe labelled');
+    equal(world.document.querySelectorAll('#qwertyLayer .kb-letter').length, 0,
+        'still no letter keys');
+    // 主区：书写面板是 .ink-main 里唯一的弹性块。
+    assert(world.document.querySelector('.ink-main .ink-pad'), 'pad lives in the main area');
+});
+
+test('handwriting round-3: bottom row entries reuse the symbol/numpad/ime channels', () => {
+    const world = handwritingWorld();
+    const bottom = world.document.querySelector('.ink-bottom');
+    world.tap(bottom.children[0]);
+    assert(!world.$('symbolLayer').hidden, '符号 opens the symbol layer');
+    assert(world.$('qwertyLayer').hidden, 'key area swapped for the layer');
+    // 符号层的 ABC 返回手写键面（qwertyLayer 里的墨迹布局原样保留）。
+    world.document.querySelector('[data-action="letters"]').click();
+    assert(!world.$('qwertyLayer').hidden, 'back to the ink layout');
+    world.tap(bottom.children[1]);
+    assert(!world.$('numPadLayer').hidden, '123 opens the nine-pad');
+    world.tap(world.document.querySelector('[data-role="numpad-back"]'));
+    assert(!world.$('qwertyLayer').hidden, 'nine-pad back returns to the ink layout');
+    const switchCalls = () => world.native.of('switchInputMethod');
+    equal(switchCalls().length, 0, 'no ime switch before the tap');
+    world.tap(bottom.children[3]);
+    equal(switchCalls().length, 1, 'globe rides the system IME picker channel');
+});
+
+test('handwriting round-3: punct tap commits literally, slide-up opens the grid', () => {
+    const world = handwritingWorld();
+    const comma = world.document.querySelector('[data-ink-punct="，"]');
+    world.tap(comma);
+    equal(world.native.of('commitText').length, 1, 'tap commits once');
+    equal(world.native.of('commitText')[0].args[0], '，', 'full-width comma lands');
+    equal(world.native.of('key').length, 0, 'no engine key traffic (no composition here)');
+    // 上滑超阈值 → 网格弹层；手指压在哪格选哪格，松手=选中格直上屏。
+    // fake 几何：格 44×44，同行相邻格心相距 34px，行距 46px。
+    world.touchDown(comma, 60, 60);
+    world.move(comma, 60, 20);
+    assert(world.$('keyPopup').classList.contains('open'), 'slide-up opens the grid');
+    const cells = [...world.$('keyPopupInner').querySelectorAll('.kp-item')];
+    equal(cells.length, 8, '4x2 punct grid');
+    equal(cells.map(c => c.textContent).join(''), '！？；：、……——·', 'grid glyphs');
+    world.move(comma, 28, 24); // 第一格（！）中心
+    equal(cells[0].classList.contains('sel'), true, 'cell under the finger is selected');
+    world.touchUp(comma, 28, 24);
+    const commits = world.native.of('commitText');
+    equal(commits.length, 2, 'pick commits on release');
+    equal(commits[1].args[0], '！', 'picked glyph lands');
+    assert(!world.$('keyPopup').classList.contains('open'), 'popup closed');
+});
+
+test('handwriting round-3: slide-up release off-grid inputs nothing (no preselect)', () => {
+    const world = handwritingWorld();
+    const period = world.document.querySelector('[data-ink-punct="。"]');
+    world.touchDown(period, 60, 60);
+    world.move(period, 60, 20); // 上滑开层
+    // 手指停在网格外（fake 网格占 6..152 × 2..92）= 取消，不落任何字符。
+    world.move(period, 200, 120);
+    const cells = [...world.$('keyPopupInner').querySelectorAll('.kp-item')];
+    equal(cells.every(c => !c.classList.contains('sel')), true, 'no preselected cell');
+    world.touchUp(period, 200, 120);
+    equal(world.native.of('commitText').length, 0, 'off-grid release commits nothing');
+    assert(!world.$('keyPopup').classList.contains('open'), 'popup dismissed');
+    // 未过阈值的滑动仍是点按。
+    world.touchDown(period, 60, 60);
+    world.move(period, 60, 45);
+    assert(!world.$('keyPopup').classList.contains('open'), 'small slide stays a tap');
+    world.touchUp(period, 60, 60);
+    equal(world.native.of('commitText').length, 1, 'tap path intact');
+    equal(world.native.of('commitText')[0].args[0], '。', 'period lands');
+});
+
 test('handwriting round-3: space confirms the top ink candidate', () => {
     const world = handwritingWorld();
     inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
@@ -6481,6 +6574,20 @@ test('handwriting round-3: a new recognition displaces assoc words (mutex intact
     assert(!(bar[0].className || '').split(/\s+/).includes('assoc'), 'no assoc styling');
     assert(world.$('setupButton').hidden, 'toolbar stays yielded');
     equal(world.$('inkTag').hidden, false, 'mode tag back with ink candidates');
+});
+
+test('handwriting round-3: landscape merges the bottom row into a 2x4 rail (no globe cell)', () => {
+    const world = handwritingWorld({ orientation: 'landscape' });
+    assert(world.document.body.classList.contains('landscape'), 'landscape body class');
+    const rail = world.document.querySelector('.ink-rail');
+    assert(rail, 'rail rendered in landscape');
+    assert(!world.document.querySelector('.ink-bottom'), 'no bottom row in landscape');
+    const roles = [...rail.children].map(el =>
+        el.dataset.role || (el.id === 'spaceKey' ? 'space' : '(none)'));
+    equal(roles.join(','),
+        'backspace,ink-punct,ink-punct,cnEn,ink-symbols,ink-numpad,space,enter',
+        'eight keys in the rail, globe left to the toolbar');
+    assert(!world.document.querySelector('.ink-side'), 'side column folded into the rail');
 });
 
 test('handwriting round-3: the write-and-pick flow never arms the panel input redirect', () => {
