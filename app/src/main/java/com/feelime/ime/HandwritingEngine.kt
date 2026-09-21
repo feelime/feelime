@@ -242,7 +242,7 @@ class HandwritingEngine(
 
         /** §4.1/§4.2/§4.3 钉死参数（host spike 同源）。 */
         const val SIZE_PX = 256
-        const val STROKE_WIDTH_RATIO = 0.022f
+        const val STROKE_WIDTH_RATIO = 0.043f  // §6.1 设备实证：2.2% 在 48px 高下缩到 ~1px，模型放弃方形字（中 0.014-0.19）；4.3% 中 0.88
         const val IMG_HEIGHT = 48
         const val MAX_IMG_WIDTH = 320
         const val BBOX_THRESHOLD = 200
