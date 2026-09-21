@@ -392,7 +392,12 @@ android {
     }
 
     packaging {
-        jniLibs { useLegacyPackaging = true }
+        jniLibs {
+            useLegacyPackaging = true
+            // sherpa AAR 与 onnxruntime-android 都带 libonnxruntime.so
+            // （同版本 1.27.1，手写识别依赖同一条推理栈）——pickFirst 去重。
+            pickFirsts += "**/libonnxruntime.so"
+        }
     }
 }
 
@@ -507,6 +512,12 @@ dependencies {
                 "~/.config/feelime/android) or place a copy in app/libs/",
         )
     implementation(files(sherpaAar))
+    // 手写识别推理（design/handwriting.md §1）。sherpa AAR 内嵌
+    // libonnxruntime.so 1.27.1（strings 实测）；Maven Central 的 Java 包
+    // 没有 1.27.1（1.27.0 直跳 1.28.0），取同 minor 的 1.27.0——补丁级
+    // 兼容，两个 AAR 的同名 so 经 packaging pickFirst 去重（依赖序在
+    // sherpa 之后，运行时共用一份 so），APK 只多 Java API 与 JNI 壳。
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("org.apache.commons:commons-compress:1.28.0")
