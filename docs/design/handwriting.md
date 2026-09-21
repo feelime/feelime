@@ -190,4 +190,68 @@ DP 输出与设备逐字一致到小数点后三位（渲染/预处理/模型/�
 - 多字连写、叠写（写满自动识别/半透明上一字）
 - 笔迹美化渲染、笔锋、压感
 - 词库联动候选（识别字 → assoc 联想补全词组）
-- 手写设置项（识别触发延时、候选数）
+- 手写候选数设置（停顿触发延时应要求已在二轮落地，见 §8.3）
+
+## §8 二轮 UI/UX 定稿（2026-09-21，issue #28 round-2）
+
+### §8.1 书写面板与模式高度
+
+- 书写区改成大块面板，竖屏目标**宽高比 1.6:1**（微信输入法 wetype
+  实测 984×590 口径），中央浅色提示「在此手写 · 长按清空」，落笔隐藏
+  （`.writing`，沿用一轮机制）。
+- 手写是唯一**改变键盘总高**的模式：进入时 JS 按当前宽度推
+  `chrome + 控制行 + 面板` 的内容高度（`applyModeHeight` →
+  `setKeyboardHeight`，native 按 orientation 持久化并钳制）；离开模式
+  推回该方向已存高度，无已存值时推 0（native 复位默认的既有语义）。
+  推送挂在 renderMode / renderHandwriting / resetToHome（重唤键盘）/
+  applyHeightNow（HEIGHT_SETTLED_JS）四处，幂等。
+- **横屏不改总高**：native 钳半屏、纵向没有余量，改**左右布局**
+  （`.ink-layout` 横屏 row 分支）：面板竖向铺满整层高，退格/空格/中英/
+  回车在右列三等分。
+- 控制行高固定（`--ink-row-h`，JS 单一来源写入 CSS 变量，默认 46px），
+  **不消费 `--kb-row-h`**——这是 §8.4 的结构性修复。中英键保留（wetype
+  的模式出口在顶部工具栏，我们的模式菜单只挂这颗键）。
+
+### §8.2 候选与工具栏整行互斥（wetype 形态）
+
+- 无候选（初始/清空态）：候选条槽位显示工具栏。
+- 有识别候选：**整行替换**——`setToolbarYield(true)` 收起全部工具
+  （含 mic），左侧 `#inkTag`「手写」模式标识 + 候选横排占满，
+  右侧 `#composeClear` × = 清笔迹并恢复工具栏。语音进行中不让位
+  （mic 是 stop 入口，与联想让位同一守卫口径）。
+- 点选候选上屏：`commitText` + 清笔迹/候选 → 回工具栏态；继续写则
+  再次进候选态。收起键（#hide）在任何互斥态都保留。
+- `auditToolbarTools` / `pruneOverflowTools` 尊重 `toolbarYield`：
+  重唤键盘触发的工具栏对账不得把工具插回让位中的候选行。
+
+### §8.3 平滑与停顿延时
+
+- **平滑**只作用于发给引擎的 payload（`smoothInkStroke`），屏上实时
+  笔迹保持原样：① 5 点三角核（1-2-3-2-1）滑动平均去抖，首尾锚点
+  原样保留，窗口小不磨拐角；② 按弧长等距重采样（步长 3px）。
+  payload 结构不变（strokes of [x,y]），native 侧无感。
+- **停顿触发延时**：设置页「手写输入」卡片，0=快 300ms / 1=标准 600ms
+  （默认）/ 2=慢 1200ms。原生 pref `ink_delay`（`PREF_INK_DELAY`），
+  设置页走 SettingsBridge `setInkDelay`，键盘经 hello `inkDelay` 回读
+  （旧 APK 不带字段不覆盖）；落盘广播
+  ACTION_KEYBOARD_PREFS_CHANGED → native 重推 hello → 即时生效。
+
+### §8.4 重唤折叠 P1（根因与修复）
+
+现象：手写写了字 → 收起键盘 → 重唤，书写区 rect 折叠（0 高）、触摸
+静默失效，候选条 rect 异常导致点选落空。
+
+根因：控制键行走 `.kb-key` 的 `--kb-row-h`，而 `applyHeight()` 在视图
+被瞬时量高（attach/重唤窗口、resize 与 layout 竞态）时会把行变量烘焙
+成大值。qwerty 键面下这只是键变高；手写键面里书写区是
+`flex:1; min-height:0` 的弹性块，被固定行高的控制行吃掉全部空间后
+**塌缩为 0**，且没有后续再推导把它救回来（ace 的 evaluate 时序比
+AVD 更容易把瞬态值固化）。
+
+修复（三层）：
+1. 控制行高与 `--kb-row-h` 解耦（固定 `--ink-row-h`）——陈旧行变量
+   再也压不塌书写区（结构性拆除根因通道）；
+2. `applyModeHeight` 挂进重唤路径（resetToHome / applyHeightNow），
+   收起期间动过的高度回到手写态；
+3. `inkSyncViewport` 挂进 `applyHeight`：书写区 CSS 盒变化才重建画布
+   分辨率并重放笔迹（画布陈旧位图一类问题的兜底）。

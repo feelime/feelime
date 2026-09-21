@@ -929,7 +929,7 @@ build();
         touches: [new win.Touch({ identifier: 1, target: el, clientX: x, clientY: y })],
         changedTouches: [new win.Touch({ identifier: 1, target: el, clientX: x, clientY: y })],
     }));
-    setTimeout(() => {
+    const run = () => {
         const win = frame.contentWindow;
         if (!win || !win.Feelime) return;
         if (theme || locale) pushHello();
@@ -971,7 +971,18 @@ build();
                 }
             }, 400);
         }
-    }, 700);
+    };
+    // 键盘文档是异步 fetch 后才 srcdoc 的：固定延时在冷启动会抢在
+    // Feelime 就绪前空跑一次然后 return（?act 直达假死，表现为还是
+    // QWERTY）。轮询就绪位，上限 10s。
+    let waited = 0;
+    const waitReady = () => {
+        const win = frame.contentWindow;
+        if (win && win.Feelime) { run(); return; }
+        if ((waited += 100) > 10000) return;
+        setTimeout(waitReady, 100);
+    };
+    setTimeout(waitReady, 300);
 })();
 </script>
 </body>
