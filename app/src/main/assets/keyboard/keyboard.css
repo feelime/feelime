@@ -996,6 +996,15 @@ body.landscape .ink-controls .kb-key { height: auto; flex: 1; }
 /* 落笔后提示让位（.writing 由 bindInkPad 控制）——识别结果在候选条，
  * 书写区不额外画 loading 态（design §5.2）。 */
 .ink-pad.writing .ink-hint { opacity: 0; }
+/* 手写候选态的整行互斥（wetype 形态）：左侧模式标识。候选条自持滚动，
+ * 标识是 #candidateBar 行内 #candidates 之前的独立节点，不随滚动漂移。 */
+.ink-tag {
+    flex: none;
+    font-size: 13px;
+    font-weight: 650;
+    color: var(--accent-text);
+    white-space: nowrap;
+}
 /* Emoji sub-view: snapping page scroller over the category strip.
  * No edge mask - the pages are exactly full width and a mask would dim
  * the first/last emoji column. */

@@ -1383,6 +1383,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.t9CloseSymbolBar();
                     return;
                 }
+                // 手写候选态的 × = 清笔迹+候选，工具栏恢复（无组合可清）。
+                if (this.mode === 'handwriting' && (this.inkCandidates || []).length) {
+                    this.inkReset();
+                    return;
+                }
                 // 联想态的 × = 清掉联想词并恢复工具栏（没有引擎组合可清）。
                 if (this.assocWords.length && !this.composing) {
                     this.assocWords = [];
@@ -2199,6 +2204,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.inkTimer = null;
             this.inkPaint();
             if (this.mode === 'handwriting') this.renderCandidates(this.lastEngineState || {});
+            else {
+                // 离开模式：互斥态就地拆除（标识收起、工具栏复位），
+                // 新键面的可见性由各自流程接手。
+                const tag = document.getElementById('inkTag');
+                if (tag) tag.hidden = true;
+                this.setToolbarYield(false);
+            }
         }
 
         /** 键盘收起/失焦的触摸卫生（§10.6）：撤长按计时、丢弃进行中的笔。 */
@@ -2209,7 +2221,30 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.inkHoldTimer = null;
         }
 
-        /** 点选候选：commitText 直上屏并清笔迹（design §2 数据流）。 */
+        /** 手写候选态（wetype 形态，issue #28 round-2）：有识别候选=工具
+         * 栏整行让位（含 mic，仅留 × 与收起键），「手写」标识 + 候选横排
+         * 占满整行；无候选/清空后=工具栏原样。语音进行中不让位——mic 是
+         * stop 入口必须存活（与联想让位的守卫同一口径）。 */
+        applyInkBarChrome() {
+            const active = this.mode === 'handwriting' &&
+                (this.inkCandidates || []).length > 0;
+            const tag = document.getElementById('inkTag');
+            if (tag) tag.hidden = !active;
+            if (this.voiceState === 'idle') {
+                this.setToolbarYield(active);
+                // mic 虽在让位清单里，但 updateComposing 的通用可见性行
+                // （非组合=可见）先于本调用执行，这里显式压回。
+                if (active) {
+                    const mic = document.getElementById('mic');
+                    if (mic) mic.hidden = true;
+                }
+            }
+            return active;
+        }
+
+        /** 点选候选：commitText 直上屏并清笔迹（design §2 数据流）。
+         * 清笔迹同时撤掉互斥态 → 工具栏恢复（wetype 同款：上屏后回
+         * 工具栏，继续写再进候选态）。 */
         commitInkCandidate(candidate) {
             this.sendSymbol(candidate.text);
             this.inkReset();
@@ -4656,10 +4691,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!el) return;
                 el.hidden = el.closest('#toolbarEditorGrid')
                     ? false
-                    : (composeHidden || overflow.has(dom));
+                    // 让位态（手写候选整行互斥/T9 符号行/联想）优先：
+                    // 重唤键盘触发的对账不得把工具插回让位中的候选行。
+                    : (this.toolbarYield || composeHidden || overflow.has(dom));
             });
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = composeHidden && this.voiceState === 'idle';
+            if (mic) mic.hidden = this.toolbarYield ||
+                (composeHidden && this.voiceState === 'idle');
         }
 
         /** 溢出兜底：已保存的布局可能比当前候选条容量大（典型：单手模式
@@ -4678,7 +4716,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             [...this.toolbarLeft, ...this.toolbarRight].forEach(id => {
                 const el = document.getElementById(TOOL_CATALOG[id]);
-                if (el) el.hidden = this._overflowTools.has(id);
+                // 让位态优先（手写候选整行互斥）：溢出对账不得把工具置回。
+                if (el) el.hidden = this.toolbarYield || this._overflowTools.has(id);
             });
         }
 
@@ -6767,6 +6806,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     inkBar.append(button);
                 });
                 inkBar.scrollLeft = inkHeld;
+                // 互斥态（整行替换工具栏）跟候选走，每次重渲染都对账。
+                this.applyInkBarChrome();
                 return;
             }
             // T9：1 键展开的西文/技术符号行。引擎候选/联想/组合任一
@@ -6946,6 +6987,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!this.composing && this.expanded && !this.variantReplaying) this.setExpanded(false);
             const mic = document.getElementById('mic');
             if (mic) mic.hidden = this.composing && !recording;
+            // 手写候选态的整行互斥要压过上面 mic/工具的通用可见性规则：
+            // 引擎回声（commitText 后的空事件等）不得把工具栏插回候选行。
+            if (this.mode === 'handwriting') this.applyInkBarChrome();
             // While composing the right side carries exactly two
             // buttons (× and ˅). The keyboard-dismiss chevron looks identical
             // to the expand arrow - hide it until the composition ends.
