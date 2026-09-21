@@ -77,8 +77,16 @@ const val PREF_PREEDIT_FONT = "preedit_font"
 fun readPreeditFont(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_PREEDIT_FONT, 0)
-        .takeIf { it in 0..2 }
-        ?: 0
+        .takeIf { it in 0..2 } ?: 0
+
+/** 手写停顿触发延时档位：0=快(300ms) 1=标准(600ms) 2=慢(1200ms)
+ *  （issue #28 round-2）。识别参数本身在键盘 JS 侧，这里只存偏好。 */
+const val PREF_INK_DELAY = "ink_delay"
+
+fun readInkDelay(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_INK_DELAY, 1)
+        .takeIf { it in 0..2 } ?: 1
 
 /** 拼音加粗开关（issue #8）：默认关。 */
 const val PREF_PREEDIT_BOLD = "preedit_bold"
@@ -536,6 +544,7 @@ class SettingsBridge(
             .put("popupSnap", readFeelPopupSnap(context))
             .put("candidateFont", readCandidateFont(context))
             .put("preeditFont", readPreeditFont(context))
+            .put("inkDelay", readInkDelay(context))
             .put("preeditBold", readPreeditBold(context))
             .put("oneHand", readOneHand(context))
             .put("oneHandPad", readOneHandPad(context))
@@ -965,10 +974,30 @@ class SettingsBridge(
         pushState()
     }
 
+    /** 手写停顿触发延时档位（issue #28 round-2）：0=快 1=标准 2=慢。 */
+    @JavascriptInterface
+    fun setInkDelay(level: Int, token: String) = guarded(token) {
+        if (level !in 0..2) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "inkDelayError")
+                    .put("code", "BAD_INK_DELAY")
+                    .put("message", t(context, "手写停顿延时选项无效", "Invalid handwriting delay option")),
+            )
+            pushState()
+            return@guarded
+        }
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_INK_DELAY, level).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
     /** 拼音加粗开关（issue #8）：默认关。 */
     @JavascriptInterface
-    fun setPreeditBold(on: Boolean, token: String) = guarded(token) {
-        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+    fun setPreeditBold(on: Boolean, token: String) = guarded(token) {        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_PREEDIT_BOLD, on).apply()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),

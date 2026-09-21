@@ -6305,6 +6305,127 @@ test('handwriting: leaving the mode clears ink state', () => {
     assert(!world.$('inkCanvas'), 'pad unrendered after leaving');
 });
 
+// ---- round-2（issue #28 二轮）：平滑 / 延时档 / 候选整行互斥 / 模式高度 ----
+
+test('handwriting smoother: damps jitter, evens spacing, keeps corners', () => {
+    const world = handwritingWorld();
+    const smooth = world.context.window.Feelime.inkSmooth;
+    assert(typeof smooth === 'function', 'suite hook present');
+    // 去抖：内部点 ±3px 交替抖动的直线（首尾锚点压在线上），平滑后
+    // 残余远小于抖动幅度；2px 采样密度下重采样还把点数收下去。
+    const jittered = Array.from({ length: 25 }, (_, i) =>
+        ({ x: 20 + i * 2, y: i === 0 || i === 24 ? 60 : 60 + (i % 2 ? 3 : -3) }));
+    const flat = smooth(jittered);
+    const residual = Math.max(...flat.map(p => Math.abs(p.y - 60)));
+    assert(residual < 2, `jitter damped (residual ${residual.toFixed(2)})`);
+    assert(flat.length < jittered.length, 'resample shrinks a dense stroke');
+    // 点距均匀：中间相邻点都在一个步长量级（收口点除外）。
+    for (let i = 2; i < flat.length - 1; i++) {
+        const d = Math.hypot(flat[i].x - flat[i - 1].x, flat[i].y - flat[i - 1].y);
+        assert(d <= 6.5, `uniform spacing (${d.toFixed(2)})`);
+    }
+    // 拐点保留：3px 采样的 L 形折线，平滑后离拐角最近的点仍在 3px 内。
+    const elbow = [];
+    for (let i = 0; i <= 33; i++) elbow.push({ x: i * 3, y: 0 });
+    for (let i = 1; i <= 33; i++) elbow.push({ x: 99, y: i * 3 });
+    const turned = smooth(elbow);
+    const nearest = turned.reduce((best, p) =>
+        Math.hypot(p.x - 99, p.y) < Math.hypot(best.x - 99, best.y) ? p : best, turned[0]);
+    const cornerDrift = Math.hypot(nearest.x - 99, nearest.y);
+    assert(cornerDrift < 3, `corner preserved (drift ${cornerDrift.toFixed(2)})`);
+    // 首尾锚点不动（值相等即可，实现是拷贝）。
+    equal(flat[0].y, 60, 'pen-down anchor kept');
+    const first = smooth(elbow)[0];
+    assert(first.x === elbow[0].x && first.y === elbow[0].y,
+        'first point value untouched');
+    // 过短的笔原样返回（不足 3 点没有平滑意义）。
+    const short = [{ x: 0, y: 0 }, { x: 3, y: 1 }];
+    equal(smooth(short), short, 'short stroke untouched');
+});
+
+test('handwriting: the recognizeInk payload carries the smoothed stroke', () => {
+    const world = handwritingWorld();
+    // 首尾压在线上（锚点原样保留），内部点 ±4 抖动。
+    const pts = Array.from({ length: 20 }, (_, i) =>
+        [20 + i * 4, i === 0 || i === 19 ? 60 : 60 + (i % 2 ? 4 : -4)]);
+    inkStroke(world, pts);
+    world.clock.advance(600);
+    const calls = world.native.of('recognizeInk');
+    equal(calls.length, 1, 'one request');
+    const payload = JSON.parse(calls[0].args[1]);
+    assert(Array.isArray(payload.strokes) && payload.strokes.length === 1,
+        'payload structure unchanged (strokes of [x, y] pairs)');
+    const ys = payload.strokes[0].slice(1, -1).map(p => p[1]);
+    const range = Math.max(...ys) - Math.min(...ys);
+    assert(range < 3, `payload jitter damped (interior range ${range.toFixed(2)}, raw 8)`);
+});
+
+test('handwriting: pause delay tier rides hello (300/600/1200ms)', () => {
+    const world = handwritingWorld();
+    equal(world.context.window.Feelime.debugState().inkDelay, 1, 'default standard');
+    world.hello({ mode: 'handwriting', inkDelay: 0, engineDataReady: HANDWRITING_READY });
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.clock.advance(299);
+    equal(world.native.of('recognizeInk').length, 0, 'fast tier still pending at 299ms');
+    world.clock.advance(1);
+    equal(world.native.of('recognizeInk').length, 1, 'fast tier fires at 300ms');
+    world.hello({ mode: 'handwriting', inkDelay: 2, engineDataReady: HANDWRITING_READY });
+    inkStroke(world, [[80, 20], [100, 24], [120, 30]]);
+    world.clock.advance(1199);
+    equal(world.native.of('recognizeInk').length, 1, 'slow tier still pending at 1199ms');
+    world.clock.advance(1);
+    equal(world.native.of('recognizeInk').length, 2, 'slow tier fires at 1200ms');
+    // 白名单外的档位不覆盖（旧 APK 的 hello 缺字段同理）。
+    world.hello({ mode: 'handwriting', inkDelay: 9, engineDataReady: HANDWRITING_READY });
+    equal(world.context.window.Feelime.debugState().inkDelay, 2, 'off-whitelist ignored');
+});
+
+test('handwriting: candidates take the whole bar while the toolbar yields (wetype mutex)', () => {
+    const world = handwritingWorld();
+    const tools = ['setupButton', 'ctrlTool', 'imeSwitchButton', 'clipboardButton',
+        'favoritesButton', 'mic'];
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.clock.advance(600);
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [{ text: '中', score: 0.8 }, { text: '忠', score: 0.2 }], error: null,
+    });
+    tools.forEach(id => equal(world.$(id).hidden, true, `${id} yielded to the candidate row`));
+    equal(world.$('inkTag').hidden, false, 'mode tag shown');
+    equal(world.$('composeClear').hidden, false, 'clear entry shown');
+    equal(world.$('candidates').children.length, 2, 'candidates fill the bar');
+    // 引擎回声不得把工具栏插回候选行。
+    world.engineState({ composing: '', rawInput: '', candidates: [], revision: 7,
+        hasPreviousPage: false, hasNextPage: false });
+    equal(world.$('mic').hidden, true, 'mic stays hidden after an engine echo');
+    // 重唤键盘触发的工具栏对账也不得插回（applyHeight → audit）。
+    world.context.window.Feelime.toolbarAudit();
+    equal(world.$('setupButton').hidden, true, 'audit keeps the yield');
+    // × = 清笔迹+候选 → 工具栏整行恢复（wetype 同款出口）。
+    world.tap(world.$('composeClear'));
+    tools.forEach(id => equal(world.$(id).hidden, false, `${id} restored after ×`));
+    equal(world.$('inkTag').hidden, true, 'tag hidden again');
+    equal(world.$('candidates').children.length, 0, 'candidates cleared');
+    equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes cleared');
+});
+
+test('handwriting: the mode pushes its panel height and leaves restore the stored one', () => {
+    const world = fresh();
+    world.context.window.innerHeight = 900; // 放开钳制，量目标值
+    world.hello({});
+    const before = world.native.of('setKeyboardHeight').length;
+    world.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });
+    const calls = world.native.of('setKeyboardHeight');
+    assert(calls.length > before, 'height pushed on entry');
+    // mock 视口 400 宽 → 面板 245 + 固定开销 126（拼音带 18 + 候选条槽
+    // 52 + 控制行 51 + 底部 5）= 371。
+    equal(calls[calls.length - 1].args[0], 371, 'panel-height budget pushed');
+    world.hello({ mode: 'direct', engineDataReady: HANDWRITING_READY });
+    const restored = world.native.of('setKeyboardHeight');
+    // 该方向无已存高度 → 0 = native 复位默认（setKeyboardHeight 的重置语义）。
+    equal(restored[restored.length - 1].args[0], 0, 'leaving resets to the stored height');
+});
+
 console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
     (skipped ? `, ${skipped} skipped (era-gated)` : '') +
     ` [keyboard ${KEYBOARD_VERSION}] ==`);

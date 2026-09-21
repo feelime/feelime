@@ -274,6 +274,21 @@
       <div id="dpKeymap"></div>
     </section>
 
+    <section class="card" id="sec-handwriting" aria-labelledby="handwritingTitle">
+      <div class="section-heading"><h2 id="handwritingTitle" data-i18n="input.ink.title">手写输入</h2><span class="eyebrow" data-i18n="input.ink.badge">手写</span></div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.ink.delay">停顿触发识别</span>
+          <small data-i18n="input.ink.delayHint">停笔后等这么久就识别上一个字；写得慢选「慢」，抢着识别选「快」。</small>
+        </span>
+        <select id="inkDelay" class="select" aria-label="停顿触发识别" data-i18n-aria="input.ink.delay">
+          <option value="0" data-i18n="input.ink.fast">快（约 300 毫秒）</option>
+          <option value="1" data-i18n="input.ink.standard">标准（约 600 毫秒）</option>
+          <option value="2" data-i18n="input.ink.slow">慢（约 1200 毫秒）</option>
+        </select>
+      </div>
+    </section>
+
     <section class="card" id="sec-feel" aria-labelledby="feelTitle">
       <div class="section-heading"><h2 id="feelTitle" data-i18n="input.feel.title">键盘手感</h2><span class="eyebrow" data-i18n="input.feel.badge">微调</span></div>
       <div class="row language-row">

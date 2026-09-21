@@ -800,6 +800,59 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // orientation; clamped so four rows always stay inside the budget.
     const KB_HEIGHT_KEY = orientation => `feelime_kb_height_${orientation}`;
     const KB_ROW_MIN = 32;
+    // 手写控制行键高（CSS px）：固定值，不参与 --kb-row-h 预算（键盘
+    // 高度调节的弹性全部给书写面板）。
+    const INK_CONTROL_ROW_H = 46;
+    // 手写停笔→识别的触发延时档位（设置页「手写」区块，hello 下发）。
+    const INK_RECOGNIZE_DELAYS = [300, 600, 1200];
+    // 平滑重采样的目标点距（CSS px）：与采点瘦身的最小间距（2px）同量
+    // 级，等距后 payload 通常比原始 60Hz 采样更小（桥上限 4096 字符）。
+    const INK_SMOOTH_STEP = 3;
+
+    /** 轨迹平滑（只作用于发给引擎的笔迹，屏上实时笔迹保持原样）：
+     * ① 5 点三角核（1-2-3-2-1）滑动平均去手指抖动——窗口小、首尾点
+     *    原样保留，拐角只有轻度过渡；② 按弧长等距重采样，点距均匀。
+     *    输入输出都是 [{x,y}]，payload 结构不变（native 侧无感）。 */
+    function smoothInkStroke(points, step = INK_SMOOTH_STEP) {
+        if (!Array.isArray(points) || points.length < 3) return points;
+        const kernel = [1, 2, 3, 2, 1];
+        const smoothed = points.map((point, index) => {
+            let sumX = 0, sumY = 0, sumW = 0;
+            for (let offset = -2; offset <= 2; offset++) {
+                const j = index + offset;
+                if (j < 0 || j >= points.length) continue;
+                const weight = kernel[offset + 2];
+                sumX += points[j].x * weight;
+                sumY += points[j].y * weight;
+                sumW += weight;
+            }
+            return { x: sumX / sumW, y: sumY / sumW };
+        });
+        // 起笔/收笔锚点不动：识别对首尾位置敏感（字形外框）。
+        smoothed[0] = { x: points[0].x, y: points[0].y };
+        smoothed[smoothed.length - 1] = { x: points[points.length - 1].x, y: points[points.length - 1].y };
+        const resampled = [smoothed[0]];
+        let from = smoothed[0];
+        let carry = 0;
+        for (let i = 1; i < smoothed.length; i++) {
+            let to = smoothed[i];
+            let seg = Math.hypot(to.x - from.x, to.y - from.y);
+            while (carry + seg >= step) {
+                const t = (step - carry) / seg;
+                from = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+                resampled.push({ x: from.x, y: from.y });
+                seg = Math.hypot(to.x - from.x, to.y - from.y);
+                carry = 0;
+            }
+            carry += seg;
+            from = to;
+        }
+        // 收笔点必须保留（短笔画/末段不足半步时也要收口）。
+        const end = smoothed[smoothed.length - 1];
+        const tail = resampled[resampled.length - 1];
+        if (Math.hypot(end.x - tail.x, end.y - tail.y) > 0) resampled.push(end);
+        return resampled;
+    }
 
     /* ===== Custom symbol keys, defined as pasted JSON ===== */
     // Storage: {"version":1,"rows":[[ {t,tap,note} ... ] x3 ]}. tap is a
@@ -2089,7 +2142,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (stroke && stroke.length) this.inkStrokes.push(stroke);
                 this.inkCurrent = null;
                 this.inkPaint();
-                if (this.inkStrokes.length) this.inkSchedule(INK_RECOGNIZE_DELAY);
+                if (this.inkStrokes.length) {
+                    this.inkSchedule(INK_RECOGNIZE_DELAYS[this.inkDelay] || 600);
+                }
             }, { passive: false });
             pad.addEventListener('touchcancel', event => {
                 const stroke = release(event);
@@ -2176,8 +2231,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** 发送识别请求（design §2/§3）：w/h 承载书写区 CSS 尺寸，坐标
-         * 保留原始比例（归一在 native 侧做）。旧 APK 无此桥方法时静默
-         * 跳过（§5.4 feature-detect）。 */
+         * 保留原始比例（归一在 native 侧做）；发送前对每笔做平滑去抖
+         * （smoothInkStroke，只影响这条 payload）。旧 APK 无此桥方法时
+         * 静默跳过（§5.4 feature-detect）。 */
         inkRecognize() {
             if (!this.inkStrokes.length) return;
             if (typeof Native.recognizeInk !== 'function') return;
@@ -2189,7 +2245,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 w: Math.round(rect.width || 320),
                 h: Math.round(rect.height || 132),
                 strokes: this.inkStrokes.map(stroke =>
-                    stroke.map(point => [round1(point.x), round1(point.y)])),
+                    smoothInkStroke(stroke).map(point => [round1(point.x), round1(point.y)])),
             });
             this.inkReqId += 1;
             this.call(() => Native.recognizeInk(this.inkReqId, payload, this.token));
@@ -7871,6 +7927,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (Number(payload.holdMs) in { 200: 1, 300: 1, 350: 1, 450: 1, 600: 1 }) {
                 this.holdMs = Number(payload.holdMs);
             }
+            // 手写停顿触发延时（issue #28 round-2）：0=快 300 / 1=标准 600 /
+            // 2=慢 1200；旧 APK 的 hello 不带字段不覆盖。
+            if (Number(payload.inkDelay) in { 0: 1, 1: 1, 2: 1 }) {
+                this.inkDelay = Number(payload.inkDelay);
+            }
             if (Number(payload.scrubSpeed) >= 1 && Number(payload.scrubSpeed) <= 5) {
                 this.scrubSpeed = Number(payload.scrubSpeed);
                 // Once native has spoken, the legacy localStorage scrub key
@@ -8418,7 +8479,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // current size as its baseline (no callback) - a pad/height change
         // made while hidden would then keep a stale row budget (device-gate
         // proven). Re-derive from the live geometry at show time.
-        applyHeightNow: () => keyboard.applyHeight(),
+        // 手写总高也在这里再推一次：重唤键盘不重跑 renderMode（模式没
+        // 变），收起期间动过高度的场合靠这一下回到手写态（P1 重唤折叠）。
+        applyHeightNow: () => {
+            keyboard.applyModeHeight();
+            keyboard.applyHeight();
+        },
         // Read-only automation probe (device gates): the keyboard instance is
         // a closure, so gates cannot reach runtime fields without this.
         debugState: () => ({
@@ -8430,6 +8496,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 手写（issue #28）：在途请求号 + 笔迹规模，设备门禁断言用。
             inkReqId: keyboard.inkReqId,
             inkStrokes: keyboard.inkStrokes.length,
+            // 停顿触发延时档位（设置回归断言用）。
+            inkDelay: keyboard.inkDelay,
             // Copy: a hand-out reference would let automation mutate the
             // live degrade state (active=false left a stale badge).
             degraded: keyboard.degrade ? { ...keyboard.degrade } : null,
@@ -8453,6 +8521,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // Suite hook: drives the content-height bridge without
         // synthesizing a drag (the drag gesture itself is covered by ).
         applyKbHeight: content => keyboard.applyKbHeight(content),
+        // Suite/preview hook (issue #28 round-2): the ink delay setting and
+        // the recognition-path smoother, for unit tests and preview probes.
+        setInkDelay: level => {
+            keyboard.inkDelay = Number(level) in { 0: 1, 1: 1, 2: 1 } ? Number(level) : 1;
+        },
+        inkSmooth: points => smoothInkStroke(points),
         // Preview/suite hook (issue #8): switch the preedit font level
         // without a native hello round-trip.
         setPreeditFont: level => {

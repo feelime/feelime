@@ -1539,6 +1539,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("popupSnap", feelPopupSnap())
             .put("candidateFont", candidateFont())
             .put("preeditFont", preeditFont())
+            .put("inkDelay", readInkDelay(this))
             .put("preeditBold", readPreeditBold(this))
             .put("oneHand", readOneHand(this))
             .put("oneHandPad", readOneHandPad(this))
