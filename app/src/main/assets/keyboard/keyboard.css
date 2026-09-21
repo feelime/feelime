@@ -993,7 +993,7 @@ body.landscape .t9-grid { gap: 4px 5px; }
 .ink-bottom .kb-key { height: var(--ink-row-h, 46px); }
 /* 空格在底行占大头（wetype 同款比例），其余键一倍宽。 */
 .ink-bottom #spaceKey { flex: 3.1; }
-.ink-punct { font-size: 19px; }
+.ink-punct { font-size: 22px; }
 body.landscape .ink-layout { flex-direction: row; }
 /* 横屏右列：退格/， ‖ 。/中英 ‖ 符号/123 ‖ 空格/换行 两列四行。 */
 body.landscape .ink-rail {
