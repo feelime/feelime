@@ -142,12 +142,12 @@ class HandwritingEngineTest {
 
     @Test
     fun ctcDpMatchesHandComputedProbabilities() {
-        // V=3（blank + 2 字符），两帧 softmax 都是 [0.5, 0.5, 0]（用极大负
-        // logits 压出 0 概率）。P(单字 c0) = blank,c + c,blank + c,c = 0.75，
-        // P(c1) = 0。
-        val frame = floatArrayOf(0f, 0f, -1000f)
-        val logits = floatArrayOf(*frame, *frame)
-        val top = HandwritingInk.decodeCtc(logits, 2, 3, 30)
+        // V=3（blank + 2 字符），输入已是概率（模型输出自带 softmax，host
+        // 实测行和为 1，decodeCtc 不再 softmax）。两帧都是 [0.5, 0.5, 0]：
+        // P(单字 c0) = blank,c + c,blank + c,c = 0.75，P(c1) = 0。
+        val frame = floatArrayOf(0.5f, 0.5f, 0f)
+        val probs = floatArrayOf(*frame, *frame)
+        val top = HandwritingInk.decodeCtc(probs, 2, 3, 30)
         assertEquals(2, top.size)
         assertEquals(0, top[0].first)
         assertEquals(0.75f, top[0].second, 1e-4f)
@@ -156,20 +156,29 @@ class HandwritingEngineTest {
     }
 
     @Test
+    fun ctcDpConsumesProbabilitiesWithoutRescaling() {
+        // 已经归一的分布不得被再次缩放：单帧 [0.1, 0.9, 0] 的单字 c0 概率
+        // 就是 0.9（再 softmax 会把它压成 0.5 附近）。
+        val top = HandwritingInk.decodeCtc(floatArrayOf(0.1f, 0.9f, 0f), 1, 3, 2)
+        assertEquals(0, top[0].first)
+        assertEquals(0.9f, top[0].second, 1e-5f)
+    }
+
+    @Test
     fun ctcDpRanksByProbabilityAndRespectsLimit() {
-        // 两帧：第一帧 c0 独大，第二帧 c1 独大 → 跨帧组合不成单字，
-        // 单字概率都趋近 0，但 c0（先完成）概率严格更大。
-        val logits = floatArrayOf(0f, 100f, -1000f, 0f, -1000f, 100f)
-        val top = HandwritingInk.decodeCtc(logits, 2, 3, 1)
+        // 帧0 = [0.2, 0.8, 0]，帧1 = [0.5, 0.1, 0.4]（手算）：
+        // C(c0) = 0.8*0.6 + 0.2*0.1 = 0.50；C(c1) = 0*0.9 + 0.2*0.4 = 0.08。
+        val probs = floatArrayOf(0.2f, 0.8f, 0f, 0.5f, 0.1f, 0.4f)
+        val top = HandwritingInk.decodeCtc(probs, 2, 3, 1)
         assertEquals(1, top.size)
         assertEquals(0, top[0].first)
-        assertTrue(top[0].second > 0f)
+        assertEquals(0.5f, top[0].second, 1e-5f)
     }
 
     @Test
     fun ctcDpHandlesBlankOnlyFrames() {
-        val logits = floatArrayOf(0f, -1000f, -1000f, 0f, -1000f, -1000f)
-        val top = HandwritingInk.decodeCtc(logits, 2, 3, 30)
+        val probs = floatArrayOf(1f, 0f, 0f, 1f, 0f, 0f)
+        val top = HandwritingInk.decodeCtc(probs, 2, 3, 30)
         assertTrue(top.all { it.second < 1e-6f })
     }
 
@@ -177,6 +186,18 @@ class HandwritingEngineTest {
     fun ctcDpRejectsDegenerateShapes() {
         assertTrue(HandwritingInk.decodeCtc(FloatArray(0), 0, 18385, 30).isEmpty())
         assertTrue(HandwritingInk.decodeCtc(floatArrayOf(0f, 1f), 1, 1, 30).isEmpty())
+    }
+
+    @Test
+    fun ctcIndicesMapDirectlyOntoCharTable() {
+        // decodeCtc 返回的下标 = 字符表第 j 条（输出第 j+1 列，0 列是
+        // blank）。引擎侧直接 vocabulary[index] 取字；+1 会让全体候选漂移
+        // 成下一个字符（设备实测：中→贝、口→山、工→土）。
+        val top = HandwritingInk.decodeCtc(floatArrayOf(0f, 0.1f, 0.9f), 1, 3, 5)
+        val charTable = listOf("甲", "乙")
+        assertEquals(1, top[0].first)
+        assertEquals("乙", charTable[top[0].first])
+        assertEquals("甲", charTable[top[1].first])
     }
 
     // ---- §4.3 候选后处理：滤汉字 + t2s 归一 + 聚合 + 归一化 ----

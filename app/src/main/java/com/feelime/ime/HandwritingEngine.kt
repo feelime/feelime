@@ -3,6 +3,7 @@ package com.feelime.ime
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import ai.onnxruntime.TensorInfo
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -13,7 +14,6 @@ import java.io.File
 import java.nio.FloatBuffer
 import java.util.concurrent.Executors
 import kotlin.math.ceil
-import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
@@ -27,7 +27,7 @@ import kotlin.math.round
  *
  * 渲染 / 预处理 / 解码参数钉死，与 host spike 逐参数一致：
  * 256×256 内容归一渲染 → 内容 bbox 裁剪 → 48 高等比缩放 →
- * RGB CHW [-1,1] → softmax 后单字符精确 CTC 概率 DP。
+ * RGB CHW [-1,1] → 单字符精确 CTC 概率 DP（模型输出已是概率，不再 softmax）。
  * 纯函数部分（几何、预处理、DP、候选归一）在 [HandwritingInk]，JVM 单测
  * 直接逐参数核对，模型文件不进单测。
  */
@@ -122,7 +122,9 @@ class HandwritingEngine(
         val input = HandwritingInk.preprocess(pixels, SIZE_PX, SIZE_PX)
         val width = HandwritingInk.resizedWidth(input)
         val env = checkNotNull(environment)
-        val shape = longArrayOf(1, IMG_HEIGHT.toLong(), width.toLong(), 3L)
+        // 模型输入是 NCHW（实测：index1 期望 3、index2 期望 48），数据侧
+        // HandwritingInk.preprocess 产出的正是 CHW 平面序。
+        val shape = longArrayOf(1, 3L, IMG_HEIGHT.toLong(), width.toLong())
         OnnxTensor.createTensor(env, FloatBuffer.wrap(input), shape).use { tensor ->
             activeSession.run(mapOf(checkNotNull(inputName) to tensor)).use { output ->
                 val tensor = output[0] as OnnxTensor
@@ -134,7 +136,7 @@ class HandwritingEngine(
                 val top = HandwritingInk.decodeCtc(logits, steps, vocab, RAW_LIMIT)
                 val candidates = HandwritingInk.rankCandidates(
                     top.mapNotNull { (index, score) ->
-                        vocabulary.getOrNull(index + 1)?.let { it to score }
+                        vocabulary.getOrNull(index)?.let { it to score }
                     },
                     t2sMap(),
                     CANDIDATE_LIMIT,
@@ -145,12 +147,16 @@ class HandwritingEngine(
     }
 
     /** 词表（§4.3）：onnx metadata 的 \n 分隔字符表（RapidOCR 导出键为
-     * `character`，`character_list` 为同义占位），运行时构造
-     * ["blank"] + chars + [" "]（blank=0）。 */
+     * `character`，`character_list` 为同义占位），按原始字符表存取——
+     * decodeCtc 返回的下标就是这里的下标（blank 是输出第 0 列，不占表
+     * 位；末列空格由汉字过滤兜掉）。条目**原样保留**——首条目是 U+3000
+     * （表意空格），trim 会把它洗掉导致全体词表索引错位。 */
     private fun loadVocabulary(created: OrtSession): List<String> {
         val metadata = created.metadata.customMetadata
         val raw = metadata["character"] ?: metadata["character_list"] ?: return emptyList()
-        return raw.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+        val entries = raw.split('\n').toMutableList()
+        if (entries.lastOrNull()?.isEmpty() == true) entries.removeAt(entries.lastIndex)
+        return entries
     }
 
     private fun t2sMap(): Map<String, String> {
@@ -189,6 +195,18 @@ class HandwritingEngine(
                 Log.w(TAG, "handwriting model carries no character table")
                 return false
             }
+            // 输出维度必须 = blank + 词表 + 空格；不符说明词表解析错位
+            // （解码出的字符会整体漂移），按不可用处理。
+            val outputVocab = (created.outputInfo.values.firstOrNull() as? TensorInfo)
+                ?.let { it.shape.lastOrNull()?.toInt() } ?: 0
+            // 动态/符号维度读不出来时（outputVocab<=0）放行：词表解析本身
+            // 已按 metadata 原样对齐，这里只是能查就查的双保险。
+            if (outputVocab > 0 && outputVocab != vocab.size + 2) {
+                created.close()
+                Log.w(TAG, "handwriting vocab mismatch: output=$outputVocab vocab=${vocab.size}")
+                return false
+            }
+            Log.i(TAG, "handwriting outputVocab=$outputVocab vocab=${vocab.size}")
             closeSession()
             environment = env
             session = created
@@ -428,21 +446,23 @@ object HandwritingInk {
     }
 
     /** §4.3：单字符精确 CTC 概率 DP（向量化全词表，无 beam search）。
-     * [logits] 行主序 (T,V)；返回概率降序的前 [limit] 个 (词表下标, 概率)，
-     * 词表下标 j 对应字符表 j-1（0 是 blank）。 */
+     * [logits] 行主序 (T,V)，**已是概率**——该模型输出自带 softmax
+     * （host 实测每行和恰为 1），再 softmax 会把分布压平、DP 出错字。
+     * 返回概率降序的前 [limit] 个 (字符表下标, 概率)：下标 j 即字符表第
+     * j 条（输出第 j+1 列；第 0 列是 blank，不占字符表位）。调用方拿它
+     * 直接查字符表，**不要再 +1**——+1 会整体漂移成下一个字符
+     * （设备实测：中→贝、口→山、工→土）。 */
     fun decodeCtc(logits: FloatArray, timeSteps: Int, vocabSize: Int, limit: Int): List<Pair<Int, Float>> {
         if (timeSteps <= 0 || vocabSize < 2) return emptyList()
         val nonBlank = vocabSize - 1
         // A=保持全 blank 的前缀概率；C=已完成字符 c 的概率。
         val completed = FloatArray(nonBlank)
         var blankPath = 1f
-        val row = FloatArray(vocabSize)
         for (t in 0 until timeSteps) {
             val base = t * vocabSize
-            softmaxInto(logits, base, row, vocabSize)
-            val blank = row[0]
+            val blank = logits[base]
             for (j in 0 until nonBlank) {
-                val char = row[j + 1]
+                val char = logits[base + j + 1]
                 completed[j] = completed[j] * (blank + char) + blankPath * char
             }
             blankPath *= blank
@@ -450,18 +470,6 @@ object HandwritingInk {
         val order = Array(nonBlank) { it }
         order.sortByDescending { completed[it] }
         return order.take(limit.coerceAtMost(nonBlank)).map { j -> j to completed[j] }
-    }
-
-    private fun softmaxInto(logits: FloatArray, base: Int, out: FloatArray, size: Int) {
-        var maximum = Float.NEGATIVE_INFINITY
-        for (i in 0 until size) maximum = max(maximum, logits[base + i])
-        var total = 0f
-        for (i in 0 until size) {
-            out[i] = exp(logits[base + i] - maximum)
-            total += out[i]
-        }
-        val inverse = 1f / total
-        for (i in 0 until size) out[i] *= inverse
     }
 
     /** 汉字过滤（§4.3：CJK 统一表意 㐀-鿿、兼容 豈-﫿、〇）。 */
