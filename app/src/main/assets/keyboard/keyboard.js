@@ -249,7 +249,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.55.0';
+    const KEYBOARD_VERSION = '3.56.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -375,6 +375,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // APK 的 hello 不带 stroke 就绪字段，缺失必须当不可用——沿用
         // !== false 的宽松判定会把缺键当可用，出现可点却无效的入口。
         'stroke': { label: '笔', title: '笔画 Stroke', layout: 't9', engine: true, strictReady: true },
+        // 手写（issue #28，design/handwriting.md §1）：独立识别引擎
+        // （recognizeInk 笔迹 → onInkCandidates 候选），不接按键引擎
+        // （engine:false——退格/空格/回车由原生 Direct 承载）。
+        // strictReady：模型未落地（旧 APK 的 hello 缺字段 / thin 未下载）
+        // 时菜单不出入口，宽松判定会出现可点却无效的模式。
+        'handwriting': { label: '手', title: '手写 Handwriting', layout: 'handwriting', engine: false, strictReady: true },
         'french': { label: 'FR', title: 'Français', layout: 'qwerty-fr', engine: true },
         'russian': { label: 'РУ', title: 'Русский', layout: 'cyrillic', engine: true },
         'japanese': { label: '日', title: '日本語 Romaji', layout: 'qwerty', engine: true },
@@ -914,7 +920,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // re-checked against the prisms by scripts/verify/guard_dp_finals.js.
 
     function modeLabel(mode) {
-        if (uiLocale === 'en') return ({pinyin: 'PY', 'double-pinyin': 'DP', t9: 'T9', japanese: 'JP'})[mode] || MODES[mode].label;
+        if (uiLocale === 'en') return ({pinyin: 'PY', 'double-pinyin': 'DP', t9: 'T9', japanese: 'JP', handwriting: 'HW'})[mode] || MODES[mode].label;
         return (MODES[mode] || MODES.direct).label;
     }
 
@@ -1000,6 +1006,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.voiceHold = false;
             this.voiceSession = null;
             this.spaceHoldTimer = 0;
+            // 手写板状态（issue #28）：笔迹（书写区局部 CSS px）、在途请求
+            // 号、识别候选。仅 handwriting 模式使用；离开模式即清空。
+            this.inkStrokes = [];
+            this.inkCurrent = null;
+            this.inkTouchId = null;
+            this.inkOrigin = null;
+            this.inkMoved = false;
+            this.inkReqId = 0;
+            this.inkCandidates = [];
+            this.inkTimer = null;
+            this.inkHoldTimer = null;
             this.pressedKeys = new Set();
             this.lastRevision = 0;
             this.toastTimer = null;
@@ -1592,6 +1609,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.renderedMode !== this.mode) {
                 this.renderedMode = this.mode;
                 this.tableVariants = {};
+                // 离开手写：笔迹与候选只属于该模式（重进从空白开始）。
+                if (this.mode !== 'handwriting') this.inkReset();
                 // A mode switch can land while the symbol layer is open -
                 // the grid and its badge must follow the new default.
                 if (!document.getElementById('symbolLayer').hidden) {
@@ -1608,6 +1627,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         renderLetters(layoutName) {
+            if (layoutName === 'handwriting') {
+                this.t9SymBar = false;
+                if (!this.composing) this.setToolbarYield(this.assocWords.length > 0);
+                return this.renderHandwriting();
+            }
             if (layoutName === 't9') {
                 this.t9SymBar = false;
                 // 换键面=离开符号行：工具栏让位必须解除，否则隐藏的快捷
@@ -1870,6 +1894,275 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             if (digit === '6') this.wildcardInFlight = true;
             this.call(() => Native.key(def.code, this.token));
+        }
+
+        /* ===== 手写键面（issue #28，design/handwriting.md）：书写区
+         * canvas + 控制行（退格/空格/回车/模式键）。识别走独立桥
+         * （recognizeInk → onInkCandidates），不进按键引擎；本节事件
+         * 一律 stopPropagation——根级 setupFlick 只认 bindTouch 记下的
+         * touchOrigin，书写区不挂 bindTouch 即天然不进 flick/scrub 仲裁。 */
+
+        renderHandwriting() {
+            const layer = document.getElementById('qwertyLayer');
+            layer.replaceChildren();
+            const pad = document.createElement('div');
+            pad.className = 'ink-pad';
+            pad.id = 'inkPad';
+            const canvas = document.createElement('canvas');
+            canvas.id = 'inkCanvas';
+            canvas.className = 'ink-canvas';
+            const hint = document.createElement('span');
+            hint.className = 'ink-hint';
+            hint.id = 'inkHint';
+            hint.textContent = t("在此写一个字 · 长按清空");
+            pad.append(canvas, hint);
+            this.bindInkPad(pad);
+            const bottom = this.row();
+            bottom.append(this.specialKey('backspace', ICONS.backspace,
+                () => this.call(() => Native.backspace(this.token)),
+                'kb-wide-1_4 kb-special', 'repeat'));
+            bottom.append(this.spaceKey());
+            bottom.append(this.cnEnKey());
+            bottom.append(this.enterKey());
+            layer.append(pad, bottom);
+            this.updateLabels();
+            // 旋转/换模式后按当前几何重建画布分辨率并重放既有笔迹。
+            this.inkResize();
+        }
+
+        /** 书写区手势：一笔一采样（首触点起笔，move 追点，end 收笔）。
+         * 停笔 600ms 触发识别；收笔后再落新笔会先撤未决请求（reqId
+         * 失配，迟到结果被丢弃）；长按原地把笔迹清空。 */
+        bindInkPad(pad) {
+            const INK_RECOGNIZE_DELAY = 600;
+            const INK_HOLD_SLOP = 6;
+            const INK_MIN_POINT_GAP = 2;
+            const at = touch => {
+                const rect = pad.getBoundingClientRect
+                    ? pad.getBoundingClientRect()
+                    : { left: 0, top: 0 };
+                return {
+                    x: touch.clientX - (rect.left || 0),
+                    y: touch.clientY - (rect.top || 0),
+                };
+            };
+            pad.addEventListener('touchstart', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                // 第二根手指不开启新笔迹（只跟一笔）。
+                if (this.inkTouchId !== null) return;
+                const touch = event.changedTouches[0];
+                this.inkTouchId = touch.identifier;
+                this.inkOrigin = at(touch);
+                this.inkMoved = false;
+                this.inkCurrent = [this.inkOrigin];
+                // 书写中撤未决识别：下一笔是新的字形，迟到候选会误导。
+                clearTimeout(this.inkTimer);
+                this.inkTimer = null;
+                clearTimeout(this.inkHoldTimer);
+                this.inkHoldTimer = setTimeout(() => {
+                    this.inkHoldTimer = null;
+                    if (!this.inkMoved) {
+                        this.inkTouchId = null;
+                        this.inkCurrent = null;
+                        this.inkReset();
+                        this.showToast(t("已清空笔迹"));
+                    }
+                }, this.holdMs);
+                this.inkPaint();
+            }, { passive: false });
+            pad.addEventListener('touchmove', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (this.inkTouchId === null) return;
+                const touch = Array.from(event.changedTouches).find(
+                    item => item.identifier === this.inkTouchId);
+                if (!touch) return;
+                const point = at(touch);
+                if (!this.inkMoved) {
+                    if (Math.hypot(point.x - this.inkOrigin.x,
+                        point.y - this.inkOrigin.y) < INK_HOLD_SLOP) return;
+                    this.inkMoved = true;
+                    clearTimeout(this.inkHoldTimer);
+                    this.inkHoldTimer = null;
+                }
+                const stroke = this.inkCurrent || [];
+                const last = stroke[stroke.length - 1];
+                // 采点瘦身：贴得比 2px 更近的点不进 payload（桥 payload
+                // 有 4096 字符上限，60Hz 原始采样会顶穿）。
+                if (last && Math.hypot(point.x - last.x, point.y - last.y) < INK_MIN_POINT_GAP) return;
+                stroke.push(point);
+                this.inkCurrent = stroke;
+                this.inkPaint();
+            }, { passive: false });
+            // 收笔与中断分 注册：中断（来电/手势抢断）的残笔不成字。
+            const release = event => {
+                const touch = event.changedTouches && Array.from(event.changedTouches).find(
+                    item => item.identifier === this.inkTouchId);
+                if (!touch) return null;
+                this.inkTouchId = null;
+                clearTimeout(this.inkHoldTimer);
+                this.inkHoldTimer = null;
+                return this.inkCurrent;
+            };
+            pad.addEventListener('touchend', event => {
+                const stroke = release(event);
+                if (stroke === null) return;
+                if (stroke && stroke.length) this.inkStrokes.push(stroke);
+                this.inkCurrent = null;
+                this.inkPaint();
+                if (this.inkStrokes.length) this.inkSchedule(INK_RECOGNIZE_DELAY);
+            }, { passive: false });
+            pad.addEventListener('touchcancel', event => {
+                const stroke = release(event);
+                if (stroke === null) return;
+                // 残笔丢弃：不完整的一笔不进识别，也不撤销未决请求。
+                this.inkCurrent = null;
+                this.inkPaint();
+            }, { passive: false });
+        }
+
+        /** 画布分辨率跟 CSS 盒走（devicePixelRatio 保清晰）；无 2d 环境
+         * （mock/预览降级）只记尺寸不画。 */
+        inkResize() {
+            const canvas = document.getElementById('inkCanvas');
+            if (!canvas) return;
+            const rect = typeof canvas.getBoundingClientRect === 'function'
+                ? canvas.getBoundingClientRect() : null;
+            const width = Math.max(1, Math.round((rect && rect.width) || 320));
+            const height = Math.max(1, Math.round((rect && rect.height) || 132));
+            const ratio = typeof window !== 'undefined' &&
+                typeof window.devicePixelRatio === 'number' && window.devicePixelRatio > 0
+                ? window.devicePixelRatio : 1;
+            if (canvas.width === width * ratio && canvas.height === height * ratio) return;
+            canvas.width = width * ratio;
+            canvas.height = height * ratio;
+            this.inkPaint();
+        }
+
+        inkContext() {
+            const canvas = document.getElementById('inkCanvas');
+            if (!canvas || typeof canvas.getContext !== 'function') return null;
+            try {
+                return canvas.getContext('2d');
+            } catch (_) {
+                return null;
+            }
+        }
+
+        /** 重放笔迹（局部 CSS px → 画布像素按缩放比映射）。 */
+        inkPaint() {
+            const pad = document.getElementById('inkPad');
+            if (pad) pad.classList.toggle('writing',
+                this.inkStrokes.length > 0 || (this.inkCurrent || []).length > 0);
+            const context = this.inkContext();
+            if (!context || typeof context.scale !== 'function') return;
+            const canvas = document.getElementById('inkCanvas');
+            const ratio = canvas.width && canvas.clientWidth
+                ? canvas.width / canvas.clientWidth : 1;
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.lineWidth = 3.2 * ratio;
+            context.lineCap = 'round';
+            context.lineJoin = 'round';
+            context.strokeStyle = this.inkColor();
+            context.beginPath();
+            const all = this.inkCurrent && this.inkCurrent.length
+                ? this.inkStrokes.concat([this.inkCurrent])
+                : this.inkStrokes;
+            all.forEach(stroke => {
+                stroke.forEach((point, index) => {
+                    const x = point.x * ratio;
+                    const y = point.y * ratio;
+                    if (index === 0) context.moveTo(x, y);
+                    else context.lineTo(x, y);
+                });
+            });
+            context.stroke();
+        }
+
+        /** 墨色跟主题 token 走（§1.1）；取不到 var（mock/降级）用中性灰。 */
+        inkColor() {
+            if (typeof getComputedStyle !== 'function') return '#888';
+            const styles = getComputedStyle(document.documentElement);
+            const value = styles && styles.getPropertyValue &&
+                styles.getPropertyValue('--text');
+            return (value && value.trim()) || '#888';
+        }
+
+        inkSchedule(delay) {
+            clearTimeout(this.inkTimer);
+            this.inkTimer = setTimeout(() => {
+                this.inkTimer = null;
+                this.inkRecognize();
+            }, delay);
+        }
+
+        /** 发送识别请求（design §2/§3）：w/h 承载书写区 CSS 尺寸，坐标
+         * 保留原始比例（归一在 native 侧做）。旧 APK 无此桥方法时静默
+         * 跳过（§5.4 feature-detect）。 */
+        inkRecognize() {
+            if (!this.inkStrokes.length) return;
+            if (typeof Native.recognizeInk !== 'function') return;
+            const canvas = document.getElementById('inkCanvas');
+            const rect = canvas && typeof canvas.getBoundingClientRect === 'function'
+                ? canvas.getBoundingClientRect() : { width: 320, height: 132 };
+            const round1 = value => Math.round(value * 10) / 10;
+            const payload = JSON.stringify({
+                w: Math.round(rect.width || 320),
+                h: Math.round(rect.height || 132),
+                strokes: this.inkStrokes.map(stroke =>
+                    stroke.map(point => [round1(point.x), round1(point.y)])),
+            });
+            this.inkReqId += 1;
+            this.call(() => Native.recognizeInk(this.inkReqId, payload, this.token));
+        }
+
+        /** 清笔迹与候选（点选上屏 / 长按清空 / 离开模式共用）。 */
+        inkReset() {
+            this.inkStrokes = [];
+            this.inkCurrent = null;
+            this.inkCandidates = [];
+            clearTimeout(this.inkTimer);
+            this.inkTimer = null;
+            this.inkPaint();
+            if (this.mode === 'handwriting') this.renderCandidates(this.lastEngineState || {});
+        }
+
+        /** 键盘收起/失焦的触摸卫生（§10.6）：撤长按计时、丢弃进行中的笔。 */
+        inkCancelTouch() {
+            this.inkTouchId = null;
+            this.inkCurrent = null;
+            clearTimeout(this.inkHoldTimer);
+            this.inkHoldTimer = null;
+        }
+
+        /** 点选候选：commitText 直上屏并清笔迹（design §2 数据流）。 */
+        commitInkCandidate(candidate) {
+            this.sendSymbol(candidate.text);
+            this.inkReset();
+        }
+
+        /** 识别结果（design §3）：reqId 与最新请求不符即丢弃；错误提示
+         * 但不阻塞书写；成功则整条刷新候选（复用候选条 DOM）。 */
+        onInkCandidates(payload) {
+            if (this.mode !== 'handwriting') return;
+            const reqId = Number(payload && payload.reqId);
+            if (reqId !== this.inkReqId) return;
+            const error = payload && payload.error;
+            if (error === 'unavailable') {
+                this.showToast(t("手写模型未就绪"));
+                return;
+            }
+            if (error) {
+                this.showToast(t("手写识别失败"));
+                return;
+            }
+            const candidates = Array.isArray(payload.candidates)
+                ? payload.candidates.filter(item => item && item.text)
+                    .map(item => ({ id: `ink:${item.text}`, text: item.text }))
+                : [];
+            this.inkCandidates = candidates;
+            this.renderCandidates(this.lastEngineState || {});
         }
 
         /** 字母组键：主字形=字母组（ABC），右上角标=数字，左上角小字=
@@ -2180,9 +2473,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const target = this.mode === pair[0] ? pair[1] : pair[0];
             // 快捷对里的 strictReady 模式不可用时不出击（codex 评审 P2：
             // 旧 APK 的 hello 不带 stroke 字段，直发 selectMode 只会被
-            // 原生拒绝，切换键看起来坏了）。
+            // 原生拒绝，切换键看起来坏了）。strictReady 与 engine 标志
+            // 解耦：手写（engine:false）同样按就绪位挡。
             const targetConfig = MODES[target];
-            if (targetConfig && targetConfig.engine && targetConfig.strictReady &&
+            if (targetConfig && targetConfig.strictReady &&
                 this.engineReady[target] !== true) {
                 this.showToast(t("该键盘还在准备中"));
                 return;
@@ -2474,6 +2768,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         cancelTouches() {
+            this.inkCancelTouch();
             for (const button of this.pressedKeys) {
                 button.classList.remove('active-touch');
                 if (button._cancelPress) button._cancelPress();
@@ -5033,12 +5328,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.modeOrder().forEach(name => {
                 const config = MODES[name];
                 const button = document.createElement('button');
-                // strictReady（stroke）：只有 hello 明确给 true 才可点——
-                // 旧 APK 的 engineDataReady 不含 stroke 字段，宽松判定
+                // strictReady（stroke/手写）：只有 hello 明确给 true 才可
+                // 点——旧 APK 的 engineDataReady 不含该字段，宽松判定
                 // （!== false）会把缺键当可用，出现可点却无效的入口。
-                const ready = !config.engine || (config.strictReady
+                // 非 strictReady 维持原语义：engine:false 恒可点。
+                const ready = config.strictReady
                     ? this.engineReady[name] === true
-                    : this.engineReady[name] !== false);
+                    : (!config.engine || this.engineReady[name] !== false);
                 const current = name === this.mode;
                 button.className = current ? 'current' : (ready ? '' : 'preparing');
                 // Compact rows - the shorthand leads, the full
@@ -6355,6 +6651,26 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Variant replay bursts intermediate events: freeze the bar like
             // the grid (the replay's target echo repaints it).
             if (this.variantReplaying) return;
+            // 手写（issue #28）：候选来自识别结果而非引擎池。整条自持——
+            // 按键通道（退格/空格）的空引擎事件不得把未点选的识别候选
+            // 洗掉；点选/清笔迹/离开模式时由 inkReset 收走。
+            if (this.mode === 'handwriting') {
+                const inkBar = document.getElementById('candidates');
+                const inkHeld = inkBar.scrollLeft || 0;
+                inkBar.replaceChildren();
+                (this.inkCandidates || []).forEach((candidate, index) => {
+                    const button = document.createElement('button');
+                    button.className = index === 0 ? 'candidate first' : 'candidate';
+                    button.textContent = candidate.text;
+                    button.addEventListener('click', () => this.commitInkCandidate(candidate));
+                    // Native clicks only：bindTouch 会 preventDefault
+                    // touchstart，正好抵掉横向拖动的取消（同引擎候选条）。
+                    button.addEventListener('mousedown', event => event.preventDefault());
+                    inkBar.append(button);
+                });
+                inkBar.scrollLeft = inkHeld;
+                return;
+            }
             // T9：1 键展开的西文/技术符号行。引擎候选/联想/组合任一
             // 出现即让位（符号行是暂态选择面，不与候选池共存）。
             if (this.t9SymBar) {
@@ -7833,6 +8149,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         backspace: () => console.log('backspace'),
         enter: () => console.log('enter'),
         moveCursor: delta => console.log('moveCursor', delta),
+        recognizeInk: (reqId, payload) => console.log('recognizeInk', reqId, payload),
         keyEvent: (keyCode, metaState) => console.log('keyEvent', keyCode, metaState),
         chooseCandidate: (revision, id) => console.log('choose', revision, id),
         deleteHighlightedCandidate: () => console.log('deleteHighlightedCandidate'),
@@ -7933,6 +8250,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onEngineState: payload => keyboard.onEngineState(payload),
         onAssoc: payload => keyboard.onAssoc(payload),
         onNativeState: payload => keyboard.onNativeState(payload),
+        onInkCandidates: payload => keyboard.onInkCandidates(payload),
         onEditorInfo: payload => keyboard.onEditorInfo(payload),
         cancelTouches: () => keyboard.cancelTouches(),
         cancelToolbarEdit: () => keyboard.cancelToolbarEdit(),
@@ -7967,6 +8285,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             scrubSpeed: keyboard.scrubSpeed,
             popupSnap: keyboard.popupSnap,
             bottomPad: keyboard.bottomPad,
+            // 手写（issue #28）：在途请求号 + 笔迹规模，设备门禁断言用。
+            inkReqId: keyboard.inkReqId,
+            inkStrokes: keyboard.inkStrokes.length,
             // Copy: a hand-out reference would let automation mutate the
             // live degrade state (active=false left a stale badge).
             degraded: keyboard.degrade ? { ...keyboard.degrade } : null,

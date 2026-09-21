@@ -919,6 +919,41 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 body.landscape .t9-grid { gap: 4px 5px; }
 /* T9 空格键：长按圆点（::after）挪到左上角，右上角留给字面 0 角标。 */
 #spaceKey.t9-space::after { right: auto; left: 3px; }
+/* ===== 手写键面（issue #28，design/handwriting.md）：书写区 canvas 占
+ * 三行高，控制行（退格/空格/回车/模式键）走 .kb-row 常规键高。 ===== */
+.ink-pad {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    margin-bottom: 5px;
+    border-radius: var(--radius-key);
+    background: var(--key);
+    overflow: hidden;
+}
+.ink-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* 书写区不是滚动容器：封死浏览器默认手势（长按选择/双击缩放），
+     * 笔迹事件全部 preventDefault。 */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.ink-hint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    pointer-events: none;
+}
+/* 落笔后提示让位（.writing 由 bindInkPad 控制）——识别结果在候选条，
+ * 书写区不额外画 loading 态（design §5.2）。 */
+.ink-pad.writing .ink-hint { opacity: 0; }
 /* Emoji sub-view: snapping page scroller over the category strip.
  * No edge mask - the pages are exactly full width and a mask would dim
  * the first/last emoji column. */

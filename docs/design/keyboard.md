@@ -657,6 +657,7 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 | 笔画五键 | librime（RimeTextEngine） | §9.3a |
 | 法语 / 俄语 | Hunspell（HunspellTextEngine） | §9.2 |
 | 日语 | Mozc（MozcTextEngine） | §9.4 |
+| 手写（单字） | 独立识别引擎（HandwritingEngine，不实现 TextEngine） | §9.7 / handwriting.md |
 
 ### 9.1 英文 Direct
 
@@ -835,6 +836,24 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   全拼、双拼。空闲态仍发 ASCII 走 punctuator。
 - 数字与 CN_ALTS 表指定符号保持半角；CN_ALTS 是第二行/第三行的副字表
   （全拼/双拼共用，表值即最终提交字形）。
+
+### 9.7 手写输入（issue #28）
+
+单字手写模式：键面 = 书写区 canvas + 控制行（退格/空格/回车/模式键），
+笔迹经独立桥 `recognizeInk(reqId, payload, token)` 识别，候选经
+`onInkCandidates` 回调整条刷新，点选 `commitText` 上屏并清笔迹。不接
+按键引擎（`engine: false`，退格/空格/回车由原生 Direct 承载），识别/
+预处理/解码参数与模型分发见 [handwriting.md](handwriting.md)。行为要点：
+
+- **strictReady**：hello 的 `engineDataReady.handwriting === true`（模型
+  落地）才有菜单入口；快捷对切换同样按就绪位挡——strictReady 与
+  `engine` 标志解耦判定。
+- 手势仲裁与键面手势解耦：书写区不挂 `bindTouch`（根级 setupFlick 只认
+  bindTouch 记下的 touchOrigin），事件 `stopPropagation` + preventDefault。
+- 停笔 600ms 触发识别；识别期间候选条保持原样；书写中再来新笔撤未决
+  请求（reqId 单调，失配结果整包丢弃）；长按书写区清空；按键通道的空
+  引擎事件不得洗掉未点选的识别候选。
+- 错误（模型未就绪 `unavailable` / 推理 `failed`）只提示，不阻塞书写。
 
 ## 10. 编辑、手势与宿主兼容
 
