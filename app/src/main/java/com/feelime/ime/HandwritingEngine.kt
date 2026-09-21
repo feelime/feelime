@@ -448,55 +448,85 @@ object HandwritingInk {
     /** §4.3：单字符精确 CTC 概率 DP（向量化全词表，无 beam search）。
      * [logits] 行主序 (T,V)，**已是概率**——该模型输出自带 softmax
      * （host 实测每行和恰为 1），再 softmax 会把分布压平、DP 出错字。
-     * 返回概率降序的前 [limit] 个 (字符表下标, 概率)：下标 j 即字符表第
-     * j 条（输出第 j+1 列；第 0 列是 blank，不占字符表位）。调用方拿它
-     * 直接查字符表，**不要再 +1**——+1 会整体漂移成下一个字符
-     * （设备实测：中→贝、口→山、工→土）。 */
-    fun decodeCtc(logits: FloatArray, timeSteps: Int, vocabSize: Int, limit: Int): List<Pair<Int, Float>> {
+     * 返回概率降序的前 [limit] 个 (字符表下标, **log 概率**)：下标 j 即
+     * 字符表第 j 条（输出第 j+1 列；第 0 列是 blank，不占字符表位）。
+     * 调用方拿它直接查字符表，**不要再 +1**——+1 会整体漂移成下一个
+     * 字符（设备实测：中→贝、口→山、工→土）。
+     *
+     * **log 域递推**：概率域连乘在 T 大（复杂字 T≈115）时把 C 压到
+     * 1e-23 附近，float 精度地板让大量字符并列、区分度只剩 ~2 倍，
+     * t2s 聚合的微小增益随机翻转排名（真机「就」被「万/萬」反超的
+     * 根因，host 5448 样本实测 top1 98.8%→34.4%）。log 域里同样的
+     * 值是 -53 的健康量级，全程无精度损失。 */
+    fun decodeCtc(logits: FloatArray, timeSteps: Int, vocabSize: Int, limit: Int): List<Pair<Int, Double>> {
         if (timeSteps <= 0 || vocabSize < 2) return emptyList()
         val nonBlank = vocabSize - 1
-        // A=保持全 blank 的前缀概率；C=已完成字符 c 的概率。
-        val completed = FloatArray(nonBlank)
-        var blankPath = 1f
+        // A=保持全 blank 的前缀概率；C=已完成字符 c 的概率（均存 log）。
+        val negInf = Double.NEGATIVE_INFINITY
+        val logCompleted = DoubleArray(nonBlank) { negInf }
+        var logBlankPath = 0.0
         for (t in 0 until timeSteps) {
             val base = t * vocabSize
-            val blank = logits[base]
+            val logBlank = Math.log(logits[base].toDouble())
             for (j in 0 until nonBlank) {
-                val char = logits[base + j + 1]
-                completed[j] = completed[j] * (blank + char) + blankPath * char
+                val logChar = Math.log(logits[base + j + 1].toDouble())
+                logCompleted[j] = logAddExp(
+                    logCompleted[j] + logSumTerm(logBlank, logChar),
+                    logBlankPath + logChar,
+                )
             }
-            blankPath *= blank
+            logBlankPath += logBlank
         }
         val order = Array(nonBlank) { it }
-        order.sortByDescending { completed[it] }
-        return order.take(limit.coerceAtMost(nonBlank)).map { j -> j to completed[j] }
+        order.sortByDescending { logCompleted[it] }
+        return order.take(limit.coerceAtMost(nonBlank)).map { j -> j to logCompleted[j] }
+    }
+
+    /** log(blank+char)，两项概率非负，0+0 映射 -inf。 */
+    private fun logSumTerm(logBlank: Double, logChar: Double): Double =
+        if (logBlank == Double.NEGATIVE_INFINITY && logChar == Double.NEGATIVE_INFINITY)
+            Double.NEGATIVE_INFINITY
+        else
+            Math.log(Math.exp(logBlank) + Math.exp(logChar))
+
+    /** log(exp(a)+exp(b))，-inf 输入安全（logaddexp）。 */
+    private fun logAddExp(a: Double, b: Double): Double {
+        if (a == Double.NEGATIVE_INFINITY) return b
+        if (b == Double.NEGATIVE_INFINITY) return a
+        val hi = maxOf(a, b)
+        val lo = minOf(a, b)
+        return hi + Math.log1p(Math.exp(lo - hi))
     }
 
     /** 汉字过滤（§4.3：CJK 统一表意 㐀-鿿、兼容 豈-﫿、〇）。 */
     fun isHan(codePoint: Int): Boolean =
         codePoint in 0x3400..0x9FFF || codePoint in 0xF900..0xFAFF || codePoint == 0x3007
 
-    /** 候选后处理（§4.3）：滤非汉字 → 繁体按 t2s 归简 → 同字概率相加重排
-     * → 取 top-[limit]，score 归一到输出集合和为 1。 */
+    /** 候选后处理（§4.3）：滤非汉字 → 繁体按 t2s 归简 → 同字 logsumexp
+     * 聚合重排 → 取 top-[limit]，score 归一到输出集合和为 1。
+     * 入参 [raw] 的 score 是 decodeCtc 输出的 **log 概率**——聚合必须
+     * logsumexp，直加会在 log 域错（log 域的"相加"是 logaddexp）。 */
     fun rankCandidates(
-        raw: List<Pair<String, Float>>,
+        raw: List<Pair<String, Double>>,
         t2s: Map<String, String>,
         limit: Int,
     ): List<InkCandidate> {
-        val merged = LinkedHashMap<String, Float>()
-        raw.forEach { (text, score) ->
-            if (score <= 0f) return@forEach
+        val merged = LinkedHashMap<String, Double>()
+        raw.forEach { (text, logScore) ->
+            if (!logScore.isFinite()) return@forEach
             if (text.isEmpty() || text.codePointCount(0, text.length) != 1) return@forEach
             if (!isHan(text.codePointAt(0))) return@forEach
             val key = t2s[text] ?: text
-            merged[key] = (merged[key] ?: 0f) + score
+            merged[key] = logAddExp(merged[key] ?: Double.NEGATIVE_INFINITY, logScore)
         }
         val top = merged.entries
             .sortedByDescending { it.value }
             .take(limit)
-        val total = top.sumOf { it.value.toDouble() }.toFloat()
-        if (total <= 0f) return emptyList()
-        return top.map { (text, score) -> InkCandidate(text, score / total) }
+        if (top.isEmpty()) return emptyList()
+        // logsumexp 归一（与原「top 内求和归一」等价，log 域实现）。
+        var logTotal = Double.NEGATIVE_INFINITY
+        top.forEach { logTotal = logAddExp(logTotal, it.value) }
+        return top.map { (text, logScore) -> InkCandidate(text, Math.exp(logScore - logTotal).toFloat()) }
     }
 
     private const val MAX_STROKES = 64

@@ -144,15 +144,15 @@ class HandwritingEngineTest {
     fun ctcDpMatchesHandComputedProbabilities() {
         // V=3（blank + 2 字符），输入已是概率（模型输出自带 softmax，host
         // 实测行和为 1，decodeCtc 不再 softmax）。两帧都是 [0.5, 0.5, 0]：
-        // P(单字 c0) = blank,c + c,blank + c,c = 0.75，P(c1) = 0。
+        // P(单字 c0) = blank,c + c,blank + c,c = 0.75，P(c1) = 0（log 域 -inf）。
         val frame = floatArrayOf(0.5f, 0.5f, 0f)
         val probs = floatArrayOf(*frame, *frame)
         val top = HandwritingInk.decodeCtc(probs, 2, 3, 30)
         assertEquals(2, top.size)
         assertEquals(0, top[0].first)
-        assertEquals(0.75f, top[0].second, 1e-4f)
+        assertEquals(kotlin.math.ln(0.75), top[0].second, 1e-9)
         assertEquals(1, top[1].first)
-        assertEquals(0f, top[1].second, 1e-4f)
+        assertEquals(Double.NEGATIVE_INFINITY, top[1].second, 0.0)
     }
 
     @Test
@@ -161,7 +161,7 @@ class HandwritingEngineTest {
         // 就是 0.9（再 softmax 会把它压成 0.5 附近）。
         val top = HandwritingInk.decodeCtc(floatArrayOf(0.1f, 0.9f, 0f), 1, 3, 2)
         assertEquals(0, top[0].first)
-        assertEquals(0.9f, top[0].second, 1e-5f)
+        assertEquals(kotlin.math.ln(0.9), top[0].second, 1e-6)
     }
 
     @Test
@@ -172,14 +172,34 @@ class HandwritingEngineTest {
         val top = HandwritingInk.decodeCtc(probs, 2, 3, 1)
         assertEquals(1, top.size)
         assertEquals(0, top[0].first)
-        assertEquals(0.5f, top[0].second, 1e-5f)
+        assertEquals(kotlin.math.ln(0.5), top[0].second, 1e-6)
+    }
+
+    @Test
+    fun ctcDpPreservesDiscriminationOverLongSequences() {
+        // 回归锁：概率域连乘在 T 大时把 C 压到浮点精度地板，大量字符并列、
+        // 区分度消失（真机「就」被「万/萬」聚合反超的根因）。log 域下
+        // 两字符的 log 概率差不随 T 增长坍缩。T=120 帧（复杂字量级），
+        // 每帧 [0.85, 0.10, 0.05]：C(c0) 与 C(c1) 的 log 差稳定为正。
+        val frame = floatArrayOf(0.85f, 0.10f, 0.05f)
+        val t = 120
+        val probs = FloatArray(t * 3) { i -> frame[i % 3] }
+        val top = HandwritingInk.decodeCtc(probs, t, 3, 2)
+        assertEquals(0, top[0].first)
+        assertEquals(1, top[1].first)
+        // 数学上 C(c0) > C(c1) 对任意 T 成立；概率域在 T=120 时两者
+        // 同时下溢到 0（差坍缩为 0），log 域差保持显著。
+        assertTrue("log 差应显著为正，实际 ${top[0].second - top[1].second}",
+            top[0].second - top[1].second > 0.5)
+        // 且值本身有限可分辨（概率域此处已是 +0.0 并列）。
+        assertTrue(top[0].second.isFinite() && top[1].second.isFinite())
     }
 
     @Test
     fun ctcDpHandlesBlankOnlyFrames() {
         val probs = floatArrayOf(1f, 0f, 0f, 1f, 0f, 0f)
         val top = HandwritingInk.decodeCtc(probs, 2, 3, 30)
-        assertTrue(top.all { it.second < 1e-6f })
+        assertTrue(top.all { it.second < kotlin.math.ln(1e-6) })
     }
 
     @Test
@@ -219,10 +239,10 @@ class HandwritingEngineTest {
     fun rankFiltersNonHanAndMergesTraditionalVariants() {
         val merged = HandwritingInk.rankCandidates(
             listOf(
-                "厂" to 0.40f,
-                "廠" to 0.20f, // t2s → 厂
-                "A" to 0.30f, // 非汉字
-                "😀" to 0.10f, // 非汉字
+                "厂" to kotlin.math.ln(0.40),
+                "廠" to kotlin.math.ln(0.20), // t2s → 厂
+                "A" to kotlin.math.ln(0.30), // 非汉字
+                "😀" to kotlin.math.ln(0.10), // 非汉字
             ),
             mapOf("廠" to "厂"),
             8,
@@ -231,10 +251,23 @@ class HandwritingEngineTest {
     }
 
     @Test
+    fun rankMergeMustNotFlipClearLeader() {
+        // 回归锁：t2s 聚合只该合并真同字，不得让合并后的微增益翻转
+        // 明显领先者（真机「就」被「万+萬」反超的正是这种翻转——log 域
+        // 聚合后 logaddexp(ln0.4, ln0.004) ≈ ln(0.404) 仍 < ln(0.5)）。
+        val ranked = HandwritingInk.rankCandidates(
+            listOf("就" to kotlin.math.ln(0.50), "万" to kotlin.math.ln(0.40), "萬" to kotlin.math.ln(0.004)),
+            mapOf("萬" to "万"),
+            8,
+        )
+        assertEquals("就", ranked.first().text)
+    }
+
+    @Test
     fun rankNormalizesScoresToSumOneAndCapsAtEight() {
         // 12 个不同汉字，概率递减：截断到 top-8 且和为 1。
         val raw = (0 until 12).map { index ->
-            String(Character.toChars(0x4E00 + index)) to (0.24f - index * 0.01f)
+            String(Character.toChars(0x4E00 + index)) to kotlin.math.ln(0.24 - index * 0.01)
         }
         val ranked = HandwritingInk.rankCandidates(raw, emptyMap(), 8)
         assertEquals(8, ranked.size)
@@ -249,7 +282,7 @@ class HandwritingEngineTest {
 
     @Test
     fun rankKeepsOrderStableForEqualScores() {
-        val raw = listOf("中" to 0.2f, "国" to 0.2f, "人" to 0.2f)
+        val raw = listOf("中" to kotlin.math.ln(0.2), "国" to kotlin.math.ln(0.2), "人" to kotlin.math.ln(0.2))
         val ranked = HandwritingInk.rankCandidates(raw, emptyMap(), 8)
         assertEquals(listOf("中", "国", "人"), ranked.map { it.text })
     }
@@ -257,7 +290,9 @@ class HandwritingEngineTest {
     @Test
     fun rankHandlesEmptyInput() {
         assertTrue(HandwritingInk.rankCandidates(emptyList(), emptyMap(), 8).isEmpty())
-        assertTrue(HandwritingInk.rankCandidates(listOf("A" to 0.5f), emptyMap(), 8).isEmpty())
+        assertTrue(HandwritingInk.rankCandidates(listOf("A" to kotlin.math.ln(0.5)), emptyMap(), 8).isEmpty())
+        // -inf（0 概率）候选同样被滤除。
+        assertTrue(HandwritingInk.rankCandidates(listOf("就" to Double.NEGATIVE_INFINITY), emptyMap(), 8).isEmpty())
     }
 
     // ---- 输出张量形状 ----
