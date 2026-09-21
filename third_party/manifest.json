@@ -300,7 +300,7 @@
       "buildRecipe": "cmake-native",
       "bytes": 4931680,
       "path": "app/src/main/jniLibs/arm64-v8a/libfeelime_rime.so",
-      "sha256": "00695bd1a564bafbe4672d1087aa2991360d22ece827887db8d1ee1ffcd9ce2e",
+      "sha256": "e8f9ba9312351ffacde23eb8d7e7a2eb5772a14f707af3d642ac4080bc4bd793",
       "sources": [
         "librime",
         "darts-clone",
@@ -320,7 +320,7 @@
       "buildRecipe": "cmake-native",
       "bytes": 48368,
       "path": "app/src/main/jniLibs/arm64-v8a/libfeelime_smoke.so",
-      "sha256": "992aa74043084709c03d406979f9a72e49ba7b7b2d5e8d55abcf0cb307ff9b1c",
+      "sha256": "cb0bfd673b2cf2f8e3ea499f8b0bff1db62a730233d14db997683f5a01542476",
       "sources": [
         "feelime-original-adapters"
       ]
