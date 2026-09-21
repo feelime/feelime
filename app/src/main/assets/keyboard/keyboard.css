@@ -931,7 +931,12 @@ body.landscape .t9-grid { gap: 4px 5px; }
     overflow: hidden;
 }
 .ink-canvas {
-    display: block;
+    /* 绝对定位铺满书写区：canvas 是替换元素，静态布局会把位图尺寸
+     * （inkResize 按 devicePixelRatio 写入的 width/height 属性）当作
+     * 固有高度顶进 flex——键盘窗口变矮后（编辑框上移/旋转/拖高）书写区
+     * 缩不回去，底行被推出窗外（AVD 实测 pad 底到 567 > 视口 472）。 */
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     /* 书写区不是滚动容器：封死浏览器默认手势（长按选择/双击缩放），
