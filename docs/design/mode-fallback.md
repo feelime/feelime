@@ -133,6 +133,27 @@ clearDegrade（reason）、endVoiceSession、recreateBegin、selectMode。
 清徽标」的直接证据（§1 根因 B）。coordinator 保持 JVM 无 android 依赖，
 经构造参数 `diagnosticSink` 注入。
 
+**v3 触摸/UI 层（issue #13「键盘弹出后所有按键点不了」）**：真机诊断
+导出证明引擎层全程健康（两次调出各 30-44ms 就绪、打字流转正常），
+病灶在触摸链路，v2 的引擎/editor 两层够不着。v3 增补三组采集（ace
+两轮自证：touchDown 计数与物理点按精确对账、insets 随竖/横屏值正确、
+折叠区间与导出跳号逐一对上）：
+- `ui` tag：inputViewShown/Hidden、windowShown/Hidden、insets
+  （band/overlay/content/visible/touchable，调用即记+同值 10s 去重）、
+  touchDown webview n=…（键盘 `DiagWebView.dispatchTouchEvent` 的
+  ACTION_DOWN 计数，1s 聚合）
+- `js` tag：键盘页 rAF/timer 双通道心跳 `heartbeat raf=… touch=…`
+  （2.5s 一条，经 `ImeBridge.diagEvent` 上报，token 校验；导出时折叠为
+  首条+尾 4 条+带 seq 区间的计数行，键盘收起期间 raf=0 属正常——
+  WebView 不可见时 rAF 停）
+- 判读矩阵：心跳行断=WebView 随窗口销毁；raf=0 而 timer 活=渲染停摆；
+  native touchDown 有而 js touch=0=事件丢在 native→JS 边界；两者皆
+  0=窗口层没收（对账 insets 行）
+- 窗口焦点通道两轮验证均不触发（ViewTreeObserver 与 View override
+  都试过）：IME 窗口语义上不拿焦点，focus 派发不可靠，不埋
+- 心跳只在真实桥存在时启动（`window.FeelimeNative`，预览 iframe 与
+  node mock 环境跳过）；rAF 缺失时 timer 通道独立兜底
+
 ### 2.7 不做
 
 rime 预热（round-2 B2.6 风险清单）→ backlog；自动循环重试 → 不做。

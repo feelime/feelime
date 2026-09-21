@@ -618,7 +618,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
  // The WebView is transparent - the float band above the
         // keyboard shows the app through it, and the keyboard area paints
         // its own themed background in CSS.
-        val view = WebView(this).apply {
+        val view = DiagWebView(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             settings.apply {
                 javaScriptEnabled = true
@@ -662,6 +662,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
             loadUrl(KEYBOARD_URL)
         }
         keyboardView = view
+        // v3 埋点（issue #13）：窗口焦点变化在 DiagWebView.onWindowFocusChanged
+        // 记录（View 必经链；ViewTreeObserver 版 attach 前注册不触发）。
         view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             onBottomInsetChanged()
         }
@@ -685,6 +687,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
+    // v3 埋点（issue #13）：IME 窗口 attach/detach 到屏幕的时刻——
+    // 「窗口在屏但按键无响应」现场需要它与 inputViewShown 的相对时序。
+    override fun onWindowShown() {
+        super.onWindowShown()
+        Diagnostics.log("ui", "windowShown")
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        Diagnostics.log("ui", "windowHidden")
+    }
+
     /**
      * The input view is keyboard + float band (transparent strip
      * ABOVE the keyboard where popups live). The app must still only make
@@ -700,7 +714,24 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         outInsets.visibleTopInsets = if (overlayOpen) 0 else band
         outInsets.touchableInsets =
             android.inputmethodservice.InputMethodService.Insets.TOUCHABLE_INSETS_VISIBLE
+        // v3 埋点（issue #13）：可触摸区状态进诊断——TOUCHABLE_INSETS_
+        // VISIBLE 下按键可点的前提是按键区落在 [visibleTopInsets, 窗口底]
+        // 内，卡死现场与触摸到达行对账。真机首验此回调比预期低频且时机
+        // 不明（0 条产出），改为调用即记 + 同值 10s 去重，顺带探明频率。
+        val line = "insets band=${band}px overlay=$overlayOpen " +
+            "content=${outInsets.contentTopInsets} visible=${outInsets.visibleTopInsets} " +
+            "touchable=VISIBLE"
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (line != lastDiagInsetsLine || now - lastDiagInsetsAt >= 10_000L) {
+            lastDiagInsetsLine = line
+            lastDiagInsetsAt = now
+            Diagnostics.log("ui", line)
+        }
     }
+
+    /** 诊断用：上一次记录的 insets 行与时刻（同值 10s 去重）。 */
+    private var lastDiagInsetsLine: String = ""
+    private var lastDiagInsetsAt = 0L
 
     /** Popup band height - capped at 40% of the current screen
      * height so landscape keyboards keep most of the short edge for keys.
@@ -800,6 +831,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        Diagnostics.log("ui", "inputViewHidden finishing=$finishingInput")
         inputConnectionGeneration += 1
         invalidatePendingVoiceStartOnEditorChange()
         cursorQueryGeneration += 1
@@ -831,6 +863,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
 
     override fun onStartInputView(editorInfo: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(editorInfo, restarting)
+        // v3 埋点（issue #13）：「调出键盘」的 UI 侧时刻（engine 侧的
+        // editorStart 在 onStartInput，两件事不总同拍）。
+        Diagnostics.log("ui", "inputViewShown restarting=$restarting type=${editorInfo?.inputType}")
         // 收起时（onFinishInputView）已清过一次联想；restarting 弹出时若那
         // 次 evaluate 没到达（WebView detach 竞态），这里是可靠兜底——
         // onStartInputView 对同编辑器再弹出必然触发。
@@ -1765,6 +1800,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
     }
 
     inner class ImeBridge {
+        /** JS 侧诊断上报（issue #13 v3）：键盘页的 rAF/timer 双通道心跳
+         *  与触摸到达计数。诊断未开启时 Diagnostics.log 自行丢弃，JS 侧
+         *  无条件低频上报（2.5s 一条）。token 校验挡掉旧页面/预览 iframe。 */
+        @JavascriptInterface
+        fun diagEvent(line: String, token: String) {
+            if (token != pageToken || line.length > 160) return
+            Diagnostics.log("js", line)
+        }
+
         @JavascriptInterface
         fun keyboardReady(keyboardVersion: String, minNativeApi: Int, requiredCapabilities: String, token: String) {
             onMain {
@@ -2852,6 +2896,34 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         lastSafeBottom = effective
         (keyboardView?.parent as? View)?.requestLayout()
         pushBridgeHello()
+    }
+
+    // ---- v3 触摸诊断（issue #13「键盘弹出后所有按键点不了」） ----------
+    // 分层：本类记 native 侧触摸到达（窗口把事件投递给了键盘 WebView）；
+    // JS 侧心跳与触摸计数经 ImeBridge.diagEvent 上报。窗口没收下事件时
+    // 这里不会有行——正是与 insets/焦点行对账的判据。1s 聚合防刷屏。
+    private var diagTouchCount = 0
+    private var diagTouchFlushAt = 0L
+
+    private fun noteTouchDown() {
+        diagTouchCount += 1
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - diagTouchFlushAt >= 1000L) {
+            Diagnostics.log("ui", "touchDown webview n=$diagTouchCount")
+            diagTouchCount = 0
+            diagTouchFlushAt = now
+        }
+    }
+
+    private inner class DiagWebView(context: android.content.Context) : WebView(context) {
+        override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) noteTouchDown()
+            return super.dispatchTouchEvent(event)
+        }
+        // 窗口焦点通道两轮真机验证均不触发（ViewTreeObserver 与 View
+        // override 都试过）：IME 窗口（TYPE_INPUT_METHOD）语义上不拿
+        // 焦点，focus 派发不可靠——定罪矩阵靠 show/hide+insets+touchDown
+        // +心跳四件闭环，不再埋 focus。
     }
 
     private inner class FixedHeightInputView(private val desiredHeight: Int) : FrameLayout(this) {

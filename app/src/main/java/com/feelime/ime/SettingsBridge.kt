@@ -1458,7 +1458,7 @@ class SettingsBridge(
             "app=${BuildConfig.VERSION_NAME} keyboard=${keyboardVersion()} " +
                 "android=${android.os.Build.VERSION.SDK_INT} device=${android.os.Build.MODEL}",
             Diagnostics.liveState,
-            "events=${events.size}",
+            "events=${Diagnostics.totalLogged()} logged, ${events.size} lines exported",
             "--- events ---",
         )
         val text = (header + events).joinToString("\n")

@@ -1113,6 +1113,36 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.expandCandidates = [];
             this.expandHasNext = false;
             this.loadingMore = false;
+            // v3 触摸诊断（issue #13「键盘弹出后所有按键点不了」）：
+            // rAF/timer 双通道心跳 + 触摸到达计数，经 Native.diagEvent 进
+            // 原生诊断导出。判读矩阵——心跳行断=WebView 随窗口销毁/JS 死；
+            // raf=0 而 timer 活=渲染管线停摆；native touchDown 有而本计数
+            // 为 0=事件丢在 native→JS 边界；两边都 0=窗口层没收（对账
+            // insets/焦点行）。只在真实桥存在时启动（预览 iframe 与 node
+            // mock 环境没有 FeelimeNative/rAF，构造即跳过）；token 未握手
+            // 前心跳同样跳过。
+            this._diagTouch = 0;
+            this._diagRafAt = 0;
+            if (window.FeelimeNative && typeof window.setInterval === 'function') {
+                if (typeof requestAnimationFrame === 'function') {
+                    const diagRafLoop = () => {
+                        this._diagRafAt = Date.now();
+                        requestAnimationFrame(diagRafLoop);
+                    };
+                    requestAnimationFrame(diagRafLoop);
+                }
+                window.addEventListener(
+                    'pointerdown', () => { this._diagTouch += 1; },
+                    { capture: true, passive: true });
+                window.setInterval(() => {
+                    if (!this.token || typeof Native.diagEvent !== 'function') return;
+                    const rafAlive = Date.now() - this._diagRafAt < 2600;
+                    Native.diagEvent(
+                        `heartbeat raf=${rafAlive ? 1 : 0} touch=${this._diagTouch}`,
+                        this.token);
+                    this._diagTouch = 0;
+                }, 2500);
+            }
         }
 
         setup() {
