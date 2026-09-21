@@ -91,22 +91,21 @@
       "title": "中英标点恢复"
     },
     {
-      "id": "ppocrv5-mobile-rec",
+      "id": "melnyk-net-int8",
       "role": "handwriting-rec",
-      "version": "rapidocr-3.9.2",
+      "version": "melnyk-1.0-int8",
       "files": [
         {
           "path": "handwriting/model.onnx",
-          "downloadPath": "ch_PP-OCRv5_rec_mobile.onnx",
-          "sha256": "5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5",
-          "bytes": 16631306
+          "downloadPath": "model.onnx",
+          "sha256": "04bf65859482f2e9f4836fb872c5a881940a8f6f81bd0994542187617793e932",
+          "bytes": 6613389
         }
       ],
       "urls": [
-        "https://gitee.com/feelime/models/releases/download/handwriting-v1/",
-        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/"
+        "https://gitee.com/feelime/models/releases/download/handwriting-v2/"
       ],
-      "title": "手写识别（PP-OCRv5）"
+      "title": "手写识别（Melnyk-Net）"
     }
   ]
 }

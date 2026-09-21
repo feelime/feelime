@@ -102,22 +102,20 @@ class ModelManifestTest {
         val manifest = ModelManifest.parse(repo.readText())
         val model = manifest.byRole("handwriting-rec")
             ?: return // 旧分支无此条目
-        assertEquals("ppocrv5-mobile-rec", model.id)
-        // path 是本地资产名（稳定名），downloadPath 是上游原名（见下）。
+        // 模型 v2（issue #32）：Melnyk-Net int8，唯一权威源是我们自己转换
+        // 的产物，gitee release 是一手分发位（无上游直链）。
+        assertEquals("melnyk-net-int8", model.id)
         assertEquals(listOf("model.onnx"), model.files.map { it.path.substringAfter('/') })
         assertTrue(model.verified)
         assertTrue(model.urls.first().startsWith("https://gitee.com/"))
         assertTrue(model.urls.first().endsWith("/"))
-        // ModelScope 走 v3.9.2 tag（master 路径已 404，见 manifest 修正）。
-        assertTrue(model.urls.drop(1).contains("https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/"))
-        // gitee 前缀 + downloadPath = 设计钉死的资产 URL（downloadPath 统一原名）。
         assertEquals(
-            "https://gitee.com/feelime/models/releases/download/handwriting-v1/ch_PP-OCRv5_rec_mobile.onnx",
+            "https://gitee.com/feelime/models/releases/download/handwriting-v2/model.onnx",
             model.urls.first() + model.files.first().downloadPath,
         )
-        assertEquals(16631306L, model.files.first().bytes)
+        assertEquals(6613389L, model.files.first().bytes)
         assertEquals(
-            "5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5",
+            "04bf65859482f2e9f4836fb872c5a881940a8f6f81bd0994542187617793e932",
             model.files.first().sha256,
         )
     }

@@ -11,25 +11,26 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.util.Log
 import java.io.File
-import java.nio.FloatBuffer
 import java.util.concurrent.Executors
-import kotlin.math.ceil
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
 
-/** 手写单字识别（design/handwriting.md §1-§4）。
+/** 手写单字识别（design/handwriting.md §1-§4；模型 v2 见 issue #32）。
  *
  * 独立引擎（照 [AsrEngine] 先例）：输入是笔迹不是按键流，不实现
  * TextEngine、不进 EngineCoordinator。推理在单线程后台执行，
  * [recognizeInk] 立即返回，结果只经 [Listener] 回调（调用方负责
  * 切回主线程）。模型未落地/推理异常时回调 error，不阻塞书写。
  *
- * 渲染 / 预处理 / 解码参数钉死，与 host spike 逐参数一致：
- * 256×256 内容归一渲染 → 内容 bbox 裁剪 → 48 高等比缩放 →
- * RGB CHW [-1,1] → 单字符精确 CTC 概率 DP（模型输出已是概率，不再 softmax）。
- * 纯函数部分（几何、预处理、DP、候选归一）在 [HandwritingInk]，JVM 单测
- * 直接逐参数核对，模型文件不进单测。
+ * 模型 v2：Melnyk-Net int8（6.6MB，CASIA-HWDB 真人手写 3755 类，
+ * 真人手写域 top1 99.6% vs PP-OCRv5 63.5%，issue #32 评测）。管线：
+ * 256×256 内容归一渲染（笔宽 4.3%，v1 实证保留）→ 内容 bbox 裁剪 →
+ * pad 方形 → 88×88 + 4px 白边 → 反色 uint8 (1,96,96,1) → softmax
+ * 直排 top-8。分类 softmax 即全词表排名，无 CTC DP/t2s（词表 GB2312
+ * 一级全简体）。纯函数部分在 [HandwritingInk]，JVM 单测直接逐参数
+ * 核对，模型文件不进单测。
  */
 class HandwritingEngine(
     private val context: Context,
@@ -46,7 +47,6 @@ class HandwritingEngine(
     @Volatile private var session: OrtSession? = null
     @Volatile private var environment: OrtEnvironment? = null
     @Volatile private var vocabulary: List<String> = emptyList()
-    @Volatile private var t2s: Map<String, String> = emptyMap()
     @Volatile private var released = false
 
     /** hello 的 engineDataReady 判定（§3）：模型落地即可用，不触发加载。
@@ -118,63 +118,37 @@ class HandwritingEngine(
         val pixels = IntArray(SIZE_PX * SIZE_PX)
         bitmap.getPixels(pixels, 0, SIZE_PX, 0, 0, SIZE_PX, SIZE_PX)
         bitmap.recycle()
-        // §4.2 预处理 + §4.3 解码（纯函数，参数钉死）。
-        val input = HandwritingInk.preprocess(pixels, SIZE_PX, SIZE_PX)
-        val width = HandwritingInk.resizedWidth(input)
+        // 预处理 + 解码（纯函数，参数钉死）：96×96 反色 uint8 NHWC。
+        val input = HandwritingInk.preprocessMelnyk(pixels, SIZE_PX, SIZE_PX)
+        if (input.isEmpty()) return InkResult(reqId, emptyList(), null)
         val env = checkNotNull(environment)
-        // 模型输入是 NCHW（实测：index1 期望 3、index2 期望 48），数据侧
-        // HandwritingInk.preprocess 产出的正是 CHW 平面序。
-        val shape = longArrayOf(1, 3L, IMG_HEIGHT.toLong(), width.toLong())
-        OnnxTensor.createTensor(env, FloatBuffer.wrap(input), shape).use { tensor ->
+        // 模型输入 (1,96,96,1) uint8（NHWC，tf2onnx 转换保真）。
+        val shape = longArrayOf(1, MELNYK_SIZE.toLong(), MELNYK_SIZE.toLong(), 1)
+        OnnxTensor.createTensor(
+            env,
+            java.nio.ByteBuffer.wrap(input),
+            shape,
+            ai.onnxruntime.OnnxJavaType.UINT8,
+        ).use { tensor ->
             activeSession.run(mapOf(checkNotNull(inputName) to tensor)).use { output ->
                 val tensor = output[0] as OnnxTensor
-                val dimensions = tensor.info.shape
                 val buffer = tensor.floatBuffer
-                val logits = FloatArray(buffer.remaining())
-                buffer.get(logits)
-                val (steps, vocab) = lastTwoDimensions(dimensions)
-                val top = HandwritingInk.decodeCtc(logits, steps, vocab, RAW_LIMIT)
-                val candidates = HandwritingInk.rankCandidates(
-                    top.mapNotNull { (index, score) ->
-                        vocabulary.getOrNull(index)?.let { it to score }
-                    },
-                    t2sMap(),
-                    CANDIDATE_LIMIT,
-                )
+                val probs = FloatArray(buffer.remaining())
+                buffer.get(probs)
+                val candidates = HandwritingInk.rankSoftmax(probs, vocabulary, CANDIDATE_LIMIT)
                 return InkResult(reqId, candidates, null)
             }
         }
     }
 
-    /** 词表（§4.3）：onnx metadata 的 \n 分隔字符表（RapidOCR 导出键为
-     * `character`，`character_list` 为同义占位），按原始字符表存取——
-     * decodeCtc 返回的下标就是这里的下标（blank 是输出第 0 列，不占表
-     * 位；末列空格由汉字过滤兜掉）。条目**原样保留**——首条目是 U+3000
-     * （表意空格），trim 会把它洗掉导致全体词表索引错位。 */
-    private fun loadVocabulary(created: OrtSession): List<String> {
-        val metadata = created.metadata.customMetadata
-        val raw = metadata["character"] ?: metadata["character_list"] ?: return emptyList()
-        val entries = raw.split('\n').toMutableList()
-        if (entries.lastOrNull()?.isEmpty() == true) entries.removeAt(entries.lastIndex)
-        return entries
-    }
-
-    private fun t2sMap(): Map<String, String> {
-        if (t2s.isNotEmpty()) return t2s
-        t2s = runCatching {
-            context.assets.open(T2S_ASSET).use { stream ->
-                val parsed = org.json.JSONObject(stream.readBytes().decodeToString())
-                val keys = parsed.keys()
-                buildMap {
-                    while (keys.hasNext()) {
-                        val key = keys.next()
-                        put(key, parsed.optString(key))
-                    }
-                }
-            }
-        }.getOrDefault(emptyMap())
-        return t2s
-    }
+    /** 词表（v2）：assets `vocab.json` 的 3755 字数组，下标 = softmax
+     * 输出类目。转换自 CASIA tagcode 顺序（issue #32 spike 同源）。 */
+    private fun loadVocabulary(): List<String> = runCatching {
+        context.assets.open(VOCAB_ASSET).use { stream ->
+            val parsed = org.json.JSONArray(stream.readBytes().decodeToString())
+            List(parsed.length()) { parsed.optString(it) }
+        }
+    }.getOrDefault(emptyList())
 
     /** 模型落地才创建 session（1 线程后台 init）；失败按 unavailable 上报。 */
     private fun ensureSession(): Boolean {
@@ -189,19 +163,18 @@ class HandwritingEngine(
             val env = OrtEnvironment.getEnvironment()
             val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(1) }
             val created = env.createSession(bytes, options)
-            val vocab = loadVocabulary(created)
+            val vocab = loadVocabulary()
             if (vocab.isEmpty()) {
                 created.close()
-                Log.w(TAG, "handwriting model carries no character table")
+                Log.w(TAG, "handwriting vocab asset missing")
                 return false
             }
-            // 输出维度必须 = blank + 词表 + 空格；不符说明词表解析错位
+            // 输出类目数必须 = 词表大小；不符说明词表与模型错配
             // （解码出的字符会整体漂移），按不可用处理。
             val outputVocab = (created.outputInfo.values.firstOrNull() as? TensorInfo)
                 ?.let { it.shape.lastOrNull()?.toInt() } ?: 0
-            // 动态/符号维度读不出来时（outputVocab<=0）放行：词表解析本身
-            // 已按 metadata 原样对齐，这里只是能查就查的双保险。
-            if (outputVocab > 0 && outputVocab != vocab.size + 2) {
+            // 动态/符号维度读不出来时（outputVocab<=0）放行。
+            if (outputVocab > 0 && outputVocab != vocab.size) {
                 created.close()
                 Log.w(TAG, "handwriting vocab mismatch: output=$outputVocab vocab=${vocab.size}")
                 return false
@@ -238,26 +211,19 @@ class HandwritingEngine(
         private const val TAG = "FeelimeInk"
         const val MODEL_ROLE = "handwriting-rec"
         const val MODEL_FILE = "handwriting/model.onnx"
-        private const val T2S_ASSET = "engine-data/handwriting/t2s.json"
+        private const val VOCAB_ASSET = "engine-data/handwriting/vocab.json"
 
-        /** §4.1/§4.2/§4.3 钉死参数（host spike 同源）。 */
+        /** §4.1 钉死参数（v1 实证保留）+ v2 预处理参数（Melnyk-Net 口径）。 */
         const val SIZE_PX = 256
         const val STROKE_WIDTH_RATIO = 0.043f  // §6.1 设备实证：2.2% 在 48px 高下缩到 ~1px，模型放弃方形字（中 0.014-0.19）；4.3% 中 0.88
-        const val IMG_HEIGHT = 48
-        const val MAX_IMG_WIDTH = 320
         const val BBOX_THRESHOLD = 200
         const val BBOX_PAD_RATIO = 0.10f
         const val BBOX_PAD_MIN_PX = 4
-        /** 解码先行截断 top-30，滤汉字/t2s 聚合后取 top-8。 */
-        const val RAW_LIMIT = 30
+        /** Melnyk-Net 输入：88×88 内容 + 4px 白边 = 96×96。 */
+        const val MELNYK_SIZE = 96
+        const val MELNYK_INNER = 88
+        const val MELNYK_MARGIN = 4
         const val CANDIDATE_LIMIT = 8
-
-        /** 输出张量 (1,T,V)/(T,V) 的 (T,V)。 */
-        fun lastTwoDimensions(shape: LongArray): Pair<Int, Int> = when (shape.size) {
-            0, 1 -> 0 to 0
-            2 -> shape[0].toInt() to shape[1].toInt()
-            else -> shape[shape.size - 2].toInt() to shape[shape.size - 1].toInt()
-        }
     }
 }
 
@@ -369,39 +335,62 @@ object HandwritingInk {
         )
     }
 
-    /** §4.2 步骤 2-3：双线性缩放到高 [HandwritingEngine.IMG_HEIGHT]
-     * （宽 = ceil(48*w/h)，上限 [HandwritingEngine.MAX_IMG_WIDTH]），
-     * RGB CHW、x/255 再 (x-0.5)/0.5（归一到 [-1,1]）。 */
-    fun preprocess(
+    /** §4.2（v2）：内容 bbox 裁剪（复用 [cropToContent]）→ pad 成正方形
+     * （白）→ 双线性缩到 [HandwritingEngine.MELNYK_INNER]×88 → 四边
+     * [HandwritingEngine.MELNYK_MARGIN]px 白边 → 反色 → uint8 NHWC
+     * (96,96,1)。反色后笔画=高值（训练口径 preprocess_bitmap：255-bitmap），
+     * 值域保持 0-255 uint8（BN 吸收尺度，不归一）。
+     * 空内容返回空数组（调用方按无识别处理）。 */
+    fun preprocessMelnyk(
         pixels: IntArray,
         width: Int,
         height: Int,
-        imgHeight: Int = HandwritingEngine.IMG_HEIGHT,
-        maxImgWidth: Int = HandwritingEngine.MAX_IMG_WIDTH,
-    ): FloatArray {
+    ): ByteArray {
         val crop = cropToContent(pixels, width, height)
-        if (crop.pixels.isEmpty() || crop.width <= 0 || crop.height <= 0) return FloatArray(0)
-        val resizedWidth = min(
-            maxImgWidth,
-            ceil(imgHeight * crop.width.toFloat() / crop.height.toFloat()).toInt(),
-        ).coerceAtLeast(1)
-        val resized = resizeBilinear(crop.pixels, crop.width, crop.height, resizedWidth, imgHeight)
-        val output = FloatArray(3 * resized.size)
-        for (channel in 0 until 3) {
-            val shift = 16 - 8 * channel
-            var offset = channel * resized.size
-            for (pixel in resized) {
-                val value = ((pixel shr shift) and 0xFF) / 255f
-                output[offset++] = (value - 0.5f) / 0.5f
+        if (crop.pixels.isEmpty() || crop.width <= 0 || crop.height <= 0) return ByteArray(0)
+        // pad 成正方形（短边两侧补白）
+        val pad = abs(crop.width - crop.height) / 2
+        val squareSize = max(crop.width, crop.height)
+        val square = IntArray(squareSize * squareSize) { 0xFFFFFFFF.toInt() }
+        for (y in 0 until crop.height) {
+            val targetY = y + (if (crop.height < crop.width) pad else 0)
+            for (x in 0 until crop.width) {
+                val targetX = x + (if (crop.width < crop.height) pad else 0)
+                square[targetY * squareSize + targetX] = crop.pixels[y * crop.width + x]
+            }
+        }
+        val inner = HandwritingEngine.MELNYK_INNER
+        val resized = resizeBilinear(square, squareSize, squareSize, inner, inner)
+        val size = HandwritingEngine.MELNYK_SIZE
+        val margin = HandwritingEngine.MELNYK_MARGIN
+        val output = ByteArray(size * size)
+        for (y in 0 until size) {
+            for (x in 0 until size) {
+                val inside = x in margin until margin + inner && y in margin until margin + inner
+                // 反色：白(255)→0，笔画(黑→反成高值)
+                val value = if (inside) {
+                    255 - ((resized[(y - margin) * inner + (x - margin)] and 0xFF))
+                } else 0
+                output[y * size + x] = value.toByte()
             }
         }
         return output
     }
 
-    /** 输入张量的宽（高恒为 IMG_HEIGHT）。 */
-    fun resizedWidth(input: FloatArray): Int = when {
-        input.isEmpty() -> 1
-        else -> (input.size / (3 * HandwritingEngine.IMG_HEIGHT)).coerceAtLeast(1)
+    /** §4.3（v2）：softmax 输出直排 top-[limit]。概率已是模型归一值，
+     * score 原样输出（不再二次归一）；下标 = 词表下标。 */
+    fun rankSoftmax(
+        probs: FloatArray,
+        vocabulary: List<String>,
+        limit: Int,
+    ): List<InkCandidate> {
+        val order = Array(probs.size) { it }
+        order.sortByDescending { probs[it] }
+        return order.take(limit.coerceAtMost(probs.size))
+            .mapNotNull { index ->
+                vocabulary.getOrNull(index)?.takeIf { it.isNotEmpty() }
+                    ?.let { InkCandidate(it, probs[index]) }
+            }
     }
 
     /** 双线性缩放（cv2 INTER_LINEAR 同构：目标像素中心对齐）。 */
@@ -443,90 +432,6 @@ object HandwritingInk {
             }
         }
         return output
-    }
-
-    /** §4.3：单字符精确 CTC 概率 DP（向量化全词表，无 beam search）。
-     * [logits] 行主序 (T,V)，**已是概率**——该模型输出自带 softmax
-     * （host 实测每行和恰为 1），再 softmax 会把分布压平、DP 出错字。
-     * 返回概率降序的前 [limit] 个 (字符表下标, **log 概率**)：下标 j 即
-     * 字符表第 j 条（输出第 j+1 列；第 0 列是 blank，不占字符表位）。
-     * 调用方拿它直接查字符表，**不要再 +1**——+1 会整体漂移成下一个
-     * 字符（设备实测：中→贝、口→山、工→土）。
-     *
-     * **log 域递推**：概率域连乘在 T 大（复杂字 T≈115）时把 C 压到
-     * 1e-23 附近，float 精度地板让大量字符并列、区分度只剩 ~2 倍，
-     * t2s 聚合的微小增益随机翻转排名（真机「就」被「万/萬」反超的
-     * 根因，host 5448 样本实测 top1 98.8%→34.4%）。log 域里同样的
-     * 值是 -53 的健康量级，全程无精度损失。 */
-    fun decodeCtc(logits: FloatArray, timeSteps: Int, vocabSize: Int, limit: Int): List<Pair<Int, Double>> {
-        if (timeSteps <= 0 || vocabSize < 2) return emptyList()
-        val nonBlank = vocabSize - 1
-        // A=保持全 blank 的前缀概率；C=已完成字符 c 的概率（均存 log）。
-        val negInf = Double.NEGATIVE_INFINITY
-        val logCompleted = DoubleArray(nonBlank) { negInf }
-        var logBlankPath = 0.0
-        for (t in 0 until timeSteps) {
-            val base = t * vocabSize
-            val logBlank = Math.log(logits[base].toDouble())
-            for (j in 0 until nonBlank) {
-                val logChar = Math.log(logits[base + j + 1].toDouble())
-                logCompleted[j] = logAddExp(
-                    logCompleted[j] + logSumTerm(logBlank, logChar),
-                    logBlankPath + logChar,
-                )
-            }
-            logBlankPath += logBlank
-        }
-        val order = Array(nonBlank) { it }
-        order.sortByDescending { logCompleted[it] }
-        return order.take(limit.coerceAtMost(nonBlank)).map { j -> j to logCompleted[j] }
-    }
-
-    /** log(blank+char)，两项概率非负，0+0 映射 -inf。 */
-    private fun logSumTerm(logBlank: Double, logChar: Double): Double =
-        if (logBlank == Double.NEGATIVE_INFINITY && logChar == Double.NEGATIVE_INFINITY)
-            Double.NEGATIVE_INFINITY
-        else
-            Math.log(Math.exp(logBlank) + Math.exp(logChar))
-
-    /** log(exp(a)+exp(b))，-inf 输入安全（logaddexp）。 */
-    private fun logAddExp(a: Double, b: Double): Double {
-        if (a == Double.NEGATIVE_INFINITY) return b
-        if (b == Double.NEGATIVE_INFINITY) return a
-        val hi = maxOf(a, b)
-        val lo = minOf(a, b)
-        return hi + Math.log1p(Math.exp(lo - hi))
-    }
-
-    /** 汉字过滤（§4.3：CJK 统一表意 㐀-鿿、兼容 豈-﫿、〇）。 */
-    fun isHan(codePoint: Int): Boolean =
-        codePoint in 0x3400..0x9FFF || codePoint in 0xF900..0xFAFF || codePoint == 0x3007
-
-    /** 候选后处理（§4.3）：滤非汉字 → 繁体按 t2s 归简 → 同字 logsumexp
-     * 聚合重排 → 取 top-[limit]，score 归一到输出集合和为 1。
-     * 入参 [raw] 的 score 是 decodeCtc 输出的 **log 概率**——聚合必须
-     * logsumexp，直加会在 log 域错（log 域的"相加"是 logaddexp）。 */
-    fun rankCandidates(
-        raw: List<Pair<String, Double>>,
-        t2s: Map<String, String>,
-        limit: Int,
-    ): List<InkCandidate> {
-        val merged = LinkedHashMap<String, Double>()
-        raw.forEach { (text, logScore) ->
-            if (!logScore.isFinite()) return@forEach
-            if (text.isEmpty() || text.codePointCount(0, text.length) != 1) return@forEach
-            if (!isHan(text.codePointAt(0))) return@forEach
-            val key = t2s[text] ?: text
-            merged[key] = logAddExp(merged[key] ?: Double.NEGATIVE_INFINITY, logScore)
-        }
-        val top = merged.entries
-            .sortedByDescending { it.value }
-            .take(limit)
-        if (top.isEmpty()) return emptyList()
-        // logsumexp 归一（与原「top 内求和归一」等价，log 域实现）。
-        var logTotal = Double.NEGATIVE_INFINITY
-        top.forEach { logTotal = logAddExp(logTotal, it.value) }
-        return top.map { (text, logScore) -> InkCandidate(text, Math.exp(logScore - logTotal).toFloat()) }
     }
 
     private const val MAX_STROKES = 64

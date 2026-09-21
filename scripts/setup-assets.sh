@@ -43,8 +43,8 @@ PUNCT_DIR="sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8"
 # 手写识别（design/handwriting.md §5.3）：PP-OCRv5 mobile rec fp32 单文件，
 # ModelScope 直链（国内直连），sha256 与 models/manifest.json 同源。
 INK_ASSET_DIR="$MODELS_ROOT/handwriting"
-INK_URL="https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile.onnx"
-INK_SHA256="5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5"
+INK_URL="https://gitee.com/feelime/models/releases/download/handwriting-v2/model.onnx"
+INK_SHA256="04bf65859482f2e9f4836fb872c5a881940a8f6f81bd0994542187617793e932"
 
 mkdir -p "$LIB_DIR" "$ASSET_DIR" "$FINAL_ASSET_DIR" "$PUNCT_ASSET_DIR" "$INK_ASSET_DIR" "$CACHE_DIR"
 
@@ -88,8 +88,8 @@ rm -f "$PUNCT_ASSET_DIR/bpe.vocab"
 
 # 手写模型：目录缺失/文件不完整才下载（本地已有同 sha 文件则零流量）。
 if ! echo "$INK_SHA256  $INK_ASSET_DIR/model.onnx" | sha256sum --check --status; then
-    download_and_verify "$INK_URL" "$CACHE_DIR/ppocrv5-mobile-rec.onnx" "$INK_SHA256"
-    install -m 0644 "$CACHE_DIR/ppocrv5-mobile-rec.onnx" "$INK_ASSET_DIR/model.onnx"
+    download_and_verify "$INK_URL" "$CACHE_DIR/melnyk-net-int8.onnx" "$INK_SHA256"
+    install -m 0644 "$CACHE_DIR/melnyk-net-int8.onnx" "$INK_ASSET_DIR/model.onnx"
 fi
 
 echo "Feelime streaming ASR, final-pass ASR, punctuation, and handwriting models are ready."
