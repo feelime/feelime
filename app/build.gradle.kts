@@ -151,6 +151,10 @@ if (devModelUrlsOptIn) {
 val devModelUrlsRequested = devModelUrlsOptIn && hasDirectDebugTask && !hasPlayOrReleaseTask
 val modelPack = (properties["feelimeModels"] as? String) ?: "full"
 
+// Thin-build handwriting subtree (see sourceSets below): copied so the
+// packaged asset path matches the full build exactly.
+val thinInkAssetsDir = layout.buildDirectory.dir("generated/thinInkAssets")
+
 // ASR model bytes live OUTSIDE the repo (never committed): the shared
 // per-machine tree (~/.config/feelime/models, installed by
 // scripts/setup-assets.sh) wins; the legacy in-tree copy stays a fallback
@@ -309,6 +313,13 @@ android {
             // same tree through the install-time PAD pack below; keeping this
             // source set flavor-specific prevents duplicate bundle assets.
             getByName("direct") { modelsDir?.let { assets.srcDirs(it) } }
+        } else {
+            // Thin build ships the 6.6MB handwriting model (issue #32: small
+            // enough to bundle, saves every thin user the first-run download);
+            // the ~200MB ASR tree stays excluded and downloads on demand. The
+            // subtree is copied into a generated dir to keep the packaged
+            // path `handwriting/model.onnx` identical to the full build.
+            modelsDir?.let { getByName("direct").assets.srcDir(thinInkAssetsDir) }
         }
         getByName("main") {
             // The sha-verified model manifest travels with
@@ -406,11 +417,30 @@ android {
 // input. Bind the model mode explicitly and clear the merge output before a
 // mode-changing execution; this makes a thin build safe immediately after a
 // full build without requiring a manual clean.
+tasks.register<Sync>("prepareThinInkAssets") {
+    // Sync (not Copy): files removed from the source tree (e.g. stale
+    // model backups) must not linger in the generated dir and ride along
+    // into the APK for the rest of the build tree's life.
+    val models = modelsDir
+    if (models != null) {
+        from(File(models, "handwriting")) { into("handwriting") }
+        into(thinInkAssetsDir)
+    }
+}
+
 tasks.configureEach {
     if (name == "mergeDirectDebugAssets" || name == "mergeDirectReleaseAssets" ||
         name == "packageDirectDebug" || name == "packageDirectRelease"
     ) {
         inputs.property("feelimeModels", modelPack)
+    }
+    // Anything consuming main/direct assets (merge, package, lint model
+    // writers) must see the copied handwriting subtree first in thin mode.
+    if (modelPack == "thin" &&
+        (name.startsWith("mergeDirect") || name.startsWith("packageDirect") ||
+            name.contains("LintVitalReportModel"))
+    ) {
+        dependsOn("prepareThinInkAssets")
     }
 }
 

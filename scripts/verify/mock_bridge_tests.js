@@ -6358,27 +6358,6 @@ test('handwriting: the recognizeInk payload carries the smoothed stroke', () => 
     assert(range < 3, `payload jitter damped (interior range ${range.toFixed(2)}, raw 8)`);
 });
 
-test('handwriting: pause delay tiers ride hello; live tier fires per stroke', () => {
-    const world = handwritingWorld();
-    equal(world.context.window.Feelime.debugState().inkDelay, 3, 'default live (per-stroke)');
-    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
-    equal(world.native.of('recognizeInk').length, 1, 'live tier fires at touchend');
-    world.hello({ mode: 'handwriting', inkDelay: 0, engineDataReady: HANDWRITING_READY });
-    inkStroke(world, [[80, 20], [100, 24], [120, 30]]);
-    world.clock.advance(299);
-    equal(world.native.of('recognizeInk').length, 1, 'fast tier still pending at 299ms (live fire counted)');
-    world.clock.advance(1);
-    equal(world.native.of('recognizeInk').length, 2, 'fast tier fires at 300ms');
-    world.hello({ mode: 'handwriting', inkDelay: 2, engineDataReady: HANDWRITING_READY });
-    inkStroke(world, [[80, 20], [100, 24], [120, 30]]);
-    world.clock.advance(1199);
-    equal(world.native.of('recognizeInk').length, 2, 'slow tier still pending at 1199ms');
-    world.clock.advance(1);
-    equal(world.native.of('recognizeInk').length, 3, 'slow tier fires at 1200ms');
-    // 白名单外的档位不覆盖（旧 APK 的 hello 缺字段同理）。
-    world.hello({ mode: 'handwriting', inkDelay: 9, engineDataReady: HANDWRITING_READY });
-    equal(world.context.window.Feelime.debugState().inkDelay, 2, 'off-whitelist ignored');
-});
 
 test('handwriting: candidates take the whole bar while the toolbar yields (wetype mutex)', () => {
     const world = handwritingWorld();

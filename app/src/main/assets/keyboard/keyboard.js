@@ -804,10 +804,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 高度调节的弹性全部给书写面板）。
     const INK_CONTROL_ROW_H = 46;
     // 手写停笔→识别的触发延时档位（设置页「手写」区块，hello 下发）。
-    const INK_RECOGNIZE_DELAYS = [300, 600, 1200];
-    // 实时档（模型 v2 后推理毫秒级，issue #32）：每笔 touchend 立即识别，
-    // 候选随笔画刷新（wetype 同款体验）；停顿档照旧等延时。
-    const INK_DELAY_LIVE = 3;
+    // 实时识别（模型 v2 后推理毫秒级，issue #32）：每笔 touchend 立即识别，
+    // 候选随笔画刷新（wetype 同款体验）。识别时机不再可配（停顿档已被
+    // 实时模式完全取代：每笔都重新识别，写得慢的人最后一笔照样立即出
+    // 正确候选，无「抢识别」问题）。
     // 平滑重采样的目标点距（CSS px）：与采点瘦身的最小间距（2px）同量
     // 级，等距后 payload 通常比原始 60Hz 采样更小（桥上限 4096 字符）。
     const INK_SMOOTH_STEP = 3;
@@ -1082,7 +1082,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 书写区几何对账的缓存（inkSyncViewport）与停顿触发延时档位
             // （0=快 300ms / 1=标准 600ms / 2=慢 1200ms，hello 下发）。
             this._inkViewport = '';
-            this.inkDelay = 3;
             // 手写候选态的整行互斥位（setToolbarYield 的初值）。
             this.toolbarYield = false;
             this.pressedKeys = new Set();
@@ -2146,13 +2145,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.inkCurrent = null;
                 this.inkPaint();
                 if (this.inkStrokes.length) {
-                    if (this.inkDelay === INK_DELAY_LIVE) {
-                        clearTimeout(this.inkTimer);
-                        this.inkTimer = null;
-                        this.inkRecognize();
-                    } else {
-                        this.inkSchedule(INK_RECOGNIZE_DELAYS[this.inkDelay] || 600);
-                    }
+                    // 实时识别：落笔结束即识别（无停顿窗口）。
+                    this.inkRecognize();
                 }
             }, { passive: false });
             pad.addEventListener('touchcancel', event => {
@@ -7945,11 +7939,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (Number(payload.holdMs) in { 200: 1, 300: 1, 350: 1, 450: 1, 600: 1 }) {
                 this.holdMs = Number(payload.holdMs);
             }
-            // 手写停顿触发延时（issue #28 round-2）：0=快 300 / 1=标准 600 /
-            // 2=慢 1200；旧 APK 的 hello 不带字段不覆盖。
-            if (Number(payload.inkDelay) in { 0: 1, 1: 1, 2: 1, 3: 1 }) {
-                this.inkDelay = Number(payload.inkDelay);
-            }
             if (Number(payload.scrubSpeed) >= 1 && Number(payload.scrubSpeed) <= 5) {
                 this.scrubSpeed = Number(payload.scrubSpeed);
                 // Once native has spoken, the legacy localStorage scrub key
@@ -8515,7 +8504,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             inkReqId: keyboard.inkReqId,
             inkStrokes: keyboard.inkStrokes.length,
             // 停顿触发延时档位（设置回归断言用）。
-            inkDelay: keyboard.inkDelay,
             // Copy: a hand-out reference would let automation mutate the
             // live degrade state (active=false left a stale badge).
             degraded: keyboard.degrade ? { ...keyboard.degrade } : null,
@@ -8541,9 +8529,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         applyKbHeight: content => keyboard.applyKbHeight(content),
         // Suite/preview hook (issue #28 round-2): the ink delay setting and
         // the recognition-path smoother, for unit tests and preview probes.
-        setInkDelay: level => {
-            keyboard.inkDelay = Number(level) in { 0: 1, 1: 1, 2: 1, 3: 1 } ? Number(level) : 3;
-        },
         inkSmooth: points => smoothInkStroke(points),
         // Preview/suite hook (issue #8): switch the preedit font level
         // without a native hello round-trip.

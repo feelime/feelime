@@ -889,31 +889,6 @@ test('feel card renders state values and commits each control with the token', (
     equal(world.lastCall('setCandidateFont').args, [2, world.token], 'candidate font + token');
 });
 
-// ------------------------------------------------- handwriting card (issue #28 round-2)
-
-test('handwriting card reflects the ink delay tier and commits it with the token', () => {
-    const world = new SettingsWorld();
-    world.push({ ...BASE_STATE, inkDelay: 0 });
-    equal(world.$('inkDelay').value, '0', 'fast tier from state');
-    const fire = () => {
-        const select = world.$('inkDelay');
-        const change = select.listeners.find(listener => listener.type === 'change');
-        assert(change, '#inkDelay has a change listener');
-        change.handler({ target: select });
-    };
-    fire();
-    equal(world.lastCall('setInkDelay').args, [0, world.token], 'ink delay + token');
-    world.push({ ...BASE_STATE, inkDelay: 2 });
-    equal(world.$('inkDelay').value, '2', 'slow tier from state');
-});
-
-test('handwriting card defaults to the live tier and ignores off-whitelist values', () => {
-    const world = new SettingsWorld();
-    world.push({ ...BASE_STATE });
-    equal(world.$('inkDelay').value, '3', 'default live (per-stroke)');
-    world.push({ ...BASE_STATE, inkDelay: 7 });
-    equal(world.$('inkDelay').value, '3', 'off-whitelist tier ignored');
-});
 
 test('feel card defaults when state omits the values and never adopts off-whitelist ones', () => {
     const world = new SettingsWorld();

@@ -130,15 +130,6 @@ const I18N = {
         "input.double.flypy": "小鹤双拼",
         "input.double.sogou": "搜狗 / 微软双拼",
         "input.double.ziguang": "紫光双拼",
-        "input.ink.title": "手写输入",
-        "input.ink.badge": "手写",
-        "input.ink.delay": "识别时机",
-        "input.ink.delayHint": "「实时」每写完一笔立即识别、候选随手刷新；其余为停笔后延迟识别，写得慢选「慢」。",
-        "input.ink.live": "实时（逐笔识别）",
-        "input.ink.fast": "快（约 300 毫秒）",
-        "input.ink.standard": "标准（约 600 毫秒）",
-        "input.ink.slow": "慢（约 1200 毫秒）",
-        "error.INVALID_INK_DELAY": "手写停顿延时选项无效。",
         "input.double.note.ziranma": "声母与全拼相同（zh=V、ch=I、sh=U 除外）。零声母（a/e 开头）直接打全拼：啊=aa、爱=ai、安=an、恩=en、二=er。",
         "input.double.note.flypy": "声母与全拼相同（zh=V、ch=I、sh=U 除外）。零声母（a/e/o 开头）双打首字母，也可打全拼：啊=aa、爱=ai、恩=ef、二=er。",
         "input.double.note.sogou": "声母与全拼相同（zh=V、ch=I、sh=U 除外）；ing 在「;」键（键盘上即分词键位置），ü 在 Y。零声母固定先打 O：啊=oa、爱=ol、安=oj、恩=of、二=or。搜狗与微软双拼键位完全一致，用微软双拼习惯的选这项即可。",
@@ -547,15 +538,6 @@ const I18N = {
         "input.double.flypy": "Flypy (小鹤)",
         "input.double.sogou": "Sogou / MSPY",
         "input.double.ziguang": "Ziguang (紫光)",
-        "input.ink.title": "Handwriting",
-        "input.ink.badge": "Handwriting",
-        "input.ink.delay": "Recognition timing",
-        "input.ink.delayHint": "Live recognises after every stroke. The others wait after you lift the pen; pick Slow if you write slowly.",
-        "input.ink.live": "Live (per stroke)",
-        "input.ink.fast": "Fast (~300 ms)",
-        "input.ink.standard": "Standard (~600 ms)",
-        "input.ink.slow": "Slow (~1200 ms)",
-        "error.INVALID_INK_DELAY": "Invalid handwriting delay option.",
         "input.double.note.ziranma": "Initials match full Pinyin (except zh=V, ch=I, sh=U). Zero-initial syllables (a/e) use full Pinyin: 啊=aa、爱=ai、安=an、恩=en、二=er.",
         "input.double.note.flypy": "Initials match full Pinyin (except zh=V, ch=I, sh=U). Zero-initial syllables (a/e/o) double the first letter; full Pinyin also works: 啊=aa、爱=ai、恩=ef、二=er.",
         "input.double.note.sogou": "Initials match full Pinyin (except zh=V, ch=I, sh=U); ing sits on the “;” key (the wide key on the keyboard), ü on Y. Zero-initial syllables always start with O: 啊=oa、爱=ol、安=oj、恩=of、二=or. Sogou and MSPY share the exact same layout.",
@@ -1139,7 +1121,6 @@ function renderFeel(state) {
     setSelect("bottomPadLandscape", state.bottomPadLandscape ?? 0, ["0", "12", "24", "36", "48"]);
     setSelect("candidateFont", state.candidateFont ?? 0, ["0", "1", "2"]);
     setSelect("preeditFont", state.preeditFont ?? 0, ["0", "1", "2"]);
-    setSelect("inkDelay", state.inkDelay ?? 3, ["3", "0", "1", "2"]);
     setSelect("oneHand", state.oneHand ?? 0, ["0", "1", "2"]);
     setSelect("oneHandPad", state.oneHandPad ?? 0, ["0", "15", "25", "35"]);
     setSelect("sideContent", state.sideContent ?? 0, ["0", "1"]);
@@ -1817,7 +1798,6 @@ $("bottomPadPortrait").addEventListener("change", event => call("setBottomPadPor
 $("bottomPadLandscape").addEventListener("change", event => call("setBottomPadLandscape", parseInt(event.target.value, 10)));
 $("candidateFont").addEventListener("change", event => call("setCandidateFont", parseInt(event.target.value, 10)));
 $("preeditFont").addEventListener("change", event => call("setPreeditFont", parseInt(event.target.value, 10)));
-$("inkDelay").addEventListener("change", event => call("setInkDelay", parseInt(event.target.value, 10)));
 $("preeditBold").addEventListener("change", event => call("setPreeditBold", event.target.checked));
 $("oneHand").addEventListener("change", event => call("setOneHandMode", parseInt(event.target.value, 10)));
 $("oneHandPad").addEventListener("change", event => call("setOneHandPad", parseInt(event.target.value, 10)));
