@@ -97,15 +97,14 @@
       "files": [
         {
           "path": "handwriting/model.onnx",
-          "downloadPath": "model.onnx",
+          "downloadPath": "ch_PP-OCRv5_rec_mobile.onnx",
           "sha256": "5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5",
           "bytes": 16631306
         }
       ],
       "urls": [
         "https://gitee.com/feelime/models/releases/download/handwriting-v1/",
-        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/master/",
-        "https://hf-mirror.com/RapidAI/RapidOCR/resolve/main/"
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/"
       ],
       "title": "手写识别（PP-OCRv5）"
     }
