@@ -43,7 +43,7 @@ PUNCT_DIR="sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8"
 # 手写识别（design/handwriting.md §5.3）：PP-OCRv5 mobile rec fp32 单文件，
 # ModelScope 直链（国内直连），sha256 与 models/manifest.json 同源。
 INK_ASSET_DIR="$MODELS_ROOT/handwriting"
-INK_URL="https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/master/onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile.onnx"
+INK_URL="https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile.onnx"
 INK_SHA256="5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5"
 
 mkdir -p "$LIB_DIR" "$ASSET_DIR" "$FINAL_ASSET_DIR" "$PUNCT_ASSET_DIR" "$INK_ASSET_DIR" "$CACHE_DIR"
