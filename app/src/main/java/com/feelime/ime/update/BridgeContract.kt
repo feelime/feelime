@@ -32,6 +32,8 @@ object BridgeContract {
         // meta state (Ctrl+C, Alt+., Ctrl+Shift+V ...) into the host editor.
         "key-event-v1",
         "keyboard-height-reset-v1",
+        // 手写识别（design/handwriting.md §3）：recognizeInk + onInkCandidates。
+        "handwriting-v1",
     )
 
     fun isCompatible(minNativeApi: Long, requiredCapabilities: Collection<String>): Boolean =

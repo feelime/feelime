@@ -43,6 +43,9 @@ object EngineDataStore {
             InputMode.FRENCH -> File(root, "hunspell/fr.aff").isFile
             InputMode.RUSSIAN -> File(root, "hunspell/ru_RU.aff").isFile
             InputMode.JAPANESE -> File(root, "mozc/mozc.data").isFile
+            // 手写（design/handwriting.md §3）不在 engine-data：就绪 =
+            // 模型文件落地，由 FeelimeService 按 HandwritingEngine 判定。
+            InputMode.HANDWRITING -> false
         }
     }
 

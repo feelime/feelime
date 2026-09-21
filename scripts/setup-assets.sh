@@ -35,7 +35,13 @@ PUNCT_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/punctuation-m
 PUNCT_SHA256="c0d5aa5f8eeb686032345e180bedf39319dc2e0556781c6264bcadba8328a6e1"
 PUNCT_DIR="sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8"
 
-mkdir -p "$LIB_DIR" "$ASSET_DIR" "$FINAL_ASSET_DIR" "$PUNCT_ASSET_DIR" "$CACHE_DIR"
+# 手写识别（design/handwriting.md §5.3）：PP-OCRv5 mobile rec fp32 单文件，
+# ModelScope 直链（国内直连），sha256 与 models/manifest.json 同源。
+INK_ASSET_DIR="$MODELS_ROOT/handwriting"
+INK_URL="https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/master/onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile.onnx"
+INK_SHA256="5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5"
+
+mkdir -p "$LIB_DIR" "$ASSET_DIR" "$FINAL_ASSET_DIR" "$PUNCT_ASSET_DIR" "$INK_ASSET_DIR" "$CACHE_DIR"
 
 download_and_verify() {
     local url="$1" output="$2" expected="$3"
@@ -75,7 +81,13 @@ install -m 0644 "$TEMP_DIR/$PUNCT_DIR/model.int8.onnx" "$PUNCT_ASSET_DIR/model.i
 # file beside the OfflinePunctuation model.
 rm -f "$PUNCT_ASSET_DIR/bpe.vocab"
 
-echo "Feelime streaming ASR, final-pass ASR, and punctuation models are ready."
+# 手写模型：目录缺失/文件不完整才下载（本地已有同 sha 文件则零流量）。
+if ! echo "$INK_SHA256  $INK_ASSET_DIR/model.onnx" | sha256sum --check --status; then
+    download_and_verify "$INK_URL" "$CACHE_DIR/ppocrv5-mobile-rec.onnx" "$INK_SHA256"
+    install -m 0644 "$CACHE_DIR/ppocrv5-mobile-rec.onnx" "$INK_ASSET_DIR/model.onnx"
+fi
+
+echo "Feelime streaming ASR, final-pass ASR, punctuation, and handwriting models are ready."
 echo "  AAR:    $LIB_DIR/$AAR_NAME"
 echo "  models: $MODELS_ROOT"
 

@@ -89,6 +89,25 @@
         "https://huggingface.co/lorneluo/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8/resolve/main/"
       ],
       "title": "中英标点恢复"
+    },
+    {
+      "id": "ppocrv5-mobile-rec",
+      "role": "handwriting-rec",
+      "version": "rapidocr-3.9.2",
+      "files": [
+        {
+          "path": "handwriting/model.onnx",
+          "downloadPath": "model.onnx",
+          "sha256": "5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5",
+          "bytes": 16631306
+        }
+      ],
+      "urls": [
+        "https://gitee.com/feelime/models/releases/download/handwriting-v1/",
+        "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/master/",
+        "https://hf-mirror.com/RapidAI/RapidOCR/resolve/main/"
+      ],
+      "title": "手写识别（PP-OCRv5）"
     }
   ]
 }

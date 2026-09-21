@@ -100,7 +100,10 @@ data class ModelSpec(
 enum class ModelDownloadSource(val value: String) {
     HF_MIRROR("hf_mirror"),
     OFFICIAL("official"),
-    CUSTOM("custom");
+    CUSTOM("custom"),
+    // gitee release 资产直链（design/handwriting.md §5.3）：国内直连，
+    // 作为手写模型等新条目的默认第一源。
+    GITEE("gitee");
 
     companion object {
         fun fromValue(value: String?): ModelDownloadSource = when (
@@ -108,6 +111,7 @@ enum class ModelDownloadSource(val value: String) {
         ) {
             OFFICIAL.value -> OFFICIAL
             CUSTOM.value -> CUSTOM
+            GITEE.value -> GITEE
             else -> HF_MIRROR
         }
     }
@@ -492,6 +496,13 @@ class ModelStore(
      * embedded manifest. */
     private fun effectiveDownloadUrls(model: ModelSpec): List<String> {
         val config = modelDownloadSource()
+        // 用户没选过源：按 manifest urls 顺序直用（手写条目的第一位是
+        // gitee 镜像，国内直连，design/handwriting.md §5.3）。
+        if (!sourceChoiceStored()) return model.urls
+        // gitee 是 release 资产直链，没有 /resolve/ 仓库语义，按 host 取用。
+        if (config.source == ModelDownloadSource.GITEE) {
+            return model.urls.filter { isHost(it, "gitee.com") }
+        }
         val repository = model.urls.asSequence()
             .mapNotNull(::repositoryPath)
             .firstOrNull()
@@ -499,6 +510,7 @@ class ModelStore(
             ModelDownloadSource.HF_MIRROR -> HF_MIRROR_BASE
             ModelDownloadSource.OFFICIAL -> OFFICIAL_HF_BASE
             ModelDownloadSource.CUSTOM -> config.customBase
+            ModelDownloadSource.GITEE -> ""
         }
         if (repository != null && validSourceBase(base)) {
             return listOf(sourceEndpoint(base, repository))
@@ -510,8 +522,13 @@ class ModelStore(
             ModelDownloadSource.HF_MIRROR -> model.urls.filter { isHost(it, "hf-mirror.com") }
             ModelDownloadSource.OFFICIAL -> model.urls.filter { isHost(it, "huggingface.co") }
             ModelDownloadSource.CUSTOM -> emptyList()
+            ModelDownloadSource.GITEE -> emptyList()
         }
     }
+
+    /** 源选择是否落过盘：区分「默认」与「明确选了 hf_mirror」。 */
+    private fun sourceChoiceStored(): Boolean =
+        backendPreferences.contains(KEY_MODEL_DOWNLOAD_SOURCE)
 
     private fun repositoryPath(raw: String): String? = runCatching {
         val path = URI.create(raw).path.trim('/')
@@ -766,6 +783,8 @@ class ModelStore(
             ModelDownloadSource.HF_MIRROR, ModelDownloadSource.OFFICIAL ->
                 archive.sourceUrls[config.source.value]?.takeIf { it.isNotBlank() } ?: archive.url
             ModelDownloadSource.CUSTOM -> config.customArchiveUrl
+            // gitee 只镜像散文件，大归档仍走官方地址。
+            ModelDownloadSource.GITEE -> archive.url
         }
     }
 

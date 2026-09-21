@@ -151,6 +151,7 @@ const I18N = {
         "voice.backend.remote": "使用下载模型",
         "voice.backend.hint": "切换后下次录音生效。选择下载模型后，请在下方补齐所需模型再录音。",
         "voice.downloadSource.label": "模型下载源",
+        "voice.downloadSource.gitee": "Gitee（国内推荐）",
         "voice.downloadSource.hfMirror": "HF / GitHub 镜像（默认）",
         "voice.downloadSource.official": "官方源（HF / GitHub）",
         "voice.downloadSource.custom": "自定义源",
@@ -558,6 +559,7 @@ const I18N = {
         "voice.backend.remote": "Downloaded models",
         "voice.backend.hint": "Changes apply to the next recording. After selecting downloaded models, download any missing models below before recording.",
         "voice.downloadSource.label": "Model download source",
+        "voice.downloadSource.gitee": "Gitee (China-friendly)",
         "voice.downloadSource.hfMirror": "HF / GitHub mirrors (default)",
         "voice.downloadSource.official": "Official sources (HF / GitHub)",
         "voice.downloadSource.custom": "Custom source",
@@ -1266,7 +1268,7 @@ function renderVoice(state) {
     }
     const source = state.modelDownloadSource || {};
     if (document.activeElement !== $("modelDownloadSource")) {
-        $("modelDownloadSource").value = ["official", "custom"].includes(source.mode) ? source.mode : "hf_mirror";
+        $("modelDownloadSource").value = ["official", "custom", "gitee"].includes(source.mode) ? source.mode : "hf_mirror";
     }
     if (document.activeElement !== $("modelDownloadCustom")) {
         $("modelDownloadCustom").value = source.customBase || "";

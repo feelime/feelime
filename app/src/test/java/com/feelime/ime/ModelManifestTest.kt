@@ -92,6 +92,42 @@ class ModelManifestTest {
         assertEquals(0, ModelManifest.parse(json).models.size)
     }
 
+    /** 手写条目（design/handwriting.md §5.3）：urls 首位是 gitee 镜像
+     * （国内直连，默认按 manifest 顺序直用），downloadPath 与 gitee
+     * release 资产名对齐。 */
+    @Test
+    fun repoManifestHandwritingEntryPinsDistributionShape() {
+        val repo = java.io.File("../models/manifest.json")
+        if (!repo.isFile) return // 非 app/ 工作目录的运行环境跳过
+        val manifest = ModelManifest.parse(repo.readText())
+        val model = manifest.byRole("handwriting-rec")
+            ?: return // 旧分支无此条目
+        assertEquals("ppocrv5-mobile-rec", model.id)
+        assertEquals(listOf("model.onnx"), model.files.map { it.path.substringAfter('/') })
+        assertTrue(model.verified)
+        assertTrue(model.urls.first().startsWith("https://gitee.com/"))
+        assertTrue(model.urls.first().endsWith("/"))
+        assertTrue(model.urls.drop(1).contains("https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/master/"))
+        // gitee 前缀 + downloadPath = 设计钉死的资产 URL。
+        assertEquals(
+            "https://gitee.com/feelime/models/releases/download/handwriting-v1/model.onnx",
+            model.urls.first() + model.files.first().downloadPath,
+        )
+        assertEquals(16631306L, model.files.first().bytes)
+        assertEquals(
+            "5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5",
+            model.files.first().sha256,
+        )
+    }
+
+    @Test
+    fun modelDownloadSourceAcceptsGitee() {
+        assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue("gitee"))
+        assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue("GITEE"))
+        assertEquals(ModelDownloadSource.HF_MIRROR, ModelDownloadSource.fromValue(null))
+        assertEquals(ModelDownloadSource.HF_MIRROR, ModelDownloadSource.fromValue("nonsense"))
+    }
+
     @Test
     fun modelBackendUsesStableWireValuesAndChannelDefaults() {
         assertEquals(ModelBackend.AUTO, ModelBackend.fromValue("AUTO"))

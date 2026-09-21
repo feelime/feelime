@@ -41,13 +41,15 @@ import java.util.ArrayDeque
 import org.json.JSONArray
 import org.json.JSONObject
 
-class FeelimeService : InputMethodService(), AsrEngine.Listener {
+class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngine.Listener {
     private val main = Handler(Looper.getMainLooper())
     private val background = java.util.concurrent.Executors.newSingleThreadExecutor()
     /** getExtractedText is a synchronous editor RPC. Keep it off the IME
      * main thread; one scrub call handles its whole bounded delta. */
     private val cursorQueryExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private lateinit var engine: AsrEngine
+    /** 手写识别（design/handwriting.md）：独立于 EngineCoordinator，见 §5.1。 */
+    private var handwritingEngine: HandwritingEngine? = null
     private lateinit var editorPort: InputConnectionEditorPort
     private lateinit var coordinator: TextInputCoordinator
     private lateinit var clipboardStore: com.feelime.ime.panel.ClipboardStore
@@ -371,6 +373,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
 
     /** Language data readiness for the HTML mode menu. */
     private fun engineDataReady(mode: String): Boolean {
+        // 手写（design/handwriting.md §3）不在 engine-data：就绪 = 模型
+        // 文件已落地（assets 或 ModelStore 下载完成），缺失当不可用。
+        if (mode == com.feelime.ime.engine.InputMode.HANDWRITING.wireName) {
+            return handwritingEngine?.isModelAvailable() == true
+        }
         val inputMode = InputModeBridge.fromWire(mode) ?: com.feelime.ime.engine.InputMode.DIRECT
         return com.feelime.ime.engine.EngineDataStore.isModeReady(applicationContext, inputMode)
     }
@@ -400,6 +407,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         UiLanguage.preferences(this)
             .registerOnSharedPreferenceChangeListener(uiLanguageListener)
         engine = AsrEngine(applicationContext, this)
+        // 手写（design/handwriting.md §5.1）：独立引擎，onCreate 建实例、
+        // 模型在首次识别时后台懒加载。
+        handwritingEngine = HandwritingEngine(applicationContext, this)
         editorPort = InputConnectionEditorPort(this)
         clipboardStore = com.feelime.ime.panel.ClipboardStore(applicationContext)
         favoritesStore = com.feelime.ime.panel.FavoritesStore(applicationContext)
@@ -925,6 +935,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         // close any live engine session before tearing down.
         runCatching { coordinator.close() }
         engine.release()
+        handwritingEngine?.release()
+        handwritingEngine = null
         background.shutdown()
         cursorQueryExecutor.shutdownNow()
         keyboardView?.apply {
@@ -1547,7 +1559,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
             .put(
                 "engineDataReady",
                 JSONObject().apply {
-                    listOf("pinyin", "double-pinyin", "t9", "stroke", "japanese", "french", "russian").forEach { mode ->
+                    listOf("pinyin", "double-pinyin", "t9", "stroke", "handwriting", "japanese", "french", "russian").forEach { mode ->
                         put(mode, engineDataReady(mode))
                     }
                 },
@@ -1797,6 +1809,27 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
             else -> message
         }
         pushState(message = t(this, message, english), messageCode = "ASR_ERROR")
+    }
+
+    /** 手写识别回调（design/handwriting.md §3）：后台线程 → 主线程推送。
+     *  reqId 单调，JS 侧与最新请求不符时丢弃。 */
+    override fun onInkResult(reqId: Int, candidates: List<InkCandidate>, error: String?) = onMain {
+        val payload = JSONObject()
+            .put("reqId", reqId)
+            .put(
+                "candidates",
+                JSONArray().apply {
+                    candidates.forEach { candidate ->
+                        put(
+                            JSONObject()
+                                .put("text", candidate.text)
+                                .put("score", candidate.score.toDouble()),
+                        )
+                    }
+                },
+            )
+            .put("error", error ?: JSONObject.NULL)
+        evaluate("window.Feelime && window.Feelime.onInkCandidates && window.Feelime.onInkCandidates($payload)")
     }
 
     inner class ImeBridge {
@@ -2269,6 +2302,20 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
 
         @JavascriptInterface
         fun startVoice(token: String) = guarded(token, limited = false) { startVoice() }
+
+        /** 手写识别（design/handwriting.md §3）：payload JSON
+         * {"w":..,"h":..,"strokes":[[[x,y],..],..]}。方法在 JavaBridge
+         * 线程被调，guarded 转主线程后交引擎（引擎内部再转后台线程推理，
+         * 立即返回；结果只经 onInkResult 回调）。 */
+        @JavascriptInterface
+        fun recognizeInk(reqId: Int, payload: String, token: String) =
+            guarded(token, limited = false) {
+                if (reqId < 0 || payload.length > MAX_JSON_CHARS) {
+                    rejectedCalls += 1
+                    return@guarded
+                }
+                handwritingEngine?.recognizeInk(reqId, payload)
+            }
 
         @JavascriptInterface
         fun stopVoice(token: String) = guarded(token, limited = false) { stopVoice() }
