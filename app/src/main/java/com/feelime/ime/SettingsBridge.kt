@@ -79,14 +79,15 @@ fun readPreeditFont(context: Context): Int =
         .getInt(PREF_PREEDIT_FONT, 0)
         .takeIf { it in 0..2 } ?: 0
 
-/** 手写停顿触发延时档位：0=快(300ms) 1=标准(600ms) 2=慢(1200ms)
- *  （issue #28 round-2）。识别参数本身在键盘 JS 侧，这里只存偏好。 */
+/** 手写识别时机档位：3=实时逐笔（默认，模型 v2 后推理毫秒级）0=快(300ms)
+ *  1=标准(600ms) 2=慢(1200ms)（issue #28 round-2 + #32 模型 v2）。
+ *  识别参数本身在键盘 JS 侧，这里只存偏好。 */
 const val PREF_INK_DELAY = "ink_delay"
 
 fun readInkDelay(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getInt(PREF_INK_DELAY, 1)
-        .takeIf { it in 0..2 } ?: 1
+        .getInt(PREF_INK_DELAY, 3)
+        .takeIf { it in 0..3 } ?: 3
 
 /** 拼音加粗开关（issue #8）：默认关。 */
 const val PREF_PREEDIT_BOLD = "preedit_bold"
@@ -974,10 +975,10 @@ class SettingsBridge(
         pushState()
     }
 
-    /** 手写停顿触发延时档位（issue #28 round-2）：0=快 1=标准 2=慢。 */
+    /** 手写识别时机档位（issue #28 round-2 + #32 v2）：3=实时 0=快 1=标准 2=慢。 */
     @JavascriptInterface
     fun setInkDelay(level: Int, token: String) = guarded(token) {
-        if (level !in 0..2) {
+        if (level !in 0..3) {
             pushEvent(
                 JSONObject()
                     .put("type", "inkDelayError")

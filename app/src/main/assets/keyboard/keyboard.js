@@ -805,6 +805,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     const INK_CONTROL_ROW_H = 46;
     // 手写停笔→识别的触发延时档位（设置页「手写」区块，hello 下发）。
     const INK_RECOGNIZE_DELAYS = [300, 600, 1200];
+    // 实时档（模型 v2 后推理毫秒级，issue #32）：每笔 touchend 立即识别，
+    // 候选随笔画刷新（wetype 同款体验）；停顿档照旧等延时。
+    const INK_DELAY_LIVE = 3;
     // 平滑重采样的目标点距（CSS px）：与采点瘦身的最小间距（2px）同量
     // 级，等距后 payload 通常比原始 60Hz 采样更小（桥上限 4096 字符）。
     const INK_SMOOTH_STEP = 3;
@@ -1079,7 +1082,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 书写区几何对账的缓存（inkSyncViewport）与停顿触发延时档位
             // （0=快 300ms / 1=标准 600ms / 2=慢 1200ms，hello 下发）。
             this._inkViewport = '';
-            this.inkDelay = 1;
+            this.inkDelay = 3;
             // 手写候选态的整行互斥位（setToolbarYield 的初值）。
             this.toolbarYield = false;
             this.pressedKeys = new Set();
@@ -2143,7 +2146,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.inkCurrent = null;
                 this.inkPaint();
                 if (this.inkStrokes.length) {
-                    this.inkSchedule(INK_RECOGNIZE_DELAYS[this.inkDelay] || 600);
+                    if (this.inkDelay === INK_DELAY_LIVE) {
+                        clearTimeout(this.inkTimer);
+                        this.inkTimer = null;
+                        this.inkRecognize();
+                    } else {
+                        this.inkSchedule(INK_RECOGNIZE_DELAYS[this.inkDelay] || 600);
+                    }
                 }
             }, { passive: false });
             pad.addEventListener('touchcancel', event => {
@@ -2302,7 +2311,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 清笔迹同时撤掉互斥态 → 工具栏恢复（wetype 同款：上屏后回
          * 工具栏，继续写再进候选态）。 */
         commitInkCandidate(candidate) {
-            this.sendSymbol(candidate.text);
+            // 上屏走 commitAssoc 通道（联想通道）：中文联想开时以该字为
+            // 前词推后继联想（开关语义在 native readAssociation 统一判
+            // 断，对手写与拼音一致）；旧桥缺该方法时退回直发。
+            if (typeof Native.commitAssoc === 'function') {
+                this.call(() => Native.commitAssoc(candidate.text, this.token));
+            } else {
+                this.sendSymbol(candidate.text);
+            }
             this.inkReset();
         }
 
@@ -2325,6 +2341,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ? payload.candidates.filter(item => item && item.text)
                     .map(item => ({ id: `ink:${item.text}`, text: item.text }))
                 : [];
+            // 手写候选与联想词互斥：新识别到达即让上屏后的联想词退场。
+            this.assocWords = [];
             this.inkCandidates = candidates;
             this.renderCandidates(this.lastEngineState || {});
         }
@@ -7929,7 +7947,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             // 手写停顿触发延时（issue #28 round-2）：0=快 300 / 1=标准 600 /
             // 2=慢 1200；旧 APK 的 hello 不带字段不覆盖。
-            if (Number(payload.inkDelay) in { 0: 1, 1: 1, 2: 1 }) {
+            if (Number(payload.inkDelay) in { 0: 1, 1: 1, 2: 1, 3: 1 }) {
                 this.inkDelay = Number(payload.inkDelay);
             }
             if (Number(payload.scrubSpeed) >= 1 && Number(payload.scrubSpeed) <= 5) {
@@ -8524,7 +8542,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // Suite/preview hook (issue #28 round-2): the ink delay setting and
         // the recognition-path smoother, for unit tests and preview probes.
         setInkDelay: level => {
-            keyboard.inkDelay = Number(level) in { 0: 1, 1: 1, 2: 1 } ? Number(level) : 1;
+            keyboard.inkDelay = Number(level) in { 0: 1, 1: 1, 2: 1, 3: 1 } ? Number(level) : 3;
         },
         inkSmooth: points => smoothInkStroke(points),
         // Preview/suite hook (issue #8): switch the preedit font level

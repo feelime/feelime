@@ -6172,15 +6172,12 @@ test('handwriting: pad renders canvas plus control row, no letter keys', () => {
     equal(world.native.of('recognizeInk').length, 0, 'no ink traffic before writing');
 });
 
-test('handwriting: idle 600ms after stroke sends one recognizeInk with a valid payload', () => {
+test('handwriting: live tier sends one recognizeInk right at touchend with a valid payload', () => {
+    // 模型 v2 后默认实时档（issue #32）：每笔 touchend 立即识别。
     const world = handwritingWorld();
     inkStroke(world, [[20, 20], [40, 24], [60, 30], [80, 40]]);
-    equal(world.native.of('recognizeInk').length, 0, 'nothing sent while the pen is down');
-    world.clock.advance(599);
-    equal(world.native.of('recognizeInk').length, 0, 'still pending at 599ms');
-    world.clock.advance(1);
     const calls = world.native.of('recognizeInk');
-    equal(calls.length, 1, 'one call after the idle window');
+    equal(calls.length, 1, 'one call at touchend, no idle window');
     equal(calls[0].args[2], 'tok-1', 'session token attached');
     const payload = JSON.parse(calls[0].args[1]);
     assert(Number.isFinite(payload.w) && payload.w > 0, 'payload w is a positive number');
@@ -6193,20 +6190,19 @@ test('handwriting: idle 600ms after stroke sends one recognizeInk with a valid p
         'point is a finite [x, y] pair');
     });
     equal(world.context.window.Feelime.debugState().inkReqId, 1, 'request id advanced');
-    // 同一笔不重复发送（计时器是一次性的）。
+    // 落笔结束后不再重复发送（没有遗留计时器）。
     world.clock.advance(2000);
     equal(world.native.of('recognizeInk').length, 1, 'no duplicate request');
 });
 
-test('handwriting: a new stroke cancels the pending request (reqId mismatch drops it)', () => {
+test('handwriting: every stroke fires its own request (reqId mismatch drops stale)', () => {
+    // 实时档：每笔 touchend 各发一次、reqId 递增；迟到结果按 reqId 丢弃。
     const world = handwritingWorld();
     inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
-    // 未到 600ms 就落第二笔：第一笔的未决请求被撤（只发一次、reqId 推进）。
+    equal(world.native.of('recognizeInk').length, 1, 'first stroke recognized at touchend');
     inkStroke(world, [[90, 20], [110, 30], [120, 40]]);
-    equal(world.native.of('recognizeInk').length, 0, 'pending request withdrawn');
-    world.clock.advance(600);
-    equal(world.native.of('recognizeInk').length, 1, 'one request for both strokes');
-    equal(world.native.of('recognizeInk')[0].args[0], 1, 'request id advanced to 1');
+    equal(world.native.of('recognizeInk').length, 2, 'second stroke recognized too');
+    equal(world.native.of('recognizeInk')[1].args[0], 2, 'request id advanced to 2');
     // reqId 失配的迟到结果整包丢弃。
     world.context.window.Feelime.onInkCandidates({
         reqId: 999, candidates: [{ text: '旧', score: 1 }], error: null,
@@ -6214,7 +6210,7 @@ test('handwriting: a new stroke cancels the pending request (reqId mismatch drop
     equal(world.$('candidates').children.length, 0, 'stale reqId dropped');
     // 现请求的结果正常渲染。
     world.context.window.Feelime.onInkCandidates({
-        reqId: 1, candidates: [{ text: '新', score: 1 }], error: null,
+        reqId: 2, candidates: [{ text: '新', score: 1 }], error: null,
     });
     equal(world.$('candidates').children[0].textContent, '新', 'current reqId rendered');
 });
@@ -6235,7 +6231,9 @@ test('handwriting: candidates render into the bar; picking commits and clears', 
     equal(bar.children.length, 3, 'three candidates rendered');
     equal(bar.children[0].textContent, '感', 'top candidate first');
     world.tap(bar.children[1]);
-    const commits = world.native.of('commitText').filter(c => c.args[0] === '憾');
+    // 模型 v2：点选走 commitAssoc（联想通道——中文联想开关对手写生效，
+    // native 侧统一判断开关；mock 桥记录原始调用）。
+    const commits = world.native.of('commitAssoc').filter(c => c.args[0] === '憾');
     equal(commits.length, 1, 'pick commits the chosen text');
     equal(commits[0].args[1], 'tok-1', 'commit carries the token');
     equal(world.$('candidates').children.length, 0, 'bar cleared after the pick');
@@ -6360,21 +6358,23 @@ test('handwriting: the recognizeInk payload carries the smoothed stroke', () => 
     assert(range < 3, `payload jitter damped (interior range ${range.toFixed(2)}, raw 8)`);
 });
 
-test('handwriting: pause delay tier rides hello (300/600/1200ms)', () => {
+test('handwriting: pause delay tiers ride hello; live tier fires per stroke', () => {
     const world = handwritingWorld();
-    equal(world.context.window.Feelime.debugState().inkDelay, 1, 'default standard');
-    world.hello({ mode: 'handwriting', inkDelay: 0, engineDataReady: HANDWRITING_READY });
+    equal(world.context.window.Feelime.debugState().inkDelay, 3, 'default live (per-stroke)');
     inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    equal(world.native.of('recognizeInk').length, 1, 'live tier fires at touchend');
+    world.hello({ mode: 'handwriting', inkDelay: 0, engineDataReady: HANDWRITING_READY });
+    inkStroke(world, [[80, 20], [100, 24], [120, 30]]);
     world.clock.advance(299);
-    equal(world.native.of('recognizeInk').length, 0, 'fast tier still pending at 299ms');
+    equal(world.native.of('recognizeInk').length, 1, 'fast tier still pending at 299ms (live fire counted)');
     world.clock.advance(1);
-    equal(world.native.of('recognizeInk').length, 1, 'fast tier fires at 300ms');
+    equal(world.native.of('recognizeInk').length, 2, 'fast tier fires at 300ms');
     world.hello({ mode: 'handwriting', inkDelay: 2, engineDataReady: HANDWRITING_READY });
     inkStroke(world, [[80, 20], [100, 24], [120, 30]]);
     world.clock.advance(1199);
-    equal(world.native.of('recognizeInk').length, 1, 'slow tier still pending at 1199ms');
+    equal(world.native.of('recognizeInk').length, 2, 'slow tier still pending at 1199ms');
     world.clock.advance(1);
-    equal(world.native.of('recognizeInk').length, 2, 'slow tier fires at 1200ms');
+    equal(world.native.of('recognizeInk').length, 3, 'slow tier fires at 1200ms');
     // 白名单外的档位不覆盖（旧 APK 的 hello 缺字段同理）。
     world.hello({ mode: 'handwriting', inkDelay: 9, engineDataReady: HANDWRITING_READY });
     equal(world.context.window.Feelime.debugState().inkDelay, 2, 'off-whitelist ignored');

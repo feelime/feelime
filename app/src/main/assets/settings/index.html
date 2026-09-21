@@ -281,7 +281,8 @@
           <span data-i18n="input.ink.delay">停顿触发识别</span>
           <small data-i18n="input.ink.delayHint">停笔后等这么久就识别上一个字；写得慢选「慢」，抢着识别选「快」。</small>
         </span>
-        <select id="inkDelay" class="select" aria-label="停顿触发识别" data-i18n-aria="input.ink.delay">
+        <select id="inkDelay" class="select" aria-label="识别时机" data-i18n-aria="input.ink.delay">
+          <option value="3" data-i18n="input.ink.live">实时（逐笔识别）</option>
           <option value="0" data-i18n="input.ink.fast">快（约 300 毫秒）</option>
           <option value="1" data-i18n="input.ink.standard">标准（约 600 毫秒）</option>
           <option value="2" data-i18n="input.ink.slow">慢（约 1200 毫秒）</option>

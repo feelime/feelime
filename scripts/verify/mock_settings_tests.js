@@ -907,12 +907,12 @@ test('handwriting card reflects the ink delay tier and commits it with the token
     equal(world.$('inkDelay').value, '2', 'slow tier from state');
 });
 
-test('handwriting card defaults to the standard tier and ignores off-whitelist values', () => {
+test('handwriting card defaults to the live tier and ignores off-whitelist values', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
-    equal(world.$('inkDelay').value, '1', 'default standard (600ms)');
+    equal(world.$('inkDelay').value, '3', 'default live (per-stroke)');
     world.push({ ...BASE_STATE, inkDelay: 7 });
-    equal(world.$('inkDelay').value, '1', 'off-whitelist tier ignored');
+    equal(world.$('inkDelay').value, '3', 'off-whitelist tier ignored');
 });
 
 test('feel card defaults when state omits the values and never adopts off-whitelist ones', () => {

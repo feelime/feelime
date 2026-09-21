@@ -132,8 +132,9 @@ const I18N = {
         "input.double.ziguang": "紫光双拼",
         "input.ink.title": "手写输入",
         "input.ink.badge": "手写",
-        "input.ink.delay": "停顿触发识别",
-        "input.ink.delayHint": "停笔后等这么久就识别上一个字；写得慢选「慢」，抢着识别选「快」。",
+        "input.ink.delay": "识别时机",
+        "input.ink.delayHint": "「实时」每写完一笔立即识别、候选随手刷新；其余为停笔后延迟识别，写得慢选「慢」。",
+        "input.ink.live": "实时（逐笔识别）",
         "input.ink.fast": "快（约 300 毫秒）",
         "input.ink.standard": "标准（约 600 毫秒）",
         "input.ink.slow": "慢（约 1200 毫秒）",
@@ -548,8 +549,9 @@ const I18N = {
         "input.double.ziguang": "Ziguang (紫光)",
         "input.ink.title": "Handwriting",
         "input.ink.badge": "Handwriting",
-        "input.ink.delay": "Recognition delay",
-        "input.ink.delayHint": "How long the pen waits after you lift it before the stroke is recognised. Slow if you write slowly; fast if it triggers too soon.",
+        "input.ink.delay": "Recognition timing",
+        "input.ink.delayHint": "Live recognises after every stroke. The others wait after you lift the pen; pick Slow if you write slowly.",
+        "input.ink.live": "Live (per stroke)",
         "input.ink.fast": "Fast (~300 ms)",
         "input.ink.standard": "Standard (~600 ms)",
         "input.ink.slow": "Slow (~1200 ms)",
@@ -1137,7 +1139,7 @@ function renderFeel(state) {
     setSelect("bottomPadLandscape", state.bottomPadLandscape ?? 0, ["0", "12", "24", "36", "48"]);
     setSelect("candidateFont", state.candidateFont ?? 0, ["0", "1", "2"]);
     setSelect("preeditFont", state.preeditFont ?? 0, ["0", "1", "2"]);
-    setSelect("inkDelay", state.inkDelay ?? 1, ["0", "1", "2"]);
+    setSelect("inkDelay", state.inkDelay ?? 3, ["3", "0", "1", "2"]);
     setSelect("oneHand", state.oneHand ?? 0, ["0", "1", "2"]);
     setSelect("oneHandPad", state.oneHandPad ?? 0, ["0", "15", "25", "35"]);
     setSelect("sideContent", state.sideContent ?? 0, ["0", "1"]);
