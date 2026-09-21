@@ -11,7 +11,8 @@
   sha256 `5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5`，
   来源 ModelScope `RapidAI/RapidOCR` v3.9.2 `onnx/PP-OCRv5/rec/`）。
   int8 量化已试（dynamic/static 两种）掉点崩坏（行书 top5 98.2%→63.8%/51.8%），
-  **定案 fp32 直传**，量化优化进后续项。
+  **定案 fp32**，量化优化进后续项。**分发：16.6MB 直接进 APK**（§5.3），
+  thin 渠道运行时下载，国内镜像走 gitee（org feelime / repo models）。
 - **host 识别率**（字体模拟口径，仅汉字候选+t2s 归一）：楷书 top1 98.8% /
   top5 99.6%，行书 93.4% / 98.2%，行草 81.6% / 94.5%。手指圆头粗笔比
   毛笔笔锋更友好（粗笔变体楷 top5 99.8%）。
@@ -107,7 +108,7 @@ host OpenCC 生成，sha256 `79cc3619a3e3d0507014017863f49fea723cbb16146869959c0
 | `FeelimeService.kt` | `ImeBridge` 加 `recognizeInk`（guarded，转发引擎）；hello `engineDataReady` 加就绪位 | `startVoice` L2271 形态 |
 | `update/BridgeContract.kt` | CAPABILITIES +`handwriting-v1` | — |
 | `app/build.gradle.kts` | dependencies +onnxruntime-android:1.27.1；packagingOptions jniLibs pickFirst `**/libonnxruntime.so`（注释说明与 sherpa 同版本去重） | 现有 sherpa 依赖段 L496-509 |
-| `models/manifest.json` | 新条目 `id: ppocrv5-mobile-rec`、`role: handwriting-rec`、files `handwriting/model.onnx`（downloadPath 同名）、urls：ModelScope 直链 + hf-mirror 占位 | 现有 asr 条目结构 |
+| `models/manifest.json` | 新条目 `id: ppocrv5-mobile-rec`、`role: handwriting-rec`、files `handwriting/model.onnx`（downloadPath 同名）、urls 顺序：gitee 镜像（§5.3）→ ModelScope 直链 → huggingface 占位 | 现有 asr 条目结构 |
 | `scripts/setup-assets.sh` | `INK_ASSET_DIR="$MODELS_ROOT/handwriting"`：目录不存在时从 ModelScope 下载、sha256 校验 | FINAL/PUNCT 段 |
 | `engine-data/handwriting/t2s.json`（新） | 离线简繁映射表（文件见 §4.3） | third_party 清单如有体积门槛则放 MANIFEST |
 
@@ -124,10 +125,19 @@ host OpenCC 生成，sha256 `79cc3619a3e3d0507014017863f49fea723cbb16146869959c0
 
 ### §5.3 模型分发
 
-- full 构建：`setup-assets.sh` 下载到 `~/.config/feelime/models/handwriting/`，
+- **模型进 APK**：`setup-assets.sh` 下载到 `~/.config/feelime/models/handwriting/`，
   软链 `app/src/modelAssets/full` 进 assets（现有机制，路径 `handwriting/model.onnx`）。
-- thin 构建：ModelStore 按 manifest 下载（urls 第一位 ModelScope 直链，国内直连）。
-- 加载顺序：ModelStore 落地目录 → assets（full 包）→ 都没有 = 未就绪。
+  full/direct 构建随包分发（16.6MB，相对 engine-data 66MB 是零头）；play 版
+  走 `:feelime-models` asset pack 同随包。
+- **thin 构建（github release 直装渠道）不带手写模型**，运行时 ModelStore
+  按 manifest 下载。manifest urls 第一位放 **gitee 镜像**
+  （`https://gitee.com/feelime/models/releases/download/handwriting-v1/model.onnx`，
+  org=feelime / repo=models / release tag=handwriting-v1），其后 ModelScope
+  直链、huggingface 占位——gitee 国内直连，是默认国内友好源。
+- **设置页「模型源」加 `gitee` 选项**（现有 hf_mirror/official/custom 之外），
+  选中后 ModelStore 的 URL 解析优先 gitee 镜像前缀；设置页文案「Gitee（国内
+  推荐）」。默认源选择为空时仍按 manifest urls 顺序（gitee 第一）。
+- 加载顺序：assets（full/play pack）→ ModelStore 落地目录 → 都没有 = 未就绪。
 
 ### §5.4 测试
 
