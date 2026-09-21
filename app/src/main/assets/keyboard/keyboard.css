@@ -919,8 +919,20 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 body.landscape .t9-grid { gap: 4px 5px; }
 /* T9 空格键：长按圆点（::after）挪到左上角，右上角留给字面 0 角标。 */
 #spaceKey.t9-space::after { right: auto; left: 3px; }
-/* ===== 手写键面（issue #28，design/handwriting.md）：书写区 canvas 占
- * 三行高，控制行（退格/空格/回车/模式键）走 .kb-row 常规键高。 ===== */
+/* ===== 手写键面（issue #28，design/handwriting.md）：大块书写面板 +
+ * 底部控制行。书写面板是键区里唯一的弹性块（flex:1），竖屏目标宽高比
+ * 1.6:1（wetype 984×590 口径）——键盘总高由 JS 推到 chrome + 控制行 +
+ * 面板（applyModeHeight）。控制行高固定 --ink-row-h（JS 单一来源写入），
+ * 不吃 --kb-row-h 预算：applyHeight 在视图被瞬时量高时烘焙出的陈旧行
+ * 变量再也压不塌书写区（重唤折叠 P1 的根因通道被结构性拆除）。
+ * 横屏总高被 native 钳在半屏、纵向没有余量，改左右布局：面板竖向铺满，
+ * 控制键在右列三等分。 ===== */
+.ink-layout {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
 .ink-pad {
     position: relative;
     flex: 1;
@@ -930,6 +942,31 @@ body.landscape .t9-grid { gap: 4px 5px; }
     background: var(--key);
     overflow: hidden;
 }
+.ink-controls {
+    flex: none;
+    display: flex;
+    gap: 5px;
+    /* 键高 JS 写入（--ink-row-h），缺省值仅兜 mock/旧 DOM。 */
+    height: var(--ink-row-h, 46px);
+}
+.ink-controls .kb-key {
+    height: var(--ink-row-h, 46px);
+    min-height: 0;
+    /* 宽窄沿用键面自带的 .kb-wide-* 比例（退格 1.4 / 空格 4.15 /
+     * 中英 1.15 / 回车 2.25），行内不再各写一份。 */
+    flex: 1;
+    min-width: 0;
+}
+body.landscape .ink-layout { flex-direction: row; }
+body.landscape .ink-pad { margin-bottom: 0; }
+body.landscape .ink-controls {
+    flex-direction: column;
+    height: auto;
+    align-self: stretch;
+    width: 84px;
+    margin-left: 4px;
+}
+body.landscape .ink-controls .kb-key { height: auto; flex: 1; }
 .ink-canvas {
     /* 绝对定位铺满书写区：canvas 是替换元素，静态布局会把位图尺寸
      * （inkResize 按 devicePixelRatio 写入的 width/height 属性）当作

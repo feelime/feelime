@@ -230,7 +230,13 @@
         "Fn 粘滞键": "Sticky Fn",
         "开始语音输入": "Start voice input",
         "清除输入": "Clear composition",
-        "键盘设置": "Quick settings"
+        "键盘设置": "Quick settings",
+        // 手写键面（issue #28）。
+        "在此手写 · 长按清空": "Write here · hold to clear",
+        "已清空笔迹": "Ink cleared",
+        "手写模型未就绪": "Handwriting model not ready",
+        "手写识别失败": "Handwriting recognition failed",
+        "手写": "Handwriting"
 };
     function t(source, ...values) {
         const pattern = uiLocale === 'en' ? (UI_EN[source] || source) : source;
@@ -1017,6 +1023,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.inkCandidates = [];
             this.inkTimer = null;
             this.inkHoldTimer = null;
+            // 书写区几何对账的缓存（inkSyncViewport）与停顿触发延时档位
+            // （0=快 300ms / 1=标准 600ms / 2=慢 1200ms，hello 下发）。
+            this._inkViewport = '';
+            this.inkDelay = 1;
+            // 手写候选态的整行互斥位（setToolbarYield 的初值）。
+            this.toolbarYield = false;
             this.pressedKeys = new Set();
             this.lastRevision = 0;
             this.toastTimer = null;
@@ -1619,6 +1631,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
             }
             this.renderLetters(config.layout);
+            // 手写是唯一改键盘总高的模式：进出/旋转都把总高切回当前
+            // 模式的值（进入=面板高度，离开=该方向已存高度）。
+            this.applyModeHeight();
             this.closeModeMenu();
             this.closeSettingsPanel();
             // renderMode is invoked on every mode change INCLUDING the one a
@@ -1896,15 +1911,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.call(() => Native.key(def.code, this.token));
         }
 
-        /* ===== 手写键面（issue #28，design/handwriting.md）：书写区
-         * canvas + 控制行（退格/空格/回车/模式键）。识别走独立桥
+        /* ===== 手写键面（issue #28，design/handwriting.md）：大块书写区
+         * canvas + 底部控制行（退格/空格/中英/回车）。识别走独立桥
          * （recognizeInk → onInkCandidates），不进按键引擎；本节事件
          * 一律 stopPropagation——根级 setupFlick 只认 bindTouch 记下的
-         * touchOrigin，书写区不挂 bindTouch 即天然不进 flick/scrub 仲裁。 */
+         * touchOrigin，书写区不挂 bindTouch 即天然不进 flick/scrub 仲裁。
+         * 书写区是 flex 唯一的弹性块，控制行高固定（.ink-controls 的
+         * --ink-row-h，不吃 --kb-row-h 预算）：applyHeight 在视图被瞬时
+         * 量高时烘焙出的陈旧行变量再也压不塌书写区（重唤折叠 P1 的
+         * 根因通道被结构性拆除）。 */
 
         renderHandwriting() {
             const layer = document.getElementById('qwertyLayer');
             layer.replaceChildren();
+            const layout = document.createElement('div');
+            layout.className = 'ink-layout';
+            // 控制行高单一来源（CSS 只消费这个变量）。
+            layout.style.setProperty('--ink-row-h', INK_CONTROL_ROW_H + 'px');
             const pad = document.createElement('div');
             pad.className = 'ink-pad';
             pad.id = 'inkPad';
@@ -1914,27 +1937,77 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const hint = document.createElement('span');
             hint.className = 'ink-hint';
             hint.id = 'inkHint';
-            hint.textContent = t("在此写一个字 · 长按清空");
+            hint.textContent = t("在此手写 · 长按清空");
             pad.append(canvas, hint);
             this.bindInkPad(pad);
-            const bottom = this.row();
-            bottom.append(this.specialKey('backspace', ICONS.backspace,
+            const controls = document.createElement('div');
+            controls.className = 'ink-controls';
+            controls.append(this.specialKey('backspace', ICONS.backspace,
                 () => this.call(() => Native.backspace(this.token)),
-                'kb-wide-1_4 kb-special', 'repeat'));
-            bottom.append(this.spaceKey());
-            bottom.append(this.cnEnKey());
-            bottom.append(this.enterKey());
-            layer.append(pad, bottom);
+                'ink-key kb-special', 'repeat'));
+            // 空格保留 mic 长按通道（.kb-key[data-key] 手势层认它）。
+            controls.append(this.spaceKey());
+            // 中英键保留：手写没有别的模式出口（wetype 的出口是顶部
+            // 工具栏的切键盘 icon；我们的模式菜单只挂在这颗键上）。
+            controls.append(this.cnEnKey());
+            controls.append(this.enterKey());
+            layout.append(pad, controls);
+            layer.append(layout);
             this.updateLabels();
             // 旋转/换模式后按当前几何重建画布分辨率并重放既有笔迹。
             this.inkResize();
+            // 手写是唯一改变键盘总高的模式：进入/旋转重渲染时按当前
+            // 宽度推面板高度（离开模式由 renderMode → applyModeHeight
+            // 还原用户高度）。
+            this.applyModeHeight();
+        }
+
+        /** 手写模式的高度预算（竖屏）：面板宽高比钉在 1.6:1（wetype
+         * 实测 984×590 口径），键盘总高 = 顶部 chrome + 控制行 + 面板。
+         * 横屏不改总高（native 钳半屏，预算本就见底，面板改左右布局
+         * 竖向铺满——见 .ink-layout 的横屏分支）。 */
+        inkPanelTarget() {
+            const width = Math.max(0, (window.innerWidth || 0) - 8);
+            return Math.round(width / 1.6);
+        }
+
+        /** 手写键面的固定纵向开销：拼音带 + 候选条槽 + 控制行 + 底部
+         * 留白（与 .ink-layout/.ink-controls/#candidateBar 的 CSS 常量
+         * 一一对应；漏掉任何一段面板就会比目标矮）。 */
+        inkChromeHeight() {
+            const band = 18 + (this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4);
+            const bar = 2 + 40 + 10;
+            const row = INK_CONTROL_ROW_H + 5;
+            return band + bar + row + 5;
+        }
+
+        /** 手写模式期望的内容高度（竖屏），钳进 native 的高度上下限。 */
+        inkDesiredHeight() {
+            const min = this.inkChromeHeight() + 96;
+            const bounds = this.heightBounds();
+            const panel = this.inkPanelTarget() + this.inkChromeHeight();
+            return Math.round(Math.min(bounds.max, Math.max(min, panel)));
+        }
+
+        /** 把键盘总高切到当前模式应有的值：手写推面板高度，其余模式
+         * 还原该方向的已存高度（0 = native 默认，走 setKeyboardHeight(0)
+         * 的重置语义）。幂等：值相同不发桥。重唤键盘（resetToHome /
+         * applyHeightNow）也走这里——这是重唤后布局没跟手写态走的
+         * P1 修复的另一半。 */
+        applyModeHeight() {
+            if (this.landscape || this.mode !== 'handwriting') {
+                const stored = this.storedKbHeight();
+                if (this.kbHeight !== stored) this.applyKbHeight(stored);
+                return;
+            }
+            const desired = this.inkDesiredHeight();
+            if (this.kbHeight !== desired) this.applyKbHeight(desired);
         }
 
         /** 书写区手势：一笔一采样（首触点起笔，move 追点，end 收笔）。
-         * 停笔 600ms 触发识别；收笔后再落新笔会先撤未决请求（reqId
-         * 失配，迟到结果被丢弃）；长按原地把笔迹清空。 */
+         * 停笔触发识别的延时走设置档（默认 600ms）；收笔后再落新笔会先
+         * 撤未决请求（reqId 失配，迟到结果被丢弃）；长按原地把笔迹清空。 */
         bindInkPad(pad) {
-            const INK_RECOGNIZE_DELAY = 600;
             const INK_HOLD_SLOP = 6;
             const INK_MIN_POINT_GAP = 2;
             const at = touch => {
@@ -3524,6 +3597,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.setControlView(false);
             this.setExpanded(false);
             this.showLetters();
+            // 重唤键盘（onStartInputView 非 restarting 路径）：手写态把
+            // 总高再推一遍——收起期间的高度变化不能把手写面板留在旧值
+            // （applyHeightNow 之外的第二条兜底，preview harness 也走这）。
+            if (this.mode === 'handwriting') this.applyModeHeight();
             // 编辑态是模态 UI：reset 到主视图时不该残留（收起再弹出
             // 的某些路径只走 resetToHome，不走原生 onFinishInputView
             // 的取消通道）。取消语义 = 快照回退、不落盘。
@@ -5120,6 +5197,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // native show/resize 必经 applyHeightNow→这里：工具栏对账的
             // 兜底触发点（同输入框收起再弹不走 onStartInputView/resetToHome）。
             this.auditToolbarTools();
+            // 手写：总高/画布分辨率跟视图几何走（重唤键盘的兜底再推——
+            // 高度在收起期间被改过的话，靠 renderMode 的推送接不住）。
+            if (this.mode === 'handwriting') this.inkSyncViewport();
+        }
+
+        /** 书写区几何对账：pad 的 CSS 盒变了（旋转/总高变化/重唤）才重建
+         * 画布分辨率。收起期间改过布局再唤起时，renderHandwriting 不重跑
+         * （模式没变），这里是唯一按新几何重放笔迹的通道。 */
+        inkSyncViewport() {
+            const canvas = document.getElementById('inkCanvas');
+            if (!canvas) return;
+            const rect = typeof canvas.getBoundingClientRect === 'function'
+                ? canvas.getBoundingClientRect() : null;
+            const key = rect ? [Math.round(rect.width), Math.round(rect.height)].join('x') : '';
+            if (!key || key === this._inkViewport) return;
+            this._inkViewport = key;
+            this.inkResize();
         }
 
         /** Push a new CONTENT height to the native side. Old bridges (and the
@@ -5148,10 +5242,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * setKeyboardHeight bridge (which persists the pref) - the old save
          * path wrote only localStorage and the height silently reverted. */
         heightBounds() {
-            const chrome = this.layoutChrome();
+            // 手写（竖屏）的下限按面板口径算：chrome + 控制行 + 一块可写
+            // 的最小面板，而不是 qwerty 的四行键高。
+            const ink = this.mode === 'handwriting' && !this.landscape;
+            const chrome = ink ? this.inkChromeHeight() : this.layoutChrome();
+            const floor = ink ? 96 : 4 * KB_ROW_MIN;
             // The content floor and the native clamp floor - whichever
             // is taller wins (a 170css landscape pref would squeeze the rows).
-            const min = Math.max(chrome + 4 * KB_ROW_MIN, this.heightFloorCss || 0);
+            const min = Math.max(chrome + floor, this.heightFloorCss || 0);
             // The ceiling comes from the hello-pushed REAL-screen
             // fraction (mirrors setKeyboardHeight's clamp) - no synthetic
             // headroom beyond it: on landscape half-screen budgets the ceiling
