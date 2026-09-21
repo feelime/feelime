@@ -16,9 +16,14 @@ FINAL_ASSET_DIR="$MODELS_ROOT/final-model"
 PUNCT_ASSET_DIR="$MODELS_ROOT/punctuation"
 CACHE_DIR="${XDG_CACHE_HOME:-/tmp}/feelime"
 
-AAR_NAME="sherpa-onnx-1.13.6.aar"
+# 必须用 static-link-onnxruntime 变体：普通变体内嵌 libonnxruntime.so
+# （1.27.1），与手写识别的 onnxruntime-android（1.27.0）同名 so 不能共存
+# ——GNU symbol version 失配（OrtGetApiBase@VERS_1.27.x），dlopen 直接
+# 报 cannot locate symbol（真机实测 2026-09-21，issue #28）。static-link
+# 变体把 onnxruntime 静态链进 libsherpa-onnx-jni.so，两套推理栈互不相干。
+AAR_NAME="sherpa-onnx-static-link-onnxruntime-1.13.6.aar"
 AAR_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.6/$AAR_NAME"
-AAR_SHA256="0012d9a28f15bd6fb966b62b70a75da3990512fdccce28b83098248ce4be1698"
+AAR_SHA256="01e87037afca2ed49085062aace5c012e60321e8e23e3a72b6d9ac02c843f66c"
 
 MODEL_ARCHIVE="sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20-mobile.tar.bz2"
 MODEL_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$MODEL_ARCHIVE"

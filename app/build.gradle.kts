@@ -394,8 +394,9 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
-            // sherpa AAR 与 onnxruntime-android 都带 libonnxruntime.so
-            // （同版本 1.27.1，手写识别依赖同一条推理栈）——pickFirst 去重。
+            // 仅 x86 ABI 需要：sherpa static-link 变体只在该 ABI 仍带
+            // libonnxruntime.so（arm64/armv7/x86_64 都已静态化），而
+            // abiFilters 只出 arm64-v8a——merge 任务仍会撞名，兜底去重。
             pickFirsts += "**/libonnxruntime.so"
         }
     }
@@ -498,9 +499,13 @@ tasks.register("checkReleaseSigning") {
 }
 
 dependencies {
-    // The sherpa-onnx AAR is machine-local (setup-assets.sh installs it to
-    // ~/.config/feelime/android); the in-tree app/libs copy stays a fallback.
-    val aarName = "sherpa-onnx-1.13.6.aar"
+    // sherpa-onnx 必须「static-link-onnxruntime」变体：它把 onnxruntime 1.27.1
+    // 静态链进 libsherpa-onnx-jni.so，APK 里不再有 sherpa 版的
+    // libonnxruntime.so。普通变体与 onnxruntime-android 的同名 so 不能共存——
+    // 两边都带 GNU symbol version（OrtGetApiBase@VERS_1.27.1 vs @VERS_1.27.0，
+    // Maven 无 1.27.1），dlopen 会因版本失配报 cannot locate symbol
+    // （真机实测 2026-09-21）。手写识别（issue #28）因此只能用本变体。
+    val aarName = "sherpa-onnx-static-link-onnxruntime-1.13.6.aar"
     val sharedAarDir = File(
         feelimeEnv("FEELIME_ANDROID_DIR")
             ?: (System.getProperty("user.home") + "/.config/feelime/android"),
@@ -512,11 +517,9 @@ dependencies {
                 "~/.config/feelime/android) or place a copy in app/libs/",
         )
     implementation(files(sherpaAar))
-    // 手写识别推理（design/handwriting.md §1）。sherpa AAR 内嵌
-    // libonnxruntime.so 1.27.1（strings 实测）；Maven Central 的 Java 包
-    // 没有 1.27.1（1.27.0 直跳 1.28.0），取同 minor 的 1.27.0——补丁级
-    // 兼容，两个 AAR 的同名 so 经 packaging pickFirst 去重（依赖序在
-    // sherpa 之后，运行时共用一份 so），APK 只多 Java API 与 JNI 壳。
+    // 手写识别推理（design/handwriting.md §1）：Maven Central 没有 1.27.1
+    // （1.27.0 直跳 1.28.0），取 1.27.0——APK 里唯一的 libonnxruntime.so
+    // 就是它，配合 onnxruntime4j_jni（VERS_1.27.0）成对加载。
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
