@@ -6405,6 +6405,102 @@ test('handwriting: the mode pushes its panel height and leaves restore the store
     equal(restored[restored.length - 1].args[0], 0, 'leaving resets to the stored height');
 });
 
+test('handwriting round-3: space confirms the top ink candidate', () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [{ text: '中', score: 0.8 }, { text: '忠', score: 0.2 }], error: null,
+    });
+    world.tap(world.$('spaceKey'));
+    const commits = world.native.of('commitAssoc');
+    equal(commits.length, 1, 'space commits through the ink pick channel');
+    equal(commits[0].args[0], '中', 'top candidate (not the second) is confirmed');
+    equal(world.$('candidates').children.length, 0, 'bar cleared after space');
+    equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes cleared');
+    equal(world.native.of('space').length, 0, 'no plain space on top of the pick');
+});
+
+test('handwriting round-3: space without candidates stays a plain space', () => {
+    const world = handwritingWorld();
+    world.tap(world.$('spaceKey'));
+    equal(world.native.of('space').length, 1, 'plain space rides the native channel');
+    equal(world.native.of('commitAssoc').length, 0, 'nothing to confirm');
+    // 引擎空回声不造出候选。
+    world.engineState({ composing: '', rawInput: '', candidates: [], revision: 3,
+        hasPreviousPage: false, hasNextPage: false });
+    world.tap(world.$('spaceKey'));
+    equal(world.native.of('space').length, 2, 'still a plain space');
+});
+
+test('handwriting round-3: assoc words land in the bar after an ink pick', () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [{ text: '中', score: 1 }], error: null,
+    });
+    world.tap(world.$('candidates').children[0]);
+    equal(world.$('candidates').children.length, 0, 'bar empty before assoc arrives');
+    // native 在 commitAssoc 后推后继联想（此前手写分支把 onAssoc 整条
+    // 吞掉——用户反馈「联想没生效」的根因）。
+    world.assoc(['国', '文']);
+    const bar = [...world.$('candidates').children];
+    equal(bar.length, 2, 'assoc words render in handwriting mode');
+    assert(bar.every(b => (b.className || '').split(/\s+/).includes('assoc')),
+        'assoc styling matches the pinyin path');
+    // 工具栏整行让位与拼音联想同一语义；「手写」标识只跟识别候选走。
+    assert(world.$('setupButton').hidden, 'toolbar yields to assoc words');
+    assert(world.$('mic').hidden, 'mic yields too');
+    equal(world.$('inkTag').hidden, true, 'mode tag follows ink candidates only');
+    assert(!world.$('composeClear').hidden, '× is the cancel entry');
+    // 点联想词 = 连续联想：commitAssoc + 清条 + 下一轮由 native 推。
+    world.tap(bar[0]);
+    equal(world.native.of('commitAssoc')[1].args[0], '国', 'assoc pick commits');
+    equal(world.$('candidates').children.length, 0, 'bar cleared for the next round');
+    assert(!world.$('setupButton').hidden, 'toolbar restored after the assoc pick');
+    // × 只清联想，不动笔迹（此时笔迹已空）。
+    world.assoc(['语', '字']);
+    world.tap(world.$('composeClear'));
+    equal(world.$('candidates').children.length, 0, '× clears assoc words');
+    assert(!world.$('setupButton').hidden, 'toolbar restored after ×');
+});
+
+test('handwriting round-3: a new recognition displaces assoc words (mutex intact)', () => {
+    const world = handwritingWorld();
+    world.assoc(['国', '文']);
+    equal(world.$('candidates').children.length, 2, 'assoc words showing');
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [{ text: '工', score: 1 }], error: null,
+    });
+    const bar = [...world.$('candidates').children];
+    equal(bar.length, 1, 'ink candidates take the bar back');
+    equal(bar[0].textContent, '工', 'recognition result rendered');
+    assert(!(bar[0].className || '').split(/\s+/).includes('assoc'), 'no assoc styling');
+    assert(world.$('setupButton').hidden, 'toolbar stays yielded');
+    equal(world.$('inkTag').hidden, false, 'mode tag back with ink candidates');
+});
+
+test('handwriting round-3: the write-and-pick flow never arms the panel input redirect', () => {
+    // 排查记录（round-3）：native commitAssoc 在 panelInputActive 时
+    // 静默丢弃（panel add/edit 输入框的重定向）。手写流不碰
+    // Native.panelInput——重定向只由 常用语编辑卡/JSON 编辑条 的
+    // focus 通道拉起（setPanelInput），纯手写用户流里不存在置真的场景。
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [{ text: '中', score: 1 }], error: null,
+    });
+    world.tap(world.$('candidates').children[0]);
+    world.assoc(['国']);
+    world.tap(world.$('candidates').children[0]);
+    equal(world.native.of('panelInput').length, 0,
+        'no panelInput traffic in a pure handwriting flow');
+});
+
 console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
     (skipped ? `, ${skipped} skipped (era-gated)` : '') +
     ` [keyboard ${KEYBOARD_VERSION}] ==`);

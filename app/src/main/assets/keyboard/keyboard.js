@@ -2283,14 +2283,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** 手写候选态（wetype 形态，issue #28 round-2）：有识别候选=工具
          * 栏整行让位（含 mic，仅留 × 与收起键），「手写」标识 + 候选横排
          * 占满整行；无候选/清空后=工具栏原样。语音进行中不让位——mic 是
-         * stop 入口必须存活（与联想让位的守卫同一口径）。 */
+         * stop 入口必须存活（与联想让位的守卫同一口径）。round-3：点选
+         * 上屏后的联想词同一条 bar 接手，让位语义与拼音态一致（× 由
+         * composeClear 的联想分支恢复），但「手写」标识只跟识别候选走。 */
         applyInkBarChrome() {
             const active = this.mode === 'handwriting' &&
                 (this.inkCandidates || []).length > 0;
+            const assocOnly = this.mode === 'handwriting' && !active &&
+                (this.assocWords || []).length > 0;
             const tag = document.getElementById('inkTag');
             if (tag) tag.hidden = !active;
             if (this.voiceState === 'idle') {
-                this.setToolbarYield(active);
+                this.setToolbarYield(active || assocOnly);
                 // mic 虽在让位清单里，但 updateComposing 的通用可见性行
                 // （非组合=可见）先于本调用执行，这里显式压回。
                 if (active) {
@@ -2726,6 +2730,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             mic.append(path);
             button.append(mic);
             button.addEventListener('click', () => {
+                // 手写候选在条上时，空格=确认 top1 上屏（issue #28
+                // round-3）：走点选同一通道 commitInkCandidate，联想联动
+                // 与清笔迹行为完全一致；无候选时空格照旧。
+                if (this.mode === 'handwriting' && (this.inkCandidates || []).length) {
+                    this.commitInkCandidate(this.inkCandidates[0]);
+                    return;
+                }
                 // While composing, space must confirm the TOP
                 // candidate. Native space confirms the highlight, which sits
                 // on whatever page the bar/grid preloading dragged the cursor
@@ -6863,11 +6874,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const inkBar = document.getElementById('candidates');
                 const inkHeld = inkBar.scrollLeft || 0;
                 inkBar.replaceChildren();
-                (this.inkCandidates || []).forEach((candidate, index) => {
+                // 识别候选优先；点选上屏后（笔迹已清）native 推来的联想
+                // 词接手同一条 bar——早先版本在这条分支里只认识别候选并
+                // 提前返回，onAssoc 推来的词被整条吞掉（round-3 修复：
+                // 用户反馈「手写联想没生效」的根因，mock 复现
+                // assoc-after-ink-pick）。
+                const ink = this.inkCandidates || [];
+                const source = ink.length ? ink : (this.assocWords || []).map(word => ({
+                    id: `assoc:${word}`, text: word, assoc: true }));
+                source.forEach((candidate, index) => {
                     const button = document.createElement('button');
-                    button.className = index === 0 ? 'candidate first' : 'candidate';
+                    button.className = candidate.assoc ? 'candidate assoc'
+                        : (index === 0 ? 'candidate first' : 'candidate');
                     button.textContent = candidate.text;
-                    button.addEventListener('click', () => this.commitInkCandidate(candidate));
+                    button.addEventListener('click', () => (candidate.assoc
+                        ? this.commitAssocWord(candidate.text)
+                        : this.commitInkCandidate(candidate)));
                     // Native clicks only：bindTouch 会 preventDefault
                     // touchstart，正好抵掉横向拖动的取消（同引擎候选条）。
                     button.addEventListener('mousedown', event => event.preventDefault());
