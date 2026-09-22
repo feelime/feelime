@@ -2243,13 +2243,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             popup.style.width = rect.width + 'px';
             popup.style.left = Math.max(4, Math.min(innerWidth - popup.offsetWidth - 4,
                 rect.left)) + 'px';
+            // 缺省向下抽出（不盖书写区）。下方空间装不下自然高度时先压
+            // 格子（flex 收缩到 min 高），压到下限仍装不下（列内最底的
+            // 键）才整条翻到键上方并限高——键盘视口内永不裁切。
             const below = rect.bottom + 4;
-            if (below + popup.offsetHeight <= innerHeight - 2) {
+            const room = innerHeight - below - 2;
+            const n = cells.length;
+            const minNeeded = n * 24 + (n - 1) * 3 + 8; // .kp-drawer 的 min 高度口径
+            if (room >= minNeeded) {
+                inner.style.maxHeight = room + 'px';
                 popup.style.top = below + 'px';
             } else {
-                // 翻到键上方：同样限高，格子压到 min 高度仍放不下才裁。
-                const avail = Math.max(80, rect.top - 14);
-                inner.style.maxHeight = avail + 'px';
+                inner.style.maxHeight = Math.max(80, rect.top - 14) + 'px';
                 popup.style.top = Math.max(2, rect.top - popup.offsetHeight - 6) + 'px';
             }
             this.popup = { key: 'ink-punct', cells, selected: null,
