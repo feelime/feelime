@@ -1007,8 +1007,8 @@ body.landscape .t9-grid { gap: 4px 5px; }
     overflow-y: auto;
     overscroll-behavior: contain;
     /* 与 .t9-strip 同款：列内原生滚动。列上和格上都必须放行 pan-y
-     * （格是 .kb-key，基类 touch-action:none 会把整列拖死——真机
-     * 实录：overflow-y:auto 形同虚设）。 */
+     * （格是 .kb-key，基类声明的 none 会把整列拖死——真机实录：
+     * overflow-y:auto 形同虚设）。 */
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
