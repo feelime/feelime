@@ -895,21 +895,38 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 #keyPopupInner.t9-grid3 .kp-item { background: var(--key); box-shadow: none; }
 /* 选中格必须压回上面的 ID 优先级覆盖，否则高亮只剩深色文字看不见。 */
 #keyPopupInner.t9-grid3 .kp-item.sel { background: var(--accent); }
-/* 手写标点上滑弹层（round-3）：4×2 网格卡片，形态与 t9-grid3 同款
- * （卡片底 + 格子换 --key 做对比）。选中格用 .sel，无预选格。 */
-#keyPopupInner.kp-grid {
+/* 手写符号键下方抽出的候选条（round-5）：纵向单列、与键同宽，从键
+ * 下沿向下展开——T9/数字面板左列符号条的形态，不再盖住书写区（四轮
+ * 上滑弹层的核心抱怨）。格子压着键宽铺满；下方空间不足时 JS 把整条
+ * 翻到键上方并限高，格子按 min 高度压缩（键盘视口内永不裁切）。
+ * 选中格用 .sel，无预选格。 */
+#keyPopupInner.kp-drawer {
     max-width: none;
     flex-wrap: nowrap;
     flex-direction: column;
-    gap: 5px;
-    padding: 6px;
+    gap: 3px;
+    padding: 4px;
     border-radius: 12px;
     background: var(--panel);
     box-shadow: 0 6px 24px #000c;
+    overflow: hidden;
 }
-#keyPopupInner.kp-grid .kp-row { display: flex; gap: 5px; justify-content: center; }
-#keyPopupInner.kp-grid .kp-item { background: var(--key); box-shadow: none; font-size: 17px; }
-#keyPopupInner.kp-grid .kp-item.sel { background: var(--accent); }
+#keyPopupInner.kp-drawer .kp-item {
+    width: auto;
+    min-height: 24px;
+    max-height: 44px;
+    flex: 1 1 auto;
+    background: var(--key);
+    box-shadow: none;
+    font-size: 17px;
+}
+#keyPopupInner.kp-drawer .kp-item.sel { background: var(--accent); color: #07180e; }
+/* 抽出动画：从键沿向下滑出（transform 不参与定位，弹层位置仍由
+ * JS 的 left/top 决定）。 */
+@keyframes ink-drawer {
+    from { transform: translateY(-10px); opacity: 0.35; }
+}
+#keyPopup.kp-drawer.open { animation: ink-drawer 0.13s ease-out; }
 /* 滑出浮层卡片边界时的「松手撤销」提示（showPopupCancelTip 挂在浮层
  * 上方中线，不跟手）。卡片底色 + 描边：黑底白字在暗色键盘上看不清。 */
 #keyPopupCancelTip {
@@ -936,7 +953,7 @@ body.landscape .t9-grid { gap: 4px 5px; }
 #spaceKey.t9-space::after { right: auto; left: 3px; }
 /* ===== 手写键面（issue #28，design/handwriting.md）：round-3 起为
  * wetype 形态——书写面板是主区（.ink-main 里唯一的弹性块），右侧窄列
- * 退格/，/。/？，底行 符号/数字/空格/键盘切换/换行。竖屏目标宽高比
+ * 退格+，。！？（round-5），底行 符号/数字/空格/快捷切换/换行。竖屏目标宽高比
  * 1.6:1（wetype 984×590 口径）——键盘总高由 JS 推到 chrome + 底行 +
  * 主区（applyModeHeight）。底行高固定 --ink-row-h（JS 单一来源写入），
  * 不吃 --kb-row-h 预算：applyHeight 在视图被瞬时量高时烘焙出的陈旧行
@@ -965,7 +982,8 @@ body.landscape .t9-grid { gap: 4px 5px; }
     background: var(--key);
     overflow: hidden;
 }
-/* 右窄列：退格/，/。/？ 纵向四等分。 */
+/* 右窄列（round-5）：退格固定最上 + ，。！？ 四颗符号键，纵向五等分
+ * （原 4 键的列高由 5 键分摊）。 */
 .ink-side {
     flex: none;
     display: flex;

@@ -803,13 +803,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 手写控制行键高（CSS px）：固定值，不参与 --kb-row-h 预算（键盘
     // 高度调节的弹性全部给书写面板）。
     const INK_CONTROL_ROW_H = 46;
-    // 手写符号键的拖选网格（round-4，2×2）：每颗键一组语感相邻的常用
-    // 标点，自身字形固定在左下——离手指路径最近，点按与短拖落同一个
-    // 字形，拖远了才换字（wetype 底行「写」键的跟手弹层同款思路）。
-    const INK_PUNCT_GRIDS = {
-        '，': [['：', '；'], ['，', '、']],
-        '。': [['！', '？'], ['。', '……']],
-        '？': [['！', '～'], ['？', '·']],
+    // 手写符号键的抽出候选（round-5，纵向单列）：每颗键一组语感相邻的
+    // 常用标点，按住键向上拖即从键下方抽出（自身字形不进列表——点按就
+    // 是它，见 bindInkPunct）。按常用度排：，键挂停顿/列举族，。键挂
+    // 省略/破折，！？键挂全角符号（与符号面板的西文/半角互不重复）。
+    const INK_PUNCT_DRAWERS = {
+        '，': ['：', '；', '、', '·'],
+        '。': ['……', '——'],
+        '！': ['～', '＄', '＃'],
+        '？': ['％', '＆', '＠'],
     };
     // 手写停笔→识别的触发延时档位（设置页「手写」区块，hello 下发）。
     // 实时识别（模型 v2 后推理毫秒级，issue #32）：每笔 touchend 立即识别，
@@ -2022,7 +2024,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 layout.append(pad, rail);
             } else {
                 // 竖屏（wetype round-4）：书写面板是主区，右侧窄列
-                // 退格/，/。/？，底行 符号/数字/空格/键盘切换/换行。
+                // 退格+，。！？（round-5），底行 符号/数字/空格/快捷切换/换行。
                 const side = document.createElement('div');
                 side.className = 'ink-side';
                 side.append(...this.inkSideKeys());
@@ -2044,18 +2046,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyModeHeight();
         }
 
-        /** 右窄列：退格（上）+ 三颗常用符号键。符号键点按直上屏自身
-         * 字形、按住上拖展开各自的跟手网格（bindInkPunct）。竖屏第 4 格
-         * 是 ？（round-4）；中英键只在横屏保留——横屏 rail 没有底行，
-         * 这颗键（长按=模式菜单）是唯一的模式出口，竖屏的模式出口在
-         * 底行键盘切换键，右列不再双出口。 */
+        /** 右窄列（round-5）：退格固定最上 + 四颗符号键（，。！？），
+         * 原 4 键的列高由 5 键分摊。符号键点按直上屏自身字形、按住上拖
+         * 从键下方抽出各自的候选条（bindInkPunct）。中英键只在横屏保留
+         * ——横屏 rail 没有底行，这颗键（=quick-pair 切换键）是唯一的
+         * 模式出口，竖屏的出口在底行；横屏 rail 八键恰 2×4，不加 ！？
+         * （四轮定稿的格数不动）。 */
         inkSideKeys(landscape = false) {
             const keys = [
                 this.inkBackspaceKey(),
                 this.inkPunctKey('，'),
                 this.inkPunctKey('。'),
             ];
-            keys.push(landscape ? this.cnEnKey() : this.inkPunctKey('？'));
+            if (landscape) {
+                keys.push(this.cnEnKey());
+            } else {
+                keys.push(this.inkPunctKey('！'), this.inkPunctKey('？'));
+            }
             return keys;
         }
 
@@ -2128,9 +2135,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return button;
         }
 
-        /** 标点键（，/。/？）：字面上屏 + 按住上拖的跟手网格入口。
-         * 独立手势层（不挂 bindTouch）——长按/重复通道这里都不要，且
-         * touchstart 必须 stopPropagation：根级 setupFlick 只认
+        /** 标点键（，/。/！/？）：字面上屏 + 按住上拖、键下方抽出候选
+         * 条的入口。独立手势层（不挂 bindTouch）——长按/重复通道这里都
+         * 不要，且 touchstart 必须 stopPropagation：根级 setupFlick 只认
          * bindTouch 记下的 touchOrigin，书写区的既有惯例（同
          * bindInkPad）。 */
         inkPunctKey(char) {
@@ -2145,9 +2152,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** 标点键手势：点按=自身标点直上屏（sendSymbol，手写无组合、
-         * 不经引擎 punctuator）；按住向上拖过阈值=就地展开该键的符号
-         * 网格（openInkPunctPopup），手指压在哪格哪格高亮，松手输入
-         * 该格、拖出网格外松手=取消——一段式拖选，无需松手再点。 */
+         * 不经引擎 punctuator）；按住向上拖过阈值=该键下方抽出候选条
+         * （openInkPunctDrawer），手指压在哪格哪格高亮，松手输入该格、
+         * 拖出条外松手=取消——一段式拖选，无需松手再点。 */
         bindInkPunct(button, char) {
             const OPEN_PX = 30;
             let touchId = null;
@@ -2175,7 +2182,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!opened) {
                     if (startY - touch.clientY < OPEN_PX) return;
                     opened = true;
-                    this.openInkPunctPopup(button, char);
+                    this.openInkPunctDrawer(button, char);
                 }
                 this.moveInkPopup(touch);
             }, { passive: false });
@@ -2190,7 +2197,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.sendSymbol(char);
                     return;
                 }
-                // 弹层语义：选中格由 closePopup 提交（literal 直上屏），
+                // 抽出条语义：选中格由 closePopup 提交（literal 直上屏），
                 // 未选中=取消，不落键面标点。
                 if (this.popup) this.closePopup(false);
             };
@@ -2211,43 +2218,49 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
         }
 
-        /** 标点键的拖选网格（round-4）：2×2，内容随键走
-         * （INK_PUNCT_GRIDS，自身字形在左下）。与长按弹层的差异：入口
-         * 是按住上拖；选中用 rect 绝对命中（手指物理滑进格子）；无
-         * 预选格——松手没落在格子上=无输入，所以也没有「松手撤销」
-         * 提示。 */
-        openInkPunctPopup(button, char) {
+        /** 标点键的抽出候选条（round-5）：纵向单列（T9/数字面板左列符号
+         * 条的形态），内容随键走（INK_PUNCT_DRAWERS，不含自身字形）。
+         * 与长按弹层的差异：入口是按住上拖；缺省贴键下沿向下抽出——
+         * 不盖书写区（四轮弹层的核心抱怨）；只有列内最底的键下方空间
+         * 不够时才翻到键上方（键盘视口内永不裁切）。选中用 rect 绝对
+         * 命中（手指物理滑进格子）；无预选格——松手没落在格子上=无
+         * 输入，所以也没有「松手撤销」提示。 */
+        openInkPunctDrawer(button, char) {
             const popup = document.getElementById('keyPopup');
             const inner = document.getElementById('keyPopupInner');
-            inner.classList.add('kp-grid');
+            inner.classList.add('kp-drawer');
+            popup.classList.add('kp-drawer');
             inner.replaceChildren();
             const cells = [];
-            (INK_PUNCT_GRIDS[char] || []).forEach(row => {
-                const rowEl = document.createElement('div');
-                rowEl.className = 'kp-row';
-                row.forEach(glyph => {
-                    const item = document.createElement('div');
-                    item.className = 'kp-item';
-                    item.textContent = glyph;
-                    rowEl.append(item);
-                    cells.push({ item, char: glyph, literal: true });
-                });
-                inner.append(rowEl);
+            (INK_PUNCT_DRAWERS[char] || []).forEach(glyph => {
+                const item = document.createElement('div');
+                item.className = 'kp-item';
+                item.textContent = glyph;
+                inner.append(item);
+                cells.push({ item, char: glyph, literal: true });
             });
             popup.classList.add('open');
             const rect = button.getBoundingClientRect();
-            const left = Math.max(4, Math.min(innerWidth - popup.offsetWidth - 4,
-                rect.left + rect.width / 2 - popup.offsetWidth / 2));
-            popup.style.left = left + 'px';
-            // 贴键上沿：上滑路径越短，误触越少。
-            popup.style.top = Math.max(2, rect.top - popup.offsetHeight - 6) + 'px';
+            // 与键同宽、左右沿对齐：一条窄列贴着键沿纵向展开。
+            popup.style.width = rect.width + 'px';
+            popup.style.left = Math.max(4, Math.min(innerWidth - popup.offsetWidth - 4,
+                rect.left)) + 'px';
+            const below = rect.bottom + 4;
+            if (below + popup.offsetHeight <= innerHeight - 2) {
+                popup.style.top = below + 'px';
+            } else {
+                // 翻到键上方：同样限高，格子压到 min 高度仍放不下才裁。
+                const avail = Math.max(80, rect.top - 14);
+                inner.style.maxHeight = avail + 'px';
+                popup.style.top = Math.max(2, rect.top - popup.offsetHeight - 6) + 'px';
+            }
             this.popup = { key: 'ink-punct', cells, selected: null,
                 cancelled: false, enginePath: true, absolute: true };
         }
 
-        /** 上滑弹层的选中：指针压在哪格选哪格（弹层格子不重叠、不透明，
+        /** 抽出条/弹层的选中：指针压在哪格选哪格（格子不重叠、不透明，
          * rect 命中与 elementFromPoint 等价，且在 mock 的合成几何下同样
-         * 可测），离开网格=取消选中——不弹「松手撤销」，没选过谈不上
+         * 可测），离开条=取消选中——不弹「松手撤销」，没选过谈不上
          * 撤销；松手无选中=无输入。 */
         moveInkPopup(touch) {
             if (!this.popup) return;
@@ -3745,8 +3758,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const inner = document.getElementById('keyPopupInner');
             inner.style.transform = '';
             inner.style.opacity = '';
-            inner.classList.remove('t9-row', 't9-grid3', 'kp-grid');
-            document.getElementById('keyPopup').classList.remove('open');
+            inner.style.maxHeight = '';
+            inner.classList.remove('t9-row', 't9-grid3', 'kp-grid', 'kp-drawer');
+            const popupEl = document.getElementById('keyPopup');
+            popupEl.classList.remove('open', 'kp-drawer');
+            // 抽出条按键宽展开，别把宽度带给下一颗长按弹层。
+            popupEl.style.width = '';
             this.showPopupCancelTip(false);
             if (cancel || popup?.cancelled) return;
             // T9 弹层：literal 格（字母大小写 + 中行符号）直上屏，大小写
