@@ -982,8 +982,9 @@ body.landscape .t9-grid { gap: 4px 5px; }
     background: var(--key);
     overflow: hidden;
 }
-/* 右窄列（round-5）：退格固定最上 + ，。！？ 四颗符号键，纵向五等分
- * （原 4 键的列高由 5 键分摊）。 */
+/* 右窄列（round-6 用户拍板）：退格固定 1 格 + 滚动符号列（视口 3 格），
+ * 总高与 4 键等分一致。符号列是常驻滚动列表（T9/数字面板左列同款）：
+ * 上滑滚出更多，点按直上屏。 */
 .ink-side {
     flex: none;
     display: flex;
@@ -991,6 +992,18 @@ body.landscape .t9-grid { gap: 4px 5px; }
     gap: 5px;
     width: 58px;
 }
+.ink-scroll {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+}
+.ink-scroll::-webkit-scrollbar { display: none; }
+.ink-scroll .kb-key { flex: none; height: var(--ink-row-h, 46px); }
 /* 底行：符号/数字/空格（宽）/键盘切换/换行，高固定（--ink-row-h）。 */
 .ink-bottom {
     flex: none;
@@ -1634,8 +1647,6 @@ body.height-editing #candidateBar { margin-top: 39px; }
 }
 /* 快捷切换配对入口（round-5）：菜单尾部的从属行——弱色 + 上分隔线，
  * 与可选的模式行区分开（它打开的是配对编辑，不是切换动作）。 */
-#modeMenu button.menu-pair { color: var(--muted); border-top: 1px solid var(--pressed); }
-#modeMenu button.menu-pair .prep { min-width: 0; letter-spacing: 1px; }
 
 /* ===== Voice overlay: recording ONLY, high contrast vs background ===== */
 #voiceOverlay {

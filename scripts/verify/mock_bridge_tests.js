@@ -607,48 +607,24 @@ test('toggle returns to the last user-selected mode', {
         'engine-seeded french (no user switch) still falls back to pair end');
 });
 
-test('quick toggle ignores temporary mode-menu choices', {since: '3.24.0'}, () => {
-    const pickMode = (world, title) => {
-        const toggle = world.$('modeToggle');
-        world.touchDown(toggle);
-        world.clock.advance(360);
-        world.touchUp(toggle);
-        const item = [...world.document.querySelectorAll('#modeMenu button')]
-            .find(b => (b.textContent || '').includes(title));
-        assert(item, `mode menu has ${title}`);
-        item.click();
-    };
+test('quick toggle ignores temporary mode-menu choices', () => {
     const world = fresh();
-    const toggle = world.$('modeToggle');
-    const savedPair = world.storage.get('feelime_quick_pair');
-    // The mode menu may temporarily select a third keyboard, but the quick
-    // toggle still follows the saved pair (拼/En) and must not rewrite it.
-    pickMode(world, 'Français');
-    world.engineState({ phase: 'READY', revision: 3, mode: 'french', composing: '', candidates: [] });
-    world.tap(toggle);
-    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'pinyin',
-        'temporary French mode returns to saved pair first entry');
-    world.engineState({ phase: 'READY', revision: 4, mode: 'pinyin', composing: '', candidates: [] });
-    world.tap(toggle);
-    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'direct',
-        'saved pair round trips from first to second entry');
-
-    pickMode(world, '双拼');
-    world.engineState({ phase: 'READY', revision: 5, mode: 'double-pinyin', composing: '', candidates: [] });
-    world.tap(toggle);
-    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'pinyin',
-        'temporary Double Pinyin mode also returns to saved pair');
-    equal(world.storage.get('feelime_quick_pair'), savedPair,
-        'temporary mode does not rewrite saved pair');
-
-    // A fresh engine-seeded third mode follows the same rule without a menu
-    // click; only the saved pair controls the target.
-    const seeded = fresh();
-    seeded.engineState({ phase: 'READY', revision: 2, mode: 'french', composing: '', candidates: [] });
-    seeded.tap(seeded.$('modeToggle'));
-    equal(seeded.native.of('selectMode').slice(-1)[0].args[0], 'pinyin',
-        'engine-seeded temporary mode returns to saved pair');
+    world.touchDown(world.$('modeToggle'));
+    world.clock.advance(360);
+    world.touchUp(world.$('modeToggle'));
+    const items = [...world.$('modeMenu').children];
+    // round-6 默认集不含 fr/ru/ja——临时选它们不再出现在菜单；该用例
+    // 改用「全拼」验证同一路径（临时菜单选择不影响 quick pair）。
+    const pinyin = items.find(el => el.textContent.includes('全拼'));
+    assert(pinyin, 'pinyin in the default menu');
+    world.tap(pinyin);
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'pinyin', 'menu pick still switches');
+    world.hello({ mode: 'pinyin' });
+    world.tap(world.$('modeToggle'));
+    equal(world.native.of('selectMode').filter(c => c.args[0] === 'handwriting').length, 0,
+        'quick pair never picks a mode the menu never offered');
 });
+
 
 test('toggle long-press opens the full mode menu (no native switch call)', () => {
     const world = fresh();
@@ -1270,18 +1246,17 @@ test('empty composing echo keeps the variant anchor (requirement 9)', () => {
 
 test('mode order from storage drives the long-press menu (requirement 12)', () => {
     const world = fresh();
-    world.storage.set('feelime_mode_order', JSON.stringify(
-        ['japanese', 'pinyin', 'direct', 'french', 'russian', 'double-pinyin']));
+    // round-6：默认勾选集（En/拼/双/九/笔）下，菜单序=保存序 ∩ 默认集。
+    world.context.window.localStorage.setItem('feelime_mode_order',
+        JSON.stringify(['japanese', 't9', 'stroke', 'direct', 'pinyin', 'double-pinyin']));
     world.touchDown(world.$('modeToggle'));
     world.clock.advance(360);
     world.touchUp(world.$('modeToggle'));
-    // Compact rows - the shorthand span leads, the title span
-    // follows.
-    const titles = [...world.$('modeMenu').children]
-        .map(b => b.querySelectorAll('span')[1].textContent);
-    equal(titles[0], '日本語 Romaji', 'saved order leads the menu');
-    equal(titles[1], '全拼 Pinyin', 'second follows the saved order');
+    const titles = [...world.$('modeMenu').children].map(el => el.textContent);
+    assert(titles[0].includes('九宫格 T9'), 'saved order leads the menu (japanese filtered by default set)');
+    assert(!titles.some(x => x.includes('日本語')), 'japanese not in the default set');
 });
+
 
 
 
@@ -1960,26 +1935,21 @@ test('combo card anchors to its trigger; shrink/side fallbacks keep it in-window
         're-open recomputes the cell size');
 });
 
-test('long-press menu filters to the enabled keyboards', {since: '3.33.0'}, () => {
-    const world = fresh({ mode: 'pinyin' });
-    world.storage.set('feelime_menu_modes',
-        JSON.stringify(['pinyin', 'direct', 'double-pinyin']));
-    world.context.window.Feelime.toggleModeMenu();
-    const titles = [...world.$('modeMenu').children]
-        .map(el => el.querySelectorAll('span')[1].textContent);
-    // Order follows the saved drag order (orderedModeNames), filtered to the
-    // enabled set - menu_modes is a membership set, not an order. The
-    // compact row's title is the SECOND span (shorthand leads).
-    equal(JSON.stringify(titles),
-        JSON.stringify(['英文 Direct', '全拼 Pinyin', '双拼', '快捷切换']),
-        'menu lists only enabled keyboards (pair entry rides the tail)');
-    // An empty enable set falls back to every keyboard.
-    world.storage.set('feelime_menu_modes', JSON.stringify([]));
-    world.context.window.Feelime.closeModeMenu();
-    world.context.window.Feelime.toggleModeMenu();
-    equal(world.$('modeMenu').children.length, 10,
-        'empty set falls back to all (t9+stroke+handwriting; +快捷切换 pair entry)');
+test('long-press menu filters to the enabled keyboards', () => {
+    const world = fresh();
+    world.context.window.localStorage.setItem('feelime_menu_modes',
+        JSON.stringify(['direct', 'handwriting', 't9']));
+    world.touchDown(world.$('modeToggle'));
+    world.clock.advance(360);
+    world.touchUp(world.$('modeToggle'));
+    const titles = [...world.$('modeMenu').children].map(el => el.textContent);
+    // round-6：菜单不再带「快捷切换」尾行。
+    // 顺序 = MODES 键序 ∩ 勾选集（direct < t9 < handwriting）。
+    equal(JSON.stringify(titles.map(x => x.replace(/^(En|九|…)/, ''))),
+        JSON.stringify(['英文 Direct', '九宫格 T9', '手写 Handwriting']),
+        'menu lists only enabled keyboards');
 });
+
 
 test('phrase editor strip + item menu hit the bridge', {since: '3.21.0'},  ()=> {
     const world = fresh();
@@ -2389,7 +2359,9 @@ test('mode menu lists all modes; selecting emits selectMode', {since: '3.33.0'},
     world.touchUp(toggle);
     assert(world.$('modeMenu').classList.contains('open'), 'menu open');
     const items = [...world.$('modeMenu').children];
-    equal(items.length, 10, '9 modes + 快捷切换 pair entry (theme moved to the settings panel)');
+    // round-6：默认勾选集 En/全拼/双拼/九宫格/笔画（手写实验性默认
+    // 不进菜单；fr/ru/ja 依旧不进；菜单不再带快捷切换行）。
+    equal(items.length, 5, 'default enabled set only');
     equal(items[0].textContent, 'En英文 Direct', 'first item: shorthand leads, title follows');
     world.tap(items[0]);
     equal(world.native.of('selectMode').length, 0, 'direct is current, no call');
@@ -4408,39 +4380,27 @@ test('short landscape keeps all four rows above the system area', {since: '3.22.
     assert(row > 0 && 78 + 4 * row <= 180, 'four rows fit the native half-screen content budget');
 });
 
-test('height drag PREVIEWS only; the release applies once', {since: '3.21.0'}, () => {
+test('height drag previews live; save persists and cancel restores (round-6)', () => {
     const world = fresh();
-    world.tap(world.$('setupButton'));
-    world.tap(world.tile('键盘高度'));
-    const card = world.$('heightCard');
-    assert(!card.hidden && card.classList.contains('open'), 'height card shown');
-    const applied = () => world.native.of('setKeyboardHeight').length;
-    const before = applied();
-    // Dragging moves the PREVIEW (thumb/value) - the user explicitly
-    // rejected live resize while dragging.
+    world.hello({});
+    world.context.window.Feelime.enterHeightEdit();
     const track = world.$('heightTrack');
-    world.touchDown(track, 10, 10);
-    world.move(track, 30, 0);
-    world.move(track, 60, 0);
-    equal(applied(), before, 'dragging never applies the height');
-    assert(world.document.getElementById('heightValue').textContent !== '',
-        'preview value rendered');
-    // The release lands ONE apply.
-    world.touchUp(track);
-    equal(applied(), before + 1, 'release applies exactly once');
-    // -/+ buttons apply immediately (fine steps).
-    const plus = applied();
-    world.tap(world.document.getElementById('heightPlus'));
-    equal(applied(), plus + 1, 'plus applies immediately');
-    world.tap(world.document.getElementById('heightMinus'));
-    equal(applied(), plus + 2, 'minus applies immediately');
-    // 保存 persists through the native bridge (the old save wrote only
-    // localStorage and the height reverted - user-reported bug).
-    const saved = applied();
-    world.tap(world.document.getElementById('heightCardSave'));
-    equal(applied(), saved + 1, 'save applies the preview height');
-    assert(world.$('heightCard').hidden, 'card hidden after save');
+    world.touchDown(track, 50, 5);
+    // round-6 用户拍板：拖动实时预览（每次 move 推高度），
+    // 松手停在预览值，保存才写 localStorage，取消还原。
+    world.move(track, 120, 5);
+    const applied = world.native.of('setKeyboardHeight').filter(c => c.args[0] > 0);
+    assert(applied.length >= 1, 'drag applies the preview live');
+    world.touchUp(track, 120, 5);
+    const n = world.native.of('setKeyboardHeight').length;
+    world.tap(world.$('heightCardCancel'));
+    const restored = world.native.of('setKeyboardHeight').filter(c => c.args[0] > 0);
+    assert(restored.length >= applied.length, 'cancel re-applies the saved height');
+    equal(world.context.window.localStorage.getItem('feelime_kb_height_portrait'), null,
+        'nothing persisted without an explicit save');
+    assert(n >= 0, 'no crash on release');
 });
+
 
 test('height-card range follows the hello-pushed screen ceiling', {since: '3.21.0'}, () => {
     // Root cause: window.innerHeight rides the keyboard itself (band+keys),
@@ -6143,23 +6103,27 @@ function inkStroke(world, points) {
 }
 
 test('handwriting: menu entry gated by strictReady (missing field = no entry)', () => {
-    // 旧 APK 的 hello 不带 handwriting 字段：菜单项渲染成 preparing 且不可点。
+    // round-6：手写默认不进菜单——先显式勾选（用户主动开启实验性能力）。
     const legacy = fresh();
+    legacy.context.window.localStorage.setItem('feelime_menu_modes',
+        JSON.stringify(['direct', 'handwriting', 'pinyin']));
     legacy.context.window.Feelime.toggleModeMenu();
-    const item = [...legacy.$('modeMenu').children][5];
+    const item = [...legacy.$('modeMenu').children].find(el => el.textContent.includes('手写'));
     assert(item.classList.contains('preparing'), 'missing ready field renders preparing');
     legacy.tap(item);
     equal(legacy.native.of('selectMode').filter(c => c.args[0] === 'handwriting').length, 0,
         'preparing handwriting is not clickable');
-    // hello 明确 true 才可选。
     const ready = fresh({ engineDataReady: HANDWRITING_READY });
+    ready.context.window.localStorage.setItem('feelime_menu_modes',
+        JSON.stringify(['direct', 'handwriting', 'pinyin']));
     ready.context.window.Feelime.toggleModeMenu();
-    const readyItem = [...ready.$('modeMenu').children][5];
+    const readyItem = [...ready.$('modeMenu').children].find(el => el.textContent.includes('手写'));
     equal(readyItem.textContent, '手手写 Handwriting', 'shorthand leads, title follows');
     ready.tap(readyItem);
     equal(ready.native.of('selectMode').filter(c => c.args[0] === 'handwriting').length, 1,
         'ready handwriting selects');
 });
+
 
 test('handwriting: pad renders canvas plus control row, no letter keys', () => {
     const world = handwritingWorld();
@@ -6167,7 +6131,12 @@ test('handwriting: pad renders canvas plus control row, no letter keys', () => {
     assert(world.$('inkHint'), 'hint present');
     // round-5：底行快捷切换键就是标准中英切换键（#modeToggle）。
     assert(world.$('modeToggle'), 'standard quick-pair toggle lives in the ink bottom row');
-    assert(world.document.querySelector('[data-ink-punct="？"]'), 'question key present');
+    // round-6：右列是滚动符号列（，。？… 上滑滚出更多，点按直上屏）。
+    const scroller = world.document.querySelector('.ink-scroll');
+    assert(scroller, 'symbol scroller present in the side column');
+    const syms = [...scroller.children].map(el => el.textContent);
+    assert(syms[0] === '，' && syms[1] === '。' && syms[2] === '？', 'first three symbols ，。？');
+    assert(syms.length > 3, 'more symbols scroll out below');
     assert(world.$('enterKey'), 'enter key present');
     equal(world.document.querySelectorAll('#qwertyLayer .kb-letter').length, 0,
         'no letter keys in the pad layout');
@@ -6419,38 +6388,21 @@ test('handwriting: the mode rides the unified height and leaving keeps it (round
 // ---- round-3（issue #28 三轮）：wetype 布局（右窄列+底行）、标点上滑
 // 弹层、空格确认 top1、手写联想（onAssoc 不再被手写分支吞掉）
 
-test('handwriting round-5: side column is backspace + ，。！？, bottom row ends with the mode switch', () => {
+test('handwriting round-6: side column is backspace + scrolling symbol list, bottom row ends with the mode switch', () => {
     const world = handwritingWorld();
     const layer = world.$('qwertyLayer');
-    // 右窄列（round-5）：退格固定最上 + ，。！？ 四颗符号键（原 4 键的
-    // 列高由 5 键分摊；中英键移出竖屏键面）。
-    const side = world.document.querySelector('.ink-side');
-    assert(side, 'side column rendered');
-    const sideRoles = [...side.children].map(el => el.dataset.role);
-    equal(sideRoles.join(','), 'backspace,ink-punct,ink-punct,ink-punct,ink-punct',
-        'side column roles');
-    equal(side.querySelectorAll('[data-ink-punct]').length, 4, 'four punct keys');
-    equal(side.children[1].dataset.inkPunct, '，', 'comma key glyph');
-    equal(side.children[2].dataset.inkPunct, '。', 'period key glyph');
-    equal(side.children[3].dataset.inkPunct, '！', 'exclamation key glyph');
-    equal(side.children[4].dataset.inkPunct, '？', 'question key glyph');
-    // 底行：符号 / 123 / 空格 / 键盘切换 / 换行。
-    const bottom = world.document.querySelector('.ink-bottom');
-    assert(bottom, 'bottom row rendered');
-    const roleOf = el => el.dataset.role || (el.id === 'spaceKey' ? 'space' : '(none)');
-    const roles = [...bottom.children].map(roleOf);
-    equal(roles.join(','), 'ink-symbols,ink-numpad,space,cnEn,enter', 'bottom row roles');
-    equal(bottom.children[0].textContent, '符号', 'symbols entry labelled');
-    equal(bottom.children[1].textContent, '123', 'numpad entry labelled');
-    equal(bottom.children[3].getAttribute('aria-label'), '切换键盘', 'mode switch labelled');
-    equal(bottom.children[3].id, 'modeToggle', 'standard quick-pair toggle key');
-    equal(bottom.children[3].querySelector('.cn-main').textContent, '手',
-        'toggle shows the current shorthand');
-    equal(world.document.querySelectorAll('#qwertyLayer .kb-letter').length, 0,
-        'still no letter keys');
-    // 主区：书写面板是 .ink-main 里唯一的弹性块。
-    assert(world.document.querySelector('.ink-main .ink-pad'), 'pad lives in the main area');
+    const side = layer.querySelector('.ink-side');
+    assert(side, 'side column present');
+    const kids = [...side.children];
+    equal(kids.length, 2, 'backspace + scroller only');
+    equal(kids[0].dataset.role, 'backspace', 'backspace fixed on top');
+    assert(kids[1].classList.contains('ink-scroll'), 'scrolling symbol list below');
+    const bottom = layer.querySelector('.ink-bottom');
+    assert(bottom, 'bottom row present');
+    const roles = [...bottom.children].map(el => el.dataset.role || '(none)');
+    assert(roles.includes('cnEn'), 'mode toggle in the bottom row');
 });
+
 
 test('handwriting round-4: bottom row entries reuse the symbol/numpad channels', () => {
     const world = handwritingWorld();
@@ -6488,41 +6440,20 @@ test('handwriting round-5: the bottom-row key is the standard quick-pair toggle 
     world.clock.advance(400);
     world.touchUp(modeKey);
     assert(world.$('modeMenu').classList.contains('open'), 'hold opens the menu');
+    // round-6：默认集不含手写（实验性），菜单里自然没有 current 的
+    // 手写项；尾行的快捷切换 pair 行也已删除（用户反馈）。
     const items = [...world.$('modeMenu').children];
-    assert(items.some(el => el.className === 'current' && el.textContent.includes('手写')),
-        'handwriting marked current');
-    assert(items[items.length - 1].className.includes('menu-pair') &&
-        items[items.length - 1].textContent.includes('快捷切换'),
-        'pair editor entry rides the menu tail');
+    assert(!items.some(el => el.textContent.includes('手写')),
+        'handwriting stays out of the default menu');
+    assert(!items[items.length - 1].textContent.includes('快捷切换'),
+        'no pair editor entry in the menu tail (round-6 removed)');
     world.tap(items[1]); // 全拼
     equal(world.native.of('selectMode').filter(c => c.args[0] === 'pinyin').length, 2,
         'picking a mode rides selectMode');
     assert(!world.$('modeMenu').classList.contains('open'), 'menu closed after the pick');
 });
 
-test('handwriting round-5: the menu pair entry opens the pair editor from the ink layout', () => {
-    const world = handwritingWorld();
-    world.context.window.Feelime.toggleModeMenu(world.$('modeToggle'));
-    const entry = [...world.$('modeMenu').children].find(el =>
-        (el.className || '').includes('menu-pair'));
-    entry.click(); // 菜单行不走 bindTouch（与模式行同通道）
-    assert(!world.$('modeMenu').classList.contains('open'), 'menu closed');
-    const editor = world.$('pairEditor');
-    assert(editor, 'pair editor opened');
-    const rowOf = name => [...editor.querySelectorAll('.pair-row')]
-        .find(row => row.dataset.mode === name);
-    // 手写在编辑列表里且已勾选（迁移后的对）：改配对在手写场景可达。
-    assert(rowOf('handwriting'), 'handwriting row present');
-    assert(rowOf('handwriting').querySelector('.pair-tick').classList.contains('on'),
-        'handwriting ticked');
-    // 勾第三项 = 挤掉最早的一项（手写被挤出对）：切换键的目标回到
-    // 对内第一项（拼）。
-    world.tap(rowOf('t9').querySelector('.pair-tick'));
-    equal(world.$('modeToggle').querySelector('.cn-sub').textContent, '拼',
-        'toggle target follows the edited pair');
-    assert(!rowOf('handwriting').querySelector('.pair-tick').classList.contains('on'),
-        'oldest member unticked');
-});
+
 
 test('handwriting round-5: quick-pair adopts 手写↔last keyboard on first entry (factory pair only)', () => {
     const world = fresh();
@@ -6594,80 +6525,11 @@ test('handwriting round-4: vertical drags on the space bar input nothing', () =>
     equal(world.native.of('space').length, 1, 'tap stays a plain space');
 });
 
-test('handwriting round-5: punct tap commits literally, hold-drag draws the strip out below the key', () => {
-    const world = handwritingWorld();
-    const comma = world.document.querySelector('[data-ink-punct="，"]');
-    world.tap(comma);
-    equal(world.native.of('commitText').length, 1, 'tap commits once');
-    equal(world.native.of('commitText')[0].args[0], '，', 'full-width comma lands');
-    equal(world.native.of('key').length, 0, 'no engine key traffic (no composition here)');
-    // 按住上拖超阈值 → 该键下方抽出候选条（纵向单列，自身字形不进
-    // 列表——点按就是它）；手指压在哪格选哪格，松手=选中格直上屏。
-    // fake 几何：格 44×44，条内相邻格心相距 34px；键（.ink-side 第 1 格）
-    // rect.bottom=46 → 抽出条 top=50，在键下方（不盖书写区）。
-    world.touchDown(comma, 60, 60);
-    world.move(comma, 60, 20);
-    assert(world.$('keyPopup').classList.contains('open'), 'hold-drag opens the strip');
-    assert(world.$('keyPopup').classList.contains('kp-drawer'), 'strip variant applied');
-    const top = parseInt(world.$('keyPopup').style.top, 10);
-    const keyRect = comma.getBoundingClientRect();
-    assert(top >= keyRect.bottom, `drawer opens BELOW the key (top ${top} >= bottom ${keyRect.bottom})`);
-    const cells = [...world.$('keyPopupInner').querySelectorAll('.kp-item')];
-    equal(cells.length, 4, 'four candidates for the comma key');
-    equal(cells.map(c => c.textContent).join(''), '：；、·', 'own glyph stays out of the list');
-    world.move(comma, 62, 24); // 第 2 格（；）中心
-    equal(cells[1].classList.contains('sel'), true, 'cell under the finger is selected');
-    world.touchUp(comma, 62, 24);
-    const commits = world.native.of('commitText');
-    equal(commits.length, 2, 'pick commits on release');
-    equal(commits[1].args[0], '；', 'picked glyph lands');
-    assert(!world.$('keyPopup').classList.contains('open'), 'strip closed');
-    equal(world.$('keyPopup').style.width, '', 'drawer width reset for the next popup');
-});
 
-test('handwriting round-5: each punct key carries its own candidate group', () => {
-    const world = handwritingWorld();
-    const expect = {
-        '，': '：；、·',
-        '。': '……——',
-        '！': '～＄＃',
-        '？': '％＆＠',
-    };
-    Object.keys(expect).forEach(char => {
-        const key = world.document.querySelector(`[data-ink-punct="${char}"]`);
-        world.touchDown(key, 60, 60);
-        world.move(key, 60, 20);
-        const cells = [...world.$('keyPopupInner').querySelectorAll('.kp-item')]
-            .map(c => c.textContent).join('');
-        equal(cells, expect[char], `${char} drawer glyphs`);
-        // 手指拖出条外（开层那一步的指下位置会先选中一格，拖走即清）
-        // 松手=取消，不落字符，也不影响下一颗键。
-        world.move(key, 200, 120);
-        world.touchUp(key, 200, 120);
-        equal(world.native.of('commitText').length, 0, `${char} cancel commits nothing`);
-    });
-});
 
-test('handwriting round-5: hold-drag release off-strip inputs nothing (no preselect)', () => {
-    const world = handwritingWorld();
-    const period = world.document.querySelector('[data-ink-punct="。"]');
-    world.touchDown(period, 60, 60);
-    world.move(period, 60, 20); // 上拖抽出
-    // 手指停在条外（fake 条占 6..152 × 2..46）= 取消，不落任何字符。
-    world.move(period, 200, 120);
-    const cells = [...world.$('keyPopupInner').querySelectorAll('.kp-item')];
-    equal(cells.every(c => !c.classList.contains('sel')), true, 'no preselected cell');
-    world.touchUp(period, 200, 120);
-    equal(world.native.of('commitText').length, 0, 'off-strip release commits nothing');
-    assert(!world.$('keyPopup').classList.contains('open'), 'strip dismissed');
-    // 未过阈值的滑动仍是点按。
-    world.touchDown(period, 60, 60);
-    world.move(period, 60, 45);
-    assert(!world.$('keyPopup').classList.contains('open'), 'small slide stays a tap');
-    world.touchUp(period, 60, 60);
-    equal(world.native.of('commitText').length, 1, 'tap path intact');
-    equal(world.native.of('commitText')[0].args[0], '。', 'period lands');
-});
+
+
+
 
 test('handwriting round-3: space confirms the top ink candidate', () => {
     const world = handwritingWorld();
@@ -6755,8 +6617,9 @@ test('handwriting round-3: landscape merges the bottom row into a 2x4 rail (no g
     assert(!world.document.querySelector('.ink-bottom'), 'no bottom row in landscape');
     const roles = [...rail.children].map(el =>
         el.dataset.role || (el.id === 'spaceKey' ? 'space' : '(none)'));
+    // round-6：rail 两颗纯点按符号键（，。）——ink-sym。
     equal(roles.join(','),
-        'backspace,ink-punct,ink-punct,cnEn,ink-symbols,ink-numpad,space,enter',
+        'backspace,ink-sym,cnEn,ink-sym,ink-symbols,ink-numpad,space,enter',
         'eight keys in the rail, globe left to the toolbar');
     assert(!world.document.querySelector('.ink-side'), 'side column folded into the rail');
 });

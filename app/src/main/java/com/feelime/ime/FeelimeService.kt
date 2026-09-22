@@ -1510,7 +1510,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // min).
             .put(
                 "heightFloor",
-                if (landscape) 170 else 210,
+                // round-6: portrait floor 对齐手写内容下限（chrome+96≈226），
+                // 拼音/手写能调到的最小值一致，切换不跳高度。
+                if (landscape) 170 else 226,
             )
             .put(
                 "heightCeil",
@@ -2358,7 +2360,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // 170dp floor, so coerceIn(min, min) pinned every drag to the
             // same value - the gesture read as dead. Half the screen lifts
             // the ceiling back above the floor.
-            val min = dp(if (landscape) 170 else 210)
+            // round-6: 与 hello heightFloor 同源（226），见上方注释。
+            val min = dp(if (landscape) 170 else 226)
  // the landscape ceiling is a fraction of the REAL
             // screen (app-space heightPixels drops the system bars and landed
             // BELOW the keyboard's content minimum - bottom row clipped).

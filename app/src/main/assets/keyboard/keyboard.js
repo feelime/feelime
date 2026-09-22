@@ -805,16 +805,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 手写控制行键高（CSS px）：固定值，不参与 --kb-row-h 预算（键盘
     // 高度调节的弹性全部给书写面板）。
     const INK_CONTROL_ROW_H = 46;
-    // 手写符号键的抽出候选（round-5，纵向单列）：每颗键一组语感相邻的
-    // 常用标点，按住键向上拖即从键下方抽出（自身字形不进列表——点按就
-    // 是它，见 bindInkPunct）。按常用度排：，键挂停顿/列举族，。键挂
-    // 省略/破折，！？键挂全角符号（与符号面板的西文/半角互不重复）。
-    const INK_PUNCT_DRAWERS = {
-        '，': ['：', '；', '、', '·'],
-        '。': ['……', '——'],
-        '！': ['～', '＄', '＃'],
-        '？': ['％', '＆', '＠'],
-    };
+    // 长按菜单的默认勾选集（round-6 用户拍板）：英文/全拼/双拼/九宫格/
+    // 笔画。手写实验性（识别率有限）不默认进菜单，用户主动勾选才显示。
+    const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
+    // 右列滚动符号列（round-6）：T9/数字面板左列同款形态——常驻滚动
+    // 列表，视口露出前三格（，。？），上滑滚出更多，点按直上屏。
+    const INK_SIDE_SYMBOLS = ['，', '。', '？', '！', '：', '；', '、', '～', '……', '·', '＃', '＠'];
     // 空书写区的三行提示（round-5，用户反馈）：首行是动作，后两行是
     // 预期管理——模型能力有限、连笔拖识别率。双语走 UI_EN。
     const INK_HINT_LINES = ['在此手写', '模型能力有限', '避免连笔以提高识别率'];
@@ -2060,24 +2056,44 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyModeHeight();
         }
 
-        /** 右窄列（round-5）：退格固定最上 + 四颗符号键（，。！？），
-         * 原 4 键的列高由 5 键分摊。符号键点按直上屏自身字形、按住上拖
-         * 从键下方抽出各自的候选条（bindInkPunct）。中英键只在横屏保留
-         * ——横屏 rail 没有底行，这颗键（=quick-pair 切换键）是唯一的
-         * 模式出口，竖屏的出口在底行；横屏 rail 八键恰 2×4，不加 ！？
-         * （四轮定稿的格数不动）。 */
+        /** 右窄列（round-6，用户拍板）：竖屏 = ⌫（固定 1 格）+ 滚动
+         * 符号列（视口 3 格高，上滑滚出更多、点按直上屏——T9/数字面板
+         * 左列同款形态，不再是手势弹层）。横屏 rail 保持 2×4 定稿：
+         * ⌫ + 中英键 + 两颗纯点按符号键（横屏空间紧，不滚）。 */
         inkSideKeys(landscape = false) {
-            const keys = [
-                this.inkBackspaceKey(),
-                this.inkPunctKey('，'),
-                this.inkPunctKey('。'),
-            ];
+            const keys = [this.inkBackspaceKey()];
             if (landscape) {
-                keys.push(this.cnEnKey());
+                keys.push(this.inkSymbolKey('，'), this.cnEnKey(), this.inkSymbolKey('。'));
             } else {
-                keys.push(this.inkPunctKey('！'), this.inkPunctKey('？'));
+                keys.push(this.inkSymbolScroller());
             }
             return keys;
+        }
+
+        /** 滚动符号列：常驻滚动列表，初始露前三格，上滑滚出更多。
+         * 滚动走 CSS overflow（触摸原生滚动），点按=sendSymbol 直上屏。 */
+        inkSymbolScroller() {
+            const scroller = document.createElement('div');
+            scroller.className = 'ink-scroll';
+            INK_SIDE_SYMBOLS.forEach(char => scroller.append(this.inkSymbolCell(char)));
+            return scroller;
+        }
+
+        /** 滚动列里的单个符号格。 */
+        inkSymbolCell(char) {
+            const button = document.createElement('button');
+            button.className = 'kb-key kb-special ink-key ink-sym';
+            button.dataset.role = 'ink-sym';
+            button.textContent = char;
+            button.setAttribute('aria-label', char);
+            button.addEventListener('touchstart', () => this.nativeKeyFeedback(), { passive: true });
+            button.addEventListener('click', () => this.sendSymbol(char));
+            return button;
+        }
+
+        /** 横屏 rail 的纯点按符号键（无手势）。 */
+        inkSymbolKey(char) {
+            return this.inkSymbolCell(char);
         }
 
         /** 退格（round-4 反馈）：书写区有笔迹时=清笔迹+候选回工具栏
@@ -2131,134 +2147,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const space = this.spaceKey();
             space.dataset.key = '0';
             return space;
-        }
-
-        /** 标点键（，/。/！/？）：字面上屏 + 按住上拖、键下方抽出候选
-         * 条的入口。独立手势层（不挂 bindTouch）——长按/重复通道这里都
-         * 不要，且 touchstart 必须 stopPropagation：根级 setupFlick 只认
-         * bindTouch 记下的 touchOrigin，书写区的既有惯例（同
-         * bindInkPad）。 */
-        inkPunctKey(char) {
-            const button = document.createElement('button');
-            button.className = 'kb-key kb-special ink-key ink-punct';
-            button.dataset.role = 'ink-punct';
-            button.dataset.inkPunct = char;
-            button.setAttribute('aria-label', char);
-            button.textContent = char;
-            this.bindInkPunct(button, char);
-            return button;
-        }
-
-        /** 标点键手势：点按=自身标点直上屏（sendSymbol，手写无组合、
-         * 不经引擎 punctuator）；按住向上拖过阈值=该键下方抽出候选条
-         * （openInkPunctDrawer），手指压在哪格哪格高亮，松手输入该格、
-         * 拖出条外松手=取消——一段式拖选，无需松手再点。 */
-        bindInkPunct(button, char) {
-            const OPEN_PX = 30;
-            let touchId = null;
-            let startY = 0;
-            let opened = false;
-            button.addEventListener('touchstart', event => {
-                event.preventDefault();
-                event.stopPropagation();
-                // 第二根手指不接手进行中的手势。
-                if (touchId !== null) return;
-                const touch = event.changedTouches[0];
-                touchId = touch.identifier;
-                startY = touch.clientY;
-                opened = false;
-                button.classList.add('active-touch');
-                this.nativeKeyFeedback();
-            }, { passive: false });
-            button.addEventListener('touchmove', event => {
-                if (touchId === null) return;
-                const touch = Array.from(event.changedTouches).find(
-                    item => item.identifier === touchId);
-                if (!touch) return;
-                event.preventDefault();
-                event.stopPropagation();
-                if (!opened) {
-                    if (startY - touch.clientY < OPEN_PX) return;
-                    opened = true;
-                    this.openInkPunctDrawer(button, char);
-                }
-                this.moveInkPopup(touch);
-            }, { passive: false });
-            const release = event => {
-                if (touchId === null) return;
-                const touch = event.changedTouches && Array.from(event.changedTouches).find(
-                    item => item.identifier === touchId);
-                if (!touch) return;
-                touchId = null;
-                button.classList.remove('active-touch');
-                if (!opened) {
-                    this.sendSymbol(char);
-                    return;
-                }
-                // 抽出条语义：选中格由 closePopup 提交（literal 直上屏），
-                // 未选中=取消，不落键面标点。
-                if (this.popup) this.closePopup(false);
-            };
-            button.addEventListener('touchend', release, { passive: false });
-            button.addEventListener('touchcancel', event => {
-                if (touchId === null) return;
-                if (event.changedTouches && !Array.from(event.changedTouches).some(
-                    item => item.identifier === touchId)) return;
-                touchId = null;
-                button.classList.remove('active-touch');
-                if (this.popup) this.closePopup(true);
-            });
-            // 触摸路径已自己提交/取消；click 只兜鼠标与无障碍入口
-            // （touchend 已 preventDefault，合成 click 不会跟在触摸后）。
-            button.addEventListener('click', () => {
-                if (touchId !== null || opened) return;
-                this.sendSymbol(char);
-            });
-        }
-
-        /** 标点键的抽出候选条（round-5）：纵向单列（T9/数字面板左列符号
-         * 条的形态），内容随键走（INK_PUNCT_DRAWERS，不含自身字形）。
-         * 与长按弹层的差异：入口是按住上拖；缺省贴键下沿向下抽出——
-         * 不盖书写区（四轮弹层的核心抱怨）；只有列内最底的键下方空间
-         * 不够时才翻到键上方（键盘视口内永不裁切）。选中用 rect 绝对
-         * 命中（手指物理滑进格子）；无预选格——松手没落在格子上=无
-         * 输入，所以也没有「松手撤销」提示。 */
-        openInkPunctDrawer(button, char) {
-            const popup = document.getElementById('keyPopup');
-            const inner = document.getElementById('keyPopupInner');
-            inner.classList.add('kp-drawer');
-            popup.classList.add('kp-drawer');
-            inner.replaceChildren();
-            const cells = [];
-            (INK_PUNCT_DRAWERS[char] || []).forEach(glyph => {
-                const item = document.createElement('div');
-                item.className = 'kp-item';
-                item.textContent = glyph;
-                inner.append(item);
-                cells.push({ item, char: glyph, literal: true });
-            });
-            popup.classList.add('open');
-            const rect = button.getBoundingClientRect();
-            // 与键同宽、左右沿对齐：一条窄列贴着键沿纵向展开。
-            popup.style.width = rect.width + 'px';
-            popup.style.left = Math.max(4, Math.min(innerWidth - popup.offsetWidth - 4,
-                rect.left)) + 'px';
-            // 缺省向下抽出（不盖书写区）。下方空间装不下自然高度时先压
-            // 格子（flex 收缩到 min 高），压到下限仍装不下（列内最底的
-            // 键）才整条翻到键上方并限高——键盘视口内永不裁切。
-            const below = rect.bottom + 4;
-            const room = innerHeight - below - 2;
-            const n = cells.length;
-            const minNeeded = n * 24 + (n - 1) * 3 + 8; // .kp-drawer 的 min 高度口径
-            if (room >= minNeeded) {
-                inner.style.maxHeight = room + 'px';
-                popup.style.top = below + 'px';
-            } else {
-                inner.style.maxHeight = Math.max(80, rect.top - 14) + 'px';
-                popup.style.top = Math.max(2, rect.top - popup.offsetHeight - 6) + 'px';
-            }
-            this.popup = { key: 'ink-punct', cells, selected: null,
-                cancelled: false, enginePath: true, absolute: true };
         }
 
         /** 抽出条/弹层的选中：指针压在哪格选哪格（格子不重叠、不透明，
@@ -5728,7 +5616,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // content floor - say so instead of offering a dead range.
             const capped = bounds.max <= bounds.min + 2;
             const hint = document.getElementById('heightHint');
-            if (hint) hint.textContent = capped ? t("横屏已达屏幕上限") : t("拖动为预览，松手应用");
+            if (hint) hint.textContent = capped ? t("横屏已达屏幕上限") : t("拖动实时预览，保存后生效");
             track.style.opacity = capped ? '.35' : '';
             document.getElementById('heightMinus').disabled = capped;
             document.getElementById('heightPlus').disabled = capped;
@@ -5797,13 +5685,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.heightPreview = Math.round(
                     Math.min(bounds.max, Math.max(bounds.min, startContent + dx / width * (bounds.max - bounds.min))));
                 this.renderHeightCard();
+                // 拖动实时预览（round-6 用户拍板，反转旧「no live resize」
+                // 规则）：每次 move 直接推高度，native requestLayout 即时
+                // 生效、pref 落盘走 native debounce——松手停在预览值，
+                // 保存才写 localStorage 镜像，取消还原。
+                this.applyKbHeight(this.heightPreview);
+                this.placeHeightCard();
             }, { passive: false });
             track.addEventListener('touchend', () => {
                 if (!dragging) return;
                 dragging = false;
                 this.heightEditedLive = true;
-                // Release lands the preview (user rule: no live resize).
-                this.applyKbHeight(this.heightPreview);
+                // 松手停在预览值（拖动中已实时应用）；保存/取消语义
+                // 由按钮收口。
             });
             track.addEventListener('touchcancel', () => { dragging = false; });
             document.getElementById('heightCardCancel').addEventListener('click', () => {
@@ -5860,19 +5754,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
                 menu.append(button);
             });
-            // 快捷切换配对入口（round-5）：长按菜单本就是切键盘的地方，
-            // 改配对从这里一跳直达（手写模式下工具栏设置依旧可达，但这
-            // 是顺路的那条）。行语法与模式行一致：简写在前，名称在后。
-            const pairRow = document.createElement('button');
-            pairRow.className = 'menu-pair';
-            pairRow.innerHTML = `<span class="prep">${
-                this.quickPair.map(m => modeLabel(m)).join('/')
-            }</span><span>${t("快捷切换")}</span>`;
-            pairRow.addEventListener('click', () => {
-                this.closeModeMenu();
-                this.toggleSettingsPanel('pair');
-            });
-            menu.append(pairRow);
             // M4: 键盘设置 moved out of the menu to the toolbar setupButton;
             // Moved the theme row into that settings panel too.
             menu.scrollTop = 0; // scroll state must not leak between opens
@@ -6626,7 +6507,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         modeOrder() {
             const ordered = this.orderedModeNames();
             // The long-press menu shows ONLY the keyboards the user
-            // enabled (default: all) - not everyone wants fr/ru/ja there.
+            // enabled - not everyone wants fr/ru/ja there. Default set
+            // (round-6): En/全拼/双拼/九宫格/笔画；手写是实验性能力
+            //（识别率有限，issue #28/#32），要用户主动勾选才进菜单。
             // The quick toggle always reaches the pair regardless.
             let menu = null;
             try { menu = JSON.parse(localStorage.getItem('feelime_menu_modes') || 'null'); } catch (_) {}
@@ -6634,7 +6517,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const filtered = ordered.filter(name => menu.includes(name));
                 if (filtered.length) return filtered;
             }
-            return ordered;
+            const enabled = ordered.filter(name => DEFAULT_MENU_MODES.includes(name));
+            return enabled.length ? enabled : ordered;
         }
 
         /** Every known keyboard in the saved drag order (unfiltered). */
@@ -8869,6 +8753,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // Suite hook: drives the content-height bridge without
         // synthesizing a drag (the drag gesture itself is covered by ).
         applyKbHeight: content => keyboard.applyKbHeight(content),
+        // Suite/preview hook: the height card lives behind a toolbar tap;
+        // tests drive the live-preview semantics directly.
+        enterHeightEdit: () => keyboard.enterHeightEdit(),
         // Suite/preview hook (issue #28 round-2): the ink delay setting and
         // the recognition-path smoother, for unit tests and preview probes.
         inkSmooth: points => smoothInkStroke(points),
