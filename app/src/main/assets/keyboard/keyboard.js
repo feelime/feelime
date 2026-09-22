@@ -257,7 +257,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.58.0';
+    const KEYBOARD_VERSION = '3.59.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
