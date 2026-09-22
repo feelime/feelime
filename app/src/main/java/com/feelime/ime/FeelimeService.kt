@@ -1503,6 +1503,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("heightDefault", (minOf(dp(272), if (landscape) realHeightPixels() / 2
                 else resources.displayMetrics.heightPixels * 45 / 100) /
                 resources.displayMetrics.density).toInt())
+            // 高度真相源（round-6）：native pref 是唯一事实，hello 下发
+            // 当前方向的已存高度（css px）——JS 的 localStorage 镜像在
+            // force-stop 丢写后会与 pref 分裂（真机实录），读取一律以
+            // native 为准，localStorage 仅作旧包兜底。
+            .put(
+                "storedKbHeight",
+                (storedKeyboardHeight() / resources.displayMetrics.density).toInt(),
+            )
             // The height-card drag range must follow the REAL screen
             // ceiling (same formula as setKeyboardHeight's clamp). The WebView's
             // own innerHeight rides the keyboard (band + keys), so deriving the

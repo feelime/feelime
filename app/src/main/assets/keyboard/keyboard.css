@@ -1008,7 +1008,9 @@ body.landscape .t9-grid { gap: 4px 5px; }
     scrollbar-width: none;
 }
 .ink-scroll::-webkit-scrollbar { display: none; }
-.ink-scroll .kb-key { flex: none; height: var(--ink-row-h, 46px); }
+/* 特异性必须压过文件后段的 `.ink-side .kb-key { flex:1 }`（否则 12 格
+ * 被均分成 1px 线全挤进视口——真机实录）。固定格高，滚动才有意义。 */
+.ink-side .ink-scroll .kb-key { flex: none; height: var(--ink-row-h, 46px); }
 /* 底行：符号/数字/空格（宽）/键盘切换/换行，高固定（--ink-row-h）。 */
 .ink-bottom {
     flex: none;

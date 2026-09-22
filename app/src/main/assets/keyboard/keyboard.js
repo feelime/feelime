@@ -4794,6 +4794,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 0 = native default (272). Legacy keys held a per-row height (<100)
          * - ignored so an old value cannot clamp the new content height. */
         storedKbHeight() {
+            // native pref（hello 下发）是唯一事实；localStorage 镜像只在
+            // 旧 APK 的 hello 无此字段时兜底（round-6 前的分裂实录：pref
+            // 与镜像各自漂移，高度忽高忽低）。
+            const nativeValue = Math.round(this.nativeStoredHeightCss || 0);
+            if (nativeValue >= 120) return nativeValue;
             try {
                 const saved = parseInt(
                     localStorage.getItem(KB_HEIGHT_KEY(this.landscape ? 'landscape' : 'portrait')) || '0', 10);
@@ -5714,6 +5719,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.heightResetPending = true;
                 this.heightPreview = this.heightDefaultCss || 272;
                 this.renderHeightCard();
+                // 恢复默认也是一次预览（round-6 用户反馈）：键盘立刻变到
+                // 默认高度，保存才落地、取消还原。
+                this.applyKbHeight(this.heightPreview);
+                this.placeHeightCard();
             });
             document.getElementById('heightCardSave').addEventListener('click', () => {
                 const content = Math.round(this.heightPreview);
@@ -8185,6 +8194,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // setKeyboardHeight enforces) - innerHeight rides the keyboard
             // itself, so it can never define the drag range (see heightBounds).
             this.heightDefaultCss = Number(payload.heightDefault) || 272;
+            // 高度真相源（round-6）：native pref 经 hello 下发（css px）。
+            this.nativeStoredHeightCss = Number(payload.storedKbHeight) || 0;
             this.heightFloorCss = Number(payload.heightFloor) || 0;
             this.heightCeilCss = Number(payload.heightCeil) || 0;
             {
