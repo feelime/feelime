@@ -145,6 +145,8 @@
         "粘贴 JSON 定制键盘": "Paste custom keyboard JSON",
         "插入模板 ›": "Use example ›",
         "插入定制模板": "Use custom keyboard example",
+        "查看说明 ›": "View guide ›",
+        "查看定制键盘说明": "View the custom keyboard guide",
         "粘贴定制 JSON": "Paste custom keyboard JSON",
         "保存失败：本地存储不可用": "Could not save. Local storage is unavailable.",
         "已保存 {0} 个键": "Saved {0} keys",
@@ -6327,7 +6329,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             template.textContent = t("插入模板 ›");
             template.setAttribute('aria-label', t("插入定制模板"));
             template.addEventListener('click', () => this.openCustomJsonEditor(CUSTOM_TEMPLATE));
-            actions.append(edit, template);
+            // #29-8：官方说明文档（格式/tap 语法/示例），native 只认内置地址。
+            const docs = document.createElement('button');
+            docs.className = 'set-opt set-nav';
+            docs.textContent = t("查看说明 ›");
+            docs.setAttribute('aria-label', t("查看定制键盘说明"));
+            docs.addEventListener('click', () => {
+                if (typeof Native.openDocs === 'function') this.call(() => Native.openDocs(this.token));
+            });
+            actions.append(edit, template, docs);
             box.append(status, actions);
             panel.append(box);
         }

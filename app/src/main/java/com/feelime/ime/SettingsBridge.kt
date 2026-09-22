@@ -1916,6 +1916,19 @@ class SettingsBridge(
         }
     }
 
+    /** 定制键盘 JSON 说明文档（#29-8）：固定官方地址。 */
+    @JavascriptInterface
+    fun openDocs(token: String) = guarded(token) {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://feelime.github.io/custom-keyboard.html"),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
     /** 关于页开源仓库入口（#29-4）：只认内置两址（仓库/issues），
      *  不收任意 URL——设置页 WebView 不该能驱动任意 intent 跳转。 */
     @JavascriptInterface

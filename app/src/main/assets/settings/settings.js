@@ -143,6 +143,7 @@ const I18N = {
         "input.custom.note": "保存在本机，键盘下次载入时生效。",
         "action.saveCustom": "保存定制",
         "action.insertTemplate": "插入模板",
+        "action.viewDocs": "查看说明",
         "voice.models.title": "麦克风与语音模型",
         "voice.models.badge": "语音",
         "voice.backend.label": "模型来源",
@@ -561,6 +562,7 @@ const I18N = {
         "input.custom.note": "Saved on this device and applied the next time the keyboard loads.",
         "action.saveCustom": "Save custom layout",
         "action.insertTemplate": "Insert template",
+        "action.viewDocs": "View guide",
         "voice.models.title": "Microphone & voice models",
         "voice.models.badge": "Voice",
         "voice.backend.label": "Model source",
@@ -2020,6 +2022,8 @@ $("btnExportDiagnostics").addEventListener("click", () => {
 $("btnAppStore").addEventListener("click", () => call("openAppStore"));
 // #29-4：关于页开源仓库/问题反馈入口（native 侧只认内置两址）。
 $("btnGithubRepo").addEventListener("click", () => call("openGithub", "repo"));
+// #29-8：定制键盘 JSON 的官方说明文档（native 只认内置地址）。
+$("btnCustomDocs").addEventListener("click", () => call("openDocs"));
 $("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"));
 $("btnCopyAbout").addEventListener("click", () => {
     if (!lastState) return;

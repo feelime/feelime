@@ -2412,6 +2412,20 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         @JavascriptInterface
         fun openSetup(token: String) = guarded(token, limited = false) { openSetup() }
 
+        /** 定制键盘 JSON 的说明文档（#29-8）：固定官方地址，不收任意
+         *  URL——WebView 侧不该能驱动任意 intent 跳转。 */
+        @JavascriptInterface
+        fun openDocs(token: String) = guarded(token, limited = false) {
+            runCatching {
+                startActivity(
+                    android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://feelime.github.io/custom-keyboard.html"),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+
         /** design §15: the custom-keyboard table's native mirror (the
          * settings page edits the same store). Synchronous prefs read on the
          * bridge thread; empty string = unset, "disabled" = the settings
