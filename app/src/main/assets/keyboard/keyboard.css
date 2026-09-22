@@ -746,7 +746,7 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 /* 分词 (syllable separator) rides in the Shift slot of Chinese layouts. */
 .sep { font-size: 14px; font-weight: 500; }
 .kb-layer[hidden] { display: none; }
-.kb-layer { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+.kb-layer { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; }
 #symGrid { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
 #symGrid .kb-row:last-child { margin-bottom: 0; }
 
@@ -987,11 +987,16 @@ body.landscape .t9-grid { gap: 4px 5px; }
  * 上滑滚出更多，点按直上屏。 */
 .ink-side {
     flex: none;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 5px;
     width: 58px;
 }
+/* 高度统一（round-6）后的结构性兜底：键盘内容永不越出 view——
+ * 矮高度下手写链的任何溢出都被裁在 view 内。 */
+#softKeyboard { overflow: hidden; }
+.ink-layout { overflow: hidden; }
 .ink-scroll {
     flex: 1;
     min-height: 0;

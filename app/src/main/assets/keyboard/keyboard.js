@@ -2199,6 +2199,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 发桥。重唤键盘（resetToHome / applyHeightNow）也走这里——这是
          * 重唤后布局没跟手写态走的 P1 修复的另一半。 */
         applyModeHeight() {
+            // 高度编辑中卡片独占高度：拖动/步进的预览值不被 stored 的
+            // 重推覆盖。拖动时每次 applyKbHeight 都会触发 native
+            // requestLayout → on-show 钩子 → applyHeightNow——不设防，
+            // stored 旧值和拖动值每帧打架（用户看到的「抖来抖去」）。
+            const card = document.getElementById('heightCard');
+            if (card && card.classList.contains('open')) return;
             const stored = this.storedKbHeight();
             const base = stored > 0 ? stored : (this.heightDefaultCss || 272);
             if (this.landscape || this.mode !== 'handwriting') {
