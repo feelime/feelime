@@ -461,25 +461,70 @@ def keyboard_chip():
     )
 
 
+def opt_in_menu_modes():
+    """Round-6 起长按菜单默认只有 En/拼/双/九/笔（FR/RU/JA/手写都要用户
+    主动勾选）。测试要切这些键盘时，先像用户一样把除手写外的全部勾上
+    （手写不勾：devtools 断言的 chip 顺序按非手写菜单写死，且其
+    strictReady 门会让点击静默无效——chip 停在旧模式正是 5/11 段
+    挂过的样子）。"""
+    devtools_eval(
+        "localStorage.setItem('feelime_menu_modes', JSON.stringify("
+        "['direct','pinyin','double-pinyin','t9','stroke',"
+        "'french','russian','japanese']))"
+    )
+
+
+# 菜单条目文本 = label+title，且随界面语言本地化（英文 UI 下「全拼
+# Pinyin」变「PYPinyin」）。位置索引对不上带手写的勾选组合，单一完整
+# 标题又对不上英文 UI——按「任一子串命中」找项。
+MODE_MENU_SUBSTRINGS = {
+    "英文 Direct": ["英文", "English", "Direct"],
+    "全拼 Pinyin": ["全拼", "PY"],
+    "双拼": ["双拼", "DP"],
+    "九宫格 T9": ["九宫格", "T9"],
+    "笔画 Stroke": ["笔画", "Stroke", "笔"],
+    "Français": ["Français"],
+    "Русский": ["Русский"],
+    "日本語 Romaji": ["日本語", "Romaji", "Japanese"],
+}
+
+
+def opt_in_menu_modes():
+    """Round-6 起长按菜单默认只有 En/拼/双/九/笔（FR/RU/JA/手写都要
+    用户主动勾选）。测试要切这些键盘时先像用户一样把除手写外的全部
+    勾上（手写不勾：strictReady 门可能让点击静默无效，chip 会停在
+    旧模式——5/11 段曾经挂掉的形态）。"""
+    devtools_eval(
+        "localStorage.setItem('feelime_menu_modes', JSON.stringify("
+        "['direct','pinyin','double-pinyin','t9','stroke',"
+        "'french','russian','japanese']))"
+    )
+
+
 def devtools_click_mode(title):
-    """Click the mode item through the real UI via DevTools. The
-    toolbar mode button is gone, so the DevTools flow calls the exposed
-    keyboard.toggleModeMenu() (rendering the items) - the physical long-press
-    path is covered by open_mode_menu. The chip label only updates after the
-    async native roundtrip."""
-    order = ["英文 Direct", "全拼 Pinyin", "双拼", "九宫格 T9",
-             "笔画 Stroke", "Français", "Русский", "日本語 Romaji"]
-    index = order.index(title)
-    return devtools_eval(
+    """Click the mode item through the real UI via DevTools（chip 要等
+    异步 native 往返才更新）。按子串找项；找不到先勾选再重开菜单。"""
+    subs = MODE_MENU_SUBSTRINGS[title]
+    js = (
         "(() => { const menu = document.getElementById('modeMenu');"
         " if (!menu.classList.contains('open')) window.Feelime.toggleModeMenu();"
-        f" const item = menu.children[{index}];"
+        f" const subs = {subs!r};"
+        " const item = [...menu.children].find(c => subs.some(x =>"
+        "   c.textContent.includes(x)));"
         " if (!item) return 'missing';"
         " if (item.classList.contains('current')) {"
         "   window.Feelime.closeModeMenu();"
         " } else { item.click(); }"
         " return 'clicked'; })()"
     )
+    result = devtools_eval(js)
+    if result == 'missing':
+        opt_in_menu_modes()
+        result = devtools_eval(
+            "(() => { window.Feelime.closeModeMenu(); return 'reopened'; })()"
+        )
+        result = devtools_eval(js)
+    return result
 
 
 def devtools_preedit():
@@ -496,20 +541,12 @@ def devtools_candidates():
 
 def devtools_switch_mode(title):
     """Switch mode through the real UI, driven deterministically via DevTools.
- Opens the lazily rendered menu via the exposed hook."""
-    order = ["英文 Direct", "全拼 Pinyin", "双拼", "九宫格 T9",
-             "笔画 Stroke", "Français", "Русский", "日本語 Romaji"]
-    index = order.index(title)
+ Opens the lazily rendered menu via the exposed hook. 按标题文本找项
+ （同 devtools_click_mode：位置索引对不上带手写的菜单组合）。"""
+    devtools_click_mode(title)
+    time.sleep(0.3)
     return devtools_eval(
-        "(() => { const menu = document.getElementById('modeMenu');"
-        " if (!menu.classList.contains('open')) window.Feelime.toggleModeMenu();"
-        f" const item = menu.children[{index}];"
-        " if (!item) return 'missing';"
-        " if (item.classList.contains('current')) {"
-        "   window.Feelime.closeModeMenu();"  # already active: just close
-        " } else { item.click(); }"
-        " return document.querySelector('#modeToggle .cn-main').textContent; })()"
-    )
+        "document.querySelector('#modeToggle .cn-main').textContent")
 
 
 def tap(x, y, wait=0.35):
