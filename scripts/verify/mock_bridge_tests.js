@@ -6392,21 +6392,28 @@ test('handwriting: candidates take the whole bar while the toolbar yields (wetyp
     equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes cleared');
 });
 
-test('handwriting: the mode pushes its panel height and leaves restore the stored one', () => {
+test('handwriting: the mode rides the unified height and leaving keeps it (round-5 feedback 5)', () => {
     const world = fresh();
     world.context.window.innerHeight = 900; // 放开钳制，量目标值
     world.hello({});
     const before = world.native.of('setKeyboardHeight').length;
     world.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });
-    const calls = world.native.of('setKeyboardHeight');
-    assert(calls.length > before, 'height pushed on entry');
-    // mock 视口 400 宽 → 面板 245 + 固定开销 126（拼音带 18 + 候选条槽
-    // 52 + 控制行 51 + 底部 5）= 371。
-    equal(calls[calls.length - 1].args[0], 371, 'panel-height budget pushed');
+    // 高度体系统一（用户拍板「统一到矮的」）：未设置高度 → 统一 272
+    // （hello heightDefault），手写仅保内容下限。进入手写+显式重推
+    // （applyHeightNow = 重唤键盘的通道）都不再出现 1.6:1 面板预算
+    // （371 那种大值）——目标值与初始一致时幂等零桥，即「切换不跳」。
+    world.context.window.Feelime.applyHeightNow();
+    const all = world.native.of('setKeyboardHeight');
+    all.forEach(call => {
+        assert(call.args[0] <= 272, 'no panel-budget height pushed: ' + call.args[0]);
+    });
     world.hello({ mode: 'direct', engineDataReady: HANDWRITING_READY });
+    world.context.window.Feelime.applyHeightNow();
     const restored = world.native.of('setKeyboardHeight');
-    // 该方向无已存高度 → 0 = native 复位默认（setKeyboardHeight 的重置语义）。
-    equal(restored[restored.length - 1].args[0], 0, 'leaving resets to the stored height');
+    // 同一统一值：离开手写也不推离 272。
+    restored.forEach(call => {
+        assert(call.args[0] <= 272, 'leaving keeps the unified height: ' + call.args[0]);
+    });
 });
 
 // ---- round-3（issue #28 三轮）：wetype 布局（右窄列+底行）、标点上滑

@@ -2304,18 +2304,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return Math.round(Math.min(bounds.max, Math.max(min, panel)));
         }
 
-        /** 把键盘总高切到当前模式应有的值：手写推面板高度，其余模式
-         * 还原该方向的已存高度（0 = native 默认，走 setKeyboardHeight(0)
-         * 的重置语义）。幂等：值相同不发桥。重唤键盘（resetToHome /
-         * applyHeightNow）也走这里——这是重唤后布局没跟手写态走的
-         * P1 修复的另一半。 */
+        /** 把键盘总高切到当前模式应有的值。高度体系统一（五轮反馈 5，
+         * 用户拍板「统一到矮的」）：所有模式含手写一律用 stored（未调过
+         * = native 默认 272），手写仅保内容下限（chrome+最小面板，防弹性
+         * 面板被压塌——P1 的教训）。切换键盘不再跳高度。幂等：值相同不
+         * 发桥。重唤键盘（resetToHome / applyHeightNow）也走这里——这是
+         * 重唤后布局没跟手写态走的 P1 修复的另一半。 */
         applyModeHeight() {
+            const stored = this.storedKbHeight();
+            const base = stored > 0 ? stored : (this.heightDefaultCss || 272);
             if (this.landscape || this.mode !== 'handwriting') {
-                const stored = this.storedKbHeight();
-                if (this.kbHeight !== stored) this.applyKbHeight(stored);
+                if (this.kbHeight !== base) this.applyKbHeight(base);
                 return;
             }
-            const desired = this.inkDesiredHeight();
+            const desired = Math.max(base, this.inkChromeHeight() + 96);
             if (this.kbHeight !== desired) this.applyKbHeight(desired);
         }
 
