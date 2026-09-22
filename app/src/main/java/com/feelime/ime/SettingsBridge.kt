@@ -143,10 +143,12 @@ fun readKbHeightPortrait(context: Context): Int {
 }
 
 /** 竖屏高度滑块边界（CSS px，与 FeelimeService.setKeyboardHeight 的
- *  clamp 同源：min 210dp，max 竖屏可用高度 45%）。 */
+ *  clamp 同源：min 226（round-6 起竖屏内容下限，含手写 chrome+96；
+ *  旧值 210 低于 native 钳制，滑杆 210~225 会被暗改到 226——滑杆
+ *  读数与键盘实际高度对不上），max 竖屏可用高度 45%）。 */
 fun readKbHeightBounds(context: Context): Pair<Int, Int> {
     val metrics = context.resources.displayMetrics
-    val min = 210
+    val min = 226
     val max = ((metrics.heightPixels * 45 / 100) / metrics.density).toInt()
     return Pair(min, maxOf(min, max))
 }

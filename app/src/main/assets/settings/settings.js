@@ -1150,7 +1150,7 @@ function renderFeel(state) {
     if (opacity) opacity.value = String(Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100))));
     const kbHeight = $("kbHeight");
     if (kbHeight) {
-        const min = Number(state.kbHeightMin ?? 210);
+        const min = Number(state.kbHeightMin ?? 226);
         const max = Number(state.kbHeightMax ?? 400);
         kbHeight.min = String(min);
         kbHeight.max = String(max);

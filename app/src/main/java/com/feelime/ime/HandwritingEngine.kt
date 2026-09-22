@@ -121,6 +121,14 @@ class HandwritingEngine(
         // 预处理 + 解码（纯函数，参数钉死）：96×96 反色 uint8 NHWC。
         val input = HandwritingInk.preprocessMelnyk(pixels, SIZE_PX, SIZE_PX)
         if (input.isEmpty()) return InkResult(reqId, emptyList(), null)
+        // DEBUG-INK 真迹采集（仅 debug 包）：全量落盘每次识别的模型输入
+        // 张量（每个 reqId 一份不覆盖），host 离线分析识别率用。正式包
+        // （BuildConfig.DEBUG=false）不开启，不留任何落盘开销。
+        if (BuildConfig.DEBUG) runCatching {
+            val dir = java.io.File(context.filesDir, "ink-inputs").apply { mkdirs() }
+            java.io.File(dir, "req-%04d.bin".format(reqId)).writeBytes(input)
+            java.io.File(dir, "payload-%04d.json".format(reqId)).writeText(payload)
+        }
         val env = checkNotNull(environment)
         // 模型输入 (1,96,96,1) uint8（NHWC，tf2onnx 转换保真）。
         val shape = longArrayOf(1, MELNYK_SIZE.toLong(), MELNYK_SIZE.toLong(), 1)

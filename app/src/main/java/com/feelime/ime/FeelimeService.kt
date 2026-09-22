@@ -1501,7 +1501,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
  // The transparent popup band above the keyboard.
             .put("floatBand", (floatBandPx() / resources.displayMetrics.density).toInt())
             .put("heightDefault", (minOf(dp(272), if (landscape) realHeightPixels() / 2
-                else resources.displayMetrics.heightPixels * 45 / 100) /
+                else (realHeightPixels() * 45) / 100) /
                 resources.displayMetrics.density).toInt())
             // 高度真相源（round-6）：native pref 是唯一事实，hello 下发
             // 当前方向的已存高度（css px）——JS 的 localStorage 镜像在
@@ -1527,7 +1527,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 (
                     (
                         if (landscape) realHeightPixels() / 2
-                        else (resources.displayMetrics.heightPixels * 45) / 100
+                        else (realHeightPixels() * 45) / 100
                     ) / resources.displayMetrics.density
                 ).toInt(),
             )
@@ -2363,7 +2363,6 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             }
             val metrics = resources.displayMetrics
             val physical = (heightCssPx * metrics.density).toInt()
-            val available = metrics.heightPixels
  // C: the old landscape budget (screen/3) sat BELOW the
             // 170dp floor, so coerceIn(min, min) pinned every drag to the
             // same value - the gesture read as dead. Half the screen lifts
@@ -2373,7 +2372,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
  // the landscape ceiling is a fraction of the REAL
             // screen (app-space heightPixels drops the system bars and landed
             // BELOW the keyboard's content minimum - bottom row clipped).
-            val max = if (landscape) realHeightPixels() / 2 else (available * 45) / 100
+            // round-8: 竖屏 45% 同理必须用真屏——IME 上下文的 heightPixels
+            // 是 app-space（≈2267，比真屏少状态栏），45% 只有 340css：设置
+            // 页滑杆按真屏给到 361，这里会把回推值钳回 340 并 debounce 写
+            // 回 pref，滑杆 360/键盘 340 的「调节不生效」就是这么来的
+            // （真机实录：361 落盘 1083 被回写 1020 覆盖）。
+            val max = if (landscape) realHeightPixels() / 2 else (realHeightPixels() * 45) / 100
             val clamped = physical.coerceIn(min, maxOf(min, max))
             if (clamped != keyboardHeightOverride) {
                 keyboardHeightOverride = clamped
@@ -3022,7 +3026,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 // clamped content height in every branch.
                 landscape && screenH > 0 ->
                     minOf(base, realHeightPixels() / 2) + navBottomInset() + bottomPadPx()
-                screenH > 0 -> minOf(base, (screenH * 45) / 100) + navBottomInset() + bottomPadPx()
+                // round-8: 竖屏同样按真屏 45%（screenH 是 app-space，会把
+                // 上限压到 340css——与 setKeyboardHeight 的钳制口径不一致，
+                // 调高了也会在这里被量回去）。见 setKeyboardHeight 注释。
+                screenH > 0 -> minOf(base, (realHeightPixels() * 45) / 100) + navBottomInset() + bottomPadPx()
                 else -> base + navBottomInset() + bottomPadPx()
             }
  // The view carries the transparent popup band on
