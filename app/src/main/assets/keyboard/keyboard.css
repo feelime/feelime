@@ -1619,6 +1619,10 @@ body.height-editing #candidateBar { margin-top: 39px; }
     font-size: 10.5px;
     color: var(--muted);
 }
+/* 快捷切换配对入口（round-5）：菜单尾部的从属行——弱色 + 上分隔线，
+ * 与可选的模式行区分开（它打开的是配对编辑，不是切换动作）。 */
+#modeMenu button.menu-pair { color: var(--muted); border-top: 1px solid var(--pressed); }
+#modeMenu button.menu-pair .prep { min-width: 0; letter-spacing: 1px; }
 
 /* ===== Voice overlay: recording ONLY, high contrast vs background ===== */
 #voiceOverlay {

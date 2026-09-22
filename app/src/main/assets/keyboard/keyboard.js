@@ -1193,6 +1193,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (Array.isArray(pair) && pair.length === 2 &&
                     MODES[pair[0]] && MODES[pair[1]]) this.quickPair = pair;
             } catch (_) { /* default 拼/En */ }
+            // 手写↔上次使用的键盘（round-5）里的「上次键盘」：跨会话也
+            // 成立（adoptQuickPairForHandwriting 消费）。
+            try { this.lastKbMode = localStorage.getItem('feelime_last_kb_mode') || ''; }
+            catch (_) { this.lastKbMode = ''; }
             try {
                 // The height is stored per orientation; the other key (if
                 // any) is picked up when the device rotates (applyHeight).
@@ -2092,8 +2096,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** 底行：符号（符号面板）/ 123（九宫格）/ 空格（候选条有手写
-         * 候选时=确认 top1，见 spaceKey）/ 键盘切换（本输入法的模式
-         * 菜单）/ 换行。横屏不设切换格（includeMode=false）：八键恰
+         * 候选时=确认 top1，见 spaceKey）/ 快捷切换（=其他键盘底行的
+         * 中英切换键同款：短按翻 quick-pair、长按=完整模式菜单，见
+         * cnEnKey）/ 换行。横屏不设切换格（includeMode=false）：八键恰
          * 两列四行。 */
         inkBottomKeys(includeMode = true) {
             const keys = [
@@ -2103,7 +2108,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     () => this.showNumpad(), 'ink-key kb-special'),
                 this.inkSpaceKey(),
             ];
-            if (includeMode) keys.push(this.inkModeKey());
+            if (includeMode) keys.push(this.cnEnKey());
             keys.push(this.enterKey());
             return keys;
         }
@@ -2116,23 +2121,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const space = this.spaceKey();
             space.dataset.key = '0';
             return space;
-        }
-
-        /** 键盘切换键（round-4 反馈：这格原来是系统输入法选择器
-         * globe——切拼音/手写/T9 才是底行的刚需，系统选择器工具栏
-         * 已有）。形态与模式菜单键一致=当前模式简写（wetype 底行
-         * 「写」同款位），点按开菜单、菜单锚定这颗键。 */
-        inkModeKey() {
-            const button = this.specialKey('ink-mode', modeLabel(this.mode), () => {
-                // outside-tap 关菜单的那次点按不再当开菜单的指令。
-                if (button._suppressClick) {
-                    button._suppressClick = false;
-                    return;
-                }
-                this.toggleModeMenu(button);
-            }, 'ink-key kb-special');
-            button.setAttribute('aria-label', t("切换键盘"));
-            return button;
         }
 
         /** 标点键（，/。/！/？）：字面上屏 + 按住上拖、键下方抽出候选
@@ -2890,6 +2878,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             this.bindTouch(button);
             return button;
+        }
+
+        /** 手写接入 quick-pair（round-5）：非手写模式记下「上次使用的
+         * 键盘」；进手写时若配对还是出厂默认（拼/En，用户从未定制过），
+         * 迁成 手写↔该键盘——切换键在两个方向都立即可用（拼 ⇄ 手）。
+         * 定制过的对不动（含用户特意选回 拼/En 的情形），改对走
+         * 模式菜单/设置页的 快捷切换 入口。 */
+        adoptQuickPairForHandwriting(nextMode) {
+            if (nextMode !== 'handwriting') {
+                this.lastKbMode = nextMode;
+                try { localStorage.setItem('feelime_last_kb_mode', nextMode); } catch (_) {}
+                return;
+            }
+            const factory = this.quickPair.length === 2 &&
+                this.quickPair[0] === 'pinyin' && this.quickPair[1] === 'direct';
+            if (!factory) return;
+            const other = this.lastKbMode && this.lastKbMode !== 'handwriting' &&
+                MODES[this.lastKbMode] ? this.lastKbMode : 'pinyin';
+            this.quickPair = ['handwriting', other];
+            try {
+                localStorage.setItem('feelime_quick_pair', JSON.stringify(this.quickPair));
+            } catch (_) {}
         }
 
         /** The saved pair alone determines the shortcut. A temporary mode
@@ -5833,6 +5843,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
                 menu.append(button);
             });
+            // 快捷切换配对入口（round-5）：长按菜单本就是切键盘的地方，
+            // 改配对从这里一跳直达（手写模式下工具栏设置依旧可达，但这
+            // 是顺路的那条）。行语法与模式行一致：简写在前，名称在后。
+            const pairRow = document.createElement('button');
+            pairRow.className = 'menu-pair';
+            pairRow.innerHTML = `<span class="prep">${
+                this.quickPair.map(m => modeLabel(m)).join('/')
+            }</span><span>${t("快捷切换")}</span>`;
+            pairRow.addEventListener('click', () => {
+                this.closeModeMenu();
+                this.toggleSettingsPanel('pair');
+            });
+            menu.append(pairRow);
             // M4: 键盘设置 moved out of the menu to the toolbar setupButton;
             // Moved the theme row into that settings panel too.
             menu.scrollTop = 0; // scroll state must not leak between opens
@@ -8322,6 +8345,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const nextMode = MODES[payload.mode] ? payload.mode : 'direct';
             const modeChanged = nextMode !== this.mode;
             this.mode = nextMode;
+            // 先于 renderMode：切换键的键面（快捷切换目标简写）读的就是
+            // 迁移后的对。
+            this.adoptQuickPairForHandwriting(nextMode);
             this.ready = true;
             // 模式切换=组合语境整体作废：挂起的两步逗号不跨模式补发。
             if (modeChanged) this.pendingPunct = null;
@@ -8519,6 +8545,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.variantReplaying) return;
             if (payload.mode && MODES[payload.mode] && payload.mode !== this.mode) {
                 this.mode = payload.mode;
+                this.adoptQuickPairForHandwriting(payload.mode);
                 this.renderMode();
             }
             this.updateComposing(payload, payload.rawInput || payload.composing || '');

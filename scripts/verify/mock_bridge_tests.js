@@ -1971,13 +1971,14 @@ test('long-press menu filters to the enabled keyboards', {since: '3.33.0'}, () =
     // enabled set - menu_modes is a membership set, not an order. The
     // compact row's title is the SECOND span (shorthand leads).
     equal(JSON.stringify(titles),
-        JSON.stringify(['英文 Direct', '全拼 Pinyin', '双拼']),
-        'menu lists only enabled keyboards');
+        JSON.stringify(['英文 Direct', '全拼 Pinyin', '双拼', '快捷切换']),
+        'menu lists only enabled keyboards (pair entry rides the tail)');
     // An empty enable set falls back to every keyboard.
     world.storage.set('feelime_menu_modes', JSON.stringify([]));
     world.context.window.Feelime.closeModeMenu();
     world.context.window.Feelime.toggleModeMenu();
-    equal(world.$('modeMenu').children.length, 9, 'empty set falls back to all (t9+stroke+handwriting)');
+    equal(world.$('modeMenu').children.length, 10,
+        'empty set falls back to all (t9+stroke+handwriting; +快捷切换 pair entry)');
 });
 
 test('phrase editor strip + item menu hit the bridge', {since: '3.21.0'},  ()=> {
@@ -2388,7 +2389,7 @@ test('mode menu lists all modes; selecting emits selectMode', {since: '3.33.0'},
     world.touchUp(toggle);
     assert(world.$('modeMenu').classList.contains('open'), 'menu open');
     const items = [...world.$('modeMenu').children];
-    equal(items.length, 9, '9 modes (theme moved to the settings panel; t9+stroke+handwriting joined)');
+    equal(items.length, 10, '9 modes + 快捷切换 pair entry (theme moved to the settings panel)');
     equal(items[0].textContent, 'En英文 Direct', 'first item: shorthand leads, title follows');
     world.tap(items[0]);
     equal(world.native.of('selectMode').length, 0, 'direct is current, no call');
@@ -6164,8 +6165,8 @@ test('handwriting: pad renders canvas plus control row, no letter keys', () => {
     const world = handwritingWorld();
     assert(world.$('inkCanvas'), 'canvas present');
     assert(world.$('inkHint'), 'hint present');
-    // round-4：竖屏键面没有中英切换键（#modeToggle）。
-    assert(!world.$('modeToggle'), 'cn/en toggle left the portrait ink layout');
+    // round-5：底行快捷切换键就是标准中英切换键（#modeToggle）。
+    assert(world.$('modeToggle'), 'standard quick-pair toggle lives in the ink bottom row');
     assert(world.document.querySelector('[data-ink-punct="？"]'), 'question key present');
     assert(world.$('enterKey'), 'enter key present');
     equal(world.document.querySelectorAll('#qwertyLayer .kb-letter').length, 0,
@@ -6297,10 +6298,9 @@ test('handwriting: leaving the mode clears ink state', () => {
         candidates: [{ text: '工', score: 1 }], error: null,
     });
     equal(world.$('candidates').children.length, 1, 'candidate present before leaving');
-    // 模式菜单（底行键盘切换键，round-4）→ direct（原生随后重推 hello
-    // 落新键面）。
-    world.context.window.Feelime.toggleModeMenu(
-        world.document.querySelector('[data-role="ink-mode"]'));
+    // 模式菜单（底行快捷切换键长按，round-5 起与各键盘同款）→ direct
+    //（原生随后重推 hello 落新键面）。
+    world.context.window.Feelime.toggleModeMenu(world.$('modeToggle'));
     world.tap([...world.$('modeMenu').children][0]);
     world.hello({ mode: 'direct', engineDataReady: HANDWRITING_READY });
     equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes reset');
@@ -6432,11 +6432,13 @@ test('handwriting round-5: side column is backspace + ，。！？, bottom row e
     assert(bottom, 'bottom row rendered');
     const roleOf = el => el.dataset.role || (el.id === 'spaceKey' ? 'space' : '(none)');
     const roles = [...bottom.children].map(roleOf);
-    equal(roles.join(','), 'ink-symbols,ink-numpad,space,ink-mode,enter', 'bottom row roles');
+    equal(roles.join(','), 'ink-symbols,ink-numpad,space,cnEn,enter', 'bottom row roles');
     equal(bottom.children[0].textContent, '符号', 'symbols entry labelled');
     equal(bottom.children[1].textContent, '123', 'numpad entry labelled');
     equal(bottom.children[3].getAttribute('aria-label'), '切换键盘', 'mode switch labelled');
-    equal(bottom.children[3].textContent, '手', 'mode switch shows the mode shorthand');
+    equal(bottom.children[3].id, 'modeToggle', 'standard quick-pair toggle key');
+    equal(bottom.children[3].querySelector('.cn-main').textContent, '手',
+        'toggle shows the current shorthand');
     equal(world.document.querySelectorAll('#qwertyLayer .kb-letter').length, 0,
         'still no letter keys');
     // 主区：书写面板是 .ink-main 里唯一的弹性块。
@@ -6460,21 +6462,88 @@ test('handwriting round-4: bottom row entries reuse the symbol/numpad channels',
         'the system IME picker is not wired to the bottom row any more');
 });
 
-test('handwriting round-4: the bottom-row key opens the in-IME mode menu', () => {
+test('handwriting round-5: the bottom-row key is the standard quick-pair toggle (tap) + mode menu (hold)', () => {
     const world = handwritingWorld();
-    const modeKey = world.document.querySelector('[data-role="ink-mode"]');
+    const modeKey = world.$('modeToggle');
+    assert(modeKey && modeKey.dataset.lp === 'mode-menu', 'standard toggle key rendered');
     equal(world.native.of('switchInputMethod').length, 0, 'system picker untouched');
+    // 键面 = 当前模式简写（大）+ 配对目标（小）：出厂默认对（拼/En）在
+    // 进手写时迁成 手写↔上次键盘——fresh world 没有历史，落到 拼。
+    equal(modeKey.querySelector('.cn-main').textContent, '手', 'current shorthand leads');
+    equal(modeKey.querySelector('.cn-sub').textContent, '拼', 'pair target previews');
+    // 短按 = 翻 quick-pair（手 → 拼），不再开菜单。
     world.tap(modeKey);
-    assert(world.$('modeMenu').classList.contains('open'), 'menu opens from the bottom row');
+    equal(world.native.of('selectMode').filter(c => c.args[0] === 'pinyin').length, 1,
+        'tap flips to the pair partner');
+    assert(!world.$('modeMenu').classList.contains('open'), 'tap does not open the menu');
+    // 长按 = 完整模式菜单（锚在 #modeToggle 上，round-4 通道保留）。
+    world.touchDown(modeKey);
+    world.clock.advance(400);
+    world.touchUp(modeKey);
+    assert(world.$('modeMenu').classList.contains('open'), 'hold opens the menu');
     const items = [...world.$('modeMenu').children];
     assert(items.some(el => el.className === 'current' && el.textContent.includes('手写')),
         'handwriting marked current');
+    assert(items[items.length - 1].className.includes('menu-pair') &&
+        items[items.length - 1].textContent.includes('快捷切换'),
+        'pair editor entry rides the menu tail');
     world.tap(items[1]); // 全拼
-    equal(world.native.of('selectMode').filter(c => c.args[0] === 'pinyin').length, 1,
+    equal(world.native.of('selectMode').filter(c => c.args[0] === 'pinyin').length, 2,
         'picking a mode rides selectMode');
     assert(!world.$('modeMenu').classList.contains('open'), 'menu closed after the pick');
-    world.tap(modeKey);
-    assert(world.$('modeMenu').classList.contains('open'), 'reopens on the next tap');
+});
+
+test('handwriting round-5: the menu pair entry opens the pair editor from the ink layout', () => {
+    const world = handwritingWorld();
+    world.context.window.Feelime.toggleModeMenu(world.$('modeToggle'));
+    const entry = [...world.$('modeMenu').children].find(el =>
+        (el.className || '').includes('menu-pair'));
+    entry.click(); // 菜单行不走 bindTouch（与模式行同通道）
+    assert(!world.$('modeMenu').classList.contains('open'), 'menu closed');
+    const editor = world.$('pairEditor');
+    assert(editor, 'pair editor opened');
+    const rowOf = name => [...editor.querySelectorAll('.pair-row')]
+        .find(row => row.dataset.mode === name);
+    // 手写在编辑列表里且已勾选（迁移后的对）：改配对在手写场景可达。
+    assert(rowOf('handwriting'), 'handwriting row present');
+    assert(rowOf('handwriting').querySelector('.pair-tick').classList.contains('on'),
+        'handwriting ticked');
+    // 勾第三项 = 挤掉最早的一项（手写被挤出对）：切换键的目标回到
+    // 对内第一项（拼）。
+    world.tap(rowOf('t9').querySelector('.pair-tick'));
+    equal(world.$('modeToggle').querySelector('.cn-sub').textContent, '拼',
+        'toggle target follows the edited pair');
+    assert(!rowOf('handwriting').querySelector('.pair-tick').classList.contains('on'),
+        'oldest member unticked');
+});
+
+test('handwriting round-5: quick-pair adopts 手写↔last keyboard on first entry (factory pair only)', () => {
+    const world = fresh();
+    world.hello({ mode: 'pinyin' });
+    equal(world.storage.get('feelime_last_kb_mode'), 'pinyin', 'last keyboard tracked');
+    world.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });
+    equal(JSON.parse(world.storage.get('feelime_quick_pair')).join('/'),
+        'handwriting/pinyin', 'factory pair migrates to 手写↔上次键盘');
+    equal(world.$('modeToggle').querySelector('.cn-sub').textContent, '拼',
+        'toggle previews the pair target');
+    // 回到全拼（引擎 echo 通道）：切换键翻回手写，双向都成立。
+    world.engineState({ phase: 'READY', revision: 2, mode: 'pinyin', composing: '', candidates: [] });
+    world.tap(world.$('modeToggle'));
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'handwriting',
+        'pinyin flips straight back to handwriting');
+    // 用户定制过的对（设置页配对编辑勾出来的）不动。
+    const custom = fresh();
+    custom.tap(custom.$('setupButton'));
+    custom.tap(custom.tile('快捷切换')); // opens the pair editor
+    const dpRow = [...custom.$('pairEditor').querySelectorAll('.pair-row')]
+        .find(row => row.dataset.mode === 'double-pinyin');
+    custom.tap(dpRow.querySelector('.pair-tick'));
+    equal(JSON.parse(custom.storage.get('feelime_quick_pair')).join('/'),
+        'direct/double-pinyin', 'customization seeded through the editor');
+    custom.tap(custom.$('setupButton')); // close the panel
+    custom.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });
+    equal(JSON.parse(custom.storage.get('feelime_quick_pair')).join('/'),
+        'direct/double-pinyin', 'customized pair untouched');
 });
 
 test('handwriting round-4: horizontal drag on the space bar scrubs the cursor', () => {
