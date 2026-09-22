@@ -998,27 +998,32 @@ body.landscape .t9-grid { gap: 4px 5px; }
 #softKeyboard { overflow: hidden; }
 .ink-layout { overflow: hidden; }
 .ink-scroll {
-    flex: 1;
+    /* 4 键等分里的 3 份（退格拿 1 份，见 .ink-side > .kb-key）。 */
+    flex: 3;
     min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 5px;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* 与 .t9-strip 同款：列内原生滚动。列上和格上都必须放行 pan-y
+     * （格是 .kb-key，基类 touch-action:none 会把整列拖死——真机
+     * 实录：overflow-y:auto 形同虚设）。 */
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
 }
 .ink-scroll::-webkit-scrollbar { display: none; }
 /* 特异性必须压过文件后段的 `.ink-side .kb-key { flex:1 }`（否则 12 格
- * 被均分成 1px 线全挤进视口——真机实录）。格高自适应：富余时 46px，
- * 矮高度下收缩（min 22px）保证默认露出三格完整符号（，。？），
- * 其余滚动。 */
+ * 被均分成 1px 线全挤进视口——真机实录）。格高 = 视口剥掉 2 条格缝后
+ * 三等分，与退格的 calc((100% - 15px)/4) 数学上严格同高。字号跟格高
+ * 走（inkResize 量视口写 --ink-sym-size），矮高度下不再裁字。 */
 .ink-side .ink-scroll .kb-key {
     flex: none;
-    /* 视口高的 1/3（clamp 22..46）：默认恰好露出三格完整符号，矮高度
-     * 下格子收缩也不少于三格；其余滚动。 */
-    height: 33.333%;
-    min-height: 22px;
-    max-height: var(--ink-row-h, 46px);
+    height: calc((100% - 10px) / 3);
+    touch-action: pan-y;
+    font-size: var(--ink-sym-size, 22px);
+    line-height: 1;
 }
 /* 底行：符号/数字/空格（宽）/键盘切换/换行，高固定（--ink-row-h）。 */
 .ink-bottom {
@@ -1039,6 +1044,14 @@ body.landscape .t9-grid { gap: 4px 5px; }
     height: auto;
 }
 .ink-bottom .kb-key { height: var(--ink-row-h, 46px); }
+/* 退格 4 键等分的 1 份（round-6 终稿实修）：此前退格与滚动列同为
+ * flex:1 对半分列高——退格虚高近一倍、符号格被压成细缝的根因。
+ * 特异性与上面 `.ink-side .kb-key` 同为 (0,2,0)，靠文件顺序压过。
+ * 列高 H = 4k + 3g（g=5px 缝），故 k = (H-15px)/4。 */
+.ink-side > .kb-key {
+    flex: none;
+    height: calc((100% - 15px) / 4);
+}
 /* 空格不再是底行的大头（round-4 反馈：空格短一点，宽度让给换行）：
  * flex 2 让其余四键与右窄列同宽（58px 量级），换行不再是最窄的键。 */
 .ink-bottom #spaceKey { flex: 2; }

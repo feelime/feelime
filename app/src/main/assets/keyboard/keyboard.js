@@ -2076,8 +2076,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.dataset.role = 'ink-sym';
             button.textContent = char;
             button.setAttribute('aria-label', char);
-            button.addEventListener('touchstart', () => this.nativeKeyFeedback(), { passive: true });
-            button.addEventListener('click', () => this.sendSymbol(char));
+            // 触感放在 click：touchstart 分不清点按和拖动滚列的起点，
+            // 拖列不该震（与 .t9-side-cell 同口径）。
+            button.addEventListener('click', () => {
+                this.nativeKeyFeedback();
+                this.sendSymbol(char);
+            });
             return button;
         }
 
@@ -2304,6 +2308,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         inkResize() {
             const canvas = document.getElementById('inkCanvas');
             if (!canvas) return;
+            this.inkSymFont();
             const rect = typeof canvas.getBoundingClientRect === 'function'
                 ? canvas.getBoundingClientRect() : null;
             const width = Math.max(1, Math.round((rect && rect.width) || 320));
@@ -2315,6 +2320,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             canvas.width = width * ratio;
             canvas.height = height * ratio;
             this.inkPaint();
+        }
+
+        /** 符号列字号跟格高（视口剥缝三等分）：格高随键盘总高变化，
+         * 写死字号在矮高度下裁字。inkResize 每次几何变化都先跑这里，
+         * 画布早退不影响字号对账。mock/jsdom 无布局（rect=0）跳过，
+         * CSS 落回 22px 缺省。 */
+        inkSymFont() {
+            const scroll = document.querySelector('.ink-scroll');
+            if (!scroll || typeof scroll.getBoundingClientRect !== 'function') return;
+            const vh = scroll.getBoundingClientRect().height;
+            if (!(vh > 0)) return;
+            const cellH = (vh - 10) / 3; // 2 条格缝（gap 5px）
+            const size = Math.max(12, Math.min(22, Math.round(cellH * 0.5)));
+            scroll.style.setProperty('--ink-sym-size', size + 'px');
         }
 
         inkContext() {
