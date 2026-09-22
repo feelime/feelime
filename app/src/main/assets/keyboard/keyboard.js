@@ -2094,12 +2094,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     () => this.showSymbols(), 'ink-key kb-special'),
                 this.specialKey('ink-numpad', '123',
                     () => this.showNumpad(), 'ink-key kb-special'),
-                // 空格保留 mic 长按通道（.kb-key[data-key] 手势层认它）。
-                this.spaceKey(),
+                this.inkSpaceKey(),
             ];
             if (includeMode) keys.push(this.inkModeKey());
             keys.push(this.enterKey());
             return keys;
+        }
+
+        /** 手写空格：= spaceKey（top1 确认 / mic 长按）+ data-key 借
+         * T9 空格的横滑 scrub 通道（.kb-key[data-key] 手势层认它）。
+         * 垂直方向没有字面语义（setupFlick 让路），上滑留给 bindSpaceHold
+         * 的语音长按/撤销。 */
+        inkSpaceKey() {
+            const space = this.spaceKey();
+            space.dataset.key = '0';
+            return space;
         }
 
         /** 键盘切换键（round-4 反馈：这格原来是系统输入法选择器
@@ -3257,6 +3266,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     if ((this.mode === 't9' || this.mode === 'stroke') &&
                         this.t9Flick(originButton, dx, dy)) return;
                     if (Math.abs(dy) >= Math.abs(dx) && button && button.dataset.key) {
+                        // 手写空格挂 data-key 只为借横滑 scrub（round-4）：
+                        // 垂直方向没有字面语义，落进下面的分支会把 0/大写
+                        // 字发出去——上滑是 bindSpaceHold 的语音长按/撤销。
+                        if (this.mode === 'handwriting' &&
+                            button.id === 'spaceKey') return;
                         const key = button.dataset.key;
                         // Chinese-mode punct slot : the main glyph is
                         // 。so a tap/down-flick commits it; up commits the

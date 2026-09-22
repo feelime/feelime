@@ -992,8 +992,9 @@ body.landscape .t9-grid { gap: 4px 5px; }
     height: auto;
 }
 .ink-bottom .kb-key { height: var(--ink-row-h, 46px); }
-/* 空格在底行占大头（wetype 同款比例），其余键一倍宽。 */
-.ink-bottom #spaceKey { flex: 3.1; }
+/* 空格不再是底行的大头（round-4 反馈：空格短一点，宽度让给换行）：
+ * flex 2 让其余四键与右窄列同宽（58px 量级），换行不再是最窄的键。 */
+.ink-bottom #spaceKey { flex: 2; }
 .ink-punct { font-size: 22px; }
 body.landscape .ink-layout { flex-direction: row; }
 /* 横屏右列：退格/， ‖ 。/中英 ‖ 符号/123 ‖ 空格/换行 两列四行。 */

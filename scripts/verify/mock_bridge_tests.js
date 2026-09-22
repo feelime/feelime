@@ -6474,6 +6474,47 @@ test('handwriting round-4: the bottom-row key opens the in-IME mode menu', () =>
     assert(world.$('modeMenu').classList.contains('open'), 'reopens on the next tap');
 });
 
+test('handwriting round-4: horizontal drag on the space bar scrubs the cursor', () => {
+    const world = handwritingWorld();
+    const space = world.$('spaceKey');
+    equal(space.dataset.key, '0', 'data-key lets the gesture layer claim the space');
+    // unit = 36px / 3x = 12px；38px 阈值起步，之后每过 12px 一步。
+    world.touchDown(space, 60, 20);
+    world.move(space, 85, 20); // 未过阈值：还没开始
+    equal(world.native.of('moveCursor').length, 0, 'slop keeps the caret still');
+    world.move(space, 110, 20); // 过阈值：第一步
+    equal(world.native.of('moveCursor').length, 1, 'first step at the crossing');
+    world.move(space, 128, 20); // 继续跟手：越过 3 格线（42px/12px=3.5）
+    world.touchUp(space, 128, 20); // 收尾（同一步内不重复计步）
+    const steps = world.native.of('moveCursor').map(c => c.args[0]);
+    equal(steps.join(','), '1,2', 'crossing step, then the batched remainder');
+    // scrub 不产生任何字符/空格流量。
+    equal(world.native.of('space').length, 0, 'no space commit on a scrub');
+    equal(world.native.of('key').length, 0, 'no key traffic on a scrub');
+    // 左移同样走通道（负向步数）。
+    world.touchDown(space, 128, 20);
+    world.move(space, 60, 20);
+    world.touchUp(space, 60, 20);
+    const all = world.native.of('moveCursor').map(c => c.args[0]);
+    assert(all.some(step => step < 0), 'left drag moves the caret back');
+});
+
+test('handwriting round-4: vertical drags on the space bar input nothing', () => {
+    const world = handwritingWorld();
+    const space = world.$('spaceKey');
+    // 上滑不落字面 0（T9 语义不进手写），也不拉起语音。
+    world.touchDown(space, 60, 60);
+    world.move(space, 60, 10);
+    world.touchUp(space, 60, 10);
+    equal(world.native.of('moveCursor').length, 0, 'no caret step from a vertical drag');
+    equal(world.native.of('key').length, 0, 'no literal 0');
+    equal(world.native.of('commitText').length, 0, 'no alt glyph');
+    equal(world.native.of('startVoice').length, 0, 'no voice session');
+    // 点按仍是空格（候选在条上时=确认 top1，round-3 语义保持）。
+    world.tap(space);
+    equal(world.native.of('space').length, 1, 'tap stays a plain space');
+});
+
 test('handwriting round-4: punct tap commits literally, hold-drag opens its own grid', () => {
     const world = handwritingWorld();
     const comma = world.document.querySelector('[data-ink-punct="，"]');
