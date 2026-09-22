@@ -128,13 +128,19 @@ def main():
     quote = next((c for c in cells if c.get('t') == '“'), None)
     ok7 = False
     if quote:
-        # cells are CSS px from getBoundingClientRect; synth_touch wants
-        # physical px (same conversion synth_swipe does).
-        qx = int(quote['x'] * d._DT_SCALE + d._DT_OFFSET[0])
-        qy = int(quote['y'] * d._DT_SCALE + d._DT_OFFSET[1])
-        d.synth_touch('move', qx, qy)
-        time.sleep(0.15)
-        d.synth_touch('end', qx, qy)
+        # 弹层选格是相对跟手（issue #9 定稿）：虚拟光标 = 锚格 + 手指
+        # 相对起点的位移，绝对拖到目标格会把光标顶出卡片（dy 过大）
+        # 触发「松手撤销」。按 锚格→目标格 的位移拖，手指停在键位附近。
+        # cells are CSS px; the delta needs the same _DT_SCALE conversion.
+        anchor = next((c for c in cells if c.get('t') == 'K'),
+                      cells[len(cells) // 2])
+        dx = quote['x'] - anchor['x']
+        dy = quote['y'] - anchor['y']
+        fx = int(jx + dx * d._DT_SCALE)
+        fy = int(jy + dy * d._DT_SCALE)
+        d.synth_touch('move', fx, fy)
+        time.sleep(0.2)
+        d.synth_touch('end', fx, fy)
         time.sleep(0.5)
         text = d.field_text_retry()
         preedit = (d.devtools_preedit() or '').replace(' ', '')
@@ -154,12 +160,14 @@ def main():
            # both pages render into the DOM, so all 15 names are queryable.
            labels == ['色彩模式', '中文联想', '按键声音', '按键振动',
                       '键盘高度', '快捷切换', '候选字号', '界面语言',
-                      '底部留白', '长按时长', '滑动选字', '长按菜单',
-                      '定制键盘', '双拼方案', '完整设置']
+                      '单手模式', '底部留白', '长按时长', '滑动选字',
+                      '长按菜单', '定制键盘', '双拼方案', '编辑工具栏',
+                      '完整设置']
            or labels == ['Appearance', 'Associations', 'Key sound', 'Key vibration',
                          'Keyboard height', 'Quick switch', 'Candidate size', 'Language',
-                         'Bottom padding', 'Long-press delay', 'Swipe reach', 'Keyboard menu',
-                         'Custom keys', 'Double-pinyin', 'All settings'],
+                         'One-handed', 'Bottom padding', 'Long-press delay', 'Swipe reach',
+                         'Keyboard menu', 'Custom keys', 'Double-pinyin', 'Edit toolbar',
+                         'All settings'],
            repr(labels))
 
     nav_to(kb, '快捷切换')
@@ -169,8 +177,9 @@ def main():
     scroll = ev("(() => { const p = document.getElementById('settingsPanel');"
                 " return { oy: getComputedStyle(p).overflowY,"
                 " inKb: p.getBoundingClientRect().bottom <= window.innerHeight + 1 }; })()") or {}
+    # 手写（issue #28）起配对编辑器列 9 个键盘。
     record("quick-switch sub-page scrolls inside the keyboard",
-           pair_rows == 7 and scroll.get('oy') == 'auto' and scroll.get('inKb') is True,
+           pair_rows == 9 and scroll.get('oy') == 'auto' and scroll.get('inKb') is True,
            f"rows={pair_rows} scroll={scroll}")
     # The back chevron rides the toolbar page bar (child 0).
     ev("document.getElementById('settingsPageBar')?.children[0]?.click()")
@@ -186,20 +195,22 @@ def main():
     # ---- #9 scrollable panel + toolbar full-settings entry ----
     ev("window.Feelime.closeSettingsPanel()")
     time.sleep(0.3)
-    # The "permanent gear" toolbar form was user-rejected and reverted - 
-    # stands again (visible ONLY while the panel is open).
-    full_hidden = ev("document.getElementById('fullSetupButton')?.hidden === true")
+    # #33-1：齿轮不再随快开面板自动插栏（会把用户摆好的图标顶右移一格），
+    # 改为工具栏目录里的可选工具——面板开合都不进 candidateBar。
+    not_in_bar = ("document.getElementById('fullSetupButton')"
+                  "?.closest('#candidateBar') === null")
+    gear_out_1 = ev(not_in_bar)
     ev("window.Feelime.toggleSettingsPanel()")
     time.sleep(0.4)
-    full_visible = ev("document.getElementById('fullSetupButton')?.hidden === false")
+    gear_out_2 = ev(not_in_bar)
     scrollable = ev("(() => { const p = document.getElementById('settingsPanel');"
                     " return p.classList.contains('open') && getComputedStyle(p).overflowY === 'auto'; })()")
     ev("window.Feelime.closeSettingsPanel()")
     time.sleep(0.3)
-    full_after = ev("document.getElementById('fullSetupButton')?.hidden === true")
-    record("toolbar full-settings gear toggles with the panel; panel scrolls",
-           full_hidden is True and full_visible is True and full_after is True and scrollable is True,
-           f"hidden={full_hidden} visible={full_visible} after={full_after} scrollable={scrollable}")
+    gear_out_3 = ev(not_in_bar)
+    record("full-settings gear stays out of the toolbar (#33-1); panel scrolls",
+           gear_out_1 is True and gear_out_2 is True and gear_out_3 is True and scrollable is True,
+           f"out={gear_out_1},{gear_out_2},{gear_out_3} scrollable={scrollable}")
 
     # ---- #4 space key uses the plain key-cap colour in both themes ----
     space_bg = ev("(() => { const s = document.getElementById('spaceKey');"
