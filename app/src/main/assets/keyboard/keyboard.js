@@ -800,7 +800,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     };
     // Keyboard height (the letter key height) is tunable per
     // orientation; clamped so four rows always stay inside the budget.
-    const KB_HEIGHT_KEY = orientation => `feelime_kb_height_${orientation}`;
     const KB_ROW_MIN = 32;
     // 手写控制行键高（CSS px）：固定值，不参与 --kb-row-h 预算（键盘
     // 高度调节的弹性全部给书写面板）。
@@ -1198,15 +1197,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 成立（adoptQuickPairForHandwriting 消费）。
             try { this.lastKbMode = localStorage.getItem('feelime_last_kb_mode') || ''; }
             catch (_) { this.lastKbMode = ''; }
-            try {
-                // The height is stored per orientation; the other key (if
-                // any) is picked up when the device rotates (applyHeight).
-                // Values hold the content height ; anything below
-                // 120 is a legacy per-row height - ignored.
-                const saved = parseInt(
-                    localStorage.getItem(KB_HEIGHT_KEY('portrait')) || '0', 10);
-                if (saved >= 120) this.kbHeight = saved;
-            } catch (_) { /* native default */ }
             this.scrubBase = null;
             this.scrubSteps = 0;
             this.expandCandidates = [];
@@ -4794,17 +4784,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 0 = native default (272). Legacy keys held a per-row height (<100)
          * - ignored so an old value cannot clamp the new content height. */
         storedKbHeight() {
-            // native pref（hello 下发）是唯一事实；localStorage 镜像只在
-            // 旧 APK 的 hello 无此字段时兜底（round-6 前的分裂实录：pref
-            // 与镜像各自漂移，高度忽高忽低）。
+            // native pref（hello 下发）是唯一事实（AGENTS.md：配置不走
+            // localStorage——曾有的镜像在 force-stop 丢写后与 pref 分裂，
+            // 已废除）。
             const nativeValue = Math.round(this.nativeStoredHeightCss || 0);
-            if (nativeValue >= 120) return nativeValue;
-            try {
-                const saved = parseInt(
-                    localStorage.getItem(KB_HEIGHT_KEY(this.landscape ? 'landscape' : 'portrait')) || '0', 10);
-                if (saved >= 120) return saved;
-            } catch (_) { /* unset */ }
-            return 0;
+            return nativeValue >= 120 ? nativeValue : 0;
         }
 
         /** The native side owns the content height; its view also carries the
@@ -5728,12 +5712,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const content = Math.round(this.heightPreview);
                 // applyKbHeight → native setKeyboardHeight persists the pref
                 // per orientation; localStorage mirrors it for the preview.
+                // 持久化走 native（applyKbHeight → setKeyboardHeight →
+                // pref，debounce 落盘）；重置=0 走 native 的清键语义。
                 this.applyKbHeight(this.heightResetPending ? 0 : content);
-                try {
-                    const key = KB_HEIGHT_KEY(this.landscape ? 'landscape' : 'portrait');
-                    if (this.heightResetPending) localStorage.removeItem(key);
-                    else localStorage.setItem(key, String(content));
-                } catch (_) {}
                 this.showToast(t("键盘高度已保存"));
                 this.exitHeightEdit();
             });

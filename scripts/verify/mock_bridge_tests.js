@@ -4446,8 +4446,10 @@ test('unchanged height saves send stable content height', {since: '3.22.1'}, () 
     }
     equal(world.native.of('setKeyboardHeight').map(call => call.args[0]).join(','), '272,272,272',
         'repeated unchanged saves keep the content value stable');
-    equal(world.storage.get('feelime_kb_height_portrait'), '272',
-        'storage mirrors content height');
+    // round-6：持久化只走 native pref（hello storedKbHeight 回读），
+    // localStorage 镜像已废除（AGENTS.md：配置不走 localStorage）。
+    assert(!world.native.of('setKeyboardHeight').some(c => String(c.args[0]) === '0'),
+        'native bridge is the only persistence channel (no reset noise)');
 });
 
 test('landscape +/- and cancel keep safe area out of bridge height', {since: '3.22.1'}, () => {
