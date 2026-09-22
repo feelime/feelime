@@ -1916,6 +1916,24 @@ class SettingsBridge(
         }
     }
 
+    /** 关于页开源仓库入口（#29-4）：只认内置两址（仓库/issues），
+     *  不收任意 URL——设置页 WebView 不该能驱动任意 intent 跳转。 */
+    @JavascriptInterface
+    fun openGithub(page: String, token: String) = guarded(token) {
+        val url = when (page) {
+            "issues" -> "https://github.com/feelime/feelime/issues"
+            else -> "https://github.com/feelime/feelime"
+        }
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(url),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
     /** §16: play builds route update actions to the store listing. */
     private fun openPlayListing() {
         val pkg = context.packageName

@@ -216,6 +216,8 @@ const I18N = {
         "about.badge": "信息",
         "action.copyVersion": "复制版本信息",
         "action.appStore": "在 Google Play 查看应用",
+        "action.githubRepo": "GitHub 仓库",
+        "action.githubIssues": "问题反馈",
         "about.copyHint": "反馈问题时直接粘贴；复制内容标记为敏感，不会进入键盘剪贴板历史。",
         "about.offlineHint": "全程离线：语音识别与文字候选都不联网。",
         "about.noticesTitle": "第三方许可与组件说明",
@@ -632,6 +634,8 @@ const I18N = {
         "about.badge": "Info",
         "action.copyVersion": "Copy version info",
         "action.appStore": "View app on Google Play",
+        "action.githubRepo": "GitHub repository",
+        "action.githubIssues": "Report an issue",
         "about.copyHint": "Paste this when reporting a problem. The copied report is marked sensitive and is kept out of keyboard clipboard history.",
         "about.offlineHint": "Everything stays offline: voice recognition and text candidates use no network.",
         "about.noticesTitle": "Third-party licenses & components",
@@ -2014,6 +2018,9 @@ $("btnExportDiagnostics").addEventListener("click", () => {
     setNote("diagNote", t("diag.exported"));
 });
 $("btnAppStore").addEventListener("click", () => call("openAppStore"));
+// #29-4：关于页开源仓库/问题反馈入口（native 侧只认内置两址）。
+$("btnGithubRepo").addEventListener("click", () => call("openGithub", "repo"));
+$("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"));
 $("btnCopyAbout").addEventListener("click", () => {
     if (!lastState) return;
     call("copyText", aboutRows(lastState).map(([label, value]) => `${label}: ${value}`).join("\n"));

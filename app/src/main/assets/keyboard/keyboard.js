@@ -324,8 +324,9 @@
         }));
     }
 /** 工具栏可编辑 icon 目录（issue #15 编辑模式）：id → 按钮 DOM id。
- *  logo（左）与收起（右）固定不可编辑；组合态工具（清除/展开）与
- *  完整设置齿轮不参与编辑。 */
+ *  logo（左）与收起（右）固定不可编辑；组合态工具（清除/展开）不参与
+ *  编辑。完整设置齿轮（#33-1）不再随快开面板自动插栏（会把用户摆好的
+ *  图标顶右移一格），改为目录里的一颗可选工具，用户自选常驻。 */
 const TOOL_CATALOG = {
     ctrl: 'ctrlTool',
     ime: 'imeSwitchButton',
@@ -333,6 +334,8 @@ const TOOL_CATALOG = {
     favorites: 'favoritesButton',
     mic: 'mic',
     // 开关型/动作型工具：默认不上栏，只待在编辑仓库里由用户添加（动态创建）。
+    // setup 是静态元素（index.html 里的 fullSetupButton），其余动态创建。
+    setup: 'fullSetupButton',
     theme: 'toolTheme',
     vibrate: 'toolVibrate',
     sound: 'toolSound',
@@ -1259,8 +1262,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.querySelector('[data-action="letters"]').addEventListener('click', () => this.showLetters());
             this.renderSymbolCats();
             document.getElementById('setupButton').addEventListener('click', () => this.toggleSettingsPanel());
-            // Full settings opens from the toolbar button that
-            // only shows while the quick panel is open.
+            // 完整设置入口（#33-1 后语义）：齿轮是工具栏目录里的可选
+            // 工具（用户自选常驻），快开面板菜单里也有一份同名入口。
             const fullSetup = document.getElementById('fullSetupButton');
             if (fullSetup) {
                 fullSetup.addEventListener('click', () => {
@@ -4931,6 +4934,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         applyToolbarLayout() {
+            // 面板打开时收起键暂住在 .panel-head（#33-2）——此刻锚点不在
+            // 工具栏里，重排会把工具插进面板头；面板关闭路径自己会对账。
+            if (this.panelOpen) return;
             // 左组锚在候选区之前（candidateBar 行内，F logo 之后）；右组
             // 锚在收起键之前。拼音带 preeditLine 在 softKeyboard 顶部、
             // 候选条之外——拿它当锚点会把左组插成键盘顶部的全宽行，把
@@ -5844,11 +5850,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.renderSettingsPanel();
             panel.classList.add('open');
             panel.hidden = false;
-            // The full-settings gear rides the toolbar only while the quick
-            // panel is open: as a permanent resident it hovers over the
-            // candidates while typing (tried and rejected).
-            const full = document.getElementById('fullSetupButton');
-            if (full) full.hidden = false;
+            // #33-1：快开面板不再自动插出齿轮（会把用户摆好的图标顶右移
+            // 一格）；完整设置入口 = 面板菜单 + 可选的目录齿轮。
             // The panel REPLACES the key area (no overlay) -
             // remember which key layer to restore on close.
             this.settingsReturnLayer = this.keyLayer;
@@ -5861,8 +5864,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!panel.classList.contains('open')) return;
             panel.classList.remove('open');
             panel.hidden = true;
-            const full = document.getElementById('fullSetupButton');
-            if (full) full.hidden = true;
             this.settingsPage = null;
             this.hideSettingsPageBar();
             // Hand the key layer back unconditionally - the
@@ -7372,6 +7373,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The panel REPLACES the toolbar row instead of adding
             // another line to the keyboard - its own head carries the tabs.
             document.getElementById('candidateBar').hidden = true;
+            // #33-2：收起键盘键跟着面板头走、恒在最右——旧版整条工具栏
+            // （含收起）被藏掉、最右变成「清空」，肌肉记忆点进去清空了
+            // 剪贴板（真机丢数据实录）。清空/＋添加让位到收起左边。
+            const hideBtn = document.getElementById('hide');
+            document.querySelector('.panel-head')?.append(hideBtn);
             this.hideKeyLayers();
             document.getElementById('panelLayer').hidden = false;
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
@@ -7391,6 +7397,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.panelOpen = false;
             document.getElementById('panelLayer').hidden = true;
             document.getElementById('candidateBar').hidden = false;
+            // #33-2 收尾：收起键还栏（原位在 settingsPageBar 之前），
+            // 再对账一次把右组工具重新锚到它左边。用 audit 而非裸
+            // apply：组合中收起面板时 prune 不认 composing，会把
+            // updateComposing 刚藏掉的工具又点亮。
+            const hideBtn = document.getElementById('hide');
+            document.getElementById('candidateBar').insertBefore(
+                hideBtn, document.getElementById('settingsPageBar'));
+            this.auditToolbarTools();
             this.showKeyLayer(this.panelReturnLayer || 'letters');
             // The panel only borrowed the bar from the ctrl
             // view - hand the rows back if the switch is still on.

@@ -2373,17 +2373,17 @@ test('mode menu lists all modes; selecting emits selectMode', {since: '3.33.0'},
     equal(world.native.of('selectMode').slice(-1)[0].args[0], 'double-pinyin', 'double pinyin selected');
 });
 
-test('the full-settings gear toggles with the panel', () => {
+test('the full-settings gear no longer auto-rides the panel (#33-1)', () => {
     const world = fresh();
     const full = world.$('fullSetupButton');
-// The gear rides the toolbar ONLY while the quick panel is open -
-    // both keyboard generations agree (the permanent-resident form was
-    // user-rejected and reverted).
-    assert(full.hidden === true, 'gear hidden while the panel is closed ');
+    // #33-1：齿轮不再随快开面板自动插栏（会把用户摆好的图标顶右移
+    // 一格）；它是目录里的可选工具，面板开合都不动它的 hidden。
+    const inPool = () => !!full.closest('#toolbarEditorGrid');
+    assert(inPool(), 'gear starts in the editor pool (optional tool, not on the bar)');
     world.tap(world.$('setupButton'));
-    assert(full.hidden === false, 'gear appears with the panel');
+    assert(inPool(), 'opening the quick panel does NOT insert the gear into the bar');
     world.tap(world.$('setupButton'));
-    assert(full.hidden === true, 'gear hides again on close (non-resident)');
+    assert(inPool(), 'closing the panel leaves the gear in the pool');
 });
 
 test('setup button opens the quick settings panel; full settings entry calls openSetup', {since: '3.21.0'}, () => {
@@ -2409,15 +2409,16 @@ test('setup button opens the quick settings panel; full settings entry calls ope
             : verAtLeast(KEYBOARD_VERSION, '3.43.0') ? 16 : 15)),
         'quick-settings tiles present (2 pages, voice/clipboard stay on the main keyboard)');
     equal(world.native.of('openSetup').length, 0, 'no openSetup until the full-settings entry');
-    // The full-settings entry is a toolbar button next to the
-    // gear, visible only while the panel is open.
+    // #33-1：完整设置入口 = 面板菜单项（齿轮是可选工具、不再自动插栏）。
     const full = world.$('fullSetupButton');
     assert(full, 'fullSetupButton exists');
-    assert(full.hidden === false, 'fullSetupButton visible while panel open');
-    world.tap(full);
-    equal(world.native.of('openSetup').length, 1, 'openSetup called from toolbar');
+    assert(!!full.closest('#toolbarEditorGrid'), 'gear stays in the pool while panel open (not auto-inserted)');
+    // 从面板菜单点「完整设置」。
+    const entry = [...panel.querySelectorAll('button')].find(b => b.textContent.includes('完整设置'));
+    assert(entry, 'full-settings menu entry present in the panel');
+    world.tap(entry);
+    equal(world.native.of('openSetup').length, 1, 'openSetup called from the panel entry');
     assert(!panel.classList.contains('open'), 'panel closed after opening full settings');
-    assert(world.$('fullSetupButton').hidden === true, 'gear hides again on close');
 });
 
 test('setup button opens the quick settings panel (3.20.0 form)', {until: '3.20.0'}, () => {
@@ -2737,7 +2738,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
 
     // 默认 5 个工具全在栏上（left=[ctrl,ime] right=[clipboard,favorites,mic]）；
     // 仓库里是 7 个默认不上栏的开关型/动作型工具（动态创建）。
-    equal(w.$('toolbarEditorGrid').children.length, 7, 'pool starts with the 7 extra tools');
+    equal(w.$('toolbarEditorGrid').children.length, 8, 'pool starts with the 8 extra tools (#33-1 gear joins)');
     ['toolTheme', 'toolVibrate', 'toolSound', 'toolAssoc', 'toolOneHand',
      'toolNumpad', 'toolEmoji'].forEach(id => {
         assert(w.$(id), id + ' created');
@@ -2755,7 +2756,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(x);
     w.touchUp(x);
     equal(kb().toolbarRight.join(','), 'clipboard,mic', '× removes favorites from right group');
-    equal(w.$('toolbarEditorGrid').children.length, 8, 'removed tool joins the 7 extra tools');
+    equal(w.$('toolbarEditorGrid').children.length, 9, 'removed tool joins the 8 extra tools');
 
     // 点仓库里的 favorites 加回（right 组未满 → 追加到队尾）。
     // 编辑态点仓库只做「上工具栏」：favorites 的 click 直连
@@ -2768,7 +2769,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(fav);
     w.touchUp(fav);
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'pool tap appends to right group');
-    equal(w.$('toolbarEditorGrid').children.length, 7, 'pool back to the 7 extra tools');
+    equal(w.$('toolbarEditorGrid').children.length, 8, 'pool back to the 8 extra tools');
 
     // 「完成」退出并持久化。
     w.tap(w.$('toolbarEditDone'));
@@ -2792,13 +2793,13 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(xOf('mic'));
     w.touchUp(xOf('mic'));
     equal(kb().toolbarRight.join(','), 'clipboard', 'two removals land both in the pool');
-    equal(w.$('toolbarEditorGrid').children.length, 9,
-        'pool holds both removed tools + 7 extra tools (no innerHTML wipe)');
+    equal(w.$('toolbarEditorGrid').children.length, 10,
+        'pool holds both removed tools + 8 extra tools (no innerHTML wipe)');
     w.tap(w.$('toolbarEditCancel'));
     equal(kb().toolbarLeft.join(','), 'ctrl,ime', 'cancel restores left snapshot');
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'cancel restores right snapshot');
-    equal(w.$('toolbarEditorGrid').children.length, 7,
-        'pool drains back to the 7 extra tools after cancel');
+    equal(w.$('toolbarEditorGrid').children.length, 8,
+        'pool drains back to the 8 extra tools after cancel');
     equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'toolbarLayout').length, 1,
         'cancel never saves');
 
@@ -2815,7 +2816,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
             w.touchUp(x);
         });
     equal(kb().toolbarLeft.length + kb().toolbarRight.length, 0, 'bar fully stripped');
-    equal(w.$('toolbarEditorGrid').children.length, 12, 'all twelve tools in the pool');
+    equal(w.$('toolbarEditorGrid').children.length, 13, 'all thirteen tools in the pool (#33-1 gear joins)');
     w.tap(w.$('toolbarEditDone'));
     equal(kb().toolbarEdit, false, 'empty layout saves fine');
     w.touchDown(w.$('candidateBar'));
@@ -2868,7 +2869,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(st.toolbarRight.includes('ime'), true, 'ime lands in the right group');
     equal(st.toolbarLeft.length, 1, 'left group keeps one (the displaced tool)');
     equal(st.toolbarLeft.length + st.toolbarRight.length, 5, 'no tool lost in the swap');
-    equal(poolNow.children.length, 7, 'pool back to the extra tools only');
+    equal(poolNow.children.length, 8, 'pool back to the extra tools only');
     w.tap(w.$('toolbarEditCancel'));
 });
 
