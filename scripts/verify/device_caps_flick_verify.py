@@ -237,8 +237,10 @@ def main():
     rows = ev("[...document.querySelectorAll('#pairEditor .pair-row')]"
               ".map(r => r.dataset.mode)") or []
     ticked = ev("[...document.querySelectorAll('#pairEditor .pair-tick.on')].length")
+    # 手写（issue #28）起配对编辑器列全部 9 个键盘（手写也是可配对键盘，
+    # round-5 快捷切换 手写↔上个键盘）。旧断言 7 个是手写分支之前的口径。
     record("pair editor lists all keyboards with two ticks",
-           len(rows) == 7 and ticked == 2, f"rows={rows} ticks={ticked}")
+           len(rows) == 9 and ticked == 2, f"rows={rows} ticks={ticked}")
     shot('b10-pair-editor')
     ev("(() => { window.Feelime.closeSettingsPanel(); return 1; })()")
     time.sleep(0.3)
@@ -252,10 +254,12 @@ def main():
                      ".map(b => b.querySelectorAll('span')[1].textContent)") or []
     ev("(() => { window.Feelime.closeModeMenu();"
        " localStorage.removeItem('feelime_mode_order'); return 1; })()")
+    # 手写分支后：opt_in_menu_modes 勾了 8 个非手写键盘，注入 6 个拖拽序
+    # 后补 t9+stroke 共 8 项（旧口径 7 = 手写进 MODES 之前）。
     record("menu follows the saved drag order",
            menu_titles[:2] in (['日本語 Romaji', '全拼 Pinyin'], ['Japanese', 'Pinyin'])
-           and len(menu_titles) == 7
-           and menu_titles[-1] in ('九宫格 T9', 'T9'),
+           and len(menu_titles) == 8
+           and menu_titles[-1] in ('九宫格 T9', 'T9', 'Stroke', '笔画 Stroke'),
            f"menu={menu_titles}")
 
     # ---- #13 symbol layer redesign ----
