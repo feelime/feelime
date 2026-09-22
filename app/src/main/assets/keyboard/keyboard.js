@@ -2044,13 +2044,36 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 工具栏，我们的模式菜单只挂在这颗键上）。 */
         inkSideKeys() {
             return [
-                this.specialKey('backspace', ICONS.backspace,
-                    () => this.call(() => Native.backspace(this.token)),
-                    'ink-key kb-special', 'repeat'),
+                this.inkBackspaceKey(),
                 this.inkPunctKey('，'),
                 this.inkPunctKey('。'),
                 this.cnEnKey(),
             ];
+        }
+
+        /** 退格（round-4 反馈）：书写区有笔迹时=清笔迹+候选回工具栏
+         * （inkReset，与 × / 长按清空同一出口），不删编辑框字符；无
+         * 笔迹时照旧走原生删除。语义锚在**手势起点**：长按连发把笔迹
+         * 清掉之后，同一次按住的后续 click（repeat 的 setInterval 与
+         * 松手补的那次）都不得转成删除——所以按下时先记状态，清笔迹
+         * 那一次同时把连发收走。 */
+        inkBackspaceKey() {
+            const button = this.specialKey('backspace', ICONS.backspace,
+                () => this.inkBackspace(button), 'ink-key kb-special', 'repeat');
+            button.addEventListener('touchstart', () => {
+                button._inkHadStrokes = this.inkStrokes.length > 0 ||
+                    (this.inkCurrent || []).length > 0;
+            });
+            return button;
+        }
+
+        inkBackspace(button) {
+            if (button._inkHadStrokes) {
+                this.inkReset();
+                if (button._cancelRepeat) button._cancelRepeat();
+                return;
+            }
+            this.call(() => Native.backspace(this.token));
         }
 
         /** 底行：符号（符号面板）/ 123（九宫格）/ 空格（宽；候选条有

@@ -6608,6 +6608,39 @@ test('handwriting round-3: the write-and-pick flow never arms the panel input re
         'no panelInput traffic in a pure handwriting flow');
 });
 
+// ---- round-4（issue #28 四轮，用户实测反馈）
+
+test('handwriting round-4: backspace with ink clears the pad, not the editor', () => {
+    const world = handwritingWorld();
+    const bs = world.document.querySelector('.ink-side [data-role="backspace"]');
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.context.window.Feelime.onInkCandidates({
+        reqId: world.context.window.Feelime.debugState().inkReqId,
+        candidates: [{ text: '中', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children.length, 1, 'candidate showing');
+    world.tap(bs);
+    equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes cleared');
+    equal(world.$('candidates').children.length, 0, 'bar cleared with the strokes');
+    equal(world.native.of('backspace').length, 0, 'no delete traffic while ink shows');
+    assert(!world.$('setupButton').hidden, 'toolbar restored like ×');
+    // 无笔迹：照旧走原生删除通道。
+    world.tap(bs);
+    equal(world.native.of('backspace').length, 1, 'plain delete on an empty pad');
+});
+
+test('handwriting round-4: holding backspace on ink clears once, then stops repeating', () => {
+    const world = handwritingWorld();
+    const bs = world.document.querySelector('.ink-side [data-role="backspace"]');
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.touchDown(bs);
+    world.clock.advance(400); // 长按触发 + 第一次 click（清笔迹）
+    world.clock.advance(300); // repeat interval 本该继续 click
+    world.touchUp(bs);
+    equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'cleared once');
+    equal(world.native.of('backspace').length, 0, 'repeat never reaches the editor');
+});
+
 console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
     (skipped ? `, ${skipped} skipped (era-gated)` : '') +
     ` [keyboard ${KEYBOARD_VERSION}] ==`);
