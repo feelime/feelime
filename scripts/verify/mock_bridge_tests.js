@@ -6297,10 +6297,10 @@ test('handwriting: leaving the mode clears ink state', () => {
         candidates: [{ text: '工', score: 1 }], error: null,
     });
     equal(world.$('candidates').children.length, 1, 'candidate present before leaving');
-    // 模式菜单（round-4 起菜单锚定触发键：竖屏键面没有 #modeToggle）
-    // → direct（原生随后重推 hello 落新键面）。
+    // 模式菜单（底行键盘切换键，round-4）→ direct（原生随后重推 hello
+    // 落新键面）。
     world.context.window.Feelime.toggleModeMenu(
-        world.document.querySelector('.ink-side').children[3]);
+        world.document.querySelector('[data-role="ink-mode"]'));
     world.tap([...world.$('modeMenu').children][0]);
     world.hello({ mode: 'direct', engineDataReady: HANDWRITING_READY });
     equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes reset');
@@ -6412,7 +6412,7 @@ test('handwriting: the mode pushes its panel height and leaves restore the store
 // ---- round-3（issue #28 三轮）：wetype 布局（右窄列+底行）、标点上滑
 // 弹层、空格确认 top1、手写联想（onAssoc 不再被手写分支吞掉）
 
-test('handwriting round-4: side column is backspace + ，。？ with per-key drag grids', () => {
+test('handwriting round-4: side column is backspace + ，。？, bottom row ends with the mode switch', () => {
     const world = handwritingWorld();
     const layer = world.$('qwertyLayer');
     // 右窄列：退格 / ，/。/？（中英键移出竖屏键面）。
@@ -6424,22 +6424,23 @@ test('handwriting round-4: side column is backspace + ，。？ with per-key dra
     equal(side.children[1].dataset.inkPunct, '，', 'comma key glyph');
     equal(side.children[2].dataset.inkPunct, '。', 'period key glyph');
     equal(side.children[3].dataset.inkPunct, '？', 'question key glyph');
-    // 底行：符号 / 123 / 空格 / globe / 换行。
+    // 底行：符号 / 123 / 空格 / 键盘切换 / 换行。
     const bottom = world.document.querySelector('.ink-bottom');
     assert(bottom, 'bottom row rendered');
     const roleOf = el => el.dataset.role || (el.id === 'spaceKey' ? 'space' : '(none)');
     const roles = [...bottom.children].map(roleOf);
-    equal(roles.join(','), 'ink-symbols,ink-numpad,space,ink-ime,enter', 'bottom row roles');
+    equal(roles.join(','), 'ink-symbols,ink-numpad,space,ink-mode,enter', 'bottom row roles');
     equal(bottom.children[0].textContent, '符号', 'symbols entry labelled');
     equal(bottom.children[1].textContent, '123', 'numpad entry labelled');
-    equal(bottom.children[3].getAttribute('aria-label'), '切换输入法', 'globe labelled');
+    equal(bottom.children[3].getAttribute('aria-label'), '切换键盘', 'mode switch labelled');
+    equal(bottom.children[3].textContent, '手', 'mode switch shows the mode shorthand');
     equal(world.document.querySelectorAll('#qwertyLayer .kb-letter').length, 0,
         'still no letter keys');
     // 主区：书写面板是 .ink-main 里唯一的弹性块。
     assert(world.document.querySelector('.ink-main .ink-pad'), 'pad lives in the main area');
 });
 
-test('handwriting round-3: bottom row entries reuse the symbol/numpad/ime channels', () => {
+test('handwriting round-4: bottom row entries reuse the symbol/numpad channels', () => {
     const world = handwritingWorld();
     const bottom = world.document.querySelector('.ink-bottom');
     world.tap(bottom.children[0]);
@@ -6452,10 +6453,25 @@ test('handwriting round-3: bottom row entries reuse the symbol/numpad/ime channe
     assert(!world.$('numPadLayer').hidden, '123 opens the nine-pad');
     world.tap(world.document.querySelector('[data-role="numpad-back"]'));
     assert(!world.$('qwertyLayer').hidden, 'nine-pad back returns to the ink layout');
-    const switchCalls = () => world.native.of('switchInputMethod');
-    equal(switchCalls().length, 0, 'no ime switch before the tap');
-    world.tap(bottom.children[3]);
-    equal(switchCalls().length, 1, 'globe rides the system IME picker channel');
+    equal(world.native.of('switchInputMethod').length, 0,
+        'the system IME picker is not wired to the bottom row any more');
+});
+
+test('handwriting round-4: the bottom-row key opens the in-IME mode menu', () => {
+    const world = handwritingWorld();
+    const modeKey = world.document.querySelector('[data-role="ink-mode"]');
+    equal(world.native.of('switchInputMethod').length, 0, 'system picker untouched');
+    world.tap(modeKey);
+    assert(world.$('modeMenu').classList.contains('open'), 'menu opens from the bottom row');
+    const items = [...world.$('modeMenu').children];
+    assert(items.some(el => el.className === 'current' && el.textContent.includes('手写')),
+        'handwriting marked current');
+    world.tap(items[1]); // 全拼
+    equal(world.native.of('selectMode').filter(c => c.args[0] === 'pinyin').length, 1,
+        'picking a mode rides selectMode');
+    assert(!world.$('modeMenu').classList.contains('open'), 'menu closed after the pick');
+    world.tap(modeKey);
+    assert(world.$('modeMenu').classList.contains('open'), 'reopens on the next tap');
 });
 
 test('handwriting round-4: punct tap commits literally, hold-drag opens its own grid', () => {

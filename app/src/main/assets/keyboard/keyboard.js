@@ -2014,15 +2014,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.bindInkPad(pad);
             if (this.landscape) {
                 // 横屏（§9.1）：native 钳半屏、纵向没有底行的余量——
-                // 右窄列并成两列四行，globe 不占格（工具栏的切换键走
-                // 同一通道，见 inkBottomKeys）。
+                // 右窄列并成两列四行，键盘切换键不占格（中英键留守，
+                // 长按=同一模式菜单通道，见 inkSideKeys）。
                 const rail = document.createElement('div');
                 rail.className = 'ink-rail';
                 rail.append(...this.inkSideKeys(true), ...this.inkBottomKeys(false));
                 layout.append(pad, rail);
             } else {
-                // 竖屏（wetype round-3）：书写面板是主区，右侧窄列
-                // 退格/，/。/？，底行 符号/数字/空格/globe/换行。
+                // 竖屏（wetype round-4）：书写面板是主区，右侧窄列
+                // 退格/，/。/？，底行 符号/数字/空格/键盘切换/换行。
                 const side = document.createElement('div');
                 side.className = 'ink-side';
                 side.append(...this.inkSideKeys());
@@ -2084,11 +2084,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.call(() => Native.backspace(this.token));
         }
 
-        /** 底行：符号（符号面板）/ 123（九宫格）/ 空格（宽；候选条有
-         * 手写候选时=确认 top1，见 spaceKey）/ globe（系统输入法选择
-         * 器，与工具栏切换键同一通道）/ 换行。横屏不设 globe 格
-         * （includeIme=false）：八键恰两列四行。 */
-        inkBottomKeys(includeIme = true) {
+        /** 底行：符号（符号面板）/ 123（九宫格）/ 空格（候选条有手写
+         * 候选时=确认 top1，见 spaceKey）/ 键盘切换（本输入法的模式
+         * 菜单）/ 换行。横屏不设切换格（includeMode=false）：八键恰
+         * 两列四行。 */
+        inkBottomKeys(includeMode = true) {
             const keys = [
                 this.specialKey('ink-symbols', t("符号"),
                     () => this.showSymbols(), 'ink-key kb-special'),
@@ -2097,15 +2097,26 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 空格保留 mic 长按通道（.kb-key[data-key] 手势层认它）。
                 this.spaceKey(),
             ];
-            if (includeIme) {
-                const ime = this.specialKey('ink-ime', ICONS.lang,
-                    () => this.call(() => Native.switchInputMethod(this.token)),
-                    'ink-key kb-special');
-                ime.setAttribute('aria-label', t("切换输入法"));
-                keys.push(ime);
-            }
+            if (includeMode) keys.push(this.inkModeKey());
             keys.push(this.enterKey());
             return keys;
+        }
+
+        /** 键盘切换键（round-4 反馈：这格原来是系统输入法选择器
+         * globe——切拼音/手写/T9 才是底行的刚需，系统选择器工具栏
+         * 已有）。形态与模式菜单键一致=当前模式简写（wetype 底行
+         * 「写」同款位），点按开菜单、菜单锚定这颗键。 */
+        inkModeKey() {
+            const button = this.specialKey('ink-mode', modeLabel(this.mode), () => {
+                // outside-tap 关菜单的那次点按不再当开菜单的指令。
+                if (button._suppressClick) {
+                    button._suppressClick = false;
+                    return;
+                }
+                this.toggleModeMenu(button);
+            }, 'ink-key kb-special');
+            button.setAttribute('aria-label', t("切换键盘"));
+            return button;
         }
 
         /** 标点键（，/。/？）：字面上屏 + 按住上拖的跟手网格入口。

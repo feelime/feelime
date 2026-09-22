@@ -936,13 +936,14 @@ body.landscape .t9-grid { gap: 4px 5px; }
 #spaceKey.t9-space::after { right: auto; left: 3px; }
 /* ===== 手写键面（issue #28，design/handwriting.md）：round-3 起为
  * wetype 形态——书写面板是主区（.ink-main 里唯一的弹性块），右侧窄列
- * 退格/，/。/中英，底行 符号/数字/空格/globe/换行。竖屏目标宽高比
+ * 退格/，/。/？，底行 符号/数字/空格/键盘切换/换行。竖屏目标宽高比
  * 1.6:1（wetype 984×590 口径）——键盘总高由 JS 推到 chrome + 底行 +
  * 主区（applyModeHeight）。底行高固定 --ink-row-h（JS 单一来源写入），
  * 不吃 --kb-row-h 预算：applyHeight 在视图被瞬时量高时烘焙出的陈旧行
  * 变量再也压不塌书写区（重唤折叠 P1 的根因通道被结构性拆除）。
  * 横屏总高被 native 钳在半屏、纵向没有底行的余量：右列改两列四行
- * （.ink-rail，底行键并入），globe 留给工具栏的同一通道。 ===== */
+ * （.ink-rail，底行键并入），键盘切换键不占格（中英键留守=模式出口）。
+ * ===== */
 .ink-layout {
     flex: 1;
     min-height: 0;
@@ -972,7 +973,7 @@ body.landscape .t9-grid { gap: 4px 5px; }
     gap: 5px;
     width: 58px;
 }
-/* 底行：符号/数字/空格（宽）/globe/换行，高固定（--ink-row-h）。 */
+/* 底行：符号/数字/空格（宽）/键盘切换/换行，高固定（--ink-row-h）。 */
 .ink-bottom {
     flex: none;
     display: flex;
