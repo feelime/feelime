@@ -231,8 +231,10 @@
         "开始语音输入": "Start voice input",
         "清除输入": "Clear composition",
         "键盘设置": "Quick settings",
-        // 手写键面（issue #28）。
-        "在此手写 · 长按清空": "Write here · hold to clear",
+        // 手写键面（issue #28）。空书写区提示三行（round-5）。
+        "在此手写": "Write here",
+        "模型能力有限": "Model has limits",
+        "避免连笔以提高识别率": "Avoid cursive strokes for better results",
         "已清空笔迹": "Ink cleared",
         "手写模型未就绪": "Handwriting model not ready",
         "手写识别失败": "Handwriting recognition failed",
@@ -813,6 +815,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         '！': ['～', '＄', '＃'],
         '？': ['％', '＆', '＠'],
     };
+    // 空书写区的三行提示（round-5，用户反馈）：首行是动作，后两行是
+    // 预期管理——模型能力有限、连笔拖识别率。双语走 UI_EN。
+    const INK_HINT_LINES = ['在此手写', '模型能力有限', '避免连笔以提高识别率'];
     // 手写停笔→识别的触发延时档位（设置页「手写」区块，hello 下发）。
     // 实时识别（模型 v2 后推理毫秒级，issue #32）：每笔 touchend 立即识别，
     // 候选随笔画刷新（wetype 同款体验）。识别时机不再可配（停顿档已被
@@ -2015,7 +2020,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const hint = document.createElement('span');
             hint.className = 'ink-hint';
             hint.id = 'inkHint';
-            hint.textContent = t("在此手写 · 长按清空");
+            INK_HINT_LINES.forEach(line => {
+                const row = document.createElement('span');
+                row.className = 'ink-hint-line';
+                row.textContent = t(line);
+                hint.append(row);
+            });
             pad.append(canvas, hint);
             this.bindInkPad(pad);
             if (this.landscape) {

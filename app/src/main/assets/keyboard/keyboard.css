@@ -1055,6 +1055,19 @@ body.landscape .ink-rail .kb-key {
     font-size: 13px;
     pointer-events: none;
 }
+/* 三行提示（round-5）：首行是动作主行（稍大、略强），后两行是预期
+ * 管理（能力边界 / 连笔影响识别率），弱化缩进次级。 */
+.ink-hint .ink-hint-line { display: block; }
+.ink-hint .ink-hint-line:first-child {
+    font-size: 15px;
+    color: var(--text);
+    opacity: 0.72;
+}
+.ink-hint .ink-hint-line + .ink-hint-line {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.85;
+}
 /* 落笔后提示让位（.writing 由 bindInkPad 控制）——识别结果在候选条，
  * 书写区不额外画 loading 态（design §5.2）。 */
 .ink-pad.writing .ink-hint { opacity: 0; }

@@ -6805,6 +6805,19 @@ test('handwriting round-4: holding backspace on ink clears once, then stops repe
     equal(world.native.of('backspace').length, 0, 'repeat never reaches the editor');
 });
 
+test('handwriting round-5: the empty-pad hint is the three-line bilingual copy', () => {
+    const zh = handwritingWorld();
+    const lines = [...zh.$('inkHint').querySelectorAll('.ink-hint-line')]
+        .map(line => line.textContent);
+    equal(lines.join('|'), '在此手写|模型能力有限|避免连笔以提高识别率', 'three zh lines');
+    const en = handwritingWorld({ uiLocale: 'en' });
+    const enLines = [...en.$('inkHint').querySelectorAll('.ink-hint-line')]
+        .map(line => line.textContent);
+    equal(enLines.join('|'),
+        'Write here|Model has limits|Avoid cursive strokes for better results',
+        'en translations land line by line');
+});
+
 console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
     (skipped ? `, ${skipped} skipped (era-gated)` : '') +
     ` [keyboard ${KEYBOARD_VERSION}] ==`);
