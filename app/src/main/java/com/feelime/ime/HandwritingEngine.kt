@@ -348,6 +348,11 @@ object HandwritingInk {
     ): ByteArray {
         val crop = cropToContent(pixels, width, height)
         if (crop.pixels.isEmpty() || crop.width <= 0 || crop.height <= 0) return ByteArray(0)
+        // 二值化（otsu，resize 前）：训练数据（CASIA）是扫描位图，笔画边缘
+        // 干净；Android Canvas 抗锯齿的灰边若带进 resize 会让有效线宽变糊，
+        // 真机实测「就」因此 rank4，硬边重渲染 rank1（issue #28 真迹采集
+        // 2026-09-22）。阈值化在缩放前做，细节先落定再缩。
+        val binarized = otsuBinarize(crop.pixels)
         // pad 成正方形（短边两侧补白）
         val pad = abs(crop.width - crop.height) / 2
         val squareSize = max(crop.width, crop.height)
@@ -356,7 +361,7 @@ object HandwritingInk {
             val targetY = y + (if (crop.height < crop.width) pad else 0)
             for (x in 0 until crop.width) {
                 val targetX = x + (if (crop.width < crop.height) pad else 0)
-                square[targetY * squareSize + targetX] = crop.pixels[y * crop.width + x]
+                square[targetY * squareSize + targetX] = binarized[y * crop.width + x]
             }
         }
         val inner = HandwritingEngine.MELNYK_INNER
@@ -375,6 +380,38 @@ object HandwritingInk {
             }
         }
         return output
+    }
+
+    /** otsu 二值化（256 级直方图，类间方差最大阈值），输出纯黑/纯白
+     * ARGB。空输入返回原数组。 */
+    fun otsuBinarize(pixels: IntArray): IntArray {
+        if (pixels.isEmpty()) return pixels
+        val histogram = IntArray(256)
+        for (pixel in pixels) histogram[pixel and 0xFF]++
+        val total = pixels.size
+        var sumAll = 0.0
+        for (t in 0 until 256) sumAll += t.toDouble() * histogram[t]
+        var weightBg = 0.0
+        var sumBg = 0.0
+        var bestThreshold = 127
+        var bestVariance = -1.0
+        for (t in 0 until 256) {
+            weightBg += histogram[t]
+            if (weightBg == 0.0) continue
+            val weightFg = total - weightBg
+            if (weightFg == 0.0) break
+            sumBg += t.toDouble() * histogram[t]
+            val meanBg = sumBg / weightBg
+            val meanFg = (sumAll - sumBg) / weightFg
+            val variance = weightBg * weightFg * (meanBg - meanFg) * (meanBg - meanFg)
+            if (variance > bestVariance) {
+                bestVariance = variance
+                bestThreshold = t
+            }
+        }
+        return IntArray(pixels.size) { index ->
+            if ((pixels[index] and 0xFF) <= bestThreshold) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+        }
     }
 
     /** §4.3（v2）：softmax 输出直排 top-[limit]。概率已是模型归一值，
