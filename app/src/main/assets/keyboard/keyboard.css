@@ -1014,6 +1014,9 @@ body.landscape .t9-grid { gap: 4px 5px; }
     scrollbar-width: none;
 }
 .ink-scroll::-webkit-scrollbar { display: none; }
+/* 滚动会让 Chromium 给滚动容器自身发焦点，系统 outline（部分 ROM 是
+ * 橙色粗圈）会箍住整列——真机实录。IME 视图没有键盘导航场景，直接压掉。 */
+.ink-scroll:focus { outline: none; }
 /* 特异性必须压过文件后段的 `.ink-side .kb-key { flex:1 }`（否则 12 格
  * 被均分成 1px 线全挤进视口——真机实录）。格高 = 视口剥掉 2 条格缝后
  * 三等分，与退格的 calc((100% - 15px)/4) 数学上严格同高。字号跟格高
