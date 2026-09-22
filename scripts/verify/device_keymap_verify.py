@@ -144,13 +144,16 @@ def main():
            zh_class is True, f"zh-punct={zh_class}")
 
     # ---- #3 the mode menu is a single column ----
+    # round-6 起默认勾选集是 En/拼/双/九/笔 5 个（FR/RU/JA/手写要用户
+    # 主动勾选）；先清掉前面段可能残留的勾选态再断言默认集。
+    ev("localStorage.removeItem('feelime_menu_modes'); 1")
     ev("window.Feelime.toggleModeMenu && window.Feelime.toggleModeMenu()")
     time.sleep(0.4)
     cols = ev("getComputedStyle(document.getElementById('modeMenu'))"
               ".gridTemplateColumns.split(' ').length")
     items = ev("document.getElementById('modeMenu').children.length") or 0
-    record("mode menu is single-column with all 7 modes",
-           cols == 1 and items == 7, f"cols={cols} items={items}")
+    record("mode menu is single-column with the round-6 default 5 modes",
+           cols == 1 and items == 5, f"cols={cols} items={items}")
     ev("window.Feelime.closeModeMenu && window.Feelime.closeModeMenu()")
     time.sleep(0.2)
 
