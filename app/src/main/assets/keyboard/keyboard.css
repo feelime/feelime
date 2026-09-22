@@ -964,7 +964,7 @@ body.landscape .t9-grid { gap: 4px 5px; }
     background: var(--key);
     overflow: hidden;
 }
-/* 右窄列：退格/，/。/中英 纵向四等分。 */
+/* 右窄列：退格/，/。/？ 纵向四等分。 */
 .ink-side {
     flex: none;
     display: flex;

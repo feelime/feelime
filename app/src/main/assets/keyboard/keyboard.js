@@ -803,12 +803,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 手写控制行键高（CSS px）：固定值，不参与 --kb-row-h 预算（键盘
     // 高度调节的弹性全部给书写面板）。
     const INK_CONTROL_ROW_H = 46;
-    // 手写标点上滑弹层的网格（round-3，4×2）：键面上已有的 ，。不重复
-    // 入格，收常用中文标点（wetype 同款「更多标点」入口）。
-    const INK_PUNCT_GRID = [
-        ['！', '？', '；', '：'],
-        ['、', '……', '——', '·'],
-    ];
+    // 手写符号键的拖选网格（round-4，2×2）：每颗键一组语感相邻的常用
+    // 标点，自身字形固定在左下——离手指路径最近，点按与短拖落同一个
+    // 字形，拖远了才换字（wetype 底行「写」键的跟手弹层同款思路）。
+    const INK_PUNCT_GRIDS = {
+        '，': [['：', '；'], ['，', '、']],
+        '。': [['！', '？'], ['。', '……']],
+        '？': [['！', '～'], ['？', '·']],
+    };
     // 手写停笔→识别的触发延时档位（设置页「手写」区块，hello 下发）。
     // 实时识别（模型 v2 后推理毫秒级，issue #32）：每笔 touchend 立即识别，
     // 候选随笔画刷新（wetype 同款体验）。识别时机不再可配（停顿档已被
@@ -1363,10 +1365,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
                 if (document.getElementById('modeMenu').classList.contains('open') &&
                     !inLayer('#modeMenu')) {
-                    const toggle = document.getElementById('modeToggle');
-                    const onToggle = event.target.closest && event.target.closest('#modeToggle') === toggle;
+                    // 锚定键 = 打开菜单的那颗（round-4 起可能是任意触发
+                    // 键）：这颗键上的点按只关菜单，不再触发它自己。
+                    const toggle = this.modeMenuAnchor ||
+                        document.getElementById('modeToggle');
+                    const onToggle = toggle && event.target.closest &&
+                        toggle.contains(event.target);
                     this.closeModeMenu();
-                    if (onToggle && toggle) toggle._suppressClick = true;
+                    if (onToggle) toggle._suppressClick = true;
                 }
             }, { capture: true, passive: true });
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
@@ -2012,11 +2018,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 同一通道，见 inkBottomKeys）。
                 const rail = document.createElement('div');
                 rail.className = 'ink-rail';
-                rail.append(...this.inkSideKeys(), ...this.inkBottomKeys(false));
+                rail.append(...this.inkSideKeys(true), ...this.inkBottomKeys(false));
                 layout.append(pad, rail);
             } else {
                 // 竖屏（wetype round-3）：书写面板是主区，右侧窄列
-                // 退格/，/。/中英，底行 符号/数字/空格/globe/换行。
+                // 退格/，/。/？，底行 符号/数字/空格/globe/换行。
                 const side = document.createElement('div');
                 side.className = 'ink-side';
                 side.append(...this.inkSideKeys());
@@ -2038,17 +2044,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyModeHeight();
         }
 
-        /** 右窄列（round-3，wetype 形态）：退格（上）+ 逗号 + 句号 +
-         * 中英。标点键点按直上屏、上滑弹更多标点（bindInkPunct）；
-         * 中英键必须保留——手写没有别的模式出口（wetype 的出口在顶部
-         * 工具栏，我们的模式菜单只挂在这颗键上）。 */
-        inkSideKeys() {
-            return [
+        /** 右窄列：退格（上）+ 三颗常用符号键。符号键点按直上屏自身
+         * 字形、按住上拖展开各自的跟手网格（bindInkPunct）。竖屏第 4 格
+         * 是 ？（round-4）；中英键只在横屏保留——横屏 rail 没有底行，
+         * 这颗键（长按=模式菜单）是唯一的模式出口，竖屏的模式出口在
+         * 底行键盘切换键，右列不再双出口。 */
+        inkSideKeys(landscape = false) {
+            const keys = [
                 this.inkBackspaceKey(),
                 this.inkPunctKey('，'),
                 this.inkPunctKey('。'),
-                this.cnEnKey(),
             ];
+            keys.push(landscape ? this.cnEnKey() : this.inkPunctKey('？'));
+            return keys;
         }
 
         /** 退格（round-4 反馈）：书写区有笔迹时=清笔迹+候选回工具栏
@@ -2100,10 +2108,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return keys;
         }
 
-        /** 标点键（，/。）：字面上屏 + 上滑弹层入口。独立手势层
-         * （不挂 bindTouch）——长按/重复通道这里都不要，且 touchstart
-         * 必须 stopPropagation：根级 setupFlick 只认 bindTouch 记下的
-         * touchOrigin，书写区的既有惯例（同 bindInkPad）。 */
+        /** 标点键（，/。/？）：字面上屏 + 按住上拖的跟手网格入口。
+         * 独立手势层（不挂 bindTouch）——长按/重复通道这里都不要，且
+         * touchstart 必须 stopPropagation：根级 setupFlick 只认
+         * bindTouch 记下的 touchOrigin，书写区的既有惯例（同
+         * bindInkPad）。 */
         inkPunctKey(char) {
             const button = document.createElement('button');
             button.className = 'kb-key kb-special ink-key ink-punct';
@@ -2115,10 +2124,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return button;
         }
 
-        /** 标点键手势：点按=该标点直上屏（sendSymbol，手写无组合、
-         * 不经引擎 punctuator）；上滑超阈值=拉起更多标点的网格弹层
-         * （openInkPunctPopup），手指压在哪格选哪格，松手没选中=无
-         * 输入（wetype 同款，无长按竞争）。 */
+        /** 标点键手势：点按=自身标点直上屏（sendSymbol，手写无组合、
+         * 不经引擎 punctuator）；按住向上拖过阈值=就地展开该键的符号
+         * 网格（openInkPunctPopup），手指压在哪格哪格高亮，松手输入
+         * 该格、拖出网格外松手=取消——一段式拖选，无需松手再点。 */
         bindInkPunct(button, char) {
             const OPEN_PX = 30;
             let touchId = null;
@@ -2146,7 +2155,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!opened) {
                     if (startY - touch.clientY < OPEN_PX) return;
                     opened = true;
-                    this.openInkPunctPopup(button);
+                    this.openInkPunctPopup(button, char);
                 }
                 this.moveInkPopup(touch);
             }, { passive: false });
@@ -2182,25 +2191,26 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
         }
 
-        /** 标点上滑弹层（round-3）：4×2 网格（键面上已有的 ，。不在
-         * 格内）。与长按弹层的差异：入口是上滑手势；选中用
-         * elementFromPoint 绝对命中（手指物理滑进格子）；无预选格——
-         * 松手没落在格子上=无输入，所以也没有「松手撤销」提示。 */
-        openInkPunctPopup(button) {
+        /** 标点键的拖选网格（round-4）：2×2，内容随键走
+         * （INK_PUNCT_GRIDS，自身字形在左下）。与长按弹层的差异：入口
+         * 是按住上拖；选中用 rect 绝对命中（手指物理滑进格子）；无
+         * 预选格——松手没落在格子上=无输入，所以也没有「松手撤销」
+         * 提示。 */
+        openInkPunctPopup(button, char) {
             const popup = document.getElementById('keyPopup');
             const inner = document.getElementById('keyPopupInner');
             inner.classList.add('kp-grid');
             inner.replaceChildren();
             const cells = [];
-            INK_PUNCT_GRID.forEach(row => {
+            (INK_PUNCT_GRIDS[char] || []).forEach(row => {
                 const rowEl = document.createElement('div');
                 rowEl.className = 'kp-row';
-                row.forEach(char => {
+                row.forEach(glyph => {
                     const item = document.createElement('div');
                     item.className = 'kp-item';
-                    item.textContent = char;
+                    item.textContent = glyph;
                     rowEl.append(item);
-                    cells.push({ item, char, literal: true });
+                    cells.push({ item, char: glyph, literal: true });
                 });
                 inner.append(rowEl);
             });
@@ -5753,7 +5763,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
                 /* ===== mode menu ===== */
 
-        toggleModeMenu() {
+        toggleModeMenu(anchor) {
             const menu = document.getElementById('modeMenu');
             if (menu.classList.contains('open')) { this.closeModeMenu(); return; }
             this.closeSettingsPanel();
@@ -5795,7 +5805,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // (short landscape band) - it never lands on the key rows and
             // never detaches from its trigger.
             menu.style.maxHeight = 'none'; // measure the natural height first
-            const toggle = document.getElementById('modeToggle').getBoundingClientRect();
+            // 锚点 = 调用方传入的触发键（round-4：手写竖屏键面没有
+            // #modeToggle 了，菜单必须能锚在任意触发键上），缺省仍是
+            // 中英切换键。
+            const anchorEl = anchor || document.getElementById('modeToggle');
+            if (!anchorEl) return;
+            this.modeMenuAnchor = anchorEl;
+            const toggle = anchorEl.getBoundingClientRect();
             menu.style.left = 'auto';
             menu.style.right = Math.max(4, innerWidth - toggle.right) + 'px';
             menu.style.bottom = 'auto';
@@ -5812,6 +5828,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         closeModeMenu() {
             document.getElementById('modeMenu').classList.remove('open');
+            this.modeMenuAnchor = null;
             this.syncOverlay();
         }
 

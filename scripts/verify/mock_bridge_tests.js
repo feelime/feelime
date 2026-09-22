@@ -6164,7 +6164,9 @@ test('handwriting: pad renders canvas plus control row, no letter keys', () => {
     const world = handwritingWorld();
     assert(world.$('inkCanvas'), 'canvas present');
     assert(world.$('inkHint'), 'hint present');
-    assert(world.$('modeToggle'), 'mode toggle present');
+    // round-4：竖屏键面没有中英切换键（#modeToggle）。
+    assert(!world.$('modeToggle'), 'cn/en toggle left the portrait ink layout');
+    assert(world.document.querySelector('[data-ink-punct="？"]'), 'question key present');
     assert(world.$('enterKey'), 'enter key present');
     equal(world.document.querySelectorAll('#qwertyLayer .kb-letter').length, 0,
         'no letter keys in the pad layout');
@@ -6295,8 +6297,10 @@ test('handwriting: leaving the mode clears ink state', () => {
         candidates: [{ text: '工', score: 1 }], error: null,
     });
     equal(world.$('candidates').children.length, 1, 'candidate present before leaving');
-    // 模式菜单 → direct（原生随后重推 hello 落新键面）。
-    world.context.window.Feelime.toggleModeMenu();
+    // 模式菜单（round-4 起菜单锚定触发键：竖屏键面没有 #modeToggle）
+    // → direct（原生随后重推 hello 落新键面）。
+    world.context.window.Feelime.toggleModeMenu(
+        world.document.querySelector('.ink-side').children[3]);
     world.tap([...world.$('modeMenu').children][0]);
     world.hello({ mode: 'direct', engineDataReady: HANDWRITING_READY });
     equal(world.context.window.Feelime.debugState().inkStrokes, 0, 'strokes reset');
@@ -6408,17 +6412,18 @@ test('handwriting: the mode pushes its panel height and leaves restore the store
 // ---- round-3（issue #28 三轮）：wetype 布局（右窄列+底行）、标点上滑
 // 弹层、空格确认 top1、手写联想（onAssoc 不再被手写分支吞掉）
 
-test('handwriting round-3: wetype layout - side column plus bottom row, no letter keys', () => {
+test('handwriting round-4: side column is backspace + ，。？ with per-key drag grids', () => {
     const world = handwritingWorld();
     const layer = world.$('qwertyLayer');
-    // 右窄列：退格 / ，/。 / 中英（模式出口必须保留）。
+    // 右窄列：退格 / ，/。/？（中英键移出竖屏键面）。
     const side = world.document.querySelector('.ink-side');
     assert(side, 'side column rendered');
     const sideRoles = [...side.children].map(el => el.dataset.role);
-    equal(sideRoles.join(','), 'backspace,ink-punct,ink-punct,cnEn', 'side column roles');
-    equal(side.querySelectorAll('[data-ink-punct]').length, 2, 'two slide-up punct keys');
+    equal(sideRoles.join(','), 'backspace,ink-punct,ink-punct,ink-punct', 'side column roles');
+    equal(side.querySelectorAll('[data-ink-punct]').length, 3, 'three punct keys');
     equal(side.children[1].dataset.inkPunct, '，', 'comma key glyph');
     equal(side.children[2].dataset.inkPunct, '。', 'period key glyph');
+    equal(side.children[3].dataset.inkPunct, '？', 'question key glyph');
     // 底行：符号 / 123 / 空格 / globe / 换行。
     const bottom = world.document.querySelector('.ink-bottom');
     assert(bottom, 'bottom row rendered');
@@ -6453,35 +6458,58 @@ test('handwriting round-3: bottom row entries reuse the symbol/numpad/ime channe
     equal(switchCalls().length, 1, 'globe rides the system IME picker channel');
 });
 
-test('handwriting round-3: punct tap commits literally, slide-up opens the grid', () => {
+test('handwriting round-4: punct tap commits literally, hold-drag opens its own grid', () => {
     const world = handwritingWorld();
     const comma = world.document.querySelector('[data-ink-punct="，"]');
     world.tap(comma);
     equal(world.native.of('commitText').length, 1, 'tap commits once');
     equal(world.native.of('commitText')[0].args[0], '，', 'full-width comma lands');
     equal(world.native.of('key').length, 0, 'no engine key traffic (no composition here)');
-    // 上滑超阈值 → 网格弹层；手指压在哪格选哪格，松手=选中格直上屏。
+    // 按住上拖超阈值 → 该键自己的网格（2×2，自身字形在左下）；手指
+    // 压在哪格选哪格，松手=选中格直上屏。
     // fake 几何：格 44×44，同行相邻格心相距 34px，行距 46px。
     world.touchDown(comma, 60, 60);
     world.move(comma, 60, 20);
-    assert(world.$('keyPopup').classList.contains('open'), 'slide-up opens the grid');
+    assert(world.$('keyPopup').classList.contains('open'), 'hold-drag opens the grid');
     const cells = [...world.$('keyPopupInner').querySelectorAll('.kp-item')];
-    equal(cells.length, 8, '4x2 punct grid');
-    equal(cells.map(c => c.textContent).join(''), '！？；：、……——·', 'grid glyphs');
-    world.move(comma, 28, 24); // 第一格（！）中心
-    equal(cells[0].classList.contains('sel'), true, 'cell under the finger is selected');
-    world.touchUp(comma, 28, 24);
+    equal(cells.length, 4, '2x2 grid for the comma key');
+    equal(cells.map(c => c.textContent).join(''), '：；，、', 'own glyph sits in the near row');
+    world.move(comma, 28, 70); // 左下格（，）中心
+    equal(cells[2].classList.contains('sel'), true, 'cell under the finger is selected');
+    world.touchUp(comma, 28, 70);
     const commits = world.native.of('commitText');
     equal(commits.length, 2, 'pick commits on release');
-    equal(commits[1].args[0], '！', 'picked glyph lands');
+    equal(commits[1].args[0], '，', 'picked glyph lands');
     assert(!world.$('keyPopup').classList.contains('open'), 'popup closed');
 });
 
-test('handwriting round-3: slide-up release off-grid inputs nothing (no preselect)', () => {
+test('handwriting round-4: each punct key carries its own glyph group', () => {
+    const world = handwritingWorld();
+    const expect = {
+        '，': '：；，、',
+        '。': '！？。……',
+        '？': '！～？·',
+    };
+    Object.keys(expect).forEach(char => {
+        const key = world.document.querySelector(`[data-ink-punct="${char}"]`);
+        world.touchDown(key, 60, 60);
+        world.move(key, 60, 20);
+        const cells = [...world.$('keyPopupInner').querySelectorAll('.kp-item')]
+            .map(c => c.textContent).join('');
+        equal(cells, expect[char], `${char} grid glyphs`);
+        // 手指拖出网格外（开层那一步的指下位置会先选中一格，拖走即清）
+        // 松手=取消，不落字符，也不影响下一颗键。
+        world.move(key, 200, 120);
+        world.touchUp(key, 200, 120);
+        equal(world.native.of('commitText').length, 0, `${char} cancel commits nothing`);
+    });
+});
+
+test('handwriting round-4: hold-drag release off-grid inputs nothing (no preselect)', () => {
     const world = handwritingWorld();
     const period = world.document.querySelector('[data-ink-punct="。"]');
     world.touchDown(period, 60, 60);
-    world.move(period, 60, 20); // 上滑开层
+    world.move(period, 60, 20); // 上拖开层
     // 手指停在网格外（fake 网格占 6..152 × 2..92）= 取消，不落任何字符。
     world.move(period, 200, 120);
     const cells = [...world.$('keyPopupInner').querySelectorAll('.kp-item')];

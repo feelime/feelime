@@ -312,6 +312,13 @@ class FakeElement {
         }
         return null;
     }
+    contains(node) {
+        while (node) {
+            if (node === this) return true;
+            node = node.parentNode;
+        }
+        return false;
+    }
     getBoundingClientRect() {
         // Layout-ish geometry: a cell's rect comes from its own child index
         // within its parent (34px cells, a row per 10 siblings). Consecutive
