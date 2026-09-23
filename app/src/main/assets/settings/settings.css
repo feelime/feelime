@@ -416,7 +416,10 @@ textarea { resize: vertical; min-height: 96px; font-family: var(--mono); font-si
     margin: 0;
     border: 1px solid var(--line);
     border-radius: 999px;
-    background: var(--pill);
+    /* OFF 态轨道必须可辨：--pill 在浅色主题是纯白，白底白胶囊只剩一圈
+     * 细边，「看不出开还是关」（flickSwap 默认关，验收 2026-09-24 实录）。
+     * --line 两主题都是可见中性色。 */
+    background: var(--line);
     position: relative;
     transition: background .15s ease, border-color .15s ease;
 }

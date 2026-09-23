@@ -51,6 +51,12 @@ const val ACTION_CUSTOM_PHRASES_CHANGED = "com.feelime.ime.CUSTOM_PHRASES_CHANGE
 /** 设置页改动键盘侧偏好（底部留白/手感参数）后通知 IME 重推 hello。 */
 const val ACTION_KEYBOARD_PREFS_CHANGED = "com.feelime.ime.KEYBOARD_PREFS_CHANGED"
 
+/** 模型集合变化（下载完成/删除）：设置页发，IME 收到重推 hello。hello 的
+ *  engineDataReady 只在键盘加载时算一次，手写模型下载落地后不重推的话，
+ *  长按菜单里的手写一直灰，用户得去键盘选择里取消再勾选才恢复（验收
+ *  2026-09-24 实录）。 */
+const val ACTION_MODELS_CHANGED = "com.feelime.ime.MODELS_CHANGED"
+
 /** 外观页预览：设置页让 IME 弹出/收起真实键盘（无编辑框场景，由 IME
  *  自己 requestShowSelf，不依赖输入焦点）。 */
 const val ACTION_PREVIEW_KEYBOARD = "com.feelime.ime.PREVIEW_KEYBOARD"
@@ -431,6 +437,7 @@ class SettingsBridge(
                 )
             }
             pushState()
+            if (error.isNullOrBlank()) notifyModelsChanged()
         }
 
         override fun onStatus(modelId: String, status: String) {
@@ -1277,6 +1284,26 @@ class SettingsBridge(
                 val text = item.optString("text").trim()
                 val code = item.optString("code").trim().lowercase()
                 if (text.isEmpty()) continue
+                if (code.isEmpty()) {
+                    // 自动注音（#29-5 验收）：码留空=只输词。user 段只存主码
+                    // （词频最高组合，UI 一词一行）；deriveTxt 落 txt 时对
+                    // user 段做 autoPinyinCodes 全组合展开（多音字）再叠双
+                    // 拼键序。含无法注音字符（字母/数字）回落为要求手输码。
+                    val auto = com.feelime.ime.engine.CustomPhraseStore.autoPinyinCodes(context, text)
+                    if (auto.isEmpty()) {
+                        pushEvent(
+                            JSONObject()
+                                .put("type", "userWordsError")
+                                .put("code", "AUTO_PINYIN_FAILED")
+                                .put("message", t(context,
+                                    "「" + text.take(8) + "」含无法自动注音的字符，请手动填写输入码",
+                                    "\"" + text.take(8) + "\" needs a manual code (non-Han characters)")),
+                        )
+                        return@guarded
+                    }
+                    items.add(text to auto[0])
+                    continue
+                }
                 if (!Regex("^[a-z;]{1,48}$").matches(code)) {
                     pushEvent(
                         JSONObject()
@@ -1804,6 +1831,14 @@ class SettingsBridge(
         val model = modelStore.manifest().models.firstOrNull { it.id == id } ?: return@guarded
         modelStore.delete(model)
         pushState()
+        notifyModelsChanged()
+    }
+
+    /** 见 [ACTION_MODELS_CHANGED]：IME 重推 hello 让 engineDataReady 跟上。 */
+    private fun notifyModelsChanged() {
+        context.sendBroadcast(
+            android.content.Intent(ACTION_MODELS_CHANGED).setPackage(context.packageName),
+        )
     }
 
     @JavascriptInterface

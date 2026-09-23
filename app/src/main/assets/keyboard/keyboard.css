@@ -648,9 +648,11 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 .kb-main { font-size: min(22px, calc(var(--kb-row-h, 44px) * 0.5)); line-height: 1; font-weight: 400; }
 .kb-alt { color: var(--muted); font-size: 9px; line-height: 1; font-weight: 400; }
 /* 上下滑互换（issue #29-2）：小字提示跟着翻到主字下方（提示的是下滑值）；
- * 标点槽的 alt 是绝对定位，单独翻到底。 */
+ * 标点槽是墨形绝对定位，主字（inset 42%/12%）与 alt 要一起上下镜像，
+ * 只翻 alt 会两个墨形挤在下半键（验收 2026-09-24 实录）。 */
 body.flick-swap .kb-key.kb-letter { flex-direction: column-reverse; }
 body.flick-swap .kb-key[data-key="."] .kb-alt { top: auto; bottom: 4px; }
+body.flick-swap .kb-key.zh-punct .kb-main { inset: 12% 0 42%; }
 body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
 /* Follow-up: an armed Fn key turns its twelve letter caps into
  * F1..F12. Keep the label on one line and let the single visible glyph use
@@ -1348,7 +1350,10 @@ body.landscape .num-grid { gap: 3px; }
     color: var(--text);
     font-weight: 600;
 }
-.panel-action { margin-left: auto; color: var(--text); height: 30px; }
+/* 面板头改版（验收 2026-09-24）：收起箭头撤掉，tabs 用两侧 auto margin
+ * 落中，清空/添加顺排右侧，最右是 X（关闭面板返回键盘）。 */
+.panel-tabs { margin: 0 auto; }
+.panel-action { color: var(--text); height: 30px; }
 #panelList {
     flex: 1;
     min-height: 0;

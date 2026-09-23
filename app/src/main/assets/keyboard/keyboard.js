@@ -3077,6 +3077,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             bubble.style.top = Math.max(2, rect.top - bubble.offsetHeight - 6) + 'px';
         }
 
+        /** flick 判定后把气泡换成实际将上屏的字符（键位不动，仅换文字）。 */
+        updateKeyBubble(glyph) {
+            const bubble = document.getElementById('keyBubble');
+            if (bubble && !bubble.hidden) bubble.textContent = glyph;
+        }
+
         hideKeyBubble() {
             const bubble = document.getElementById('keyBubble');
             if (bubble && !bubble.hidden) bubble.hidden = true;
@@ -3290,6 +3296,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                                 : key.toUpperCase();
                         }
                         if (value) {
+                            // 气泡反映实际输入字符（验收 2026-09-24）：touchstart
+                            // 先显示键面主字，flick 判定出真实 value 后即刻换掉，
+                            // 上滑/下滑看到的就是将上屏的 alt/大写。
+                            if (this.keyBubble && !this.popup) this.updateKeyBubble(value);
                             // In Chinese modes a flicked digit/symbol
                             // or uppercase letter must LAND in the editor -
                             // Native.key() would feed the composition engine

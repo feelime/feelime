@@ -179,6 +179,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
     }
 
+    /** 模型集合变化（下载完成/删除，[ACTION_MODELS_CHANGED]）：重推 hello
+     *  让 engineDataReady 重算——手写是 strictReady，模型落地后不重推的话
+     *  长按菜单的手写一直灰，用户得去键盘选择里取消再勾选才恢复（验收
+     *  2026-09-24 实录）。手写引擎 lazy 加载模型，无需会话重建。 */
+    private val modelsChangedReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action != ACTION_MODELS_CHANGED) return
+            onMain { pushBridgeHello() }
+        }
+    }
+
     /** 设置页切换双拼方案（docs/design/double-pinyin.md §2）：当前就是双拼
      * 会话时立即按新 schema 重建；顺带重推 hello，键盘的解析表与 sep 键
      * 跟着切换。方案落盘在先，非双拼会话下次建会话自然取到。 */
@@ -438,6 +449,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         registerReceiver(
             dpSchemeReceiver,
             android.content.IntentFilter(ACTION_DP_SCHEME_CHANGED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        registerReceiver(
+            modelsChangedReceiver,
+            android.content.IntentFilter(ACTION_MODELS_CHANGED),
             androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         registerReceiver(

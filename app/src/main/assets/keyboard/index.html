@@ -318,17 +318,17 @@
 
     <section id="panelLayer" hidden>
         <div class="panel-head">
-            <button id="panelClose" class="tool" aria-label="关闭面板" data-i18n-aria-label="关闭面板">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
-                    <path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
-                </svg>
-            </button>
             <div class="panel-tabs" role="tablist">
                 <button class="panel-tab active" data-panel-tab="clipboard" data-i18n="剪贴板">剪贴板</button>
                 <button class="panel-tab" data-panel-tab="favorites" data-i18n="常用语">常用语</button>
             </div>
             <button id="panelClear" class="panel-action" aria-label="清空剪贴板" data-i18n-aria-label="清空剪贴板" data-i18n="清空">清空</button>
             <button id="panelManage" class="panel-action" aria-label="添加常用语" data-i18n-aria-label="添加常用语" hidden data-i18n="＋添加">＋添加</button>
+            <button id="panelClose" class="tool" aria-label="关闭面板" data-i18n-aria-label="关闭面板">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                    <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+            </button>
         </div>
         <div id="panelList"></div>
         <div id="panelEmpty" hidden></div>

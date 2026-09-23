@@ -69,11 +69,11 @@ const I18N = {
         "userwords.list.title": "词条",
         "userwords.list.empty": "还没有词条，在下方添加。",
         "userwords.form.text": "词条（如 你好世界）",
-        "userwords.form.code": "输入码（如 nihaoshijie）",
+        "userwords.form.code": "输入码（留空自动按拼音生成）",
         "userwords.form.add": "添加",
         "userwords.form.save": "保存",
         "userwords.form.cancel": "取消",
-        "userwords.list.note": "输入码用全拼（单个音节自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效，上限 200 条。",
+        "userwords.list.note": "输入码留空即自动按拼音生成（多音字会生成全部读音组合，并自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效，上限 200 条。",
         "userwords.note.saved": "已保存",
         "userwords.note.deleted": "已删除",
         "userwords.err.notReady": "正在读取词表，稍后再试",
@@ -513,11 +513,11 @@ const I18N = {
         "userwords.list.title": "Words",
         "userwords.list.empty": "No words yet - add one below.",
         "userwords.form.text": "Word (e.g. hello world)",
-        "userwords.form.code": "Code (e.g. nihaoshijie)",
+        "userwords.form.code": "Code (leave empty for auto pinyin)",
         "userwords.form.add": "Add",
         "userwords.form.save": "Save",
         "userwords.form.cancel": "Cancel",
-        "userwords.list.note": "Codes are full pinyin (single syllables auto-adapt to double-pinyin keys); tap a word to edit, ✕ deletes. Applies immediately, 200-entry cap.",
+        "userwords.list.note": "Leave the code empty to auto-generate pinyin (polyphones expand to every reading; double-pinyin keys auto-adapt); tap a word to edit, ✕ deletes. Applies immediately, 200-entry cap.",
         "userwords.note.saved": "Saved",
         "userwords.note.deleted": "Deleted",
         "userwords.err.notReady": "Word list still loading, try again shortly",
@@ -1870,14 +1870,16 @@ $("btnSaveUserWord").addEventListener("click", () => {
         setNote("userWordsNote", t("userwords.form.textErr"));
         return;
     }
-    if (!/^[a-z;]{1,48}$/.test(code)) {
+    // 码可留空：空 = 自动注音（壳侧 autoPinyinCodes 生成主码，txt 侧展开
+    // 多音字全组合 + 双拼键序）；填了才校验格式。
+    if (code && !/^[a-z;]{1,48}$/.test(code)) {
         setNote("userWordsNote", t("userwords.form.codeErr"));
         return;
     }
     if (userWordEditing >= 0) {
         userWordItems[userWordEditing] = { text, code };
     } else {
-        if (userWordItems.some(item => item.code === code)) {
+        if (code && userWordItems.some(item => item.code === code)) {
             setNote("userWordsNote", t("userwords.err.duplicate"));
             return;
         }

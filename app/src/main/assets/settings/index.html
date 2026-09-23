@@ -508,13 +508,13 @@
       <p id="userWordEmpty" class="hint block" data-i18n="userwords.list.empty" hidden>还没有词条，在下方添加。</p>
       <div class="phrase-form">
         <input id="userWordText" class="input" type="text" maxlength="32" data-i18n-placeholder="userwords.form.text" placeholder="词条（如 你好世界）">
-        <input id="userWordCode" class="input" type="text" maxlength="48" data-i18n-placeholder="userwords.form.code" placeholder="输入码（如 nihaoshijie）">
+        <input id="userWordCode" class="input" type="text" maxlength="48" data-i18n-placeholder="userwords.form.code" placeholder="输入码（留空自动按拼音生成）">
         <div class="actions">
           <button class="btn primary" id="btnSaveUserWord" type="button" data-i18n="userwords.form.add">添加</button>
           <button class="btn" id="btnCancelUserWordEdit" type="button" data-i18n="userwords.form.cancel" hidden>取消</button>
         </div>
       </div>
-      <p class="hint" data-i18n="userwords.list.note">输入码用全拼（单个音节自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效，上限 200 条。</p>
+      <p class="hint" data-i18n="userwords.list.note">输入码留空即自动按拼音生成（多音字会生成全部读音组合，并自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效，上限 200 条。</p>
       <span class="save-note" id="userWordsNote" role="status" aria-live="polite"></span>
     </section>
   </main>
