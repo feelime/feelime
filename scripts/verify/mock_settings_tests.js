@@ -100,6 +100,7 @@ class MockSettingsNative {
     setThemeMode(...a) { this._rec('setThemeMode', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
+    setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
     setKbHeight(...a) { this._rec('setKbHeight', a); }
@@ -1133,6 +1134,15 @@ test('appearance page reflects state and commits themeMode / keyOpacity with the
         .handler({ target: { checked: true } });
     equal(world.lastCall('setKeyBubble').args, [true, world.token],
         'key bubble commit + token');
+
+    // 气泡停留档（验收 2026-09-24）：回显 + 换档过桥。
+    const lingerSel = world.$('bubbleLinger');
+    world.push({ ...BASE_STATE, bubbleLinger: 400 });
+    equal(lingerSel.value, '400', 'linger echo renders the tier');
+    lingerSel.value = '600';
+    lingerSel.listeners.find(l => l.type === 'change').handler({ target: { value: '600' } });
+    equal(world.lastCall('setBubbleLinger').args, [600, world.token],
+        'linger tier commit + token');
 
     // Slider: input only marks dirty, change commits once with the parsed value.
     const slider = world.$('keyOpacity');

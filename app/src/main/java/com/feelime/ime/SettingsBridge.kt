@@ -140,6 +140,14 @@ fun readToolbarLayout(context: Context): String =
 const val PREF_KEY_OPACITY = "key_opacity"
 /** 按键气泡（issue #30-1，默认关）：按下时放大预览所按字符。 */
 const val PREF_KEY_BUBBLE = "key_bubble"
+/** 气泡停留时长（验收 2026-09-24：松手立即消失看不清）。0/250/400/600ms。 */
+const val PREF_BUBBLE_LINGER = "bubble_linger_ms"
+val BUBBLE_LINGER_STEPS = intArrayOf(0, 250, 400, 600)
+
+fun readBubbleLinger(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_BUBBLE_LINGER, 400)
+        .takeIf { it in BUBBLE_LINGER_STEPS.asList() } ?: 400
 const val KB_HEIGHT_PORTRAIT_KEY = "keyboard_height_portrait"
 
 fun readKeyOpacity(context: Context): Int =
@@ -572,6 +580,7 @@ class SettingsBridge(
             .put("bgImageDarkSource", readBgImageSource(context, "dark"))
             .put("keyOpacity", readKeyOpacity(context))
             .put("keyBubble", readKeyBubble(context))
+            .put("bubbleLinger", readBubbleLinger(context))
             // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
             // 点开开关后 pushState 一到就弹回——「开了看不出开」。
             .put("flickSwap", readFlickSwap(context))
@@ -1116,6 +1125,19 @@ class SettingsBridge(
         )
         pushState()
     }
+
+    /** 气泡停留时长（验收 2026-09-24）：0=立即隐藏，250/400/600ms 档。 */
+    @JavascriptInterface
+    fun setBubbleLinger(ms: Int, token: String) = guarded(token) {
+        if (ms !in BUBBLE_LINGER_STEPS.asList()) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_BUBBLE_LINGER, ms).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
 
     /** 外观页预览：让 IME 显示/收起真实键盘（service 自己 show self）。 */
     @JavascriptInterface

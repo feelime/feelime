@@ -1579,6 +1579,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("bgImageDarkSource", readBgImageSource(this, "dark"))
             .put("keyOpacity", readKeyOpacity(this))
             .put("keyBubble", readKeyBubble(this))
+            .put("bubbleLinger", readBubbleLinger(this))
             .put("themeMode", readThemeMode(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("associationOn", readAssociation(this))

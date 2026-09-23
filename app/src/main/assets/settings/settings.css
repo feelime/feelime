@@ -677,9 +677,32 @@ details summary {
 }
 .phrase-del:active { background: var(--pressed); border-radius: 8px; }
 
-/* 设置搜索（验收 2026-09-24）：hero 下的搜索框 + 下拉结果（页名小注）。 */
-.search-box { padding: 0 16px 6px; position: relative; }
-.search-box .input { width: 100%; }
+/* 设置搜索（验收 2026-09-24）：hero 下的胶囊搜索框（卡片同源配色）+
+ * 下拉结果卡 + 跳转锚的呼吸灯提醒。 */
+.search-box { padding: 0 16px 6px; position: relative; max-width: 680px; margin: 0 auto; }
+.search-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card-bg);
+    box-shadow: 0 2px 9px #0002;
+}
+.search-field:focus-within { border-color: var(--focus-ring); }
+.search-icon { color: var(--card-sub); flex: none; }
+.search-field input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--card-text);
+    outline: none;
+}
+.search-field input::placeholder { color: var(--card-sub); }
+.search-field input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .search-results {
     position: absolute;
     left: 16px;
@@ -704,6 +727,15 @@ details summary {
     color: var(--text);
     text-align: left;
 }
+.search-hit:active { background: var(--pressed); }
 .search-hit + .search-hit { border-top: 1px solid var(--line); }
 .search-hit small { color: var(--muted); flex: none; }
 .search-empty { padding: 10px 14px; margin: 0; color: var(--muted); }
+
+/* 跳转定位的呼吸灯：三拍背景渐亮渐隐，提醒用户锚到的选项。 */
+@keyframes search-breathe {
+    0%, 100% { background: transparent; }
+    20%, 60% { background: rgb(35 200 144 / .22); }
+    40%, 80% { background: rgb(35 200 144 / .08); }
+}
+.search-flash { animation: search-breathe 1.8s ease-in-out 1; border-radius: 8px; }

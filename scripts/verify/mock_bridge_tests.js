@@ -2694,7 +2694,16 @@ test('key bubble stays off by default; hello arms it per press', {since: '3.60.0
     equal(bubble.hidden, false, 'hello keyBubble=true shows the bubble on press');
     equal(bubble.textContent, 'h', 'bubble shows the pressed glyph');
     world.touchUp(key);
-    equal(bubble.hidden, true, 'release hides the bubble');
+    // 停留窗口（验收 2026-09-24，默认 400ms）：松手不立刻消失。
+    assert(!bubble.hidden, 'release keeps the bubble through the linger window');
+    world.clock.advance(450);
+    equal(bubble.hidden, true, 'bubble hides after the linger');
+    // linger=0 = 立即隐藏（旧语义仍在，设置可选）。
+    world.hello({keyBubble: true, bubbleLinger: 0});
+    world.touchDown(key);
+    equal(bubble.hidden, false, 'press shows again');
+    world.touchUp(key);
+    equal(bubble.hidden, true, 'linger 0 hides instantly on release');
 });
 
 test('key bubble yields to the long-press popup; space never bubbles', {since: '3.60.0'}, () => {

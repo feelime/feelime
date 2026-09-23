@@ -29,8 +29,14 @@
   <!-- 设置搜索（验收 2026-09-24）：模糊匹配快速定位配置项；索引取每卡
        的标题+行文本+小注+data-keywords 意图词，点击直达对应页并锚定。 -->
   <div class="search-box" id="settingsSearchBox">
-    <input id="settingsSearch" class="input" type="search" autocomplete="off"
-           data-i18n-placeholder="search.placeholder" placeholder="搜索设置：高度、气泡、双拼、词库…">
+    <div class="search-field">
+      <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
+           stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>
+      </svg>
+      <input id="settingsSearch" type="search" autocomplete="off"
+             data-i18n-placeholder="search.placeholder" placeholder="搜索设置：高度、气泡、双拼、词库…">
+    </div>
     <div id="searchResults" class="search-results" hidden></div>
   </div>
 
@@ -170,6 +176,18 @@
       </span>
       <input type="checkbox" id="keyBubble" data-keywords="按键放大 预览 气泡 按错了 key preview bubble" class="toggle">
     </label>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.bubbleLinger">气泡停留时长</span>
+        <small data-i18n="input.feel.bubbleLingerHint">松手后气泡多停留一会儿再消失，看得清按了什么；0 为立即消失。</small>
+      </span>
+      <select id="bubbleLinger" class="select" data-keywords="停留 时间 延迟 立刻消失 看不清 linger" aria-label="气泡停留时长" data-i18n-aria="input.feel.bubbleLinger">
+        <option value="0">0 ms</option>
+        <option value="250">250 ms</option>
+        <option value="400">400 ms</option>
+        <option value="600">600 ms</option>
+      </select>
+    </div>
     <div class="row language-row">
       <span class="row-label">
         <span data-i18n="input.feel.kbHeight">键盘高度</span>

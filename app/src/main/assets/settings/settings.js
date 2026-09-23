@@ -179,6 +179,8 @@ const I18N = {
         "input.keyboards.pairB": "快捷切换 · 第二个",
         "input.keyboards.pairHint": "点切换键在两个键盘之间往返；选最常用的两个。",
         "input.keyboards.saved": "已保存，键盘即时生效",
+        "input.feel.bubbleLinger": "气泡停留时长",
+        "input.feel.bubbleLingerHint": "松手后气泡多停留一会儿再消失，看得清按了什么；0 为立即消失。",
         "search.placeholder": "搜索设置：高度、气泡、双拼、词库…",
         "search.noResults": "没有匹配的设置项",
         "action.saveCustom": "保存定制",
@@ -634,6 +636,8 @@ const I18N = {
         "input.keyboards.pairB": "Quick switch · second",
         "input.keyboards.pairHint": "The switch key toggles between these two; pick your two most-used keyboards.",
         "input.keyboards.saved": "Saved; the keyboard applies it immediately",
+        "input.feel.bubbleLinger": "Bubble linger",
+        "input.feel.bubbleLingerHint": "How long the bubble stays after release; 0 hides it instantly.",
         "search.placeholder": "Search settings: height, bubble, double-pinyin, lexicon…",
         "search.noResults": "No matching settings",
         "action.saveCustom": "Save custom layout",
@@ -1241,6 +1245,10 @@ function renderFeel(state) {
     if (opacity) opacity.value = String(Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100))));
     const bubble = $("keyBubble");
     if (bubble) bubble.checked = state.keyBubble === true;
+    const lingerSel = $("bubbleLinger");
+    if (lingerSel && document.activeElement !== lingerSel) {
+        lingerSel.value = String(state.bubbleLinger ?? 400);
+    }
     const kbHeight = $("kbHeight");
     if (kbHeight) {
         const min = Number(state.kbHeightMin ?? 226);
@@ -1645,25 +1653,47 @@ function buildSearchIndex() {
         const pageName = page.dataset.page;
         if (pageName === "home") return;
         const pageTitle = page.querySelector(".page-title")?.textContent || pageName;
+        // 行级条目（带 data-keywords 的行）优先入索引——跳转直锚到具体
+        // 选项；卡片标题条目兜底（锚到卡标题）。
         page.querySelectorAll("section.card").forEach(card => {
             const heading = card.querySelector(".section-heading h2");
             const title = heading?.textContent?.trim() || "";
-            const cardKeywords = (card.querySelector("[data-keywords]")?.dataset.keywords ||
-                heading?.dataset.keywords || "");
-            const parts = [title, cardKeywords];
-            card.querySelectorAll(".row-label span, .row-label small").forEach(el => {
-                parts.push(el.textContent);
+            card.querySelectorAll("[data-keywords]").forEach(el => {
+                const row = el.closest(".row, label.row") || el;
+                const label = row.querySelector(".row-label span, .row-label");
+                const hint = row.querySelector(".row-label small");
+                entries.push({
+                    page: pageName,
+                    pageTitle,
+                    title: label?.textContent?.trim() || title,
+                    anchorEl: row,
+                    text: [label?.textContent, hint?.textContent, el.dataset.keywords, title]
+                        .filter(Boolean).join(" ").replace(/\s+/g, " "),
+                });
+            });
+            const parts = [title];
+            card.querySelectorAll(".row-label span, .row-label small").forEach(node => {
+                parts.push(node.textContent);
             });
             entries.push({
                 page: pageName,
                 pageTitle,
                 title,
-                anchorId: heading?.id || card.id || "",
+                anchorEl: heading || card,
                 text: parts.filter(Boolean).join(" ").replace(/\s+/g, " "),
             });
         });
     });
     return entries;
+}
+
+/** 跳转后的呼吸灯提醒：背景三拍渐亮渐隐（约 1.8s）。 */
+function flashAnchor(el) {
+    if (!el) return;
+    el.classList.remove("search-flash");
+    void el.offsetWidth; // reflow 让重播动画可靠触发
+    el.classList.add("search-flash");
+    setTimeout(() => el.classList.remove("search-flash"), 2000);
 }
 
 function runSettingsSearch(query) {
@@ -1696,8 +1726,9 @@ function runSettingsSearch(query) {
                 box.hidden = true;
                 showPage(entry.page);
                 requestAnimationFrame(() => {
-                    const el = entry.anchorId ? document.getElementById(entry.anchorId) : null;
-                    if (el) el.scrollIntoView({ block: "center" });
+                    if (!entry.anchorEl) return;
+                    entry.anchorEl.scrollIntoView({ block: "center" });
+                    flashAnchor(entry.anchorEl);
                 });
             });
             box.append(button);
@@ -2209,6 +2240,9 @@ $("keyOpacity").addEventListener("change", event => {
 // 按键气泡（issue #30-1）：外观页开关，默认关；广播→hello 实时作用到
 // 底下弹出的预览键盘。
 $("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
+$("bubbleLinger").addEventListener("change", event => {
+    call("setBubbleLinger", parseInt(event.target.value, 10) || 0);
+});
 // 键盘高度滑块：拖动即时反映在预览上，松手落盘；「恢复默认」写 0。
 let kbHeightDirty = false;
 $("kbHeight").addEventListener("input", event => {

@@ -1166,6 +1166,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // key_bubble，外观页开关经 hello 下发；开着才在按下时放大
             // 预览所按字符。
             this.keyBubble = false;
+            this.bubbleLinger = 400;
             // 色彩模式（auto/light/dark）：真相源是 native pref theme_mode，
             // hello 下发、tile 循环上报。AGENTS.md「设置不走 localStorage」。
             this.themeMode = 'auto';
@@ -3086,10 +3087,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** flick 判定后把气泡换成实际将上屏的字符（键位不动，仅换文字）。 */
         updateKeyBubble(glyph) {
             const bubble = document.getElementById('keyBubble');
-            if (bubble && !bubble.hidden) bubble.textContent = glyph;
+            if (!bubble || bubble.hidden) return;
+            bubble.textContent = glyph;
+            this.scheduleHideBubble();
+        }
+
+        /** 松手后气泡短暂停留（验收 2026-09-24：立刻消失看不清），停留
+         *  时长 hello.bubbleLinger（0=立即，默认 400ms）；新按下或 flick
+         *  换字都会取消在途的隐藏调度。 */
+        scheduleHideBubble() {
+            if (this.bubbleHideTimer) { clearTimeout(this.bubbleHideTimer); this.bubbleHideTimer = 0; }
+            if (!this.bubbleLinger) { this.hideKeyBubble(); return; }
+            this.bubbleHideTimer = setTimeout(() => {
+                this.bubbleHideTimer = 0;
+                this.hideKeyBubble();
+            }, this.bubbleLinger);
         }
 
         hideKeyBubble() {
+            if (this.bubbleHideTimer) { clearTimeout(this.bubbleHideTimer); this.bubbleHideTimer = 0; }
             const bubble = document.getElementById('keyBubble');
             if (bubble && !bubble.hidden) bubble.hidden = true;
         }
@@ -3116,6 +3132,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 button.classList.add('active-touch');
                 this.nativeKeyFeedback();
                 if (this.keyBubble && !this.popup) this.showKeyBubble(button);
+                else if (this.bubbleHideTimer) this.hideKeyBubble();
                 longFired = false;
                 const touch = event.changedTouches[0];
                 if (!this.touchOrigin) {
@@ -3172,7 +3189,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!this.pressedKeys.has(button)) return;
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
-                this.hideKeyBubble();
+                this.scheduleHideBubble();
                 clear();
                 if (this.popup) {
                     // 快速甩出时最终位置只出现在 changedTouches：相对跟手
@@ -3189,7 +3206,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.addEventListener('touchcancel', () => {
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
-                this.hideKeyBubble();
+                this.scheduleHideBubble();
                 clear();
                 if (this.popup) this.closePopup(true);
                 // Review P3: a cancelled gesture never delivers the click
@@ -3201,7 +3218,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         cancelTouches() {
             this.inkCancelTouch();
-            this.hideKeyBubble();
+            this.scheduleHideBubble();
             for (const button of this.pressedKeys) {
                 button.classList.remove('active-touch');
                 if (button._cancelPress) button._cancelPress();
@@ -8188,6 +8205,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const opacity = Number(payload.keyOpacity);
             if (opacity >= 0 && opacity <= 100) this.keyOpacity = opacity;
             if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
+            const lingerMs = Number(payload.bubbleLinger);
+            if (lingerMs >= 0) this.bubbleLinger = lingerMs;
             this.applyOneHand();
             this.applyBackground();
             this.applyKeyOpacity();
