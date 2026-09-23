@@ -458,12 +458,24 @@ def settings_tap(selector, wait=0.7, scroll=True):
     # for the page, so reaching controls below the model rows takes >4 swipes.
     geometry = None
     nudge_swipes = 0
-    for _ in range(12):
+    last_top = None
+    stalled = 0
+    # 28 轮：键盘弹出态下 WebView 滚动被锚定/手势分期回收（实测 ~127px/
+    # 轮），12 轮预算爬不完 input 页（2026-09-23 9k）。
+    for _ in range(28):
         # issue #24: fresh 首启时 WebView 布局间歇塌缩——元素存在、JS
         # ready，但 rect 全 0。干等走不出去（12×0.5s 后照样失败）；
         # 实测滚动一次即可触发重排恢复，这里对「元素在但量不出」补
         # 一次滚动兜底（JS 没 ready 的 payload=None 仍走 sleep）。
+        progress = False
         payload = settings_payload(selector)
+        if payload and last_top is not None and (payload.get("top") or 0) < last_top - 4:
+            stalled = 0
+            progress = True
+        else:
+            stalled += 1
+        if payload:
+            last_top = payload.get("top")
         collapsed = bool(payload) and payload.get("width", 0) <= 0
         geometry = settings_geometry(selector, payload)
         if not geometry:
@@ -485,6 +497,33 @@ def settings_tap(selector, wait=0.7, scroll=True):
             return True
         if not scroll:
             break
+        # 先走 devtools 精确落位（同一条观测通道）：scrollTop 直赋一步
+        # 到位 + scrollIntoView 兜底。嵌套滚动容器里裸 scrollIntoView 每次
+        # 只滚最近祖先一小段（2026-09-23 9k 实录：~120px/轮，12 轮耗尽）；
+        # 手势滚动仅在 JS 滚动两轮无进展时才发——元素 rect 推导的 swipe
+        # 在元素不动时打在同一点，落在滑杆/开关上就全程空转，还会把
+        # scrollIntoView 的进展滚回去。
+        # 同一 JS 回合里滚动并返回视口坐标，立刻换算成屏幕坐标 tap——
+        # 键盘弹出态的 WebView 滚动会被锚定/布局分期回收（实测 ~127px/
+        # 轮，隔秒回吐），任何「滚动→另起一轮慢速量测→再点」的路径都
+        # 在跟回滚赛跑；JS 回合内拿坐标 + 立即 tap 把时间窗压到 ~100ms，
+        # 竞态从构造上消除（2026-09-23 9k customJson）。
+        moved = sev(f"(() => {{ try {{ const el = document.querySelector(" + _quoted(selector) + ");"
+            " if (!el) return null;"
+            " const se = document.scrollingElement || document.documentElement;"
+            " se.scrollTop = el.getBoundingClientRect().top + se.scrollTop - 80;"
+            " if (el.scrollIntoView) el.scrollIntoView({{block: 'center'}});"
+            " const r = el.getBoundingClientRect();"
+            " return [r.left + r.width / 2, r.top + r.height / 2,"
+            " window.innerWidth, window.innerHeight]; }}"
+            " catch (_) {{ return null; }} }})()")
+        if isinstance(moved, list) and len(moved) == 4 and moved[2] and moved[3]:
+            cx, cy, iw, ih = moved
+            sx = round(left + cx / iw * (right - left))
+            sy = round(top + cy / ih * (bottom - top))
+            if left <= sx < right and top <= sy < bottom:
+                d.tap(sx, sy, wait=wait)
+                return True
         # Scroll the settings page with the real Android gesture until the
         # requested DOM node enters the viewport.
         x = (left + right) // 2
