@@ -30,13 +30,13 @@ def tap_dom_center(selector, kb):
 def main_pss_kb():
     output = d.shell("su -c procrank", timeout=60)
     for line in output.splitlines():
-        if not re.search(r"\scom\.feelime\.ime\s*$", line):
+        if not re.search(rf"\s{re.escape(d.PKG)}\s*$", line):
             continue
         fields = line.split()
         if len(fields) >= 5:
             return int(fields[3].removesuffix("K"))
     # No root (AVD/emulator): the public meminfo dump reports the same TOTAL.
-    output = d.shell("dumpsys meminfo com.feelime.ime", timeout=60)
+    output = d.shell(f"dumpsys meminfo {d.PKG}", timeout=60)
     match = re.search(r"TOTAL\s+(\d+)", output)
     if not match:
         raise RuntimeError("main Feelime PSS not found in procrank or meminfo")
@@ -44,7 +44,7 @@ def main_pss_kb():
 
 
 def app_data_kb():
-    root = "/data/data/com.feelime.ime"
+    root = f"/data/data/{d.PKG}"
     output = d.shell(f"su -c 'du -sk {root} {root}/files/models 2>/dev/null'", timeout=60)
     sizes = {name: int(size) for size, name in re.findall(
         rf"^(\d+)\s+({re.escape(root)}(?:/files/models)?)\s*$", output, re.MULTILINE)}
