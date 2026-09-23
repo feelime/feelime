@@ -133,6 +133,14 @@ def prepare_readonly():
     d.shell("wm dismiss-keyguard")
     d.shell("input keyevent 82")
     d.shell("ime set " + d.IME_SVC)
+    # 焦点楔（2026-09-23 9k 定位）：前面的 force-stop（reset_favorites）让
+    # 前台回落 launcher 并拿走焦点；ime set 重建 IME 服务的窗口扰动下
+    # am start 可能拉起一个「可见不可聚焦」的 SetupActivity——屏幕渲染
+    # 正常，但 mCurrentFocus 停在 launcher，uiautomator dump 抓的是焦点
+    # 根（桌面），10 次重试全灭（BACK 在 launcher 焦点下按，解不了楔）。
+    # 启动前一次 HOME 往返把焦点还给系统再重进，竞态类整体消除。
+    d.shell("input keyevent KEYCODE_HOME")
+    time.sleep(0.6)
     d.shell("am start -n " + d.PKG +
             "/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(1.5)
