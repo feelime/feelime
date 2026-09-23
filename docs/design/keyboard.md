@@ -298,8 +298,13 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 - **热生效**：stabledb 只在引擎生命周期加载一次（切 schema 重建会话不重
   读）。任何词条/开关变更走 `RimeTextEngine.reloadGlobal`（finalize +
   重新 init，synchronized(gate) 串行；换代 epoch 防 closeNative 对悬垂
-  handle 误 destroy）+ `recreateEngineSession`。开关关闭或词条清空=删
+  handle 误 destroy）+ `recreateEngineSession`。三段全空才删
   custom_phrase.txt（json 保留，用户数据不因开关丢失）。
+- **gating 边界（issue #29-5 起）**：json 真相源三段——`items`（符号词，
+  受「附加符号/emoji 候选」开关管）、`imported`（.dict.yaml 导入表）、
+  `user`（自造词，词库管理三级页手动维护，词+全拼码，上限 200、码
+  1–48 位字母）。后两段是词库本体：不随符号词开关消失（各用自己的
+  清空/管理入口），只有 items 参与开关 gating。
 - **恢复联动**：userdata 恢复换入 rime-user 后，按恢复的 json 幂等重派生
   txt 并广播 `CUSTOM_PHRASES_CHANGED`——设置页的 phraseItems 是全量重发
   语义的镜像副本，不刷新的话下一次保存会把旧副本写回（恢复竞态）。
