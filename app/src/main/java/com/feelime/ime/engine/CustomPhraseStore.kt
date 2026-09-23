@@ -53,6 +53,10 @@ object CustomPhraseStore {
         val enabled: Boolean,
         val items: List<Pair<String, String>>,
         val imported: List<Pair<String, String>> = emptyList(),
+        /** 自造词（issue #29-5）：用户在词库管理手动维护的词表。独立于
+         *  items（符号词）与 imported（文件导入），同一 txt 通道派生，
+         *  但不受符号词开关 gating——用户词是词库本体，不是附加候选。 */
+        val user: List<Pair<String, String>> = emptyList(),
     )
 
     /** 读取真相源；json 不存在时（首装/升级）种子写入默认表并派生 txt。 */
@@ -80,7 +84,15 @@ object CustomPhraseStore {
                 val code = item.optString("code")
                 if (text.isNotEmpty() && code.isNotEmpty()) imported.add(text to code)
             }
-            State(root.optBoolean("enabled", true), items, imported)
+            val user = ArrayList<Pair<String, String>>()
+            val userArray = root.optJSONArray("user") ?: JSONArray()
+            for (i in 0 until userArray.length()) {
+                val item = userArray.optJSONObject(i) ?: continue
+                val text = item.optString("text")
+                val code = item.optString("code")
+                if (text.isNotEmpty() && code.isNotEmpty()) user.add(text to code)
+            }
+            State(root.optBoolean("enabled", true), items, imported, user)
         } catch (_: Exception) {
             State(true, DEFAULT_ITEMS)
         }
@@ -93,6 +105,7 @@ object CustomPhraseStore {
         enabled: Boolean,
         items: List<Pair<String, String>>,
         imported: List<Pair<String, String>> = emptyList(),
+        user: List<Pair<String, String>> = emptyList(),
         seed: Boolean = false,
     ) {
         val root = JSONObject()
@@ -104,21 +117,32 @@ object CustomPhraseStore {
             .put("imported", JSONArray().apply {
                 imported.forEach { (text, code) -> put(JSONObject().put("text", text).put("code", code)) }
             })
+            .put("user", JSONArray().apply {
+                user.forEach { (text, code) -> put(JSONObject().put("text", text).put("code", code)) }
+            })
         val dir = jsonFile(context).parentFile
         dir?.mkdirs()
         jsonFile(context).writeText(root.toString())
-        deriveTxt(context, enabled, items + imported)
+        deriveTxt(context, enabled, items, imported, user)
         android.util.Log.i(
             "FeelimeCustomPhrase",
-            "saved seed=$seed enabled=$enabled items=${items.size} imported=${imported.size} txt=${txtFile(context).exists()}",
+            "saved seed=$seed enabled=$enabled items=${items.size} imported=${imported.size} user=${user.size} txt=${txtFile(context).exists()}",
         )
     }
 
-    /** 开关开且词条非空：写 custom_phrase.txt（每词条多行展开）；
-     * 否则删 txt。 */
-    private fun deriveTxt(context: Context, enabled: Boolean, items: List<Pair<String, String>>) {
+    /** 派生 custom_phrase.txt（每词条多行展开）。gating 边界（#29-5 起）：
+     *  开关只管 items（符号词附加候选）；imported 与 user 是词库本体，
+     *  各有自己的清空/管理入口，不随符号词开关消失。三段全空才删 txt。 */
+    private fun deriveTxt(
+        context: Context,
+        enabled: Boolean,
+        items: List<Pair<String, String>>,
+        imported: List<Pair<String, String>>,
+        user: List<Pair<String, String>>,
+    ) {
         val txt = txtFile(context)
-        if (!enabled || items.isEmpty()) {
+        val deriving = (if (enabled) items else emptyList()) + imported + user
+        if (deriving.isEmpty()) {
             txt.delete()
             return
         }

@@ -337,7 +337,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     val state = com.feelime.ime.engine.CustomPhraseStore.load(applicationContext)
                     com.feelime.ime.engine.CustomPhraseStore.save(
                         applicationContext, state.enabled, state.items,
-                        imported = state.imported,
+                        imported = state.imported, user = state.user,
                     )
                 }
                 sendBroadcast(

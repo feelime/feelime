@@ -533,6 +533,11 @@ class SettingsBridge(
                 })
                 put("importedCount", state.imported.size)
             })
+            .put("userWords", JSONArray().apply {
+                com.feelime.ime.engine.CustomPhraseStore.load(context).user.forEach { (text, code) ->
+                    put(JSONObject().put("text", text).put("code", code))
+                }
+            })
             .put("associationOn", readAssociation(context))
             .put("dynamicDateTimeOn", readDynamicDateTime(context))
             .put("keySound", readKeySoundEnabled(context))
@@ -1233,7 +1238,55 @@ class SettingsBridge(
         // 手管 items 全量重发不触碰导入段（imported 由导入/清空入口专管）。
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
         com.feelime.ime.engine.CustomPhraseStore.save(
-            context, enabled, items, imported = state.imported,
+            context, enabled, items, imported = state.imported, user = state.user,
+        )
+        context.sendBroadcast(
+            Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 自造词（issue #29-5）：词库管理里手动维护的用户词表，独立于
+     *  符号词（items）与导入表（imported），不受符号词开关 gating。
+     *  校验：text 非空、code 1..48 位字母（真实拼音串比符号码长），
+     *  上限 200 条。 */
+    @JavascriptInterface
+    fun saveUserWords(itemsJson: String, token: String) = guarded(token) {
+        val items = ArrayList<Pair<String, String>>()
+        val parseError = try {
+            val array = JSONArray(itemsJson)
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val text = item.optString("text").trim()
+                val code = item.optString("code").trim().lowercase()
+                if (text.isEmpty()) continue
+                if (!Regex("^[a-z;]{1,48}$").matches(code)) {
+                    pushEvent(
+                        JSONObject()
+                            .put("type", "userWordsError")
+                            .put("code", "BAD_PHRASE_CODE")
+                            .put("message", t(context, "输入码需为 1-48 位字母", "Code must be 1-48 letters")),
+                    )
+                    return@guarded
+                }
+                items.add(text to code)
+            }
+            false
+        } catch (_: Exception) {
+            true
+        }
+        if (parseError || items.size > 200) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "userWordsError")
+                    .put("code", "BAD_PHRASES_PAYLOAD")
+                    .put("message", t(context, "词表格式错误", "Invalid phrase list")),
+            )
+            return@guarded
+        }
+        val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+        com.feelime.ime.engine.CustomPhraseStore.save(
+            context, state.enabled, state.items, imported = state.imported, user = items,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1265,7 +1318,7 @@ class SettingsBridge(
             }
             val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
             com.feelime.ime.engine.CustomPhraseStore.save(
-                context, state.enabled, state.items, imported = result.items,
+                context, state.enabled, state.items, imported = result.items, user = state.user,
             )
             context.sendBroadcast(
                 Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1292,7 +1345,7 @@ class SettingsBridge(
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
         if (state.imported.isEmpty()) return@guarded
         com.feelime.ime.engine.CustomPhraseStore.save(
-            context, state.enabled, state.items, imported = emptyList(),
+            context, state.enabled, state.items, imported = emptyList(), user = state.user,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),

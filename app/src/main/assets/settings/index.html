@@ -470,6 +470,45 @@
       </div>
       <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码 逐行导入，上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。</p>
     </section>
+
+    <section class="card" id="sec-dict-user-words" aria-labelledby="dictUserWordsTitle">
+      <div class="section-heading"><h2 id="dictUserWordsTitle" data-i18n="dict.userwords.title">自造词</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <div class="row language-row no-rule">
+        <span class="row-label">
+          <span data-i18n="dict.userwords.enable">手动维护的常用词</span>
+          <small data-i18n="dict.userwords.hint">逐条添加「词 + 全拼输入码」，输入码命中即出这个词；适合名字、缩写、行话。改动即时生效，重启保留。</small>
+        </span>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="btnManageUserWords" type="button" data-i18n="dict.userwords.manage">管理词条</button>
+        <span class="save-note" id="userWordsCount" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 自造词（issue #29-5）：词库管理的三级编辑页，镜像候选符号词页。 -->
+<div class="page" data-page="userwords" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="dict" data-i18n-aria="nav.backDict" aria-label="返回词库">‹</button>
+    <h2 class="page-title" data-i18n="page.userwords">自造词</h2>
+  </header>
+  <main>
+    <section class="card" aria-labelledby="userWordsListTitle">
+      <div class="section-heading"><h2 id="userWordsListTitle" data-i18n="userwords.list.title">词条</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <ul id="userWordList" class="phrase-list"></ul>
+      <p id="userWordEmpty" class="hint block" data-i18n="userwords.list.empty" hidden>还没有词条，在下方添加。</p>
+      <div class="phrase-form">
+        <input id="userWordText" class="input" type="text" maxlength="32" data-i18n-placeholder="userwords.form.text" placeholder="词条（如 你好世界）">
+        <input id="userWordCode" class="input" type="text" maxlength="48" data-i18n-placeholder="userwords.form.code" placeholder="输入码（如 nihaoshijie）">
+        <div class="actions">
+          <button class="btn primary" id="btnSaveUserWord" type="button" data-i18n="userwords.form.add">添加</button>
+          <button class="btn" id="btnCancelUserWordEdit" type="button" data-i18n="userwords.form.cancel" hidden>取消</button>
+        </div>
+      </div>
+      <p class="hint" data-i18n="userwords.list.note">输入码用全拼（单个音节自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效，上限 200 条。</p>
+      <span class="save-note" id="userWordsNote" role="status" aria-live="polite"></span>
+    </section>
   </main>
 </div>
 
