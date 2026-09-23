@@ -750,6 +750,38 @@ test('flick up sends the small alt char, flick down uppercases', () => {
     equal(world.native.of('key').slice(-1)[0].args[0], 'A', 'down gives uppercase');
 });
 
+// ---- 上下滑方向互换（issue #29-2，默认关） ----
+test('flick directions swap when hello carries flickSwap; hint CSS follows', {since: '3.60.0'}, () => {
+    const world = fresh();
+    equal(world.document.body.classList.contains('flick-swap'), false, 'default: no swap class');
+    world.hello({flickSwap: true});
+    equal(world.document.body.classList.contains('flick-swap'), true, 'hello arms the swap class');
+
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, -30); // 50px up
+    world.touchUp(q);
+    world.clock.advance(2);
+    equal(world.native.of('key').slice(-1)[0].args[0], 'Q', 'swapped: up gives uppercase');
+
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, 70); // 50px down on the same key
+    world.touchUp(q);
+    world.clock.advance(2);
+    equal(world.native.of('key').slice(-1)[0].args[0], '1', 'swapped: down gives the alt char');
+});
+
+test('flick swap leaves T9/stroke gestures alone; default stays classic', {since: '3.60.0'}, () => {
+    const world = fresh();
+    // 默认（无 flickSwap 字段）：原行为不动。
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, -30);
+    world.touchUp(q);
+    world.clock.advance(2);
+    equal(world.native.of('key').slice(-1)[0].args[0], '1', 'default: up still the alt char');
+});
+
 test('horizontal swipe scrubs from a fixed threshold crossing', () => {
     const world = fresh();
     const g = world.key('g');
@@ -2639,6 +2671,40 @@ test('one-handed pad percent drives --side-pad-w (shrink tiers)', {since: '3.45.
     equal(padVar(), '138px', '35% tier applies (393 * 0.35)');
     world.hello({oneHandPad: 0});
     equal(padVar(), undefined, 'tier 0 removes the override (CSS default again)');
+});
+
+// ---- 按键气泡（issue #30-1，外观开关默认关） ----
+test('key bubble stays off by default; hello arms it per press', {since: '3.60.0'}, () => {
+    const world = fresh();
+    const bubble = world.$('keyBubble');
+    const key = world.key('h');
+    world.touchDown(key);
+    equal(bubble.hidden, true, 'default off: no bubble without the hello flag');
+    world.touchUp(key);
+    world.hello({keyBubble: true});
+    world.touchDown(key);
+    equal(bubble.hidden, false, 'hello keyBubble=true shows the bubble on press');
+    equal(bubble.textContent, 'h', 'bubble shows the pressed glyph');
+    world.touchUp(key);
+    equal(bubble.hidden, true, 'release hides the bubble');
+});
+
+test('key bubble yields to the long-press popup; space never bubbles', {since: '3.60.0'}, () => {
+    const world = fresh();
+    const bubble = world.$('keyBubble');
+    world.hello({keyBubble: true});
+    const key = world.key('h');
+    world.touchDown(key);
+    equal(bubble.hidden, false, 'bubble up while pressed');
+    world.clock.advance(400); // holdMs 长按弹层接管
+    equal(world.$('keyPopup').classList.contains('open'), true, 'popup opened');
+    equal(bubble.hidden, true, 'bubble yields once the popup owns the press');
+    world.touchUp(key);
+
+    const space = world.$('spaceKey');
+    world.touchDown(space);
+    equal(bubble.hidden, true, 'space key never bubbles');
+    world.touchUp(space);
 });
 
 test('key opacity: --key-alpha is a 0..1 fraction floored at 5%', {since: '3.45.1'}, () => {

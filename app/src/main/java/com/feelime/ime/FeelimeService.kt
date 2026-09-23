@@ -337,7 +337,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     val state = com.feelime.ime.engine.CustomPhraseStore.load(applicationContext)
                     com.feelime.ime.engine.CustomPhraseStore.save(
                         applicationContext, state.enabled, state.items,
-                        imported = state.imported,
+                        imported = state.imported, user = state.user,
                     )
                 }
                 sendBroadcast(
@@ -1545,6 +1545,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // px inside this WebView; numbers pass through as-is.
             .put("bottomPad", bottomPadDp())
             .put("scrubSpeed", feelScrubSpeed())
+            .put("flickSwap", readFlickSwap(this))
             .put("holdMs", feelHoldMs())
             .put("popupSnap", feelPopupSnap())
             .put("candidateFont", candidateFont())
@@ -1558,6 +1559,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("bgImageLightSource", readBgImageSource(this, "light"))
             .put("bgImageDarkSource", readBgImageSource(this, "dark"))
             .put("keyOpacity", readKeyOpacity(this))
+            .put("keyBubble", readKeyBubble(this))
             .put("themeMode", readThemeMode(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("associationOn", readAssociation(this))
@@ -2049,6 +2051,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     keyboardPrefs.edit().putInt(PREF_KEY_OPACITY, pct).apply()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
+                "keyBubble" -> {
+                    keyboardPrefs.edit().putBoolean(PREF_KEY_BUBBLE, value == "1" || value == "true").apply()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
                 "themeMode" -> {
                     // 外观页的三态主题（设置 app 写、键盘 hello 读回应用）；
                     // 键盘侧 pushStores 会把 tile/工具的改动同步回这里。
@@ -2093,6 +2099,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     val hold = value.toIntOrNull()
                     if (hold == null || hold !in FEEL_HOLD_STEPS) return@guarded
                     keyboardPrefs.edit().putInt(PREF_FEEL_HOLD_MS, hold).apply()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "flickSwap" -> {
+                    keyboardPrefs.edit().putBoolean(PREF_FLICK_SWAP, value == "1" || value == "true").apply()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "popupSnap" -> {

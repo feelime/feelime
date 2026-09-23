@@ -61,6 +61,28 @@ const I18N = {
         "dict.import.title": "导入词库",
         "dict.import.enable": "rime 词库文件（.dict.yaml）",
         "dict.import.note": "词<TAB>码 逐行导入，上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。",
+        "dict.userwords.title": "自造词",
+        "dict.userwords.enable": "手动维护的常用词",
+        "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，输入码命中即出这个词；适合名字、缩写、行话。改动即时生效，重启保留。",
+        "dict.userwords.manage": "管理词条",
+        "page.userwords": "自造词",
+        "userwords.list.title": "词条",
+        "userwords.list.empty": "还没有词条，在下方添加。",
+        "userwords.form.text": "词条（如 你好世界）",
+        "userwords.form.code": "输入码（如 nihaoshijie）",
+        "userwords.form.add": "添加",
+        "userwords.form.save": "保存",
+        "userwords.form.cancel": "取消",
+        "userwords.list.note": "输入码用全拼（单个音节自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效，上限 200 条。",
+        "userwords.note.saved": "已保存",
+        "userwords.note.deleted": "已删除",
+        "userwords.err.notReady": "正在读取词表，稍后再试",
+        "userwords.err.duplicate": "这个输入码已存在",
+        "userwords.err.limit": "最多 200 条",
+        "userwords.form.textErr": "词条不能为空",
+        "userwords.form.codeErr": "输入码需为 1-48 位字母",
+        "userwords.count": "共 {0} 条",
+        "nav.backDict": "返回词库",
         "dict.base.title": "基底词库",
         "dict.base.badge": "基底",
         "dict.base.hint": "换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。",
@@ -344,6 +366,8 @@ const I18N = {
         "input.feel.kbHeightHint": "竖屏键盘的高度；键盘上拖拽调节与此处等效。",
         "input.feel.kbHeightReset": "恢复默认",
         "input.feel.keyOpacityHint": "键帽在背景图上的透明程度，文字始终实色。",
+        "input.feel.keyBubble": "按键气泡",
+        "input.feel.keyBubbleHint": "按下按键时在键帽上方放大显示所按的字符，方便确认有没有按错（默认关闭）。",
         "entry.appearance.title": "外观",
         "entry.appearance.subtitle": "色彩模式 · 背景图片 · 透明度",
         "input.appearance.title": "外观",
@@ -360,6 +384,8 @@ const I18N = {
         "右手": "右手",
         "input.feel.hold": "长按触发时长",
         "input.feel.holdHint": "长按弹出选字、锁定大写、打开模式菜单的等待时间。",
+"input.feel.flickSwap": "上下滑方向互换",
+        "input.feel.flickSwapHint": "默认上滑出数字/符号、下滑出大写；开启后对调（键面小字提示随之下移）。",
         "input.feel.scrub": "光标移动速度",
         "input.feel.scrubHint": "光标拖拽时每个刻度移动的距离。",
         "input.feel.snap": "滑动选字范围",
@@ -479,6 +505,28 @@ const I18N = {
         "dict.import.title": "Import a dictionary",
         "dict.import.enable": "rime dictionary file (.dict.yaml)",
         "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice.",
+        "dict.userwords.title": "User words",
+        "dict.userwords.enable": "Hand-maintained words",
+        "dict.userwords.hint": "Add word + full-pinyin code pairs one by one; typing the code surfaces the word. Great for names, abbreviations, jargon. Applies immediately, survives restart.",
+        "dict.userwords.manage": "Manage words",
+        "page.userwords": "User words",
+        "userwords.list.title": "Words",
+        "userwords.list.empty": "No words yet - add one below.",
+        "userwords.form.text": "Word (e.g. hello world)",
+        "userwords.form.code": "Code (e.g. nihaoshijie)",
+        "userwords.form.add": "Add",
+        "userwords.form.save": "Save",
+        "userwords.form.cancel": "Cancel",
+        "userwords.list.note": "Codes are full pinyin (single syllables auto-adapt to double-pinyin keys); tap a word to edit, ✕ deletes. Applies immediately, 200-entry cap.",
+        "userwords.note.saved": "Saved",
+        "userwords.note.deleted": "Deleted",
+        "userwords.err.notReady": "Word list still loading, try again shortly",
+        "userwords.err.duplicate": "That code already exists",
+        "userwords.err.limit": "200 entries max",
+        "userwords.form.textErr": "Word cannot be empty",
+        "userwords.form.codeErr": "Code must be 1-48 letters",
+        "userwords.count": "{0} entries",
+        "nav.backDict": "Back to dictionary",
         "dict.base.title": "Base dictionary",
         "dict.base.badge": "Base",
         "dict.base.hint": "Swap the whole lexicon: pick a rime dictionary file (.dict.yaml, e.g. from rime-ice) and it recompiles on this device (a few minutes); fuzzy/double-pinyin/T9 rebuild with it. Built-in can be restored anytime.",
@@ -765,6 +813,8 @@ const I18N = {
         "input.feel.kbHeightHint": "Portrait keyboard height; dragging on the keyboard stays equivalent.",
         "input.feel.kbHeightReset": "Reset",
         "input.feel.keyOpacityHint": "How transparent the keycaps sit over the background image; labels stay solid.",
+        "input.feel.keyBubble": "Key bubble",
+        "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
         "entry.appearance.title": "Appearance",
         "entry.appearance.subtitle": "Color mode · Background · Opacity",
         "input.appearance.title": "Appearance",
@@ -783,6 +833,8 @@ const I18N = {
         "空白": "Blank",
         "input.feel.hold": "Long-press trigger",
         "input.feel.holdHint": "How long a press waits before popup selection, caps lock, or the mode menu opens.",
+"input.feel.flickSwap": "Swap flick directions",
+        "input.feel.flickSwapHint": "By default flick up gives the digit/symbol and flick down uppercases; enabling swaps them (the keycap hint moves below).",
         "input.feel.scrub": "Cursor speed",
         "input.feel.scrubHint": "Distance the caret moves per drag step.",
         "input.feel.snap": "Swipe selection range",
@@ -860,7 +912,7 @@ const I18N = {
     },
 };
 
-const PAGES = ["home", "appearance", "input", "dict", "phrases", "voice", "update", "backup", "about", "licenses", "test"];
+const PAGES = ["home", "appearance", "input", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -1046,6 +1098,9 @@ window.FeelimeSettings = {
             case "customPhrasesError":
                 setNote("phrasesNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
                 break;
+            case "userWordsError":
+                setNote("userWordsNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
+                break;
             case "dictImported":
                 setNote("dictImportNote", event.message || "");
                 break;
@@ -1124,6 +1179,7 @@ function render(state) {
     renderAsr(state);
     renderCustom(state);
     renderCustomPhrases(state);
+    renderUserWords(state);
     renderDictBase(state);
     renderUpdate(state);
     renderAbout(state);
@@ -1154,6 +1210,8 @@ function renderFeel(state) {
     }
     const opacity = $("keyOpacity");
     if (opacity) opacity.value = String(Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100))));
+    const bubble = $("keyBubble");
+    if (bubble) bubble.checked = state.keyBubble === true;
     const kbHeight = $("kbHeight");
     if (kbHeight) {
         const min = Number(state.kbHeightMin ?? 226);
@@ -1183,6 +1241,8 @@ function renderFeel(state) {
     });
     setSelect("holdMs", state.holdMs ?? 350, ["200", "300", "350", "450", "600"]);
     setSelect("scrubSpeed", state.scrubSpeed ?? 3, ["1", "2", "3", "4", "5"]);
+    const flickSwap = $("flickSwap");
+    if (flickSwap) flickSwap.checked = state.flickSwap === true;
     setSelect("popupSnap", state.popupSnap ?? 1, ["0", "1", "2"]);
     const setToggle = (id, value) => {
         const node = $(id);
@@ -1716,6 +1776,122 @@ $("btnSavePhrase").addEventListener("click", () => {
     setNote("phrasesNote", t("phrases.note.saved"));
 });
 
+/* --- 自造词（issue #29-5）：词库管理的三级编辑页，镜像候选符号词。
+ * state.userWords = [{text,code}]，CRUD 全量重发 saveUserWords，native
+ * 落盘 json 的 user 段 + 派生 txt + 广播引擎重载。 */
+let userWordItems = null;
+let userWordEditing = -1;
+
+function renderUserWords(state) {
+    const words = state.userWords;
+    if (!words) return;
+    userWordItems = words.map(item => ({
+        text: String(item.text || ""), code: String(item.code || ""),
+    }));
+    renderUserWordList();
+    const count = $("userWordsCount");
+    if (count) count.textContent = userWordItems.length
+        ? t("userwords.count", [userWordItems.length]) : "";
+}
+
+function userWordStateReady() {
+    if (userWordItems !== null) return true;
+    setNote("userWordsNote", t("userwords.err.notReady"));
+    return false;
+}
+
+function renderUserWordList() {
+    const list = $("userWordList");
+    list.textContent = "";
+    userWordItems.forEach((item, index) => {
+        const row = document.createElement("li");
+        row.className = "phrase-row";
+        const label = document.createElement("button");
+        label.type = "button";
+        label.className = "phrase-edit";
+        const text = document.createElement("span");
+        text.className = "phrase-text";
+        text.textContent = item.text;
+        const code = document.createElement("code");
+        code.textContent = item.code;
+        label.append(text, code);
+        label.addEventListener("click", () => startUserWordEdit(index));
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "phrase-del";
+        del.textContent = "✕";
+        del.setAttribute("aria-label", t("userwords.note.deleted"));
+        del.addEventListener("click", () => {
+            if (!userWordStateReady()) return;
+            userWordItems.splice(index, 1);
+            if (userWordEditing === index) resetUserWordForm();
+            if (userWordEditing > index) userWordEditing -= 1;
+            saveUserWordsToBridge();
+            setNote("userWordsNote", t("userwords.note.deleted"));
+        });
+        row.append(label, del);
+        list.append(row);
+    });
+    $("userWordEmpty").hidden = userWordItems.length > 0;
+}
+
+function startUserWordEdit(index) {
+    userWordEditing = index;
+    $("userWordText").value = userWordItems[index].text;
+    $("userWordCode").value = userWordItems[index].code;
+    $("btnSaveUserWord").textContent = t("userwords.form.save");
+    $("btnCancelUserWordEdit").hidden = false;
+}
+
+function resetUserWordForm() {
+    userWordEditing = -1;
+    $("userWordText").value = "";
+    $("userWordCode").value = "";
+    $("btnSaveUserWord").textContent = t("userwords.form.add");
+    $("btnCancelUserWordEdit").hidden = true;
+}
+
+function saveUserWordsToBridge() {
+    const payload = userWordItems.map(item => ({ text: item.text, code: item.code }));
+    call("saveUserWords", JSON.stringify(payload));
+    const count = $("userWordsCount");
+    if (count) count.textContent = userWordItems.length
+        ? t("userwords.count", [userWordItems.length]) : "";
+}
+
+$("btnManageUserWords").addEventListener("click", () => showPage("userwords"));
+$("btnCancelUserWordEdit").addEventListener("click", resetUserWordForm);
+$("btnSaveUserWord").addEventListener("click", () => {
+    if (!userWordStateReady()) return;
+    const text = $("userWordText").value.trim();
+    const code = $("userWordCode").value.trim().toLowerCase();
+    // 校验与壳侧 saveUserWords 一致：词条非空 + 码 1-48 位字母。
+    if (!text) {
+        setNote("userWordsNote", t("userwords.form.textErr"));
+        return;
+    }
+    if (!/^[a-z;]{1,48}$/.test(code)) {
+        setNote("userWordsNote", t("userwords.form.codeErr"));
+        return;
+    }
+    if (userWordEditing >= 0) {
+        userWordItems[userWordEditing] = { text, code };
+    } else {
+        if (userWordItems.some(item => item.code === code)) {
+            setNote("userWordsNote", t("userwords.err.duplicate"));
+            return;
+        }
+        if (userWordItems.length >= 200) {
+            setNote("userWordsNote", t("userwords.err.limit"));
+            return;
+        }
+        userWordItems.push({ text, code });
+    }
+    saveUserWordsToBridge();
+    resetUserWordForm();
+    setNote("userWordsNote", t("userwords.note.saved"));
+});
+
 function updateStateLabel(value) {
     const key = `update.states.${String(value || "").toUpperCase()}`;
     return I18N[uiLocale][key] || I18N.zh[key] || String(value || "");
@@ -1835,6 +2011,9 @@ $("keyOpacity").addEventListener("change", event => {
     keyOpacityDirty = false;
     call("setKeyOpacity", parseInt(event.target.value, 10));
 });
+// 按键气泡（issue #30-1）：外观页开关，默认关；广播→hello 实时作用到
+// 底下弹出的预览键盘。
+$("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
 // 键盘高度滑块：拖动即时反映在预览上，松手落盘；「恢复默认」写 0。
 let kbHeightDirty = false;
 $("kbHeight").addEventListener("input", event => {
@@ -1903,6 +2082,7 @@ function pickBgImage(variant) {
 }
 $("holdMs").addEventListener("change", submitFeelOptions);
 $("scrubSpeed").addEventListener("change", submitFeelOptions);
+$("flickSwap").addEventListener("change", event => call("setFlickSwap", event.target.checked));
 $("popupSnap").addEventListener("change", submitFeelOptions);
 $("modelBackend").addEventListener("change", event => call("setModelBackend", event.target.value));
 $("modelDownloadSource").addEventListener("change", event => {

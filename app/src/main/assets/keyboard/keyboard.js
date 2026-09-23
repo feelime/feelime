@@ -1131,6 +1131,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // repeat interval rides it (hold + 40). Feel-tuned via the
             // settings app, delivered through hello (mode-fallback §4).
             this.holdMs = 350;
+            // 上下滑方向互换（issue #29-2，默认关）：默认上滑=小字符（数字/
+            // 符号/重音）、下滑=大写；互换后对调。真相源是 native pref
+            // flick_swap，hello 下发。
+            this.flickSwap = false;
             // Popup swipe selection range: 0=loose 1.4x, 1=standard 1.0x,
             // 2=tight 0.7x — scales the relative-tracking jitter dead zone
             // and the card-boundary cancel slop (selection itself stays
@@ -1158,6 +1162,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.bgImageDark = '';
             // 键帽不透明度（0-100，默认 100=不透明）。
             this.keyOpacity = 100;
+            // 按键气泡（issue #30-1，默认关）：真相源是 native pref
+            // key_bubble，外观页开关经 hello 下发；开着才在按下时放大
+            // 预览所按字符。
+            this.keyBubble = false;
             // 色彩模式（auto/light/dark）：真相源是 native pref theme_mode，
             // hello 下发、tile 循环上报。AGENTS.md「设置不走 localStorage」。
             this.themeMode = 'auto';
@@ -3039,6 +3047,41 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
         }
 
+        /** 按键气泡取字（issue #30-1）：qwerty 字母读键面主标（随
+         *  shift/大小写更新），其余按 data-key 直取（符号格/九宫格数字）；
+         *  空格与功能键（无 data-key 无主标）不出气泡；中文态逗/句号
+         *  沿用弹层的全角显示映射。 */
+        bubbleGlyph(button) {
+            const main = button.querySelector('.kb-main');
+            if (main && main.textContent) return main.textContent;
+            const key = button.dataset.key;
+            if (!key || key === ' ') return null;
+            if (this.isChineseMode() && (key === ',' || key === '.')) {
+                return key === ',' ? '，' : '。';
+            }
+            return key.length <= 2 ? key : null;
+        }
+
+        showKeyBubble(button) {
+            const glyph = this.bubbleGlyph(button);
+            if (!glyph) return;
+            const bubble = document.getElementById('keyBubble');
+            if (!bubble) return;
+            bubble.textContent = glyph;
+            bubble.hidden = false;
+            const rect = button.getBoundingClientRect();
+            // 与 openPopup 同一套钳制：水平贴边收拢，垂直不越出视口顶。
+            const left = Math.max(4, Math.min(innerWidth - bubble.offsetWidth - 4,
+                rect.left + rect.width / 2 - bubble.offsetWidth / 2));
+            bubble.style.left = left + 'px';
+            bubble.style.top = Math.max(2, rect.top - bubble.offsetHeight - 6) + 'px';
+        }
+
+        hideKeyBubble() {
+            const bubble = document.getElementById('keyBubble');
+            if (bubble && !bubble.hidden) bubble.hidden = true;
+        }
+
         bindTouch(button, options = {}) {
             if (!button) return; // Toolbar tools may not exist
             if (button.dataset.bound) return;
@@ -3060,6 +3103,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.pressedKeys.add(button);
                 button.classList.add('active-touch');
                 this.nativeKeyFeedback();
+                if (this.keyBubble && !this.popup) this.showKeyBubble(button);
                 longFired = false;
                 const touch = event.changedTouches[0];
                 if (!this.touchOrigin) {
@@ -3116,6 +3160,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!this.pressedKeys.has(button)) return;
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
+                this.hideKeyBubble();
                 clear();
                 if (this.popup) {
                     // 快速甩出时最终位置只出现在 changedTouches：相对跟手
@@ -3132,6 +3177,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.addEventListener('touchcancel', () => {
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
+                this.hideKeyBubble();
                 clear();
                 if (this.popup) this.closePopup(true);
                 // Review P3: a cancelled gesture never delivers the click
@@ -3143,6 +3189,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         cancelTouches() {
             this.inkCancelTouch();
+            this.hideKeyBubble();
             for (const button of this.pressedKeys) {
                 button.classList.remove('active-touch');
                 if (button._cancelPress) button._cancelPress();
@@ -3225,17 +3272,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         // alt ，- both via the engine punctuator (ASCII '.'
                         // / ','), so the gestures match the printed glyphs.
                         let value;
+                        // 互换开关（issue #29-2）：默认上滑=alt 小字符、下滑=
+                        // 大写；开互换后对调。键面小字提示随 CSS 翻到下侧。
+                        const altOnUp = !this.flickSwap;
                         if (key === '.' && this.isChineseMode()) {
                             // Main ，(tap, down) / alt 。(up);
                             // both keep flowing through the engine punctuator
                             // (Native.key) - full-width directly would be
                             // dropped unprocessed.
-                            value = dy < 0 ? '.' : ',';
+                            value = (dy < 0) === altOnUp ? '.' : ',';
                         } else {
                             // CN_ALTS values are the final
                             // glyphs - committed as-is (commitText); the old
                             // FULLWIDTH widening map is gone.
-                            value = dy < 0 ? this.altCandidates(key)[0] : key.toUpperCase();
+                            value = (dy < 0) === altOnUp
+                                ? this.altCandidates(key)[0]
+                                : key.toUpperCase();
                         }
                         if (value) {
                             // In Chinese modes a flicked digit/symbol
@@ -3421,6 +3473,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * （commitText，大小写原样落）；数字格=通配，进引擎（与点按
          * 同义）。拼音里确认字母由下滑/横滑手势承担，不经弹层。 */
         openT9HoldPopup(button) {
+            this.hideKeyBubble();
             const key = button.dataset.key;
             const letters = (LAYOUTS.t9.alts[key] || '').split('');
             const syms = LAYOUTS.t9.keySymbols[key] || [];
@@ -3441,6 +3494,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 格数字=点按同义（发部件编码，send 字段），预选中格、相对跟手。
          * 1 键无字母组：退回单排 符号·数字·符号。 */
         openStrokeHoldPopup(button) {
+            this.hideKeyBubble();
             const key = button.dataset.key;
             const def = STROKE_KEYS[key] || {};
             const syms = def.syms || [];
@@ -3548,6 +3602,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         openPopup(button) {
+            this.hideKeyBubble();
             const key = button.dataset.key;
             const upper = key.toUpperCase();
             // letter alternates must offer their uppercase forms too
@@ -8132,6 +8187,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof payload.bgImageDark === 'string') this.bgImageDark = payload.bgImageDark;
             const opacity = Number(payload.keyOpacity);
             if (opacity >= 0 && opacity <= 100) this.keyOpacity = opacity;
+            if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
             this.applyOneHand();
             this.applyBackground();
             this.applyKeyOpacity();
@@ -8206,6 +8262,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // may no longer overwrite the runtime value (pullStores
                 // refresh, restored backup rev) — native owns it now.
                 this.scrubSpeedFromNative = true;
+            }
+            if (typeof payload.flickSwap === 'boolean') {
+                this.flickSwap = payload.flickSwap;
+                document.body.classList.toggle('flick-swap', this.flickSwap);
             }
             if (Number(payload.popupSnap) in { 0: 1, 1: 1, 2: 1 }) {
                 this.popupSnap = Number(payload.popupSnap);

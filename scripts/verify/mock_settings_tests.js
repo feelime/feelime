@@ -99,6 +99,9 @@ class MockSettingsNative {
     reportPage(...a) { this._rec('reportPage', a); }
     setThemeMode(...a) { this._rec('setThemeMode', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
+    setKeyBubble(...a) { this._rec('setKeyBubble', a); }
+    saveUserWords(...a) { this._rec('saveUserWords', a); }
+    setFlickSwap(...a) { this._rec('setFlickSwap', a); }
     setKbHeight(...a) { this._rec('setKbHeight', a); }
     previewKeyboard(...a) { this._rec('previewKeyboard', a); }
     setBgImage(...a) { this._rec('setBgImage', a); }
@@ -584,13 +587,13 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     const hiddenMap = () => Object.fromEntries(
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
-        home: false, appearance: true, input: true, dict: true, phrases: true, voice: true, update: true,
+        home: false, appearance: true, input: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
         backup: true, about: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
-        home: true, appearance: true, input: true, dict: true, phrases: true, voice: false, update: true,
+        home: true, appearance: true, input: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
         backup: true, about: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', world.token], 'reportPage(page name) on sub-page');
@@ -778,6 +781,64 @@ test('custom phrases: the 200-entry cap is enforced locally before the bridge ca
     equal(JSON.parse(world.lastCall('saveCustomPhrases').args[0]).length, 200, 'add passes at 200');
 });
 
+// ---- 自造词（issue #29-5）：词库管理的三级编辑页 ----
+test('user words: state renders the list; CRUD resends the full payload with the token', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, userWords: [{ text: '你好世界', code: 'nihaoshijie' }] });
+    const rows = [...world.doc.querySelectorAll('#userWordList .phrase-row')];
+    equal(rows.length, 1, 'one row rendered');
+    equal(rows[0].querySelector('.phrase-text').textContent, '你好世界', 'row text');
+    equal(rows[0].querySelector('code').textContent, 'nihaoshijie', 'row code');
+    equal(world.$('userWordEmpty').hidden, true, 'empty hint hidden with rows');
+
+    // 添加：全量重发（saveUserWords 只带 items+token，无 enabled）。
+    world.$('userWordText').value = '张伟';
+    world.$('userWordCode').value = 'ZhangWei';
+    world.$('btnSaveUserWord').click();
+    const args = world.lastCall('saveUserWords').args;
+    equal(args.length, 2, 'items + token');
+    equal(args[1], world.token, 'token');
+    equal(JSON.parse(args[0]).length, 2, 'full list resent');
+    equal(JSON.parse(args[0])[1], { text: '张伟', code: 'zhangwei' }, 'code normalized to lowercase');
+
+    // 重复码拒绝、且不发桥调用；超长码本地拒绝。
+    const calls = world.native.of('saveUserWords').length;
+    world.$('userWordText').value = 'dup';
+    world.$('userWordCode').value = 'zhangwei';
+    world.$('btnSaveUserWord').click();
+    equal(world.native.of('saveUserWords').length, calls, 'duplicate code not saved');
+    world.$('userWordText').value = 'bad';
+    world.$('userWordCode').value = 'a'.repeat(49);
+    world.$('btnSaveUserWord').click();
+    equal(world.native.of('saveUserWords').length, calls, 'over-long code rejected locally');
+
+    // 编辑与删除。
+    [...world.doc.querySelectorAll('#userWordList .phrase-edit')][0].click();
+    equal(world.$('btnSaveUserWord').textContent, '保存', 'edit mode label');
+    world.$('userWordText').value = '改';
+    world.$('btnSaveUserWord').click();
+    equal(JSON.parse(world.lastCall('saveUserWords').args[0])[0], { text: '改', code: 'nihaoshijie' }, 'edit rewrites the row');
+    [...world.doc.querySelectorAll('#userWordList .phrase-del')][0].click();
+    equal(JSON.parse(world.lastCall('saveUserWords').args[0]).length, 1, 'delete shrinks the list');
+});
+
+test('user words: CRUD is refused before the first state push; 200 cap local', () => {
+    const world = new SettingsWorld();
+    // state 未到：空副本全量重发会把用户词表清空——必须拒绝。
+    world.$('userWordText').value = 'x';
+    world.$('userWordCode').value = 'xx';
+    world.$('btnSaveUserWord').click();
+    equal(world.native.of('saveUserWords').length, 0, 'no bridge call before state');
+
+    world.push({ ...BASE_STATE, userWords: [] });
+    const filled = Array.from({ length: 200 }, (_, i) => ({ text: `t${i}`, code: `c${i}` }));
+    world.push({ ...BASE_STATE, userWords: filled });
+    world.$('userWordText').value = 'overflow';
+    world.$('userWordCode').value = 'overflow';
+    world.$('btnSaveUserWord').click();
+    equal(world.native.of('saveUserWords').length, 0, '201st entry rejected locally');
+});
+
 test('custom phrases: CRUD is refused before the first state push (no seed wipe)', () => {
     const world = new SettingsWorld();
     // Bridge hello only - no state push yet. phraseItems is still null.
@@ -859,6 +920,19 @@ test('double-pinyin key map renders the active scheme chart from dp-data.js', ()
 });
 
 // ------------------------------------------------- feel tuning card (UI-18/19)
+
+// ---- 上下滑方向互换（issue #29-2）：feel 卡开关 ----
+test('flick swap toggle reflects state and commits setFlickSwap with the token', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    equal(world.$('flickSwap').checked, false, 'default off');
+    world.push({ ...BASE_STATE, flickSwap: true });
+    equal(world.$('flickSwap').checked, true, 'follows state');
+    const box = world.$('flickSwap');
+    box.checked = true;
+    box.listeners.find(l => l.type === 'change').handler({ target: box });
+    equal(world.lastCall('setFlickSwap').args, [true, world.token], 'commit + token');
+});
 
 test('feel card renders state values and commits each control with the token', () => {
     const world = new SettingsWorld();
@@ -1049,6 +1123,16 @@ test('appearance page reflects state and commits themeMode / keyOpacity with the
     const theme = world.$('themeMode');
     theme.listeners.find(l => l.type === 'change').handler({ target: { value: 'light' } });
     equal(world.lastCall('setThemeMode').args, ['light', world.token], 'theme mode commit + token');
+
+    // 按键气泡（issue #30-1）：默认关，state 回显，change 带提交。
+    const bubbleToggle = world.$('keyBubble');
+    equal(bubbleToggle.checked, false, 'key bubble defaults off');
+    world.push({ ...BASE_STATE, keyBubble: true });
+    equal(bubbleToggle.checked, true, 'key bubble follows state');
+    bubbleToggle.listeners.find(l => l.type === 'change')
+        .handler({ target: { checked: true } });
+    equal(world.lastCall('setKeyBubble').args, [true, world.token],
+        'key bubble commit + token');
 
     // Slider: input only marks dirty, change commits once with the parsed value.
     const slider = world.$('keyOpacity');

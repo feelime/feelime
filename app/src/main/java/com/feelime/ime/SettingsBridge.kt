@@ -69,7 +69,13 @@ const val PREF_FEEL_SCRUB_SPEED = "feel_scrub_speed"
 const val PREF_FEEL_HOLD_MS = "feel_hold_ms"
 val FEEL_HOLD_STEPS = intArrayOf(200, 300, 350, 450, 600)
 const val PREF_FEEL_POPUP_SNAP = "feel_popup_snap"
+/** 上下滑方向互换（issue #29-2，默认关）：开=上滑大写/下滑小字符。 */
+const val PREF_FLICK_SWAP = "flick_swap"
 const val PREF_CANDIDATE_FONT = "candidate_font"
+
+fun readFlickSwap(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_FLICK_SWAP, false)
 
 /** 拼音字号档位：0=标准 1=大 2=特大（issue #8）。 */
 const val PREF_PREEDIT_FONT = "preedit_font"
@@ -126,12 +132,18 @@ fun readToolbarLayout(context: Context): String =
 
 /** 键帽不透明度（0-100，默认 100）：背景图开启时键帽可半透。 */
 const val PREF_KEY_OPACITY = "key_opacity"
+/** 按键气泡（issue #30-1，默认关）：按下时放大预览所按字符。 */
+const val PREF_KEY_BUBBLE = "key_bubble"
 const val KB_HEIGHT_PORTRAIT_KEY = "keyboard_height_portrait"
 
 fun readKeyOpacity(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_KEY_OPACITY, 100)
         .let { if (it in 0..100) it else 100 }
+
+fun readKeyBubble(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_KEY_BUBBLE, false)
 
 /** 键盘高度（竖屏存值；pref 物理px，对外统一转 CSS px；0=默认）。 */
 fun readKbHeightPortrait(context: Context): Int {
@@ -527,6 +539,11 @@ class SettingsBridge(
                 })
                 put("importedCount", state.imported.size)
             })
+            .put("userWords", JSONArray().apply {
+                com.feelime.ime.engine.CustomPhraseStore.load(context).user.forEach { (text, code) ->
+                    put(JSONObject().put("text", text).put("code", code))
+                }
+            })
             .put("associationOn", readAssociation(context))
             .put("dynamicDateTimeOn", readDynamicDateTime(context))
             .put("keySound", readKeySoundEnabled(context))
@@ -547,6 +564,7 @@ class SettingsBridge(
             .put("bgImageLightSource", readBgImageSource(context, "light"))
             .put("bgImageDarkSource", readBgImageSource(context, "dark"))
             .put("keyOpacity", readKeyOpacity(context))
+            .put("keyBubble", readKeyBubble(context))
             .put("themeMode", readThemeMode(context))
             .put("kbHeightPortrait", readKbHeightPortrait(context))
             .apply {
@@ -1051,12 +1069,34 @@ class SettingsBridge(
         pushState()
     }
 
+    /** 上下滑方向互换（issue #29-2，默认关）。 */
+    @JavascriptInterface
+    fun setFlickSwap(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_FLICK_SWAP, on).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
     /** 键帽不透明度（0-100）。 */
     @JavascriptInterface
     fun setKeyOpacity(pct: Int, token: String) = guarded(token) {
         if (pct !in 0..100) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_KEY_OPACITY, pct).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 按键气泡开关（issue #30-1，默认关）。 */
+    @JavascriptInterface
+    fun setKeyBubble(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_KEY_BUBBLE, on).apply()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1215,7 +1255,55 @@ class SettingsBridge(
         // 手管 items 全量重发不触碰导入段（imported 由导入/清空入口专管）。
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
         com.feelime.ime.engine.CustomPhraseStore.save(
-            context, enabled, items, imported = state.imported,
+            context, enabled, items, imported = state.imported, user = state.user,
+        )
+        context.sendBroadcast(
+            Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 自造词（issue #29-5）：词库管理里手动维护的用户词表，独立于
+     *  符号词（items）与导入表（imported），不受符号词开关 gating。
+     *  校验：text 非空、code 1..48 位字母（真实拼音串比符号码长），
+     *  上限 200 条。 */
+    @JavascriptInterface
+    fun saveUserWords(itemsJson: String, token: String) = guarded(token) {
+        val items = ArrayList<Pair<String, String>>()
+        val parseError = try {
+            val array = JSONArray(itemsJson)
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val text = item.optString("text").trim()
+                val code = item.optString("code").trim().lowercase()
+                if (text.isEmpty()) continue
+                if (!Regex("^[a-z;]{1,48}$").matches(code)) {
+                    pushEvent(
+                        JSONObject()
+                            .put("type", "userWordsError")
+                            .put("code", "BAD_PHRASE_CODE")
+                            .put("message", t(context, "输入码需为 1-48 位字母", "Code must be 1-48 letters")),
+                    )
+                    return@guarded
+                }
+                items.add(text to code)
+            }
+            false
+        } catch (_: Exception) {
+            true
+        }
+        if (parseError || items.size > 200) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "userWordsError")
+                    .put("code", "BAD_PHRASES_PAYLOAD")
+                    .put("message", t(context, "词表格式错误", "Invalid phrase list")),
+            )
+            return@guarded
+        }
+        val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+        com.feelime.ime.engine.CustomPhraseStore.save(
+            context, state.enabled, state.items, imported = state.imported, user = items,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1247,7 +1335,7 @@ class SettingsBridge(
             }
             val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
             com.feelime.ime.engine.CustomPhraseStore.save(
-                context, state.enabled, state.items, imported = result.items,
+                context, state.enabled, state.items, imported = result.items, user = state.user,
             )
             context.sendBroadcast(
                 Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1274,7 +1362,7 @@ class SettingsBridge(
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
         if (state.imported.isEmpty()) return@guarded
         com.feelime.ime.engine.CustomPhraseStore.save(
-            context, state.enabled, state.items, imported = emptyList(),
+            context, state.enabled, state.items, imported = emptyList(), user = state.user,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),

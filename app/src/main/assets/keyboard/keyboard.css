@@ -647,6 +647,11 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
  * shorter shrinks the font too - nothing overflows the key face). */
 .kb-main { font-size: min(22px, calc(var(--kb-row-h, 44px) * 0.5)); line-height: 1; font-weight: 400; }
 .kb-alt { color: var(--muted); font-size: 9px; line-height: 1; font-weight: 400; }
+/* 上下滑互换（issue #29-2）：小字提示跟着翻到主字下方（提示的是下滑值）；
+ * 标点槽的 alt 是绝对定位，单独翻到底。 */
+body.flick-swap .kb-key.kb-letter { flex-direction: column-reverse; }
+body.flick-swap .kb-key[data-key="."] .kb-alt { top: auto; bottom: 4px; }
+body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
 /* Follow-up: an armed Fn key turns its twelve letter caps into
  * F1..F12. Keep the label on one line and let the single visible glyph use
  * the key's normal centring; F10 is the widest label at the narrowest key. */
@@ -1869,6 +1874,28 @@ body.landscape #voiceSlideHint { margin-top: 48px; padding: 5px 13px; font-size:
     pointer-events: none;
 }
 #keyPopup.open { display: flex; }
+/* 按键气泡（issue #30-1）：视觉沿用 .kp-item 的浮层语言（--panel/--text/
+ * 投影），位置由 JS 定在键帽正上方并做左右钳制；hidden 由 JS 维护，
+ * 长按弹层（#keyPopup，z-30 同层但后开）接管前气泡先撤。 */
+#keyBubble {
+    position: fixed;
+    z-index: 30;
+    pointer-events: none;
+    min-width: 44px;
+    height: 50px;
+    padding: 0 12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: 0 3px 12px #000a;
+    font-size: 26px;
+    font-weight: 500;
+    line-height: 1;
+}
+#keyBubble[hidden] { display: none; }
 #keyPopupInner {
     display: flex;
     flex-wrap: wrap;
