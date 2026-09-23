@@ -99,6 +99,7 @@ class MockSettingsNative {
     reportPage(...a) { this._rec('reportPage', a); }
     setThemeMode(...a) { this._rec('setThemeMode', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
+    setKeyBubble(...a) { this._rec('setKeyBubble', a); }
     setKbHeight(...a) { this._rec('setKbHeight', a); }
     previewKeyboard(...a) { this._rec('previewKeyboard', a); }
     setBgImage(...a) { this._rec('setBgImage', a); }
@@ -1049,6 +1050,16 @@ test('appearance page reflects state and commits themeMode / keyOpacity with the
     const theme = world.$('themeMode');
     theme.listeners.find(l => l.type === 'change').handler({ target: { value: 'light' } });
     equal(world.lastCall('setThemeMode').args, ['light', world.token], 'theme mode commit + token');
+
+    // 按键气泡（issue #30-1）：默认关，state 回显，change 带提交。
+    const bubbleToggle = world.$('keyBubble');
+    equal(bubbleToggle.checked, false, 'key bubble defaults off');
+    world.push({ ...BASE_STATE, keyBubble: true });
+    equal(bubbleToggle.checked, true, 'key bubble follows state');
+    bubbleToggle.listeners.find(l => l.type === 'change')
+        .handler({ target: { checked: true } });
+    equal(world.lastCall('setKeyBubble').args, [true, world.token],
+        'key bubble commit + token');
 
     // Slider: input only marks dirty, change commits once with the parsed value.
     const slider = world.$('keyOpacity');

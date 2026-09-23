@@ -1558,6 +1558,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("bgImageLightSource", readBgImageSource(this, "light"))
             .put("bgImageDarkSource", readBgImageSource(this, "dark"))
             .put("keyOpacity", readKeyOpacity(this))
+            .put("keyBubble", readKeyBubble(this))
             .put("themeMode", readThemeMode(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("associationOn", readAssociation(this))
@@ -2047,6 +2048,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     val pct = value.toIntOrNull()
                     if (pct == null || pct !in 0..100) return@guarded
                     keyboardPrefs.edit().putInt(PREF_KEY_OPACITY, pct).apply()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "keyBubble" -> {
+                    keyboardPrefs.edit().putBoolean(PREF_KEY_BUBBLE, value == "1" || value == "true").apply()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "themeMode" -> {

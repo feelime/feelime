@@ -126,12 +126,18 @@ fun readToolbarLayout(context: Context): String =
 
 /** 键帽不透明度（0-100，默认 100）：背景图开启时键帽可半透。 */
 const val PREF_KEY_OPACITY = "key_opacity"
+/** 按键气泡（issue #30-1，默认关）：按下时放大预览所按字符。 */
+const val PREF_KEY_BUBBLE = "key_bubble"
 const val KB_HEIGHT_PORTRAIT_KEY = "keyboard_height_portrait"
 
 fun readKeyOpacity(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_KEY_OPACITY, 100)
         .let { if (it in 0..100) it else 100 }
+
+fun readKeyBubble(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_KEY_BUBBLE, false)
 
 /** 键盘高度（竖屏存值；pref 物理px，对外统一转 CSS px；0=默认）。 */
 fun readKbHeightPortrait(context: Context): Int {
@@ -547,6 +553,7 @@ class SettingsBridge(
             .put("bgImageLightSource", readBgImageSource(context, "light"))
             .put("bgImageDarkSource", readBgImageSource(context, "dark"))
             .put("keyOpacity", readKeyOpacity(context))
+            .put("keyBubble", readKeyBubble(context))
             .put("themeMode", readThemeMode(context))
             .put("kbHeightPortrait", readKbHeightPortrait(context))
             .apply {
@@ -1057,6 +1064,17 @@ class SettingsBridge(
         if (pct !in 0..100) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_KEY_OPACITY, pct).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 按键气泡开关（issue #30-1，默认关）。 */
+    @JavascriptInterface
+    fun setKeyBubble(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_KEY_BUBBLE, on).apply()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

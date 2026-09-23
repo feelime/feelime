@@ -2641,6 +2641,40 @@ test('one-handed pad percent drives --side-pad-w (shrink tiers)', {since: '3.45.
     equal(padVar(), undefined, 'tier 0 removes the override (CSS default again)');
 });
 
+// ---- 按键气泡（issue #30-1，外观开关默认关） ----
+test('key bubble stays off by default; hello arms it per press', {since: '3.60.0'}, () => {
+    const world = fresh();
+    const bubble = world.$('keyBubble');
+    const key = world.key('h');
+    world.touchDown(key);
+    equal(bubble.hidden, true, 'default off: no bubble without the hello flag');
+    world.touchUp(key);
+    world.hello({keyBubble: true});
+    world.touchDown(key);
+    equal(bubble.hidden, false, 'hello keyBubble=true shows the bubble on press');
+    equal(bubble.textContent, 'h', 'bubble shows the pressed glyph');
+    world.touchUp(key);
+    equal(bubble.hidden, true, 'release hides the bubble');
+});
+
+test('key bubble yields to the long-press popup; space never bubbles', {since: '3.60.0'}, () => {
+    const world = fresh();
+    const bubble = world.$('keyBubble');
+    world.hello({keyBubble: true});
+    const key = world.key('h');
+    world.touchDown(key);
+    equal(bubble.hidden, false, 'bubble up while pressed');
+    world.clock.advance(400); // holdMs 长按弹层接管
+    equal(world.$('keyPopup').classList.contains('open'), true, 'popup opened');
+    equal(bubble.hidden, true, 'bubble yields once the popup owns the press');
+    world.touchUp(key);
+
+    const space = world.$('spaceKey');
+    world.touchDown(space);
+    equal(bubble.hidden, true, 'space key never bubbles');
+    world.touchUp(space);
+});
+
 test('key opacity: --key-alpha is a 0..1 fraction floored at 5%', {since: '3.45.1'}, () => {
     const alpha = world => world.document.documentElement.style.getPropertyValue('--key-alpha');
     const world = fresh();

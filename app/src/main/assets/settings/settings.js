@@ -344,6 +344,8 @@ const I18N = {
         "input.feel.kbHeightHint": "竖屏键盘的高度；键盘上拖拽调节与此处等效。",
         "input.feel.kbHeightReset": "恢复默认",
         "input.feel.keyOpacityHint": "键帽在背景图上的透明程度，文字始终实色。",
+        "input.feel.keyBubble": "按键气泡",
+        "input.feel.keyBubbleHint": "按下按键时在键帽上方放大显示所按的字符，方便确认有没有按错（默认关闭）。",
         "entry.appearance.title": "外观",
         "entry.appearance.subtitle": "色彩模式 · 背景图片 · 透明度",
         "input.appearance.title": "外观",
@@ -765,6 +767,8 @@ const I18N = {
         "input.feel.kbHeightHint": "Portrait keyboard height; dragging on the keyboard stays equivalent.",
         "input.feel.kbHeightReset": "Reset",
         "input.feel.keyOpacityHint": "How transparent the keycaps sit over the background image; labels stay solid.",
+        "input.feel.keyBubble": "Key bubble",
+        "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
         "entry.appearance.title": "Appearance",
         "entry.appearance.subtitle": "Color mode · Background · Opacity",
         "input.appearance.title": "Appearance",
@@ -1154,6 +1158,8 @@ function renderFeel(state) {
     }
     const opacity = $("keyOpacity");
     if (opacity) opacity.value = String(Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100))));
+    const bubble = $("keyBubble");
+    if (bubble) bubble.checked = state.keyBubble === true;
     const kbHeight = $("kbHeight");
     if (kbHeight) {
         const min = Number(state.kbHeightMin ?? 226);
@@ -1835,6 +1841,9 @@ $("keyOpacity").addEventListener("change", event => {
     keyOpacityDirty = false;
     call("setKeyOpacity", parseInt(event.target.value, 10));
 });
+// 按键气泡（issue #30-1）：外观页开关，默认关；广播→hello 实时作用到
+// 底下弹出的预览键盘。
+$("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
 // 键盘高度滑块：拖动即时反映在预览上，松手落盘；「恢复默认」写 0。
 let kbHeightDirty = false;
 $("kbHeight").addEventListener("input", event => {
