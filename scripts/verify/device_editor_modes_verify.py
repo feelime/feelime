@@ -903,11 +903,15 @@ def case_height_reset(keyboard, original_height_pref):
     logs_after_reset = len(height_bridge_logs())
     pref_after_reset = pref_height_value(
         pref_snapshot(HEIGHT_PREF)[1], landscape)
-    record("height Reset only changes the pending value",
+    # round-6 定稿（用户反馈）：恢复默认也是一次实时预览——Reset 后键盘
+    # 立刻变到默认高度（桥调用/pref 由 debounce 落盘），保存才持久化、
+    # 取消还原。旧断言（Reset 只动待定值、不发桥不写 pref）是 round-6
+    # 之前的契约，已被产品注释与 9j 套件行为取代。
+    record("height Reset previews the default live (round-6)",
            pending.get("open") is True
-           and pending.get("keyboardHeight") == edited.get("keyboardHeight")
-           and logs_after_reset == logs_before_reset
-           and pref_after_reset == pref_before_reset,
+           and pending.get("value") is not None
+           and pending.get("keyboardHeight") == pending.get("value")
+           and logs_after_reset >= logs_before_reset,
            f"initial={initial} edited={edited} pending={pending}"
            f" bridge={logs_before_reset}->{logs_after_reset}"
            f" pref={pref_before_reset}->{pref_after_reset}")
