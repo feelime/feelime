@@ -240,6 +240,7 @@ class SetupActivity : AppCompatActivity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     Log.i(TAG, "settings page finished: $url")
                     pushHello()
+                    routeToSetupTarget()
                 }
             }
             webChromeClient = object : android.webkit.WebChromeClient() {
@@ -300,6 +301,7 @@ class SetupActivity : AppCompatActivity() {
         }
         setContentView(rootLayout)
         updateSetupLaunchMarker(intent)
+        takeSetupTarget(intent)
         onBackPressedDispatcher.addCallback(this) {
             // A sub-page is open - the first BACK returns home
             // (design §6.2). The flag is also cleared here because the
@@ -607,6 +609,8 @@ class SetupActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         updateSetupLaunchMarker(intent)
+        takeSetupTarget(intent)
+        routeToSetupTarget()
         // The fixtures follow the launch intent in BOTH entries (the
         // activity is singleTop - a relaunch with the extra lands here).
         if (BuildConfig.DEBUG) {
@@ -664,6 +668,33 @@ class SetupActivity : AppCompatActivity() {
     private fun updateSetupLaunchMarker(intent: Intent) {
         val nonce = intent.getLongExtra(SETUP_LAUNCH_EXTRA, 0L)
         launchMarker.contentDescription = "$SETUP_LAUNCH_DESCRIPTION_PREFIX$nonce"
+    }
+
+    /** 快捷设置 tile 直达（SETUP_PAGE_EXTRA）：页面加载后路由到 input 页
+     *  并滚到目标卡。onPageFinished 时 JS 未必初始化完，注入的脚本自带
+     *  轮询重试。custom=customTitle（定制键盘卡）、keyboards=secKeyboards。 */
+    private var pendingSetupTarget = ""
+
+    private fun takeSetupTarget(intent: Intent) {
+        pendingSetupTarget = intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""
+    }
+
+    private fun routeToSetupTarget() {
+        val target = pendingSetupTarget
+        if (target.isEmpty()) return
+        pendingSetupTarget = ""
+        runOnUiThread {
+            runCatching {
+                webView.evaluateJavascript(
+                    "(function go(n){ if(window.FeelimeSettings&&window.FeelimeSettings.showPage){" +
+                        "FeelimeSettings.showPage('input');" +
+                        "requestAnimationFrame(function(){var el=document.getElementById('" + target + "');" +
+                        "if(el){el.scrollIntoView({block:'center'});}});" +
+                        "} else if(n>0){setTimeout(function(){go(n-1);},120);} })(12);",
+                    null,
+                )
+            }
+        }
     }
 
     /**
@@ -773,6 +804,10 @@ class SetupActivity : AppCompatActivity() {
         const val SEARCH_RESULT_FIRED_DESCRIPTION = "feelime-search-action:fired"
         const val PASSWORD_INPUT_DESCRIPTION = "feelime-password-input"
         const val SETUP_LAUNCH_EXTRA = "com.feelime.ime.extra.SETUP_LAUNCH_NONCE"
+
+        /** 快捷设置 tile 直达的目标卡（custom=定制键盘，keyboards=键盘选择）。
+         *  值是设置页 JS 侧的锚 id，SetupActivity 就绪后注入路由脚本。 */
+        const val SETUP_PAGE_EXTRA = "com.feelime.ime.extra.SETUP_TARGET"
         const val SETUP_LAUNCH_DESCRIPTION_PREFIX = "feelime-setup-launch:"
         // Debug fixtures show ONLY when the launcher passes this
         // boolean extra (automation does; humans never see the block).

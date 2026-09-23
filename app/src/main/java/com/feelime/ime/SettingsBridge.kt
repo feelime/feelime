@@ -599,6 +599,10 @@ class SettingsBridge(
                 .put("enabled", customKeysStore.enabled())
                 .put("summary", customKeysStore.summary(context))
                 .put("json", customKeysStore.json()))
+            // 键盘选择/快捷切换对（快捷设置 tile 直达设置页管理）：值是
+            // 键盘 localStorage 的 JSON 字符串（["pinyin",...]），空串=未设
+            // 置（键盘用默认菜单）。
+            .put("keyboards", keyboardsState())
             .put("update", JSONObject()
                 // Keep the absence of a preference distinct from an explicit
                 // empty value: a fresh install shows the official source,
@@ -1929,6 +1933,68 @@ class SettingsBridge(
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
+    }
+
+    /** 快捷设置入口外移（验收 2026-09-24）：键盘选择（长按菜单内容）与
+     *  快捷切换对在设置页管理。真相源仍是键盘 localStorage + pushStores
+     *  原生镜像（备份走原生）；设置页写同一镜像（rev+1），广播后键盘
+     *  hello 的 pullStores 按 rev 落地。 */
+    @JavascriptInterface
+    fun saveKeyboardSelection(menuJson: String, pairJson: String, token: String) = guarded(token) {
+        fun allStrings(json: String): Boolean = try {
+            val array = JSONArray(json)
+            var ok = true
+            for (i in 0 until array.length()) {
+                if (array.opt(i) !is String) ok = false
+            }
+            ok
+        } catch (_: Exception) {
+            false
+        }
+        val menuOk = allStrings(menuJson)
+        val pairOk = allStrings(pairJson)
+        if (!menuOk || !pairOk) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "keyboardsError")
+                    .put("code", "BAD_KEYBOARD_SELECTION")
+                    .put("message", t(context, "键盘选择数据格式错误", "Invalid keyboard selection data")),
+            )
+            return@guarded
+        }
+        val values = JSONObject()
+            .put("feelime_menu_modes", menuJson)
+            .put("feelime_quick_pair", pairJson)
+        val mirror = storesMirror()
+        val merged = mirror.optJSONObject("values") ?: JSONObject()
+        for (key in values.keys()) merged.put(key, values.get(key))
+        com.feelime.ime.backup.AndroidPrefs(context).put(
+            com.feelime.ime.backup.UserdataBackup.WEBVIEW_PREFS,
+            com.feelime.ime.backup.UserdataBackup.WEBVIEW_KEY,
+            JSONObject()
+                .put("rev", mirror.optInt("rev", 0) + 1)
+                .put("values", merged)
+                .toString(),
+        )
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    private fun keyboardsState(): JSONObject {
+        val values = storesMirror().optJSONObject("values") ?: JSONObject()
+        return JSONObject()
+            .put("menuModes", values.optString("feelime_menu_modes", ""))
+            .put("quickPair", values.optString("feelime_quick_pair", ""))
+    }
+
+    /** webview stores 原生镜像（与 ImeBridge.pushStores 同一存储）。 */
+    private fun storesMirror(): JSONObject {
+        val raw = com.feelime.ime.backup.AndroidPrefs(context)
+            .all(com.feelime.ime.backup.UserdataBackup.WEBVIEW_PREFS)
+            .get(com.feelime.ime.backup.UserdataBackup.WEBVIEW_KEY) as? String
+        return runCatching { JSONObject(raw ?: "{}") }.getOrDefault(JSONObject())
     }
 
     @JavascriptInterface

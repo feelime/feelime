@@ -16,6 +16,14 @@ let lastModelError = null;
 
 const $ = id => document.getElementById(id);
 
+// 键盘选择（验收 2026-09-24）：与键盘 MODES 一致；默认菜单 = round-6 五项。
+const KEYBOARD_MODES = [
+    ['direct', '英文直出'], ['pinyin', '全拼'], ['double-pinyin', '双拼'],
+    ['t9', '九宫格'], ['stroke', '笔画'], ['handwriting', '手写'],
+    ['french', '法语'], ['russian', '俄语'], ['japanese', '日语'],
+];
+const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
+
 const I18N = {
     zh: {
         "title": "Feelime 设置",
@@ -163,6 +171,16 @@ const I18N = {
         "input.custom.jsonLabel": "定制 JSON（{\"version\":1,\"rows\":[[{\"t\":\"键面\",\"tap\":\"点击输出\",\"note\":\"备注\"}]]}）",
         "input.custom.jsonPlaceholder": "粘贴定制 JSON",
         "input.custom.note": "保存在本机，键盘下次载入时生效。",
+        "input.keyboards.title": "键盘选择",
+        "input.keyboards.badge": "菜单",
+        "input.keyboards.enable": "长按菜单里列出哪些键盘",
+        "input.keyboards.hint": "勾选的键盘出现在长按切换键的菜单里；不勾的还可以在菜单里临时勾回来。改动即时生效。",
+        "input.keyboards.pairA": "快捷切换 · 第一个",
+        "input.keyboards.pairB": "快捷切换 · 第二个",
+        "input.keyboards.pairHint": "点切换键在两个键盘之间往返；选最常用的两个。",
+        "input.keyboards.saved": "已保存，键盘即时生效",
+        "search.placeholder": "搜索设置：高度、气泡、双拼、词库…",
+        "search.noResults": "没有匹配的设置项",
         "action.saveCustom": "保存定制",
         "action.insertTemplate": "插入模板",
         "action.viewDocs": "查看说明",
@@ -608,6 +626,16 @@ const I18N = {
         "input.custom.jsonLabel": "Custom JSON ({\"version\":1,\"rows\":[[{\"t\":\"key label\",\"tap\":\"output\",\"note\":\"note\"}]]})",
         "input.custom.jsonPlaceholder": "Paste custom JSON",
         "input.custom.note": "Saved on this device and applied the next time the keyboard loads.",
+        "input.keyboards.title": "Keyboard selection",
+        "input.keyboards.badge": "Menu",
+        "input.keyboards.enable": "Keyboards listed in the long-press menu",
+        "input.keyboards.hint": "Checked keyboards appear in the mode-key long-press menu; unchecked ones can be re-enabled from that menu. Applies immediately.",
+        "input.keyboards.pairA": "Quick switch · first",
+        "input.keyboards.pairB": "Quick switch · second",
+        "input.keyboards.pairHint": "The switch key toggles between these two; pick your two most-used keyboards.",
+        "input.keyboards.saved": "Saved; the keyboard applies it immediately",
+        "search.placeholder": "Search settings: height, bubble, double-pinyin, lexicon…",
+        "search.noResults": "No matching settings",
         "action.saveCustom": "Save custom layout",
         "action.insertTemplate": "Insert template",
         "action.viewDocs": "View guide",
@@ -1178,6 +1206,7 @@ function render(state) {
     renderVoice(state);
     renderAsr(state);
     renderCustom(state);
+    renderKeyboards(state);
     renderCustomPhrases(state);
     renderUserWords(state);
     renderDictBase(state);
@@ -1604,6 +1633,170 @@ let phraseEditing = -1;
 
 function phraseState() {
     return { enabled: !!($("phrasesOn").checked), items: phraseItems };
+}
+
+/** 设置搜索（验收 2026-09-24）：索引所有二级页的卡片/行（标题 + 行文本
+ *  + 小注 + data-keywords 意图词），子串模糊匹配，点击直达对应页并锚定。 */
+let searchIndex = null;
+
+function buildSearchIndex() {
+    const entries = [];
+    document.querySelectorAll(".page").forEach(page => {
+        const pageName = page.dataset.page;
+        if (pageName === "home") return;
+        const pageTitle = page.querySelector(".page-title")?.textContent || pageName;
+        page.querySelectorAll("section.card").forEach(card => {
+            const heading = card.querySelector(".section-heading h2");
+            const title = heading?.textContent?.trim() || "";
+            const cardKeywords = (card.querySelector("[data-keywords]")?.dataset.keywords ||
+                heading?.dataset.keywords || "");
+            const parts = [title, cardKeywords];
+            card.querySelectorAll(".row-label span, .row-label small").forEach(el => {
+                parts.push(el.textContent);
+            });
+            entries.push({
+                page: pageName,
+                pageTitle,
+                title,
+                anchorId: heading?.id || card.id || "",
+                text: parts.filter(Boolean).join(" ").replace(/\s+/g, " "),
+            });
+        });
+    });
+    return entries;
+}
+
+function runSettingsSearch(query) {
+    const box = $("searchResults");
+    if (!box) return;
+    const q = query.trim().toLowerCase();
+    if (!q) { box.hidden = true; box.textContent = ""; return; }
+    if (!searchIndex) searchIndex = buildSearchIndex();
+    const hits = searchIndex
+        .filter(entry => entry.text.toLowerCase().includes(q))
+        .slice(0, 12);
+    box.textContent = "";
+    if (!hits.length) {
+        const empty = document.createElement("p");
+        empty.className = "search-empty";
+        empty.textContent = t("search.noResults");
+        box.append(empty);
+    } else {
+        hits.forEach(entry => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "search-hit";
+            const where = document.createElement("small");
+            where.textContent = entry.pageTitle;
+            const label = document.createElement("span");
+            label.textContent = entry.title || entry.pageTitle;
+            button.append(label, where);
+            button.addEventListener("click", () => {
+                $("settingsSearch").value = "";
+                box.hidden = true;
+                showPage(entry.page);
+                requestAnimationFrame(() => {
+                    const el = entry.anchorId ? document.getElementById(entry.anchorId) : null;
+                    if (el) el.scrollIntoView({ block: "center" });
+                });
+            });
+            box.append(button);
+        });
+    }
+    box.hidden = false;
+}
+
+$("settingsSearch").addEventListener("input", event => runSettingsSearch(event.target.value));
+
+/** 键盘选择（验收 2026-09-24）：菜单模式勾选 + 快捷切换对。真相源在
+ *  键盘 localStorage、经 pushStores 镜像原生（备份走原生）；保存写同一
+ *  镜像（saveKeyboardSelection），键盘 hello 的 pullStores 按 rev 落地。 */
+function keyboardModeLabel(id) {
+    const found = KEYBOARD_MODES.find(([, modeId]) => modeId === id);
+    return found ? found[1] : id;
+}
+
+function selectedMenuModes(state) {
+    const raw = (state.keyboards && state.keyboards.menuModes) || "";
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return parsed.filter(x => typeof x === "string");
+    } catch (_) { /* unset */ }
+    return DEFAULT_MENU_MODES.slice();
+}
+
+function selectedQuickPair(state) {
+    const raw = (state.keyboards && state.keyboards.quickPair) || "";
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length === 2) return parsed;
+    } catch (_) { /* unset */ }
+    return ["pinyin", "direct"];
+}
+
+function renderKeyboards(state) {
+    const host = $("kbModeList");
+    if (!host) return;
+    const selected = selectedMenuModes(state);
+    host.textContent = "";
+    KEYBOARD_MODES.forEach(([id, label]) => {
+        const row = document.createElement("label");
+        row.className = "row switch-row";
+        row.htmlFor = "kbMode_" + id;
+        const text = document.createElement("span");
+        text.className = "row-label";
+        const main = document.createElement("span");
+        main.textContent = label;
+        text.append(main);
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.id = "kbMode_" + id;
+        box.className = "toggle";
+        box.dataset.kbMode = id;
+        box.checked = selected.includes(id);
+        box.addEventListener("change", () => saveKeyboardSelectionFromUi());
+        row.append(text, box);
+        host.append(row);
+    });
+    renderQuickPairSelects(state);
+}
+
+function renderQuickPairSelects(state) {
+    const selected = selectedMenuModes(state);
+    const pair = selectedQuickPair(state);
+    [$("quickPairA"), $("quickPairB")].forEach((sel, slot) => {
+        if (!sel) return;
+        sel.textContent = "";
+        KEYBOARD_MODES.forEach(([id, label]) => {
+            if (!selected.includes(id)) return;
+            const option = document.createElement("option");
+            option.value = id;
+            option.textContent = label;
+            sel.append(option);
+        });
+        if (!selected.includes(pair[slot])) sel.value = selected[0] || "";
+        else sel.value = pair[slot];
+        if (sel.dataset.bound !== "1") {
+            sel.dataset.bound = "1";
+            sel.addEventListener("change", () => saveKeyboardSelectionFromUi());
+        }
+    });
+}
+
+function saveKeyboardSelectionFromUi() {
+    const modes = [...document.querySelectorAll("#kbModeList input[data-kb-mode]")]
+        .filter(box => box.checked)
+        .map(box => box.dataset.kbMode);
+    if (!modes.length) {
+        setNote("keyboardsNote", t("input.keyboards.hint"));
+        return;
+    }
+    const pair = [$("quickPairA").value || modes[0], $("quickPairB").value || modes[0]]
+        .filter(id => modes.includes(id));
+    while (pair.length < 2) pair.push(modes.find(m => !pair.includes(m)) || modes[0]);
+    call("saveKeyboardSelection", JSON.stringify(modes), JSON.stringify(pair.slice(0, 2)));
+    renderQuickPairSelects({ keyboards: { menuModes: JSON.stringify(modes), quickPair: JSON.stringify(pair.slice(0, 2)) } });
+    setNote("keyboardsNote", t("input.keyboards.saved"));
 }
 
 function renderCustomPhrases(state) {

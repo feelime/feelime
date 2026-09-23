@@ -794,6 +794,10 @@ class MockNative {
     openSetup(token) {
         this._record('openSetup', [token]);
     }
+
+    openSetupPage(page, token) {
+        this._record('openSetupPage', [page, token]);
+    }
     reloadKeyboard(token) {
         this._record('reloadKeyboard', [token]);
     }

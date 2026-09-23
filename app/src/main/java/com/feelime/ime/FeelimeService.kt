@@ -1469,11 +1469,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
     }
 
-    private fun openSetup() = onMain {
+    private fun openSetup(page: String = "") = onMain {
         startActivity(
             Intent(this, SetupActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(SetupActivity.SETUP_LAUNCH_EXTRA, android.os.SystemClock.elapsedRealtimeNanos()),
+                .putExtra(SetupActivity.SETUP_LAUNCH_EXTRA, android.os.SystemClock.elapsedRealtimeNanos())
+                // 快捷设置 tile 直达设置页对应位置（验收 2026-09-24）：
+                // custom=定制键盘卡、keyboards=键盘选择卡。
+                .putExtra(SetupActivity.SETUP_PAGE_EXTRA, page),
         )
     }
 
@@ -2437,6 +2440,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
         @JavascriptInterface
         fun openSetup(token: String) = guarded(token, limited = false) { openSetup() }
+        fun openSetupPage(page: String, token: String) = guarded(token, limited = false) { openSetup(page) }
 
         /** 定制键盘 JSON 的说明文档（#29-8）：固定官方地址，不收任意
          *  URL——WebView 侧不该能驱动任意 intent 跳转。 */

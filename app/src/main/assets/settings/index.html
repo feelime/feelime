@@ -26,6 +26,14 @@
     </p>
   </header>
 
+  <!-- 设置搜索（验收 2026-09-24）：模糊匹配快速定位配置项；索引取每卡
+       的标题+行文本+小注+data-keywords 意图词，点击直达对应页并锚定。 -->
+  <div class="search-box" id="settingsSearchBox">
+    <input id="settingsSearch" class="input" type="search" autocomplete="off"
+           data-i18n-placeholder="search.placeholder" placeholder="搜索设置：高度、气泡、双拼、词库…">
+    <div id="searchResults" class="search-results" hidden></div>
+  </div>
+
   <main>
     <section class="card" id="sec-ime" aria-labelledby="imeTitle">
       <div class="section-heading">
@@ -160,7 +168,7 @@
         <span data-i18n="input.feel.keyBubble">按键气泡</span>
         <small data-i18n="input.feel.keyBubbleHint">按下按键时在键帽上方放大显示所按的字符，方便确认有没有按错（默认关闭）。</small>
       </span>
-      <input type="checkbox" id="keyBubble" class="toggle">
+      <input type="checkbox" id="keyBubble" data-keywords="按键放大 预览 气泡 按错了 key preview bubble" class="toggle">
     </label>
     <div class="row language-row">
       <span class="row-label">
@@ -168,7 +176,7 @@
         <small data-i18n="input.feel.kbHeightHint">竖屏键盘的高度；键盘上拖拽调节与此处等效。</small>
       </span>
       <span class="slider-with-action">
-        <input type="range" id="kbHeight" class="slider" aria-label="键盘高度" data-i18n-aria="input.feel.kbHeight">
+        <input type="range" id="kbHeight" data-keywords="太高 太低 调大 调小 变小 一半 高度调整 taller shorter height" class="slider" aria-label="键盘高度" data-i18n-aria="input.feel.kbHeight">
         <button type="button" id="kbHeightReset" class="ghost-btn" data-i18n="input.feel.kbHeightReset">恢复默认</button>
       </span>
     </div>
@@ -177,7 +185,7 @@
         <span data-i18n="input.feel.padPortrait">底部留白 · 竖屏</span>
         <small data-i18n="input.feel.padHint">键盘下方的空白高度，0 保持贴底（终端场景），补偿全面屏手势条或系统元素。</small>
       </span>
-      <select id="bottomPadPortrait" class="select" aria-label="底部留白 · 竖屏" data-i18n-aria="input.feel.padPortrait">
+      <select id="bottomPadPortrait" data-keywords="留白 底部空隙 手势条 全面屏 bottom padding" class="select" aria-label="底部留白 · 竖屏" data-i18n-aria="input.feel.padPortrait">
         <option value="0">0 dp</option>
         <option value="12">12 dp</option>
         <option value="24">24 dp</option>
@@ -215,7 +223,7 @@
   </header>
   <main>
     <section class="card" id="sec-fuzzy" aria-labelledby="fuzzyTitle">
-      <div class="section-heading"><h2 id="fuzzyTitle" data-i18n="input.fuzzy.title">全拼模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
+      <div class="section-heading"><h2 id="fuzzyTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">全拼模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
       <label class="row switch-row" for="fuzzyBit1">
         <span class="row-label"><span data-i18n="input.fuzzy.g.ping">平翘舌</span><small data-i18n="input.fuzzy.g.ping.hint">z/zh、c/ch、s/sh：打 zang 也能出「张」，打 zhang 也能出「脏」。</small></span>
         <input type="checkbox" id="fuzzyBit1" class="toggle" data-fuzzy-bit="1">
@@ -242,7 +250,7 @@
       <div class="section-heading"><h2 id="assocTitle" data-i18n="input.assoc.title">中文联想</h2><span class="eyebrow" data-i18n="input.assoc.badge">输入</span></div>
       <label class="row switch-row" for="associationOn">
         <span class="row-label"><span data-i18n="input.assoc.enable">选词后联想下一个词</span><small data-i18n="input.assoc.hint">上屏后在候选条给出高频接续词，点击可连续联想；只在全拼/双拼生效。</small></span>
-        <input type="checkbox" id="associationOn" class="toggle">
+        <input type="checkbox" id="associationOn" data-keywords="联想 接续词 下一个词 association" class="toggle">
       </label>
     </section>
 
@@ -250,7 +258,7 @@
       <div class="section-heading"><h2 id="datetimeTitle" data-i18n="input.datetime.title">日期时间候选</h2><span class="eyebrow" data-i18n="input.datetime.badge">输入</span></div>
       <label class="row switch-row no-rule" for="dynamicDateTimeOn">
         <span class="row-label"><span data-i18n="input.datetime.enable">打 date/time/week 出日期时间</span><small data-i18n="input.datetime.hint">候选条直接给当前日期、时间、星期（全拼打 riqi/shijian/xingqi 也出）；不需要可关。</small></span>
-        <input type="checkbox" id="dynamicDateTimeOn" class="toggle">
+        <input type="checkbox" id="dynamicDateTimeOn" data-keywords="日期 时间 星期 date time" class="toggle">
       </label>
     </section>
 
@@ -282,7 +290,7 @@
     </section>
 
     <section class="card" id="sec-handwriting" aria-labelledby="handwritingTitle">
-      <div class="section-heading"><h2 id="handwritingTitle" data-i18n="input.ink.title">手写输入</h2><span class="eyebrow" data-i18n="input.ink.badge">手写</span></div>
+      <div class="section-heading"><h2 id="handwritingTitle" data-keywords="手写 写字 识别 连笔 handwriting" data-i18n="input.ink.title">手写输入</h2><span class="eyebrow" data-i18n="input.ink.badge">手写</span></div>
       <div class="row language-row">
         <span class="row-label">
           <span data-i18n="input.ink.delay">停顿触发识别</span>
@@ -304,7 +312,7 @@
           <span data-i18n="input.feel.hold">长按触发时长</span>
           <small data-i18n="input.feel.holdHint">长按弹出选字、锁定大写、打开模式菜单的等待时间。</small>
         </span>
-        <select id="holdMs" class="select" aria-label="长按触发时长" data-i18n-aria="input.feel.hold">
+        <select id="holdMs" data-keywords="长按延迟 触发太慢 太快 hold delay" class="select" aria-label="长按触发时长" data-i18n-aria="input.feel.hold">
           <option value="200">200 ms</option>
           <option value="300">300 ms</option>
           <option value="350">350 ms</option>
@@ -328,7 +336,7 @@
           <span data-i18n="input.feel.preeditFont">拼音字号</span>
           <small data-i18n="input.feel.preeditFontHint">打字时拼音字母的大小；特大档会占一行更多高度。</small>
         </span>
-        <select id="preeditFont" class="select" aria-label="拼音字号" data-i18n-aria="input.feel.preeditFont">
+        <select id="preeditFont" data-keywords="拼音大小 字号 字体大小 preedit size" class="select" aria-label="拼音字号" data-i18n-aria="input.feel.preeditFont">
           <option value="0">100%</option>
           <option value="1">120%</option>
           <option value="2">135%</option>
@@ -336,7 +344,7 @@
       </div>
       <label class="row switch-row" for="preeditBold">
         <span class="row-label"><span data-i18n="input.feel.preeditBold">拼音加粗</span><small data-i18n="input.feel.preeditBoldHint">打字时的拼音字母用粗体显示，默认关。</small></span>
-        <input type="checkbox" id="preeditBold" class="toggle">
+        <input type="checkbox" id="preeditBold" data-keywords="粗体 加粗 拼音字体 bold" class="toggle">
       </label>
       <div class="row language-row">
         <span class="row-label">
@@ -377,7 +385,7 @@
           <span data-i18n="input.feel.flickSwap">上下滑方向互换</span>
           <small data-i18n="input.feel.flickSwapHint">默认上滑出数字/符号、下滑出大写；开启后对调（键面小字提示随之下移）。</small>
         </span>
-        <input type="checkbox" id="flickSwap" class="toggle">
+        <input type="checkbox" id="flickSwap" data-keywords="上滑 下滑 方向 反过来 对调 互换 swipe direction" class="toggle">
       </label>
 
       <div class="row language-row">
@@ -385,7 +393,7 @@
           <span data-i18n="input.feel.scrub">光标移动速度</span>
           <small data-i18n="input.feel.scrubHint">光标拖拽时每个刻度移动的距离。</small>
         </span>
-        <select id="scrubSpeed" class="select" aria-label="光标移动速度" data-i18n-aria="input.feel.scrub">
+        <select id="scrubSpeed" data-keywords="光标速度 移动快慢 cursor speed" class="select" aria-label="光标移动速度" data-i18n-aria="input.feel.scrub">
           <option value="1">1x</option>
           <option value="2">2x</option>
           <option value="3">3x</option>
@@ -420,7 +428,7 @@
       <div class="rows">
         <label class="row switch-row" for="customEnabled">
           <span class="row-label"><span data-i18n="input.custom.enabled">启用定制键盘</span><small id="customSummary">未定制</small></span>
-          <input type="checkbox" id="customEnabled" class="toggle">
+          <input type="checkbox" id="customEnabled" data-keywords="自定义键盘 快捷键 终端 vim 自定义按键 custom keys" class="toggle">
         </label>
       </div>
       <label class="field-label" for="customJson" data-i18n="input.custom.jsonLabel">定制 JSON（{"version":1,"rows":[[{"t":"键面","tap":"点击输出","note":"备注"}]]}）</label>
@@ -432,6 +440,30 @@
         <span class="save-note" id="customNote" role="status" aria-live="polite"></span>
       </div>
       <p class="hint" data-i18n="input.custom.note">保存在本机，键盘下次载入时生效。</p>
+    </section>
+
+    <!-- 键盘选择（验收 2026-09-24：快捷设置的 tile 入口外移，键盘越来越多
+         在快捷设置里改不友好）：长按菜单列出哪些键盘 + 快捷切换对。 -->
+    <section class="card" id="secKeyboards" aria-labelledby="keyboardsTitle">
+      <div class="section-heading"><h2 id="keyboardsTitle" data-keywords="键盘选择 长按菜单 快捷切换 勾选键盘" data-i18n="input.keyboards.title">键盘选择</h2><span class="eyebrow" data-i18n="input.keyboards.badge">菜单</span></div>
+      <div class="row block">
+        <span class="row-label"><span data-i18n="input.keyboards.enable">长按菜单里列出哪些键盘</span><small data-i18n="input.keyboards.hint">勾选的键盘出现在长按切换键的菜单里；不勾的还可以在菜单里临时勾回来。改动即时生效。</small></span>
+      </div>
+      <div id="kbModeList" data-keywords="键盘选择 长按菜单 勾选 键盘列表 藏键盘 显示键盘"></div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.keyboards.pairA">快捷切换 · 第一个</span>
+          <small data-i18n="input.keyboards.pairHint">点切换键在两个键盘之间往返；选最常用的两个。</small>
+        </span>
+        <select id="quickPairA" data-keywords="切换键 两个键盘 快捷切换 quick switch pair" class="select" aria-label="快捷切换第一个键盘" data-i18n-aria="input.keyboards.pairA"></select>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.keyboards.pairB">快捷切换 · 第二个</span>
+        </span>
+        <select id="quickPairB" class="select" aria-label="快捷切换第二个键盘" data-i18n-aria="input.keyboards.pairB"></select>
+      </div>
+      <span class="save-note" id="keyboardsNote" role="status" aria-live="polite"></span>
     </section>
   </main>
 </div>
@@ -480,7 +512,7 @@
     </section>
 
     <section class="card" id="sec-dict-user-words" aria-labelledby="dictUserWordsTitle">
-      <div class="section-heading"><h2 id="dictUserWordsTitle" data-i18n="dict.userwords.title">自造词</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <div class="section-heading"><h2 id="dictUserWordsTitle" data-keywords="自造词 造词 常用词 名字 公司名 user words" data-i18n="dict.userwords.title">自造词</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
       <div class="row language-row no-rule">
         <span class="row-label">
           <span data-i18n="dict.userwords.enable">手动维护的常用词</span>

@@ -676,3 +676,34 @@ details summary {
     font-size: 14px;
 }
 .phrase-del:active { background: var(--pressed); border-radius: 8px; }
+
+/* 设置搜索（验收 2026-09-24）：hero 下的搜索框 + 下拉结果（页名小注）。 */
+.search-box { padding: 0 16px 6px; position: relative; }
+.search-box .input { width: 100%; }
+.search-results {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    top: calc(100% - 2px);
+    z-index: 30;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / .25);
+    overflow: hidden;
+}
+.search-hit {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 14px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+}
+.search-hit + .search-hit { border-top: 1px solid var(--line); }
+.search-hit small { color: var(--muted); flex: none; }
+.search-empty { padding: 10px 14px; margin: 0; color: var(--muted); }

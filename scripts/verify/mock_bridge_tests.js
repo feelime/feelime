@@ -1333,7 +1333,7 @@ test('Chinese-mode popup pick lands literally (requirement 7)', {since: '3.59.0'
     equal(commits2[commits2.length - 1], 'K', 'popup letter lands literally in Chinese mode');
 });
 
-test('settings sub-pages: nav, key map, back (requirements 1+6)', {since: '3.33.0'}, () => {
+test('settings sub-pages: nav, key map, back (requirements 1+6)', {since: '3.33.0', until: '3.59.6'}, () => {
     const world = fresh();
     world.tap(world.$('setupButton'));
     // Sub-page chrome rides the toolbar - title on the
@@ -3037,7 +3037,7 @@ test('added toolbar tools hide while composing in every mode (issue #15)', {sinc
     });
 });
 
-test('quick-pair editor: tick 双拼 relabels the toggle and flips the pair', () => {
+test('quick-pair editor: tick 双拼 relabels the toggle and flips the pair', {until: '3.59.6'}, () => {
     const world = fresh();
     world.tap(world.$('setupButton'));
     if (verAtLeast(KEYBOARD_VERSION, '3.38.0')) {
@@ -3447,12 +3447,20 @@ test('quick tiles: re-render keeps the current page (no jump to page 1)', {since
     strip.listeners.filter(l => l.type === 'scroll').forEach(l => l.handler({ target: strip }));
     assert(world.tileNames().indexOf('长按菜单') >= 0, 'page-2 tiles stay in the DOM');
     // 点第二页的子页导航 → 返回首页：必须还在第二页。
-    world.tap(world.tile('长按菜单'));
-    assert(world.document.body.classList.contains('settings-page'), 'sub-page opened');
-    world.tap(world.$('settingsPageBar').children[0]); // back
-    const strip2 = world.document.querySelector('.qs-pages');
-    equal(strip2.scrollLeft, strip2.firstElementChild.offsetWidth,
-        'home re-render restores page 2');
+    if (verAtLeast(KEYBOARD_VERSION, '3.60.0')) {
+        // 3.60 起长按菜单 tile 直达设置页「键盘选择」卡（不再开内嵌子页）。
+        world.tap(world.tile('长按菜单'));
+        equal(world.native.of('openSetupPage').slice(-1)[0].args[0], 'secKeyboards',
+            'menu tile routes to the settings keyboards card');
+        assert(!world.$('settingsPanel').classList.contains('open'), 'panel closes on route-out');
+    } else {
+        world.tap(world.tile('长按菜单'));
+        assert(world.document.body.classList.contains('settings-page'), 'sub-page opened');
+        world.tap(world.$('settingsPageBar').children[0]); // back
+        const strip2 = world.document.querySelector('.qs-pages');
+        equal(strip2.scrollLeft, strip2.firstElementChild.offsetWidth,
+            'home re-render restores page 2');
+    }
     const dots = [...world.document.querySelectorAll('.qs-dots span')];
     assert(dots[1] && dots[1].classList.contains('cur'), 'second dot active');
 });
@@ -6554,16 +6562,10 @@ test('handwriting round-5: quick-pair adopts 手写↔last keyboard on first ent
     world.tap(world.$('modeToggle'));
     equal(world.native.of('selectMode').slice(-1)[0].args[0], 'handwriting',
         'pinyin flips straight back to handwriting');
-    // 用户定制过的对（设置页配对编辑勾出来的）不动。
+    // 用户定制过的对（设置页键盘选择保存的）不动：3.60 起编辑器入口
+    // 外移，直接落同一 localStorage 键模拟定制结果。
     const custom = fresh();
-    custom.tap(custom.$('setupButton'));
-    custom.tap(custom.tile('快捷切换')); // opens the pair editor
-    const dpRow = [...custom.$('pairEditor').querySelectorAll('.pair-row')]
-        .find(row => row.dataset.mode === 'double-pinyin');
-    custom.tap(dpRow.querySelector('.pair-tick'));
-    equal(JSON.parse(custom.storage.get('feelime_quick_pair')).join('/'),
-        'direct/double-pinyin', 'customization seeded through the editor');
-    custom.tap(custom.$('setupButton')); // close the panel
+    custom.storage.set('feelime_quick_pair', JSON.stringify(['direct', 'double-pinyin']));
     custom.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });
     equal(JSON.parse(custom.storage.get('feelime_quick_pair')).join('/'),
         'direct/double-pinyin', 'customized pair untouched');

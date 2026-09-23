@@ -2824,8 +2824,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 try { localStorage.setItem('feelime_last_kb_mode', nextMode); } catch (_) {}
                 return;
             }
-            const factory = this.quickPair.length === 2 &&
-                this.quickPair[0] === 'pinyin' && this.quickPair[1] === 'direct';
+            // 「用户从未定制过」以持久值为准：内存对可能滞后（备份恢复刚
+            // 写 storage、hello 尾部才同步内存），单看内存会把刚恢复的定制
+            // 对误迁成 手写↔X。
+            let savedPair = null;
+            try { savedPair = JSON.parse(localStorage.getItem('feelime_quick_pair') || 'null'); } catch (_) { /* unset */ }
+            const current = (Array.isArray(savedPair) && savedPair.length === 2) ? savedPair : this.quickPair;
+            const factory = current.length === 2 &&
+                current[0] === 'pinyin' && current[1] === 'direct';
             if (!factory) return;
             const other = this.lastKbMode && this.lastKbMode !== 'handwriting' &&
                 MODES[this.lastKbMode] ? this.lastKbMode : 'pinyin';
@@ -6246,12 +6252,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     {
                         icon: ICONS.swap, label: t("快捷切换"),
                         state: () => this.quickPair.map(m => modeLabel(m)).join(' · '),
-                        tap: () => { this.settingsPage = 'pair'; this.renderSettingsPanel(); },
+                        // 验收 2026-09-24：键盘越来越多，快捷设置内嵌编辑不友
+                        // 好——直达设置页「键盘选择」卡。
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('secKeyboards', this.token)); },
                     },
                     {
                         icon: ICONS.menu, label: t("长按菜单"),
                         state: () => t("{0} 个键盘", this.menuModes().length),
-                        tap: () => { this.settingsPage = 'menu'; this.renderSettingsPanel(); },
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('secKeyboards', this.token)); },
                     },
                     {
                         icon: ICONS.font, label: t("候选字号"),
@@ -6317,7 +6325,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         state: () => (customRows
                             ? t("已定制 {0} 个键", customRows.reduce((sum, row) => sum + (row || []).length, 0))
                             : t("未定制")),
-                        tap: () => { this.settingsPage = 'custom'; this.renderSettingsPanel(); },
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('customTitle', this.token)); },
                     },
                     {
                         icon: ICONS.swap, label: t("编辑工具栏"),
