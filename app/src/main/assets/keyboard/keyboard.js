@@ -6183,11 +6183,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             };
             const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
             const themeText = { auto: t("跟随系统"), light: t("浅色"), dark: t("深色") };
-            const localeText = { auto: t("跟随系统"), zh: t("中文"), en: t("English") };
             const snapText = { 0: t("松"), 1: t("标准"), 2: t("紧") };
             const fontText = { 0: t("标准"), 1: t("大"), 2: t("更大") };
             const oneHandText = { 0: t("关"), 1: t("左手"), 2: t("右手") };
-            const dpText = { ziranma: t("自然码"), flypy: t("小鹤双拼"), sogou: t("搜狗 / 微软双拼"), ziguang: t("紫光双拼") };
             const themeTheme = () => this.themeMode || 'auto';
             const rehome = () => {
                 if (this.settingsPage === null) this.renderSettingsPanel();
@@ -6246,6 +6244,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         tap: () => { this.settingsPage = 'pair'; this.renderSettingsPanel(); },
                     },
                     {
+                        icon: ICONS.menu, label: t("长按菜单"),
+                        state: () => t("{0} 个键盘", this.menuModes().length),
+                        tap: () => { this.settingsPage = 'menu'; this.renderSettingsPanel(); },
+                    },
+                    {
                         icon: ICONS.font, label: t("候选字号"),
                         state: () => fontText[this.qRead('candidateFont', this.candidateFont)] || fontText[0],
                         tap: () => {
@@ -6253,18 +6256,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             this.candidateFont = this.qStep('candidateFont', [0, 1, 2], this.candidateFont);
                             this.applyCandidateFont();
                             quickPref('candidateFont', this.candidateFont);
-                            rehome();
-                        },
-                    },
-                    {
-                        icon: ICONS.lang, label: t("界面语言"),
-                        // 选择值（auto/zh/en）驱动循环与显示；uiLocale 是
-                        // 解析后的显示语言，英文系统上用它永远回不到中文。
-                        state: () => localeText[this.qRead('uiLocale', this.uiLanguageChoice)] || localeText.auto,
-                        tap: () => {
-                            if (typeof Native.setQuickPref !== 'function') return;
-                            const next = this.qStep('uiLocale', ['auto', 'zh', 'en'], this.uiLanguageChoice || 'auto');
-                            quickPref('uiLocale', next);
                             rehome();
                         },
                     },
@@ -6317,25 +6308,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.menu, label: t("长按菜单"),
-                        state: () => t("{0} 个键盘", this.menuModes().length),
-                        tap: () => { this.settingsPage = 'menu'; this.renderSettingsPanel(); },
-                    },
-                    {
                         icon: ICONS.keyboard, label: t("定制键盘"),
                         state: () => (customRows
                             ? t("已定制 {0} 个键", customRows.reduce((sum, row) => sum + (row || []).length, 0))
                             : t("未定制")),
                         tap: () => { this.settingsPage = 'custom'; this.renderSettingsPanel(); },
-                    },
-                    {
-                        icon: ICONS.dp, label: t("双拼方案"),
-                        state: () => dpText[this.qRead('dpScheme', dpScheme)] || dpText.ziranma,
-                        tap: () => {
-                            if (typeof Native.setQuickPref !== 'function') return;
-                            quickPref('dpScheme', this.qStep('dpScheme', ['ziranma', 'flypy', 'sogou', 'ziguang'], dpScheme));
-                            rehome();
-                        },
                     },
                     {
                         icon: ICONS.swap, label: t("编辑工具栏"),

@@ -167,8 +167,9 @@ main { max-width: 680px; margin: 0 auto; }
     display: inline-grid;
     place-items: center;
     flex: 0 0 auto;
-    width: 36px;
-    height: 36px;
+    /* 44px 触控标准（验收 2026-09-24：36px 太窄，误触率高）。 */
+    width: 44px;
+    height: 44px;
     border: 1px solid var(--line);
     border-radius: 5px;
     background: var(--panel);

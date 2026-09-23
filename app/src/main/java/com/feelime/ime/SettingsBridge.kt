@@ -572,6 +572,9 @@ class SettingsBridge(
             .put("bgImageDarkSource", readBgImageSource(context, "dark"))
             .put("keyOpacity", readKeyOpacity(context))
             .put("keyBubble", readKeyBubble(context))
+            // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
+            // 点开开关后 pushState 一到就弹回——「开了看不出开」。
+            .put("flickSwap", readFlickSwap(context))
             .put("themeMode", readThemeMode(context))
             .put("kbHeightPortrait", readKbHeightPortrait(context))
             .apply {

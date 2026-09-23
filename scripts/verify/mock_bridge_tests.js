@@ -2428,8 +2428,16 @@ test('setup button opens the quick settings panel; full settings entry calls ope
     // 3.38.0 tile grid (wechat-style): both pages render into the DOM.
     // Complex features are sub-page nav tiles; tools stay on the toolbar.
     // 3.43.0 adds 单手模式 — pages stay strictly 2×4 (8 tiles each).
+    // 3.60.0（验收 2026-09-24）：低频的「界面语言/双拼方案」tile 撤下
+    // （设置页可调），「长按菜单」上移紧跟快捷切换同屏。
+    const modernTiles = verAtLeast(KEYBOARD_VERSION, '3.60.0');
     equal(JSON.stringify(world.tileNames()),
-        JSON.stringify([
+        JSON.stringify(modernTiles ? [
+            '色彩模式', '中文联想', '按键声音', '按键振动',
+            '键盘高度', '快捷切换', '长按菜单', '候选字号', '单手模式',
+            '底部留白', '长按时长', '滑动选字', '定制键盘',
+            '编辑工具栏', '完整设置',
+        ] : [
             '色彩模式', '中文联想', '按键声音', '按键振动',
             '键盘高度', '快捷切换', '候选字号', '界面语言',
             ...(verAtLeast(KEYBOARD_VERSION, '3.43.0') ? ['单手模式'] : []),
@@ -3375,20 +3383,23 @@ test('quick tiles: cycle tiles rotate steps and apply locally', {since: '3.38.0'
     equal(lastPref(), 'bottomPad=12', 'pad steps 0 → 12');
     equal(world.document.documentElement.style.getPropertyValue('--kb-bottom-pad').trim(), '12px',
         'pad applied to the view budget');
-    world.tap(world.tile('双拼方案'));
-    equal(lastPref(), 'dpScheme=flypy', 'dp scheme cycles 自然码 → 小鹤');
-    // 完整四方案循环（issue #16 加紫光）：小鹤 → 搜狗 → 紫光 → 回自然码。
-    world.tap(world.tile('双拼方案'));
-    equal(lastPref(), 'dpScheme=sogou', 'dp scheme cycles 小鹤 → 搜狗');
-    world.tap(world.tile('双拼方案'));
-    equal(lastPref(), 'dpScheme=ziguang', 'dp scheme cycles 搜狗 → 紫光');
-    world.tap(world.tile('双拼方案'));
-    equal(lastPref(), 'dpScheme=ziranma', 'dp scheme cycles 紫光 → back to 自然码');
-    world.tap(world.tile('界面语言'));
-    equal(lastPref(), 'uiLocale=en', 'locale cycles zh → en');
-    // hello re-push with the new locale translates the whole grid.
-    world.hello({ uiLocale: 'en' });
-    assert(world.tileNames().includes('Associations'), 'tile names translate on the echo');
+    // 3.60.0 起双拼方案/界面语言 tile 撤下（低频，设置页可调）。
+    if (!verAtLeast(KEYBOARD_VERSION, '3.60.0')) {
+        world.tap(world.tile('双拼方案'));
+        equal(lastPref(), 'dpScheme=flypy', 'dp scheme cycles 自然码 → 小鹤');
+        // 完整四方案循环（issue #16 加紫光）：小鹤 → 搜狗 → 紫光 → 回自然码。
+        world.tap(world.tile('双拼方案'));
+        equal(lastPref(), 'dpScheme=sogou', 'dp scheme cycles 小鹤 → 搜狗');
+        world.tap(world.tile('双拼方案'));
+        equal(lastPref(), 'dpScheme=ziguang', 'dp scheme cycles 搜狗 → 紫光');
+        world.tap(world.tile('双拼方案'));
+        equal(lastPref(), 'dpScheme=ziranma', 'dp scheme cycles 紫光 → back to 自然码');
+        world.tap(world.tile('界面语言'));
+        equal(lastPref(), 'uiLocale=en', 'locale cycles zh → en');
+        // hello re-push with the new locale translates the whole grid.
+        world.hello({ uiLocale: 'en' });
+        assert(world.tileNames().includes('Associations'), 'tile names translate on the echo');
+    }
 });
 
 test('quick tiles: small swipe flips a page (touchend threshold)', {since: '3.45.3'}, () => {
