@@ -333,6 +333,26 @@ def switch_mode_real(title):
             break
         time.sleep(0.4)
     if not point:
+        # Round-6 起长按菜单默认只有 En/拼/双/九/笔；FR/RU/JA 要先勾选
+        # 才进菜单（与用户操作等价，device_verify.devtools_click_mode 同
+        # 法）。opt-in 后关菜单重开再找一次。
+        ev("localStorage.setItem('feelime_menu_modes', JSON.stringify("
+           "['direct','pinyin','double-pinyin','t9','stroke',"
+           "'french','russian','japanese']))")
+        keyboard_tap("#modeToggle")
+        time.sleep(0.6)
+        keyboard_long_press("#modeToggle")
+        reopened = wait_until(
+            lambda: ev("document.getElementById('modeMenu')?.classList.contains('open')"),
+            lambda value: value is True, timeout=3.0)
+        if not reopened:
+            return False
+        for _ in range(10):
+            point = mode_menu_item_point(titles)
+            if point:
+                break
+            time.sleep(0.4)
+    if not point:
         return False
     d.tap(*point, wait=0.8)
     return wait_mode(expected) in expected
