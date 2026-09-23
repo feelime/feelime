@@ -40,6 +40,7 @@ def main():
     GEOM = ("(() => ({ ctrlH: document.getElementById('ctrlLayer').clientHeight,"
             " barH: document.getElementById('candidateBar').clientHeight,"
             " rowH: document.querySelector('#qwertyLayer .kb-row').clientHeight,"
+            " qwertyTop: document.querySelector('#qwertyLayer').getBoundingClientRect().top,"
             " ctrlHidden: document.getElementById('ctrlLayer').hidden,"
             " barHidden: document.getElementById('candidateBar').hidden,"
             " editing: document.body.classList.contains('height-editing'),"
@@ -49,18 +50,24 @@ def main():
             " }))()")
 
     # ---- #2 the ctrl rows stay inside the bar slot ----
-    # (design §11) revised the slot contract: the rows
-    # borrow the bar slot PLUS the 14px preedit padding the ctrl view
-    # collapses (40+14+6 margins = 60 budget; shipped 57) - the user-visible
-    # guarantee is the rowH one below (keyboard rows unshrunk).
-    baseline = ev("(() => document.querySelector('#qwertyLayer .kb-row').clientHeight)()")
+    # (design §11, slot conservation 2026-09-18) ctrlLayer height follows the
+    # preedit band: calc(band + 43px) with margins 3+3, so the ctrl slot
+    # (3 + band+43 + 3) equals the normal slot (band + 2+40+10) at every band
+    # level. The user-visible guarantees: the qwerty top edge does not move
+    # between the two states and the keyboard rows keep their height.
+    base = ev("(() => ({ rowH: document.querySelector('#qwertyLayer .kb-row').clientHeight,"
+              " top: document.querySelector('#qwertyLayer').getBoundingClientRect().top,"
+              " band: parseFloat(getComputedStyle(document.body).getPropertyValue('--preedit-band')) || 18 }))()")
+    baseline = base.get("rowH")
     ev("document.getElementById('ctrlTool').click()")
     time.sleep(0.6)
     state = ev(GEOM)
+    expect_ctrl = round(base.get("band")) + 43
     record("ctrl rows inside the bar slot, keyboard rows unshrunk",
-           bool(state) and 0 < state.get("ctrlH", 0) <= 60
-           and state.get("rowH") == baseline,
-           f"baseline={baseline} state={state}")
+           bool(state) and 0 < state.get("ctrlH", 0) == expect_ctrl
+           and state.get("rowH") == baseline
+           and abs((state.get("qwertyTop") or 0) - base.get("top", 0)) <= 1,
+           f"baseline={baseline} expect_ctrlH={expect_ctrl} state={state}")
 
     # ---- #1 composing suspends, committing restores, X stays off ----
     d.clear_field(kb)
