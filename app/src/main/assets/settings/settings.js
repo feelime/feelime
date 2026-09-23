@@ -2127,12 +2127,31 @@ $("btnSaveCustom").addEventListener("click", () => {
 });
 
 $("btnCustomTemplate").addEventListener("click", () => {
+    // 全功能示例（验收 2026-09-24：模板要覆盖每个特性）——三行各自一类：
+    // ①终端/Vim（单键、文本+键混排、组合键）②光标/编辑键 ③短语与符号。
     $("customJson").value = JSON.stringify({
         version: 1,
         rows: [
-            [{ t: "✓", tap: "好的", note: "" }, { t: "…", tap: "等等", note: "" }],
-            [],
-            [],
+            [
+                { t: "Esc", tap: "[esc]", note: "单键" },
+                { t: ":w", tap: ":w[enter]", note: "文本+回车" },
+                { t: "整理", tap: "[esc]ggVGD", note: "Vim 全文缩进" },
+                { t: "保存", tap: "[ctrl+s]", note: "组合键" },
+                { t: "F5", tap: "[f5]", note: "功能键" },
+            ],
+            [
+                { t: "←", tap: "[left]", note: "光标" },
+                { t: "行首", tap: "[home]" },
+                { t: "行尾", tap: "[end]" },
+                { t: "删字", tap: "[bs]" },
+                { t: "Tab", tap: "[tab]" },
+            ],
+            [
+                { t: "邮箱", tap: "me@example.com", note: "整段文本" },
+                { t: "✓", tap: "好的" },
+                { t: "→", tap: "→ " },
+                { t: "￥", tap: "￥" },
+            ],
         ],
     }, null, 2);
 });

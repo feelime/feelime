@@ -1924,6 +1924,11 @@ class SettingsBridge(
         }
         customKeysStore.save(json, enabled)
         pushState()
+        // 验收 2026-09-24：不发广播键盘 hello 不重推，localStorage 镜像不
+        // 刷新，符号页的「定制」tab 要等键盘进程重启才出现。
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
     }
 
     @JavascriptInterface

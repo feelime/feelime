@@ -5194,7 +5194,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     if (this.toolbarEdit) return;
                     // 动作型（直达键区视图）：等价长按 123 / t9 的笑脸键，
                     // 收起候选组合由 showNumpad 自己的层切换兜底。
-                    if (key === 'numpad') { this.showNumpad(); return; }
+                    if (key === 'numpad') {
+                        // toggle（验收 2026-09-24）：已在数字键盘再点 = 回字母层。
+                        if (this.keyLayer === 'numpad') this.showLetters();
+                        else this.showNumpad();
+                        return;
+                    }
                     if (key === 'emoji') { this.emojiView = true; this.showNumpad(); return; }
                     this.toggleExtraTool(key);
                 });
