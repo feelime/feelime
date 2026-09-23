@@ -142,20 +142,32 @@ def prepare_readonly():
     d.shell("input keyevent KEYCODE_HOME")
     time.sleep(0.6)
     d.shell("am start -n " + d.PKG +
-            "/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+            "/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(1.5)
     bounds = None
     for attempt in range(10):
         bounds = d.field_bounds()
         if bounds:
             break
+        # 焦点楔续修（2026-09-23 9k）：楔是启动后 2-4s 的瞬态，但盲 swipe
+        # 会喂给持焦点的桌面——系统认为用户在桌面交互，焦点永不交接，
+        # 瞬态被滚成永久（20 连 dump 全桌面）。焦点不在本包时 HOME 往返
+        # 重拉（对 wedge 幂等），在包上才滚动找字段。
+        focus = d.shell("dumpsys window | grep -m1 mCurrentFocus")
+        if d.PKG not in focus:
+            d.shell("input keyevent KEYCODE_HOME")
+            time.sleep(0.6)
+            d.shell("am start -n " + d.PKG +
+                    "/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+            time.sleep(1.2)
+            continue
         d.shell("input swipe 540 1750 540 650 220")
         time.sleep(0.45)
         if attempt == 5:
             d.shell("input keyevent 4")
             time.sleep(0.5)
             d.shell("am start -n " + d.PKG +
-                    "/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+                    "/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
             time.sleep(1.2)
     if not bounds:
         raise SystemExit("test field not found")
@@ -686,7 +698,7 @@ def set_settings_language(choice):
 def resume_keyboard_readonly():
     """Reopen the debug host after Back closes the settings activity."""
     d.shell("am start -n " + d.PKG +
-            "/.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
+            "/com.feelime.ime.SetupActivity --ez com.feelime.ime.extra.SHOW_DEBUG_FIXTURES true")
     time.sleep(1.0)
     for _ in range(8):
         keyboard = keyboard_qwerty()
@@ -967,6 +979,16 @@ def backup_favorites_prefs():
 
 def reset_favorites_for_test():
     d.shell("am force-stop " + d.PKG)
+    # force-stop 落地等待（2026-09-23 9k 根因）：杀完立刻 am start 会被
+    # 系统以 result code=-92（START_ABORTED）拒绝，且拒绝有 ~30s 冷却
+    # ——后续整段「找不到测试框」都是这个 abort 的表象（activity 根本
+    # 没起来，dump 抓的是桌面）。等进程消失再等 2s，把冷却窗前移到
+    # reset 里显式吃掉，prepare 的启动不再撞车。
+    for _ in range(20):
+        if not d.shell("pidof " + d.PKG).strip():
+            break
+        time.sleep(0.5)
+    time.sleep(2)
     d.shell(
         "run-as " + d.PKG + " sh -c 'rm -f " + FAVORITES_PREF +
         " " + FAVORITES_PREF + ".bak'"
