@@ -69,7 +69,13 @@ const val PREF_FEEL_SCRUB_SPEED = "feel_scrub_speed"
 const val PREF_FEEL_HOLD_MS = "feel_hold_ms"
 val FEEL_HOLD_STEPS = intArrayOf(200, 300, 350, 450, 600)
 const val PREF_FEEL_POPUP_SNAP = "feel_popup_snap"
+/** 上下滑方向互换（issue #29-2，默认关）：开=上滑大写/下滑小字符。 */
+const val PREF_FLICK_SWAP = "flick_swap"
 const val PREF_CANDIDATE_FONT = "candidate_font"
+
+fun readFlickSwap(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_FLICK_SWAP, false)
 
 /** 拼音字号档位：0=标准 1=大 2=特大（issue #8）。 */
 const val PREF_PREEDIT_FONT = "preedit_font"
@@ -1057,6 +1063,17 @@ class SettingsBridge(
         if (mode !in listOf("auto", "light", "dark")) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putString(PREF_THEME_MODE, mode).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 上下滑方向互换（issue #29-2，默认关）。 */
+    @JavascriptInterface
+    fun setFlickSwap(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_FLICK_SWAP, on).apply()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

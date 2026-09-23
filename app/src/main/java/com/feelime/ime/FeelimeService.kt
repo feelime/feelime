@@ -1545,6 +1545,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // px inside this WebView; numbers pass through as-is.
             .put("bottomPad", bottomPadDp())
             .put("scrubSpeed", feelScrubSpeed())
+            .put("flickSwap", readFlickSwap(this))
             .put("holdMs", feelHoldMs())
             .put("popupSnap", feelPopupSnap())
             .put("candidateFont", candidateFont())
@@ -2098,6 +2099,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     val hold = value.toIntOrNull()
                     if (hold == null || hold !in FEEL_HOLD_STEPS) return@guarded
                     keyboardPrefs.edit().putInt(PREF_FEEL_HOLD_MS, hold).apply()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "flickSwap" -> {
+                    keyboardPrefs.edit().putBoolean(PREF_FLICK_SWAP, value == "1" || value == "true").apply()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "popupSnap" -> {

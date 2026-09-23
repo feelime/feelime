@@ -1131,6 +1131,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // repeat interval rides it (hold + 40). Feel-tuned via the
             // settings app, delivered through hello (mode-fallback §4).
             this.holdMs = 350;
+            // 上下滑方向互换（issue #29-2，默认关）：默认上滑=小字符（数字/
+            // 符号/重音）、下滑=大写；互换后对调。真相源是 native pref
+            // flick_swap，hello 下发。
+            this.flickSwap = false;
             // Popup swipe selection range: 0=loose 1.4x, 1=standard 1.0x,
             // 2=tight 0.7x — scales the relative-tracking jitter dead zone
             // and the card-boundary cancel slop (selection itself stays
@@ -3268,17 +3272,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         // alt ，- both via the engine punctuator (ASCII '.'
                         // / ','), so the gestures match the printed glyphs.
                         let value;
+                        // 互换开关（issue #29-2）：默认上滑=alt 小字符、下滑=
+                        // 大写；开互换后对调。键面小字提示随 CSS 翻到下侧。
+                        const altOnUp = !this.flickSwap;
                         if (key === '.' && this.isChineseMode()) {
                             // Main ，(tap, down) / alt 。(up);
                             // both keep flowing through the engine punctuator
                             // (Native.key) - full-width directly would be
                             // dropped unprocessed.
-                            value = dy < 0 ? '.' : ',';
+                            value = (dy < 0) === altOnUp ? '.' : ',';
                         } else {
                             // CN_ALTS values are the final
                             // glyphs - committed as-is (commitText); the old
                             // FULLWIDTH widening map is gone.
-                            value = dy < 0 ? this.altCandidates(key)[0] : key.toUpperCase();
+                            value = (dy < 0) === altOnUp
+                                ? this.altCandidates(key)[0]
+                                : key.toUpperCase();
                         }
                         if (value) {
                             // In Chinese modes a flicked digit/symbol
@@ -8253,6 +8262,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // may no longer overwrite the runtime value (pullStores
                 // refresh, restored backup rev) — native owns it now.
                 this.scrubSpeedFromNative = true;
+            }
+            if (typeof payload.flickSwap === 'boolean') {
+                this.flickSwap = payload.flickSwap;
+                document.body.classList.toggle('flick-swap', this.flickSwap);
             }
             if (Number(payload.popupSnap) in { 0: 1, 1: 1, 2: 1 }) {
                 this.popupSnap = Number(payload.popupSnap);

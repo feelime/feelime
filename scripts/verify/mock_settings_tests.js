@@ -101,6 +101,7 @@ class MockSettingsNative {
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
+    setFlickSwap(...a) { this._rec('setFlickSwap', a); }
     setKbHeight(...a) { this._rec('setKbHeight', a); }
     previewKeyboard(...a) { this._rec('previewKeyboard', a); }
     setBgImage(...a) { this._rec('setBgImage', a); }
@@ -919,6 +920,19 @@ test('double-pinyin key map renders the active scheme chart from dp-data.js', ()
 });
 
 // ------------------------------------------------- feel tuning card (UI-18/19)
+
+// ---- 上下滑方向互换（issue #29-2）：feel 卡开关 ----
+test('flick swap toggle reflects state and commits setFlickSwap with the token', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    equal(world.$('flickSwap').checked, false, 'default off');
+    world.push({ ...BASE_STATE, flickSwap: true });
+    equal(world.$('flickSwap').checked, true, 'follows state');
+    const box = world.$('flickSwap');
+    box.checked = true;
+    box.listeners.find(l => l.type === 'change').handler({ target: box });
+    equal(world.lastCall('setFlickSwap').args, [true, world.token], 'commit + token');
+});
 
 test('feel card renders state values and commits each control with the token', () => {
     const world = new SettingsWorld();

@@ -750,6 +750,38 @@ test('flick up sends the small alt char, flick down uppercases', () => {
     equal(world.native.of('key').slice(-1)[0].args[0], 'A', 'down gives uppercase');
 });
 
+// ---- 上下滑方向互换（issue #29-2，默认关） ----
+test('flick directions swap when hello carries flickSwap; hint CSS follows', {since: '3.60.0'}, () => {
+    const world = fresh();
+    equal(world.document.body.classList.contains('flick-swap'), false, 'default: no swap class');
+    world.hello({flickSwap: true});
+    equal(world.document.body.classList.contains('flick-swap'), true, 'hello arms the swap class');
+
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, -30); // 50px up
+    world.touchUp(q);
+    world.clock.advance(2);
+    equal(world.native.of('key').slice(-1)[0].args[0], 'Q', 'swapped: up gives uppercase');
+
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, 70); // 50px down on the same key
+    world.touchUp(q);
+    world.clock.advance(2);
+    equal(world.native.of('key').slice(-1)[0].args[0], '1', 'swapped: down gives the alt char');
+});
+
+test('flick swap leaves T9/stroke gestures alone; default stays classic', {since: '3.60.0'}, () => {
+    const world = fresh();
+    // 默认（无 flickSwap 字段）：原行为不动。
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, -30);
+    world.touchUp(q);
+    world.clock.advance(2);
+    equal(world.native.of('key').slice(-1)[0].args[0], '1', 'default: up still the alt char');
+});
+
 test('horizontal swipe scrubs from a fixed threshold crossing', () => {
     const world = fresh();
     const g = world.key('g');

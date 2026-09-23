@@ -384,6 +384,8 @@ const I18N = {
         "右手": "右手",
         "input.feel.hold": "长按触发时长",
         "input.feel.holdHint": "长按弹出选字、锁定大写、打开模式菜单的等待时间。",
+"input.feel.flickSwap": "上下滑方向互换",
+        "input.feel.flickSwapHint": "默认上滑出数字/符号、下滑出大写；开启后对调（键面小字提示随之下移）。",
         "input.feel.scrub": "光标移动速度",
         "input.feel.scrubHint": "光标拖拽时每个刻度移动的距离。",
         "input.feel.snap": "滑动选字范围",
@@ -831,6 +833,8 @@ const I18N = {
         "空白": "Blank",
         "input.feel.hold": "Long-press trigger",
         "input.feel.holdHint": "How long a press waits before popup selection, caps lock, or the mode menu opens.",
+"input.feel.flickSwap": "Swap flick directions",
+        "input.feel.flickSwapHint": "By default flick up gives the digit/symbol and flick down uppercases; enabling swaps them (the keycap hint moves below).",
         "input.feel.scrub": "Cursor speed",
         "input.feel.scrubHint": "Distance the caret moves per drag step.",
         "input.feel.snap": "Swipe selection range",
@@ -1237,6 +1241,8 @@ function renderFeel(state) {
     });
     setSelect("holdMs", state.holdMs ?? 350, ["200", "300", "350", "450", "600"]);
     setSelect("scrubSpeed", state.scrubSpeed ?? 3, ["1", "2", "3", "4", "5"]);
+    const flickSwap = $("flickSwap");
+    if (flickSwap) flickSwap.checked = state.flickSwap === true;
     setSelect("popupSnap", state.popupSnap ?? 1, ["0", "1", "2"]);
     const setToggle = (id, value) => {
         const node = $(id);
@@ -2076,6 +2082,7 @@ function pickBgImage(variant) {
 }
 $("holdMs").addEventListener("change", submitFeelOptions);
 $("scrubSpeed").addEventListener("change", submitFeelOptions);
+$("flickSwap").addEventListener("change", event => call("setFlickSwap", event.target.checked));
 $("popupSnap").addEventListener("change", submitFeelOptions);
 $("modelBackend").addEventListener("change", event => call("setModelBackend", event.target.value));
 $("modelDownloadSource").addEventListener("change", event => {
