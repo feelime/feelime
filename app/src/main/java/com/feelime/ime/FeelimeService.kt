@@ -1460,12 +1460,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // accept it before the system hands the editor to another IME.  The
         // coordinator also resets its engine session, so returning to this
         // IME cannot replay the same composition a second time.
+        // 验收 2026-09-24：工具栏切换键不再「有下家就直接静默切过去」——
+        // 静默切换用户感知是按键失灵（键盘突然没了）。恒弹系统输入法
+        // 选择器，与设置页 pickIme 的 showImePicker 对齐；选择权留给用户。
         coordinator.acceptCurrentComposition {
-            if (shouldOfferSwitchingToNextInputMethod()) {
-                switchToNextInputMethod(false)
-            } else {
-                getSystemService(InputMethodManager::class.java).showInputMethodPicker()
-            }
+            getSystemService(InputMethodManager::class.java).showInputMethodPicker()
         }
     }
 
@@ -1474,8 +1473,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             Intent(this, SetupActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(SetupActivity.SETUP_LAUNCH_EXTRA, android.os.SystemClock.elapsedRealtimeNanos())
-                // 快捷设置 tile 直达设置页对应位置（验收 2026-09-24）：
-                // custom=定制键盘卡、keyboards=键盘选择卡。
+                // 快捷设置 tile 直达设置页对应设置行（验收 2026-09-24
+                // 二改）：quickPairA=快捷切换对、menuModesRow=长按菜单、
+                // customTitle=定制键盘卡（设置页 focusSetting 负责翻页
+                // + 锚定 + 呼吸提醒）。
                 .putExtra(SetupActivity.SETUP_PAGE_EXTRA, page),
         )
     }

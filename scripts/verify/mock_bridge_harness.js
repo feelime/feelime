@@ -365,6 +365,11 @@ class FakeElement {
     // management does not exist in the fake DOM.
     focus() {}
     blur() {}
+    // Settings search anchoring scrolls a row into view; the fake DOM has
+    // no layout, so just record the call for assertions.
+    scrollIntoView(opts) {
+        this._scrollIntoView = opts || null;
+    }
     querySelector(selector) {
         return queryDescendants(this, selector, false)[0] || null;
     }
@@ -374,11 +379,24 @@ class FakeElement {
 }
 
 function matchesSelector(el, selector) {
+    // Comma lists match when ANY branch matches (querySelector semantics).
+    // Settings search code relies on ".row, label.row"-style selectors.
+    if (selector.includes(',')) {
+        return selector.split(',').some(part => matchesSelector(el, part.trim()));
+    }
     const descendant = selector.match(/^(\S+)\s+(\S+)$/);
     if (descendant) {
         const [base, child] = descendant.slice(1);
-        const ancestor = el.closest ? el.closest(base) : null;
+        // Descendant combinator: the element itself never counts as its own
+        // ancestor ("div div" must not match the outer div).
+        const ancestor = el.parentNode && el.parentNode.closest ? el.parentNode.closest(base) : null;
         return !!ancestor && matchesSelector(el, child);
+    }
+    // Compound "tag.class.class" (e.g. "section.card", "label.row").
+    const compound = selector.match(/^(\w+)((?:\.[\w-]+)+)$/);
+    if (compound) {
+        if (el.tagName !== compound[1].toUpperCase()) return false;
+        return compound[2].slice(1).split('.').every(cls => el.classList.contains(cls));
     }
     // Supports "#id", ".class", "tag", ".class[data-x]", "[data-x]",
     // ".class[data-x=\"y\"]".
@@ -393,8 +411,13 @@ function matchesSelector(el, selector) {
         if (el.tagName !== base.toUpperCase()) return false;
     }
     if (attrName) {
-        const value = el.dataset[attrName.replace(/^data-/, '').replace(/-([a-z])/g, (m, c) => c.toUpperCase())];
-        if (attrValue !== undefined ? value !== attrValue : value === undefined) return false;
+        // [id] rides the element's id property, not dataset.
+        if (attrName === 'id') {
+            if (el.id === '' || (attrValue !== undefined && el.id !== attrValue)) return false;
+        } else {
+            const value = el.dataset[attrName.replace(/^data-/, '').replace(/-([a-z])/g, (m, c) => c.toUpperCase())];
+            if (attrValue !== undefined ? value !== attrValue : value === undefined) return false;
+        }
     }
     return true;
 }

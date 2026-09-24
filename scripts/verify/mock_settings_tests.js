@@ -128,7 +128,15 @@ class SettingsWorld {
             // Keep this suite deterministic even when Node runs under an
             // English host locale; the production fallback is navigator.language.
             navigator: { language: 'zh-CN' },
+            // 搜索/锚定（验收 2026-09-24 二改）：rAF 同步执行让断言无需等
+            // 帧；flashAnchor 的清理 setTimeout 只入队不跑（flushTimers 手动
+            // 冲洗）；location.hash 由 focusSetting 写入，断言直达锚。
+            requestAnimationFrame: fn => { fn(); return 0; },
+            setTimeout: fn => { this.timers.push(fn); return this.timers.length; },
+            clearTimeout: () => {},
+            location: { hash: '' },
         };
+        this.timers = [];
         sandbox.window = sandbox;
         this.doc = loadDocument(fs.readFileSync(HTML_PATH, 'utf8'));
         sandbox.document = this.doc;
@@ -1226,6 +1234,66 @@ test('bridge validation errors surface on the feel note', () => {
     assert(world.$('feelNote').textContent.length > 0, 'bottom pad error also lands on the note');
     world.FeelimeSettings().onEvent({ type: 'candidateFontError', code: 'BAD_CANDIDATE_FONT' });
     assert(world.$('feelNote').textContent.length > 0, 'candidate font error lands on the note');
+});
+
+// ------------------------------------------------- 搜索与直达锚（验收二改）
+
+test('settings search surfaces setting rows with hints: 背景 → 亮色/暗色背景', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const input = world.$('settingsSearch');
+    input.value = '背景';
+    input.listeners.find(l => l.type === 'input').handler({ target: input });
+    const box = world.$('searchResults');
+    assert(!box.hidden, 'results visible');
+    const hits = [...box.querySelectorAll('.search-hit')];
+    const titles = hits.map(b => b.querySelector('.search-hit-main span').textContent);
+    equal(titles[0], '亮色背景', '亮色背景 is the first hit');
+    equal(titles[1], '暗色背景', '暗色背景 is the second hit');
+    assert(titles.indexOf('外观') < 0, 'card fallback is hidden when its rows hit');
+    // 说明小注跟着条目走（用户要看的不只是名字）。
+    assert(hits[0].querySelector('.search-hit-desc').textContent.includes('铺满整个键盘区域'),
+        'row hint rides along as the description');
+    assert(hits[0].querySelector('.search-hit-page').textContent.length > 0, 'page label shown');
+});
+
+test('search hit click routes to the exact row via focusSetting', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const input = world.$('settingsSearch');
+    input.value = '亮色背景';
+    input.listeners.find(l => l.type === 'input').handler({ target: input });
+    const hit = world.$('searchResults').querySelectorAll('.search-hit')[0];
+    hit.listeners.find(l => l.type === 'click').handler();
+    // 输入清空 + 下拉收起 + hashtag 锚到具体控件 + 整行呼吸。
+    equal(world.$('settingsSearch').value, '', 'query cleared');
+    equal(world.$('searchResults').hidden, true, 'dropdown hidden');
+    equal(world.sandbox.location.hash, '#bgImageLight', 'hashtag anchors the exact row');
+    const row = world.$('bgImageLight').closest('.row, label.row');
+    assert(row.classList.contains('search-flash'), 'the whole row breathes');
+    assert(row._scrollIntoView, 'row scrolled into view');
+    assert(!world.$('bgImageLight').closest('.page').hidden, 'appearance page shown');
+});
+
+test('focusSetting anchors rows and whole cards; unknown ids return false', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    // 行级：quickPairA（键盘 tile 深链的锚）→ 所在行整行呼吸。
+    equal(world.FeelimeSettings().focusSetting('quickPairA'), true, 'row anchor resolves');
+    const pairRow = world.$('quickPairA').closest('.row, label.row');
+    assert(pairRow.classList.contains('search-flash'), 'whole row breathes');
+    assert(pairRow._scrollIntoView, 'row scrolled into view');
+    equal(world.sandbox.location.hash, '#quickPairA', 'hashtag updated');
+    // 卡级：customTitle（定制键盘 tile 的锚）→ 整卡呼吸。
+    equal(world.FeelimeSettings().focusSetting('customTitle'), true, 'card anchor resolves');
+    const card = world.$('customTitle').closest('section.card');
+    assert(card.classList.contains('search-flash'), 'whole card breathes');
+    assert(!world.$('customTitle').closest('.page').hidden, 'input page shown for the card');
+    // 未知锚点不炸，返回 false（Kotlin 侧轮询重试依赖此契约）。
+    equal(world.FeelimeSettings().focusSetting('nope'), false, 'unknown anchor returns false');
+    // 呼吸类到点清理（定时器挂起队列手动冲洗）。
+    world.timers.splice(0).forEach(fn => fn());
+    assert(!pairRow.classList.contains('search-flash'), 'breathe class clears after the timer');
 });
 
 // ---------------------------------------------------------------- runner

@@ -670,9 +670,11 @@ class SetupActivity : AppCompatActivity() {
         launchMarker.contentDescription = "$SETUP_LAUNCH_DESCRIPTION_PREFIX$nonce"
     }
 
-    /** 快捷设置 tile 直达（SETUP_PAGE_EXTRA）：页面加载后路由到 input 页
-     *  并滚到目标卡。onPageFinished 时 JS 未必初始化完，注入的脚本自带
-     *  轮询重试。custom=customTitle（定制键盘卡）、keyboards=secKeyboards。 */
+    /** 快捷设置 tile 直达（SETUP_PAGE_EXTRA）：页面加载后调设置页的
+     *  focusSetting(id)——它自己翻页（目标可能在 input 之外的页）、滚到
+     *  整行并呼吸提醒。onPageFinished 时 JS 未必初始化完，注入的脚本自带
+     *  轮询重试。锚点：quickPairA=快捷切换对、menuModesRow=长按菜单、
+     *  customTitle=定制键盘卡。 */
     private var pendingSetupTarget = ""
 
     private fun takeSetupTarget(intent: Intent) {
@@ -686,10 +688,8 @@ class SetupActivity : AppCompatActivity() {
         runOnUiThread {
             runCatching {
                 webView.evaluateJavascript(
-                    "(function go(n){ if(window.FeelimeSettings&&window.FeelimeSettings.showPage){" +
-                        "FeelimeSettings.showPage('input');" +
-                        "requestAnimationFrame(function(){var el=document.getElementById('" + target + "');" +
-                        "if(el){el.scrollIntoView({block:'center'});}});" +
+                    "(function go(n){ if(window.FeelimeSettings&&window.FeelimeSettings.focusSetting){" +
+                        "FeelimeSettings.focusSetting('" + target + "');" +
                         "} else if(n>0){setTimeout(function(){go(n-1);},120);} })(12);",
                     null,
                 )

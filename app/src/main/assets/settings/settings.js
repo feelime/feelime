@@ -1179,6 +1179,7 @@ window.FeelimeSettings = {
     },
 
     showPage,
+    focusSetting,
 };
 
 /* --- pages ------------------------------------------------------------- */
@@ -1643,8 +1644,10 @@ function phraseState() {
     return { enabled: !!($("phrasesOn").checked), items: phraseItems };
 }
 
-/** 设置搜索（验收 2026-09-24）：索引所有二级页的卡片/行（标题 + 行文本
- *  + 小注 + data-keywords 意图词），子串模糊匹配，点击直达对应页并锚定。 */
+/** 设置搜索（验收 2026-09-24，同日二改）：索引到「行」级——每个设置行
+ *  （label + 说明小注 + data-keywords 意图词 + 所在卡标题）都是独立条目，
+ *  搜「背景」出「亮色背景」「暗色背景」而不是只有「外观」。卡片标题条目
+ *  只做兜底：它的行有命中时从结果里隐掉，避免同卡重复。 */
 let searchIndex = null;
 
 function buildSearchIndex() {
@@ -1653,21 +1656,41 @@ function buildSearchIndex() {
         const pageName = page.dataset.page;
         if (pageName === "home") return;
         const pageTitle = page.querySelector(".page-title")?.textContent || pageName;
-        // 行级条目（带 data-keywords 的行）优先入索引——跳转直锚到具体
-        // 选项；卡片标题条目兜底（锚到卡标题）。
         page.querySelectorAll("section.card").forEach(card => {
             const heading = card.querySelector(".section-heading h2");
             const title = heading?.textContent?.trim() || "";
-            card.querySelectorAll("[data-keywords]").forEach(el => {
-                const row = el.closest(".row, label.row") || el;
-                const label = row.querySelector(".row-label span, .row-label");
-                const hint = row.querySelector(".row-label small");
+            const cardKey = heading?.id || title;
+            card.querySelectorAll(".row, label.row").forEach(row => {
+                // 标签只取主 span：querySelector(".row-label span, .row-label")
+                // 会按文档序先命中 .row-label 本身，textContent 连说明小注
+                // 一起聚合，标题就脏了。
+                const label = row.querySelector(".row-label span") || row.querySelector(".row-label");
+                const labelText = label?.textContent?.trim() || "";
+                const hintParts = [];
+                row.querySelectorAll("small").forEach(node => hintParts.push(node.textContent));
+                const keywords = [];
+                row.querySelectorAll("[data-keywords]").forEach(node =>
+                    keywords.push(node.dataset.keywords));
+                // 无名行（纯布局）不入索引；条目文本聚合 label/说明/意图词/卡名。
+                if (!labelText && !hintParts.length && !keywords.length) return;
+                // 锚 id 优先取行内控件 id（每个设置行都有），其次意图词元素
+                // 或行自身——搜索点击与键盘 tile 深链共用 focusSetting(id)。
+                const control = row.querySelector("select[id], input[id], button[id]");
+                const anchorId = (control && control.id)
+                    || row.querySelector("[data-keywords][id]")?.id
+                    || row.id
+                    || heading?.id
+                    || "";
                 entries.push({
                     page: pageName,
                     pageTitle,
-                    title: label?.textContent?.trim() || title,
+                    title: labelText || title,
+                    desc: hintParts.join(" ").replace(/\s+/g, " ").trim(),
+                    anchorId,
                     anchorEl: row,
-                    text: [label?.textContent, hint?.textContent, el.dataset.keywords, title]
+                    cardKey,
+                    rowHit: true,
+                    text: [labelText, ...hintParts, ...keywords, title]
                         .filter(Boolean).join(" ").replace(/\s+/g, " "),
                 });
             });
@@ -1679,7 +1702,11 @@ function buildSearchIndex() {
                 page: pageName,
                 pageTitle,
                 title,
+                desc: "",
+                anchorId: heading?.id || "",
                 anchorEl: heading || card,
+                cardKey,
+                rowHit: false,
                 text: parts.filter(Boolean).join(" ").replace(/\s+/g, " "),
             });
         });
@@ -1687,13 +1714,36 @@ function buildSearchIndex() {
     return entries;
 }
 
-/** 跳转后的呼吸灯提醒：背景三拍渐亮渐隐（约 1.8s）。 */
+/** 跳转后的呼吸灯提醒：整个设置项背景呼吸三次（约 1.9s）。 */
 function flashAnchor(el) {
     if (!el) return;
     el.classList.remove("search-flash");
     void el.offsetWidth; // reflow 让重播动画可靠触发
     el.classList.add("search-flash");
-    setTimeout(() => el.classList.remove("search-flash"), 2000);
+    setTimeout(() => el.classList.remove("search-flash"), 2100);
+}
+
+/** 直达某个设置项（搜索点击 / 键盘快捷设置 tile 深链共用）：翻到所在页
+ *  → 滚到整行 → 整行呼吸三次提醒。hashtag 同步写入便于定位与自动化
+ *  断言。返回 false 表示目标不存在（调用方可以重试）。 */
+function focusSetting(id) {
+    const el = document.getElementById(id);
+    if (!el) return false;
+    const page = el.closest(".page");
+    if (page && page.dataset.page) showPage(page.dataset.page);
+    const row = el.closest(".row, label.row, section.card") || el;
+    // 全程同步执行，不进 rAF/setTimeout：键盘 tile 深链时 WebView 正从
+    // IME 覆盖下恢复，入队的 rAF 回调在 ace 真机上整批丢失；搜索点击
+    // 翻到外观页会弹真键盘预览，WebView 被压后台连 setTimeout 都冻结。
+    // scrollIntoView 与 hidden 切换都是同步布局，无须等帧；呼吸是 CSS
+    // 合成器动画，类挂上就播。
+    if (typeof row.scrollIntoView === "function") {
+        row.scrollIntoView({ block: "center" });
+    }
+    flashAnchor(row);
+    // 显式带 #：不依赖浏览器对 hash 赋值的规范化（fake DOM/自动化同口径）。
+    if (window.location) window.location.hash = "#" + id;
+    return true;
 }
 
 function runSettingsSearch(query) {
@@ -1702,9 +1752,10 @@ function runSettingsSearch(query) {
     const q = query.trim().toLowerCase();
     if (!q) { box.hidden = true; box.textContent = ""; return; }
     if (!searchIndex) searchIndex = buildSearchIndex();
-    const hits = searchIndex
-        .filter(entry => entry.text.toLowerCase().includes(q))
-        .slice(0, 12);
+    const matched = searchIndex.filter(entry => entry.text.toLowerCase().includes(q));
+    // 卡兜底条目在同卡有行命中时让位——行级条目就是更准的答案。
+    const rowCards = new Set(matched.filter(e => e.rowHit).map(e => e.cardKey));
+    const hits = matched.filter(e => e.rowHit || !rowCards.has(e.cardKey)).slice(0, 12);
     box.textContent = "";
     if (!hits.length) {
         const empty = document.createElement("p");
@@ -1716,20 +1767,37 @@ function runSettingsSearch(query) {
             const button = document.createElement("button");
             button.type = "button";
             button.className = "search-hit";
-            const where = document.createElement("small");
-            where.textContent = entry.pageTitle;
+            const main = document.createElement("span");
+            main.className = "search-hit-main";
             const label = document.createElement("span");
             label.textContent = entry.title || entry.pageTitle;
-            button.append(label, where);
+            main.append(label);
+            if (entry.desc) {
+                const desc = document.createElement("small");
+                desc.className = "search-hit-desc";
+                desc.textContent = entry.desc;
+                main.append(desc);
+            }
+            const where = document.createElement("small");
+            where.className = "search-hit-page";
+            where.textContent = entry.pageTitle;
+            button.append(main, where);
             button.addEventListener("click", () => {
                 $("settingsSearch").value = "";
                 box.hidden = true;
-                showPage(entry.page);
-                requestAnimationFrame(() => {
-                    if (!entry.anchorEl) return;
-                    entry.anchorEl.scrollIntoView({ block: "center" });
-                    flashAnchor(entry.anchorEl);
-                });
+                if (entry.anchorId) {
+                    focusSetting(entry.anchorId);
+                } else {
+                    showPage(entry.page);
+                    // 同 focusSetting：同步执行（rAF/setTimeout 在 WebView
+                    // 恢复/冻结窗口都会丢）。
+                    if (entry.anchorEl) {
+                        if (typeof entry.anchorEl.scrollIntoView === "function") {
+                            entry.anchorEl.scrollIntoView({ block: "center" });
+                        }
+                        flashAnchor(entry.anchorEl);
+                    }
+                }
             });
             box.append(button);
         });

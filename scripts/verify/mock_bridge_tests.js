@@ -3456,7 +3456,13 @@ test('quick tiles: re-render keeps the current page (no jump to page 1)', {since
     strip.listeners.filter(l => l.type === 'scroll').forEach(l => l.handler({ target: strip }));
     assert(world.tileNames().indexOf('长按菜单') >= 0, 'page-2 tiles stay in the DOM');
     // 点第二页的子页导航 → 返回首页：必须还在第二页。
-    if (verAtLeast(KEYBOARD_VERSION, '3.60.0')) {
+    if (verAtLeast(KEYBOARD_VERSION, '3.62.0')) {
+        // 3.62 起三个 route-out tile 锚到各自的设置行（不再只落键盘选择卡）。
+        world.tap(world.tile('长按菜单'));
+        equal(world.native.of('openSetupPage').slice(-1)[0].args[0], 'menuModesRow',
+            'menu tile anchors the menu-modes setting row');
+        assert(!world.$('settingsPanel').classList.contains('open'), 'panel closes on route-out');
+    } else if (verAtLeast(KEYBOARD_VERSION, '3.60.0')) {
         // 3.60 起长按菜单 tile 直达设置页「键盘选择」卡（不再开内嵌子页）。
         world.tap(world.tile('长按菜单'));
         equal(world.native.of('openSetupPage').slice(-1)[0].args[0], 'secKeyboards',
@@ -3472,6 +3478,21 @@ test('quick tiles: re-render keeps the current page (no jump to page 1)', {since
     }
     const dots = [...world.document.querySelectorAll('.qs-dots span')];
     assert(dots[1] && dots[1].classList.contains('cur'), 'second dot active');
+});
+
+test('quick tiles: the three route-out tiles anchor their own setting row', {since: '3.62.0'}, () => {
+    const world = fresh();
+    world.hello();
+    world.tap(world.$('setupButton'));
+    // 验收 2026-09-24 二改：三个 tile 各自锚到完整设置的对应设置行，
+    // 由设置页 focusSetting 翻页+呼吸；键盘侧只负责带锚跳转。
+    world.tap(world.tile('快捷切换'));
+    equal(world.native.of('openSetupPage').slice(-1)[0].args[0], 'quickPairA',
+        'pair tile anchors the quick-pair row');
+    world.tap(world.tile('定制键盘'));
+    equal(world.native.of('openSetupPage').slice(-1)[0].args[0], 'customTitle',
+        'custom tile anchors the custom card');
+    assert(!world.$('settingsPanel').classList.contains('open'), 'panel closes on route-out');
 });
 
 test('quick tiles grid is strictly 2x4 (no third row, ever)', {since: '3.44.0'}, () => {

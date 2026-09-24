@@ -6269,14 +6269,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     {
                         icon: ICONS.swap, label: t("快捷切换"),
                         state: () => this.quickPair.map(m => modeLabel(m)).join(' · '),
-                        // 验收 2026-09-24：键盘越来越多，快捷设置内嵌编辑不友
-                        // 好——直达设置页「键盘选择」卡。
-                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('secKeyboards', this.token)); },
+                        // 验收 2026-09-24 二改：tile 直达完整设置的「对应设置
+                        // 行」（quickPairA=快捷切换对），不再只落卡级；锚定
+                        // 与呼吸灯由设置页 focusSetting 统一处理。
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('quickPairA', this.token)); },
                     },
                     {
                         icon: ICONS.menu, label: t("长按菜单"),
                         state: () => t("{0} 个键盘", this.menuModes().length),
-                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('secKeyboards', this.token)); },
+                        // menuModesRow=「长按菜单里列出哪些键盘」设置行。
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('menuModesRow', this.token)); },
                     },
                     {
                         icon: ICONS.font, label: t("候选字号"),
@@ -6342,6 +6344,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         state: () => (customRows
                             ? t("已定制 {0} 个键", customRows.reduce((sum, row) => sum + (row || []).length, 0))
                             : t("未定制")),
+                        // customTitle=定制键盘卡标题，focusSetting 对卡级锚
+                        // 整卡呼吸。
                         tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('customTitle', this.token)); },
                     },
                     {
