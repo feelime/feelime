@@ -2442,7 +2442,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
         @JavascriptInterface
         fun openSetup(token: String) = guarded(token, limited = false) { openSetup() }
-        fun openSetupPage(page: String, token: String) = guarded(token, limited = false) { openSetup(page) }
+        // 批四引入此方法时漏了 @JavascriptInterface：注解只作用于紧随的
+        // 声明，不注解的话 JS 端 Native.openSetupPage 是 undefined，tile
+        // 点击 TypeError 静默崩——面板关了（close 在前）而设置页永远起
+        // 不来，即「点了没反应」。ace 实测 ENTRY 打点定罪后补注解。
+        @JavascriptInterface
+        fun openSetupPage(page: String, token: String) =
+            guarded(token, limited = false) { openSetup(page) }
 
         /** 定制键盘 JSON 的说明文档（#29-8）：固定官方地址，不收任意
          *  URL——WebView 侧不该能驱动任意 intent 跳转。 */
