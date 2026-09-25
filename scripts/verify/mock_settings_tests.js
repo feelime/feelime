@@ -98,6 +98,7 @@ class MockSettingsNative {
     // one-tap copy.
     reportPage(...a) { this._rec('reportPage', a); }
     setThemeMode(...a) { this._rec('setThemeMode', a); }
+    setThemePreset(...a) { this._rec('setThemePreset', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
@@ -1358,6 +1359,18 @@ test('key sound style select posts style; custom routes to the file picker', () 
     sel.value = 'custom';
     fire(sel, 'change');
     assert(world.native.of('openKeySoundDocument').length > 0, 'choosing custom opens the picker');
+});
+
+// #31 键盘色调：swatch 行按 state 渲染选中态，点击发 setThemePreset。
+test('theme preset swatches render state and post on click', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, themePreset: 'ocean' });
+    const dots = [...world.doc.querySelectorAll('#themePresetSwatches .preset-swatch')];
+    equal(dots.length, 6, 'six presets');
+    equal(dots.find(d => d.dataset.preset === 'ocean').className.includes('active'), true,
+        'current preset marked active');
+    dots.find(d => d.dataset.preset === 'violet').click();
+    equal(world.lastCall('setThemePreset').args[0], 'violet', 'click posts the preset id');
 });
 
 // ---------------------------------------------------------------- runner

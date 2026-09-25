@@ -215,6 +215,17 @@ fun readThemeMode(context: Context): String =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getString(PREF_THEME_MODE, "") ?: ""
 
+/** #31 预置色调：键盘 accent 三件套的风格包（设置页外观卡「键盘
+ *  色调」，键盘侧 html[data-preset] 应用）。classic=默认绿。 */
+const val PREF_THEME_PRESET = "theme_preset"
+val THEME_PRESETS = listOf("classic", "ocean", "violet", "amber", "sakura", "teal")
+
+fun readThemePreset(context: Context): String {
+    val saved = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_THEME_PRESET, "") ?: ""
+    return if (saved in THEME_PRESETS) saved else "classic"
+}
+
 /** 背景图片（亮/暗各一组）：设置页压缩到 ≤720px 宽 JPEG 后经桥写入。
  *  variant 只认 light/dark；「无」= 删文件。src 记录来源供设置页回显。 */
 fun isValidBgVariant(variant: String): Boolean = variant == "light" || variant == "dark"
@@ -619,6 +630,7 @@ class SettingsBridge(
             // 点开开关后 pushState 一到就弹回——「开了看不出开」。
             .put("flickSwap", readFlickSwap(context))
             .put("themeMode", readThemeMode(context))
+            .put("themePreset", readThemePreset(context))
             .put("kbHeightPortrait", readKbHeightPortrait(context))
             .apply {
                 val (min, max) = readKbHeightBounds(context)
@@ -1132,6 +1144,18 @@ class SettingsBridge(
     fun setFlickSwap(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_FLICK_SWAP, on).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #31 预置色调（白名单外拒绝）。 */
+    @JavascriptInterface
+    fun setThemePreset(preset: String, token: String) = guarded(token) {
+        if (preset !in THEME_PRESETS) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_THEME_PRESET, preset).apply()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

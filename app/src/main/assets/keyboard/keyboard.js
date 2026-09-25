@@ -834,6 +834,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 长按菜单的默认勾选集（round-6 用户拍板）：英文/全拼/双拼/九宫格/
     // 笔画。手写实验性（识别率有限）不默认进菜单，用户主动勾选才显示。
     const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
+
+    // #31 预置色调（设置页外观卡「键盘色调」）：CSS 侧 html[data-preset]
+    // 只覆盖 accent 三件套；classic 为默认（无 dataset）。
+    const THEME_PRESETS = ['classic', 'ocean', 'violet', 'amber', 'sakura', 'teal'];
     // 右列滚动符号列（round-6）：T9/数字面板左列同款形态——常驻滚动
     // 列表，视口露出前三格（，。？），上滑滚出更多，点按直上屏。
     const INK_SIDE_SYMBOLS = ['，', '。', '？', '！', '：', '；', '、', '～', '……', '·', '＃', '＠'];
@@ -8388,6 +8392,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyOneHand();
             this.applyBackground();
             this.applyKeyOpacity();
+            // #31 预置色调：native pref 经 hello 下发，html[data-preset]
+            // 驱动 CSS 覆盖（classic = 清掉 dataset 回默认绿）。
+            {
+                const preset = typeof payload.themePreset === 'string' ? payload.themePreset : '';
+                if (THEME_PRESETS.includes(preset) && preset !== 'classic') {
+                    document.documentElement.dataset.preset = preset;
+                } else {
+                    delete document.documentElement.dataset.preset;
+                }
+            }
             // 主题真相源是 native pref（外观页 select / tile 循环都写它）：
             // 与本地不同才覆盖。tile 连点的未决意图在途时不覆盖，只确认
             // 撤签——否则连点后先发的旧快照会把新意图洗掉。
