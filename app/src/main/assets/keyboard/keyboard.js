@@ -277,7 +277,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.59.0';
+    const KEYBOARD_VERSION = '3.65.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -6290,13 +6290,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         // 验收 2026-09-24 二改：tile 直达完整设置的「对应设置
                         // 行」（quickPairA=快捷切换对），不再只落卡级；锚定
                         // 与呼吸灯由设置页 focusSetting 统一处理。
-                        // JSDBG（2026-09-25 定罪用，事后删）：绕过 call 门闸
-                        // 直调桥，Kotlin 无条件落 trace。
-                        tap: () => {
-                            this.closeSettingsPanel();
-                            try { Native.openSetupPage('JSDBG-r=' + this.ready + '-t=' + !!this.token, this.token || ''); } catch (e) {}
-                            this.call(() => Native.openSetupPage('quickPairA', this.token));
-                        },
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('quickPairA', this.token)); },
                     },
                     {
                         icon: ICONS.menu, label: t("长按菜单"),
