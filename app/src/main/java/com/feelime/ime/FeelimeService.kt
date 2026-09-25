@@ -1484,15 +1484,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 // + 锚定 + 呼吸提醒）。
                 .putExtra(SetupActivity.SETUP_PAGE_EXTRA, page),
         )
-        diagTrace("startActivity issued page=$page")
-    }
-
-    /** 诊断期打点：files/diag_trace.log（run-as 读，事后清理）。 */
-    private fun diagTrace(msg: String) {
-        runCatching {
-            filesDir.resolve("diag_trace.log").appendText(
-                "${android.os.SystemClock.elapsedRealtime()} $msg\n")
-        }
+        // route 诊断链 2/3：startActivity 发出（page 空 = 只开首页）。
+        Diagnostics.log("route", "openSetup startActivity page=$page")
     }
 
     /** System dark/light for the keyboard's auto theme (WebView prefers-
@@ -2464,7 +2457,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // openSetupPage 改为无条件执行。数据类桥调用仍走 guarded。
         @JavascriptInterface
         fun openSetupPage(page: String, token: String) = onMain {
-            diagTrace("openSetupPage page=$page")
+            // route 诊断链 1/3（Diagnostics，开关控制，仅锚 id 无用户
+            // 数据）：tile→桥入口。
+            Diagnostics.log("route", "openSetupPage page=$page")
             // 必须显式限定外类：裸调 openSetup(page) 会解析到本类桥方法
             // openSetup(token)——单 String 参数同形，page 被当 token 吃掉，
             // SETUP_PAGE_EXTRA 落空 → 设置页只开首页不定位（用户实测

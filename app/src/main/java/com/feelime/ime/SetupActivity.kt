@@ -175,10 +175,8 @@ class SetupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         destroyed = false
-        runCatching { // 诊断：冷启 BAL 验证（事后清理）
-            filesDir.resolve("diag_trace.log").appendText(
-                "${android.os.SystemClock.elapsedRealtime()} SetupActivity onCreate\n")
-        }
+        // route 诊断链 3/3：设置页到达（target 空 = 普通打开）。
+        Diagnostics.log("route", "SetupActivity onCreate target=${intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""}")
         // P1-5 补口（真机第 5 轮 G 段定罪）：force-stop 中断安装后直接开
         // 设置页不走 FeelimeService.onCreate，卡片会残留误导性的「自定义」
         // 态——这里也扫一遍（幂等，prefs 无 installing 标记即 no-op）。
@@ -615,6 +613,7 @@ class SetupActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        Diagnostics.log("route", "SetupActivity onNewIntent target=${intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""}")
         setIntent(intent)
         updateSetupLaunchMarker(intent)
         takeSetupTarget(intent)
@@ -705,11 +704,18 @@ class SetupActivity : AppCompatActivity() {
                         "window.FeelimeSettings.focusSetting('" + target + "'):'pending'",
                 ) { r ->
                     when {
-                        r == "true" -> pendingSetupTarget = ""
+                        r == "true" -> {
+                            pendingSetupTarget = ""
+                            // route 诊断链 4/4：锚命中（含重试次数——冷启
+                            // 动 WebView 慢时会 >0，配合 3/3 看到达与命中
+                            // 的间隔）。
+                            Diagnostics.log("route", "target hit=$target attempt=$attempt")
+                        }
                         // JS 未就绪（'pending'）或锚未命中：页面加载慢于
                         // 首次注入，Kotlin 侧重试（约 40×250ms）。
                         attempt < 40 -> webView.postDelayed(
                             { routeToSetupTarget(attempt + 1) }, 250)
+                        else -> Diagnostics.log("route", "target MISS=$target retries exhausted")
                     }
                 }
             }
