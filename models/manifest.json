@@ -89,6 +89,23 @@
         "https://huggingface.co/lorneluo/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8/resolve/main/"
       ],
       "title": "中英标点恢复"
+    },
+    {
+      "id": "melnyk-net-int8",
+      "role": "handwriting-rec",
+      "version": "melnyk-1.0-int8",
+      "files": [
+        {
+          "path": "handwriting/model.onnx",
+          "downloadPath": "model.onnx",
+          "sha256": "04bf65859482f2e9f4836fb872c5a881940a8f6f81bd0994542187617793e932",
+          "bytes": 6613389
+        }
+      ],
+      "urls": [
+        "https://gitee.com/feelime/models/releases/download/handwriting-v2/"
+      ],
+      "title": "手写识别（Melnyk-Net）"
     }
   ]
 }

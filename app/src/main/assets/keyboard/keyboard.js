@@ -7,6 +7,24 @@
 (() => {
     'use strict';
 
+    // 首帧几何（native 经 URL query 注入的物理 px）：在 hello 之前先把
+    // --band/--safe-bottom 落到根元素。CSS 的 fallback 是 0，不设的话
+    // 首帧 #softKeyboard 画满整个 IME 窗口（含 200dp 弹层带），hello 到
+    // 达后再缩回——真机首载会闪一个「更高的键盘」。hello 仍按权威值
+    // 覆盖这里；预览 harness 等无 query 场景保持 0。
+    try {
+        const geom = new URLSearchParams(location.search);
+        const dpr = window.devicePixelRatio || 1;
+        const band = Number(geom.get('band'));
+        const sb = Number(geom.get('sb'));
+        if (band > 0) {
+            document.documentElement.style.setProperty('--band', (band / dpr) + 'px');
+        }
+        if (sb > 0) {
+            document.documentElement.style.setProperty('--safe-bottom', (sb / dpr) + 'px');
+        }
+    } catch (_) {}
+
     // Interface language is independent of the active input engine.
     let uiLocale = 'zh';
     try {
@@ -145,6 +163,8 @@
         "粘贴 JSON 定制键盘": "Paste custom keyboard JSON",
         "插入模板 ›": "Use example ›",
         "插入定制模板": "Use custom keyboard example",
+        "查看说明 ›": "View guide ›",
+        "查看定制键盘说明": "View the custom keyboard guide",
         "粘贴定制 JSON": "Paste custom keyboard JSON",
         "保存失败：本地存储不可用": "Could not save. Local storage is unavailable.",
         "已保存 {0} 个键": "Saved {0} keys",
@@ -230,7 +250,15 @@
         "Fn 粘滞键": "Sticky Fn",
         "开始语音输入": "Start voice input",
         "清除输入": "Clear composition",
-        "键盘设置": "Quick settings"
+        "键盘设置": "Quick settings",
+        // 手写键面（issue #28）。空书写区提示三行（round-5）。
+        "在此手写": "Write here",
+        "模型能力有限": "Model has limits",
+        "避免连笔以提高识别率": "Avoid cursive strokes for better results",
+        "已清空笔迹": "Ink cleared",
+        "手写模型未就绪": "Handwriting model not ready",
+        "手写识别失败": "Handwriting recognition failed",
+        "手写": "Handwriting"
 };
     function t(source, ...values) {
         const pattern = uiLocale === 'en' ? (UI_EN[source] || source) : source;
@@ -249,7 +277,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.55.0';
+    const KEYBOARD_VERSION = '3.65.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -316,8 +344,9 @@
         }));
     }
 /** 工具栏可编辑 icon 目录（issue #15 编辑模式）：id → 按钮 DOM id。
- *  logo（左）与收起（右）固定不可编辑；组合态工具（清除/展开）与
- *  完整设置齿轮不参与编辑。 */
+ *  logo（左）与收起（右）固定不可编辑；组合态工具（清除/展开）不参与
+ *  编辑。完整设置齿轮（#33-1）不再随快开面板自动插栏（会把用户摆好的
+ *  图标顶右移一格），改为目录里的一颗可选工具，用户自选常驻。 */
 const TOOL_CATALOG = {
     ctrl: 'ctrlTool',
     ime: 'imeSwitchButton',
@@ -325,6 +354,8 @@ const TOOL_CATALOG = {
     favorites: 'favoritesButton',
     mic: 'mic',
     // 开关型/动作型工具：默认不上栏，只待在编辑仓库里由用户添加（动态创建）。
+    // setup 是静态元素（index.html 里的 fullSetupButton），其余动态创建。
+    setup: 'fullSetupButton',
     theme: 'toolTheme',
     vibrate: 'toolVibrate',
     sound: 'toolSound',
@@ -375,6 +406,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // APK 的 hello 不带 stroke 就绪字段，缺失必须当不可用——沿用
         // !== false 的宽松判定会把缺键当可用，出现可点却无效的入口。
         'stroke': { label: '笔', title: '笔画 Stroke', layout: 't9', engine: true, strictReady: true },
+        // 手写（issue #28，design/handwriting.md §1）：独立识别引擎
+        // （recognizeInk 笔迹 → onInkCandidates 候选），不接按键引擎
+        // （engine:false——退格/空格/回车由原生 Direct 承载）。
+        // strictReady：模型未落地（旧 APK 的 hello 缺字段 / thin 未下载）
+        // 时菜单不出入口，宽松判定会出现可点却无效的模式。
+        'handwriting': { label: '手', title: '手写 Handwriting', layout: 'handwriting', engine: false, strictReady: true },
         'french': { label: 'FR', title: 'Français', layout: 'qwerty-fr', engine: true },
         'russian': { label: 'РУ', title: 'Русский', layout: 'cyrillic', engine: true },
         'japanese': { label: '日', title: '日本語 Romaji', layout: 'qwerty', engine: true },
@@ -786,8 +823,72 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     };
     // Keyboard height (the letter key height) is tunable per
     // orientation; clamped so four rows always stay inside the budget.
-    const KB_HEIGHT_KEY = orientation => `feelime_kb_height_${orientation}`;
     const KB_ROW_MIN = 32;
+    // 手写控制行键高（CSS px）：固定值，不参与 --kb-row-h 预算（键盘
+    // 高度调节的弹性全部给书写面板）。
+    const INK_CONTROL_ROW_H = 46;
+    // 长按菜单的默认勾选集（round-6 用户拍板）：英文/全拼/双拼/九宫格/
+    // 笔画。手写实验性（识别率有限）不默认进菜单，用户主动勾选才显示。
+    const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
+    // 右列滚动符号列（round-6）：T9/数字面板左列同款形态——常驻滚动
+    // 列表，视口露出前三格（，。？），上滑滚出更多，点按直上屏。
+    const INK_SIDE_SYMBOLS = ['，', '。', '？', '！', '：', '；', '、', '～', '……', '·', '＃', '＠'];
+    // 空书写区的三行提示（round-5，用户反馈）：首行是动作，后两行是
+    // 预期管理——模型能力有限、连笔拖识别率。双语走 UI_EN。
+    const INK_HINT_LINES = ['在此手写', '模型能力有限', '避免连笔以提高识别率'];
+    // 手写停笔→识别的触发延时档位（设置页「手写」区块，hello 下发）。
+    // 实时识别（模型 v2 后推理毫秒级，issue #32）：每笔 touchend 立即识别，
+    // 候选随笔画刷新（wetype 同款体验）。识别时机不再可配（停顿档已被
+    // 实时模式完全取代：每笔都重新识别，写得慢的人最后一笔照样立即出
+    // 正确候选，无「抢识别」问题）。
+    // 平滑重采样的目标点距（CSS px）：与采点瘦身的最小间距（2px）同量
+    // 级，等距后 payload 通常比原始 60Hz 采样更小（桥上限 4096 字符）。
+    const INK_SMOOTH_STEP = 3;
+
+    /** 轨迹平滑（只作用于发给引擎的笔迹，屏上实时笔迹保持原样）：
+     * ① 5 点三角核（1-2-3-2-1）滑动平均去手指抖动——窗口小、首尾点
+     *    原样保留，拐角只有轻度过渡；② 按弧长等距重采样，点距均匀。
+     *    输入输出都是 [{x,y}]，payload 结构不变（native 侧无感）。 */
+    function smoothInkStroke(points, step = INK_SMOOTH_STEP) {
+        if (!Array.isArray(points) || points.length < 3) return points;
+        const kernel = [1, 2, 3, 2, 1];
+        const smoothed = points.map((point, index) => {
+            let sumX = 0, sumY = 0, sumW = 0;
+            for (let offset = -2; offset <= 2; offset++) {
+                const j = index + offset;
+                if (j < 0 || j >= points.length) continue;
+                const weight = kernel[offset + 2];
+                sumX += points[j].x * weight;
+                sumY += points[j].y * weight;
+                sumW += weight;
+            }
+            return { x: sumX / sumW, y: sumY / sumW };
+        });
+        // 起笔/收笔锚点不动：识别对首尾位置敏感（字形外框）。
+        smoothed[0] = { x: points[0].x, y: points[0].y };
+        smoothed[smoothed.length - 1] = { x: points[points.length - 1].x, y: points[points.length - 1].y };
+        const resampled = [smoothed[0]];
+        let from = smoothed[0];
+        let carry = 0;
+        for (let i = 1; i < smoothed.length; i++) {
+            let to = smoothed[i];
+            let seg = Math.hypot(to.x - from.x, to.y - from.y);
+            while (carry + seg >= step) {
+                const t = (step - carry) / seg;
+                from = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+                resampled.push({ x: from.x, y: from.y });
+                seg = Math.hypot(to.x - from.x, to.y - from.y);
+                carry = 0;
+            }
+            carry += seg;
+            from = to;
+        }
+        // 收笔点必须保留（短笔画/末段不足半步时也要收口）。
+        const end = smoothed[smoothed.length - 1];
+        const tail = resampled[resampled.length - 1];
+        if (Math.hypot(end.x - tail.x, end.y - tail.y) > 0) resampled.push(end);
+        return resampled;
+    }
 
     /* ===== Custom symbol keys, defined as pasted JSON ===== */
     // Storage: {"version":1,"rows":[[ {t,tap,note} ... ] x3 ]}. tap is a
@@ -914,7 +1015,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // re-checked against the prisms by scripts/verify/guard_dp_finals.js.
 
     function modeLabel(mode) {
-        if (uiLocale === 'en') return ({pinyin: 'PY', 'double-pinyin': 'DP', t9: 'T9', japanese: 'JP'})[mode] || MODES[mode].label;
+        if (uiLocale === 'en') return ({pinyin: 'PY', 'double-pinyin': 'DP', t9: 'T9', japanese: 'JP', handwriting: 'HW'})[mode] || MODES[mode].label;
         return (MODES[mode] || MODES.direct).label;
     }
 
@@ -1000,6 +1101,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.voiceHold = false;
             this.voiceSession = null;
             this.spaceHoldTimer = 0;
+            // 手写板状态（issue #28）：笔迹（书写区局部 CSS px）、在途请求
+            // 号、识别候选。仅 handwriting 模式使用；离开模式即清空。
+            this.inkStrokes = [];
+            this.inkCurrent = null;
+            this.inkTouchId = null;
+            this.inkOrigin = null;
+            this.inkMoved = false;
+            this.inkReqId = 0;
+            this.inkCandidates = [];
+            this.inkTimer = null;
+            this.inkHoldTimer = null;
+            // 书写区几何对账的缓存（inkSyncViewport）与停顿触发延时档位
+            // （0=快 300ms / 1=标准 600ms / 2=慢 1200ms，hello 下发）。
+            this._inkViewport = '';
+            // 手写候选态的整行互斥位（setToolbarYield 的初值）。
+            this.toolbarYield = false;
             this.pressedKeys = new Set();
             this.lastRevision = 0;
             this.toastTimer = null;
@@ -1032,6 +1149,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // repeat interval rides it (hold + 40). Feel-tuned via the
             // settings app, delivered through hello (mode-fallback §4).
             this.holdMs = 350;
+            // 上下滑方向互换（issue #29-2，默认关）：默认上滑=小字符（数字/
+            // 符号/重音）、下滑=大写；互换后对调。真相源是 native pref
+            // flick_swap，hello 下发。
+            this.flickSwap = false;
             // Popup swipe selection range: 0=loose 1.4x, 1=standard 1.0x,
             // 2=tight 0.7x — scales the relative-tracking jitter dead zone
             // and the card-boundary cancel slop (selection itself stays
@@ -1059,6 +1180,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.bgImageDark = '';
             // 键帽不透明度（0-100，默认 100=不透明）。
             this.keyOpacity = 100;
+            // 按键气泡（issue #30-1，默认关）：真相源是 native pref
+            // key_bubble，外观页开关经 hello 下发；开着才在按下时放大
+            // 预览所按字符。
+            this.keyBubble = false;
+            this.bubbleLinger = 400;
             // 色彩模式（auto/light/dark）：真相源是 native pref theme_mode，
             // hello 下发、tile 循环上报。AGENTS.md「设置不走 localStorage」。
             this.themeMode = 'auto';
@@ -1099,15 +1225,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (Array.isArray(pair) && pair.length === 2 &&
                     MODES[pair[0]] && MODES[pair[1]]) this.quickPair = pair;
             } catch (_) { /* default 拼/En */ }
-            try {
-                // The height is stored per orientation; the other key (if
-                // any) is picked up when the device rotates (applyHeight).
-                // Values hold the content height ; anything below
-                // 120 is a legacy per-row height - ignored.
-                const saved = parseInt(
-                    localStorage.getItem(KB_HEIGHT_KEY('portrait')) || '0', 10);
-                if (saved >= 120) this.kbHeight = saved;
-            } catch (_) { /* native default */ }
+            // 手写↔上次使用的键盘（round-5）里的「上次键盘」：跨会话也
+            // 成立（adoptQuickPairForHandwriting 消费）。
+            try { this.lastKbMode = localStorage.getItem('feelime_last_kb_mode') || ''; }
+            catch (_) { this.lastKbMode = ''; }
             this.scrubBase = null;
             this.scrubSteps = 0;
             this.expandCandidates = [];
@@ -1170,8 +1291,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.querySelector('[data-action="letters"]').addEventListener('click', () => this.showLetters());
             this.renderSymbolCats();
             document.getElementById('setupButton').addEventListener('click', () => this.toggleSettingsPanel());
-            // Full settings opens from the toolbar button that
-            // only shows while the quick panel is open.
+            // 完整设置入口（#33-1 后语义）：齿轮是工具栏目录里的可选
+            // 工具（用户自选常驻），快开面板菜单里也有一份同名入口。
             const fullSetup = document.getElementById('fullSetupButton');
             if (fullSetup) {
                 fullSetup.addEventListener('click', () => {
@@ -1273,10 +1394,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
                 if (document.getElementById('modeMenu').classList.contains('open') &&
                     !inLayer('#modeMenu')) {
-                    const toggle = document.getElementById('modeToggle');
-                    const onToggle = event.target.closest && event.target.closest('#modeToggle') === toggle;
+                    // 锚定键 = 打开菜单的那颗（round-4 起可能是任意触发
+                    // 键）：这颗键上的点按只关菜单，不再触发它自己。
+                    const toggle = this.modeMenuAnchor ||
+                        document.getElementById('modeToggle');
+                    const onToggle = toggle && event.target.closest &&
+                        toggle.contains(event.target);
                     this.closeModeMenu();
-                    if (onToggle && toggle) toggle._suppressClick = true;
+                    if (onToggle) toggle._suppressClick = true;
                 }
             }, { capture: true, passive: true });
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
@@ -1352,6 +1477,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // T9 符号行（1 键单击）的 × = 取消本次符号选择，工具栏恢复。
                 if (this.t9SymBar) {
                     this.t9CloseSymbolBar();
+                    return;
+                }
+                // 手写候选态的 × = 清笔迹+候选，工具栏恢复（无组合可清）。
+                if (this.mode === 'handwriting' && (this.inkCandidates || []).length) {
+                    this.inkReset();
                     return;
                 }
                 // 联想态的 × = 清掉联想词并恢复工具栏（没有引擎组合可清）。
@@ -1592,6 +1722,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.renderedMode !== this.mode) {
                 this.renderedMode = this.mode;
                 this.tableVariants = {};
+                // 离开手写：笔迹与候选只属于该模式（重进从空白开始）。
+                if (this.mode !== 'handwriting') this.inkReset();
                 // A mode switch can land while the symbol layer is open -
                 // the grid and its badge must follow the new default.
                 if (!document.getElementById('symbolLayer').hidden) {
@@ -1600,6 +1732,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
             }
             this.renderLetters(config.layout);
+            // 手写是唯一改键盘总高的模式：进出/旋转都把总高切回当前
+            // 模式的值（进入=面板高度，离开=该方向已存高度）。
+            this.applyModeHeight();
             this.closeModeMenu();
             this.closeSettingsPanel();
             // renderMode is invoked on every mode change INCLUDING the one a
@@ -1608,6 +1743,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         renderLetters(layoutName) {
+            if (layoutName === 'handwriting') {
+                this.t9SymBar = false;
+                if (!this.composing) this.setToolbarYield(this.assocWords.length > 0);
+                return this.renderHandwriting();
+            }
             if (layoutName === 't9') {
                 this.t9SymBar = false;
                 // 换键面=离开符号行：工具栏让位必须解除，否则隐藏的快捷
@@ -1870,6 +2010,531 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             if (digit === '6') this.wildcardInFlight = true;
             this.call(() => Native.key(def.code, this.token));
+        }
+
+        /* ===== 手写键面（issue #28，design/handwriting.md）：大块书写区
+         * canvas + 底部控制行（退格/空格/中英/回车）。识别走独立桥
+         * （recognizeInk → onInkCandidates），不进按键引擎；本节事件
+         * 一律 stopPropagation——根级 setupFlick 只认 bindTouch 记下的
+         * touchOrigin，书写区不挂 bindTouch 即天然不进 flick/scrub 仲裁。
+         * 书写区是 flex 唯一的弹性块，控制行高固定（.ink-controls 的
+         * --ink-row-h，不吃 --kb-row-h 预算）：applyHeight 在视图被瞬时
+         * 量高时烘焙出的陈旧行变量再也压不塌书写区（重唤折叠 P1 的
+         * 根因通道被结构性拆除）。 */
+
+        renderHandwriting() {
+            const layer = document.getElementById('qwertyLayer');
+            layer.replaceChildren();
+            const layout = document.createElement('div');
+            layout.className = 'ink-layout';
+            // 控制行高单一来源（CSS 只消费这个变量）。
+            layout.style.setProperty('--ink-row-h', INK_CONTROL_ROW_H + 'px');
+            const pad = document.createElement('div');
+            pad.className = 'ink-pad';
+            pad.id = 'inkPad';
+            const canvas = document.createElement('canvas');
+            canvas.id = 'inkCanvas';
+            canvas.className = 'ink-canvas';
+            const hint = document.createElement('span');
+            hint.className = 'ink-hint';
+            hint.id = 'inkHint';
+            INK_HINT_LINES.forEach(line => {
+                const row = document.createElement('span');
+                row.className = 'ink-hint-line';
+                row.textContent = t(line);
+                hint.append(row);
+            });
+            pad.append(canvas, hint);
+            this.bindInkPad(pad);
+            if (this.landscape) {
+                // 横屏（§9.1）：native 钳半屏、纵向没有底行的余量——
+                // 右窄列并成两列四行，键盘切换键不占格（中英键留守，
+                // 长按=同一模式菜单通道，见 inkSideKeys）。
+                const rail = document.createElement('div');
+                rail.className = 'ink-rail';
+                rail.append(...this.inkSideKeys(true), ...this.inkBottomKeys(false));
+                layout.append(pad, rail);
+            } else {
+                // 竖屏（wetype round-4）：书写面板是主区，右侧窄列
+                // 退格+，。！？（round-5），底行 符号/数字/空格/快捷切换/换行。
+                const side = document.createElement('div');
+                side.className = 'ink-side';
+                side.append(...this.inkSideKeys());
+                const main = document.createElement('div');
+                main.className = 'ink-main';
+                main.append(pad, side);
+                const bottom = document.createElement('div');
+                bottom.className = 'ink-bottom';
+                bottom.append(...this.inkBottomKeys());
+                layout.append(main, bottom);
+            }
+            layer.append(layout);
+            this.updateLabels();
+            // 旋转/换模式后按当前几何重建画布分辨率并重放既有笔迹。
+            this.inkResize();
+            // 手写是唯一改变键盘总高的模式：进入/旋转重渲染时按当前
+            // 宽度推面板高度（离开模式由 renderMode → applyModeHeight
+            // 还原用户高度）。
+            this.applyModeHeight();
+        }
+
+        /** 右窄列（round-6，用户拍板）：竖屏 = ⌫（固定 1 格）+ 滚动
+         * 符号列（视口 3 格高，上滑滚出更多、点按直上屏——T9/数字面板
+         * 左列同款形态，不再是手势弹层）。横屏 rail 保持 2×4 定稿：
+         * ⌫ + 中英键 + 两颗纯点按符号键（横屏空间紧，不滚）。 */
+        inkSideKeys(landscape = false) {
+            const keys = [this.inkBackspaceKey()];
+            if (landscape) {
+                keys.push(this.inkSymbolKey('，'), this.cnEnKey(), this.inkSymbolKey('。'));
+            } else {
+                keys.push(this.inkSymbolScroller());
+            }
+            return keys;
+        }
+
+        /** 滚动符号列：常驻滚动列表，初始露前三格，上滑滚出更多。
+         * 滚动走 CSS overflow（触摸原生滚动），点按=sendSymbol 直上屏。 */
+        inkSymbolScroller() {
+            const scroller = document.createElement('div');
+            scroller.className = 'ink-scroll';
+            INK_SIDE_SYMBOLS.forEach(char => scroller.append(this.inkSymbolCell(char)));
+            return scroller;
+        }
+
+        /** 滚动列里的单个符号格。 */
+        inkSymbolCell(char) {
+            const button = document.createElement('button');
+            button.className = 'kb-key kb-special ink-key ink-sym';
+            button.dataset.role = 'ink-sym';
+            button.textContent = char;
+            button.setAttribute('aria-label', char);
+            // 触感放在 click：touchstart 分不清点按和拖动滚列的起点，
+            // 拖列不该震（与 .t9-side-cell 同口径）。
+            button.addEventListener('click', () => {
+                this.nativeKeyFeedback();
+                this.sendSymbol(char);
+            });
+            return button;
+        }
+
+        /** 横屏 rail 的纯点按符号键（无手势）。 */
+        inkSymbolKey(char) {
+            return this.inkSymbolCell(char);
+        }
+
+        /** 退格（round-4 反馈）：书写区有笔迹时=清笔迹+候选回工具栏
+         * （inkReset，与 × / 长按清空同一出口），不删编辑框字符；无
+         * 笔迹时照旧走原生删除。语义锚在**手势起点**：长按连发把笔迹
+         * 清掉之后，同一次按住的后续 click（repeat 的 setInterval 与
+         * 松手补的那次）都不得转成删除——所以按下时先记状态，清笔迹
+         * 那一次同时把连发收走。 */
+        inkBackspaceKey() {
+            const button = this.specialKey('backspace', ICONS.backspace,
+                () => this.inkBackspace(button), 'ink-key kb-special', 'repeat');
+            button.addEventListener('touchstart', () => {
+                button._inkHadStrokes = this.inkStrokes.length > 0 ||
+                    (this.inkCurrent || []).length > 0;
+            });
+            return button;
+        }
+
+        inkBackspace(button) {
+            if (button._inkHadStrokes) {
+                this.inkReset();
+                if (button._cancelRepeat) button._cancelRepeat();
+                return;
+            }
+            this.call(() => Native.backspace(this.token));
+        }
+
+        /** 底行：符号（符号面板）/ 123（九宫格）/ 空格（候选条有手写
+         * 候选时=确认 top1，见 spaceKey）/ 快捷切换（=其他键盘底行的
+         * 中英切换键同款：短按翻 quick-pair、长按=完整模式菜单，见
+         * cnEnKey）/ 换行。横屏不设切换格（includeMode=false）：八键恰
+         * 两列四行。 */
+        inkBottomKeys(includeMode = true) {
+            const keys = [
+                this.specialKey('ink-symbols', t("符号"),
+                    () => this.showSymbols(), 'ink-key kb-special'),
+                this.specialKey('ink-numpad', '123',
+                    () => this.showNumpad(), 'ink-key kb-special'),
+                this.inkSpaceKey(),
+            ];
+            if (includeMode) keys.push(this.cnEnKey());
+            keys.push(this.enterKey());
+            return keys;
+        }
+
+        /** 手写空格：= spaceKey（top1 确认 / mic 长按）+ data-key 借
+         * T9 空格的横滑 scrub 通道（.kb-key[data-key] 手势层认它）。
+         * 垂直方向没有字面语义（setupFlick 让路），上滑留给 bindSpaceHold
+         * 的语音长按/撤销。 */
+        inkSpaceKey() {
+            const space = this.spaceKey();
+            space.dataset.key = '0';
+            return space;
+        }
+
+        /** 抽出条/弹层的选中：指针压在哪格选哪格（格子不重叠、不透明，
+         * rect 命中与 elementFromPoint 等价，且在 mock 的合成几何下同样
+         * 可测），离开条=取消选中——不弹「松手撤销」，没选过谈不上
+         * 撤销；松手无选中=无输入。 */
+        moveInkPopup(touch) {
+            if (!this.popup) return;
+            const cell = this.popup.cells.find(cell => {
+                const rect = cell.item.getBoundingClientRect();
+                return touch.clientX >= rect.left && touch.clientX <= rect.right &&
+                    touch.clientY >= rect.top && touch.clientY <= rect.bottom;
+            }) || null;
+            this.popup.selected = cell;
+            this.popup.cells.forEach(item =>
+                item.item.classList.toggle('sel', item === this.popup.selected));
+        }
+
+        /** 手写模式的高度预算（竖屏）：面板宽高比钉在 1.6:1（wetype
+         * 实测 984×590 口径），键盘总高 = 顶部 chrome + 控制行 + 面板。
+         * 横屏不改总高（native 钳半屏，预算本就见底，面板改左右布局
+         * 竖向铺满——见 .ink-layout 的横屏分支）。 */
+        inkPanelTarget() {
+            const width = Math.max(0, (window.innerWidth || 0) - 8);
+            return Math.round(width / 1.6);
+        }
+
+        /** 手写键面的固定纵向开销：拼音带 + 候选条槽 + 控制行 + 底部
+         * 留白（与 .ink-layout/.ink-controls/#candidateBar 的 CSS 常量
+         * 一一对应；漏掉任何一段面板就会比目标矮）。 */
+        inkChromeHeight() {
+            const band = 18 + (this.preeditFont === 2 ? 11 : this.preeditFont === 1 ? 8 : 4);
+            const bar = 2 + 40 + 10;
+            const row = INK_CONTROL_ROW_H + 5;
+            return band + bar + row + 5;
+        }
+
+        /** 手写模式期望的内容高度（竖屏），钳进 native 的高度上下限。 */
+        inkDesiredHeight() {
+            const min = this.inkChromeHeight() + 96;
+            const bounds = this.heightBounds();
+            const panel = this.inkPanelTarget() + this.inkChromeHeight();
+            return Math.round(Math.min(bounds.max, Math.max(min, panel)));
+        }
+
+        /** 把键盘总高切到当前模式应有的值。高度体系统一（五轮反馈 5，
+         * 用户拍板「统一到矮的」）：所有模式含手写一律用 stored（未调过
+         * = native 默认 272），手写仅保内容下限（chrome+最小面板，防弹性
+         * 面板被压塌——P1 的教训）。切换键盘不再跳高度。幂等：值相同不
+         * 发桥。重唤键盘（resetToHome / applyHeightNow）也走这里——这是
+         * 重唤后布局没跟手写态走的 P1 修复的另一半。 */
+        applyModeHeight() {
+            // 高度编辑中卡片独占高度：拖动/步进的预览值不被 stored 的
+            // 重推覆盖。拖动时每次 applyKbHeight 都会触发 native
+            // requestLayout → on-show 钩子 → applyHeightNow——不设防，
+            // stored 旧值和拖动值每帧打架（用户看到的「抖来抖去」）。
+            const card = document.getElementById('heightCard');
+            if (card && card.classList.contains('open')) return;
+            const stored = this.storedKbHeight();
+            const base = stored > 0 ? stored : (this.heightDefaultCss || 272);
+            if (this.landscape || this.mode !== 'handwriting') {
+                if (this.kbHeight !== base) this.applyKbHeight(base);
+                return;
+            }
+            const desired = Math.max(base, this.inkChromeHeight() + 96);
+            if (this.kbHeight !== desired) this.applyKbHeight(desired);
+        }
+
+        /** 书写区手势：一笔一采样（首触点起笔，move 追点，end 收笔）。
+         * 停笔触发识别的延时走设置档（默认 600ms）；收笔后再落新笔会先
+         * 撤未决请求（reqId 失配，迟到结果被丢弃）；长按原地把笔迹清空。 */
+        bindInkPad(pad) {
+            const INK_HOLD_SLOP = 6;
+            const INK_MIN_POINT_GAP = 2;
+            const at = touch => {
+                const rect = pad.getBoundingClientRect
+                    ? pad.getBoundingClientRect()
+                    : { left: 0, top: 0 };
+                return {
+                    x: touch.clientX - (rect.left || 0),
+                    y: touch.clientY - (rect.top || 0),
+                };
+            };
+            pad.addEventListener('touchstart', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                // 第二根手指不开启新笔迹（只跟一笔）。
+                if (this.inkTouchId !== null) return;
+                const touch = event.changedTouches[0];
+                this.inkTouchId = touch.identifier;
+                this.inkOrigin = at(touch);
+                this.inkMoved = false;
+                this.inkCurrent = [this.inkOrigin];
+                // 书写中撤未决识别：下一笔是新的字形，迟到候选会误导。
+                clearTimeout(this.inkTimer);
+                this.inkTimer = null;
+                clearTimeout(this.inkHoldTimer);
+                this.inkHoldTimer = setTimeout(() => {
+                    this.inkHoldTimer = null;
+                    if (!this.inkMoved) {
+                        this.inkTouchId = null;
+                        this.inkCurrent = null;
+                        this.inkReset();
+                        this.showToast(t("已清空笔迹"));
+                    }
+                }, this.holdMs);
+                this.inkPaint();
+            }, { passive: false });
+            pad.addEventListener('touchmove', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (this.inkTouchId === null) return;
+                const touch = Array.from(event.changedTouches).find(
+                    item => item.identifier === this.inkTouchId);
+                if (!touch) return;
+                const point = at(touch);
+                if (!this.inkMoved) {
+                    if (Math.hypot(point.x - this.inkOrigin.x,
+                        point.y - this.inkOrigin.y) < INK_HOLD_SLOP) return;
+                    this.inkMoved = true;
+                    clearTimeout(this.inkHoldTimer);
+                    this.inkHoldTimer = null;
+                }
+                const stroke = this.inkCurrent || [];
+                const last = stroke[stroke.length - 1];
+                // 采点瘦身：贴得比 2px 更近的点不进 payload（桥 payload
+                // 有 4096 字符上限，60Hz 原始采样会顶穿）。
+                if (last && Math.hypot(point.x - last.x, point.y - last.y) < INK_MIN_POINT_GAP) return;
+                stroke.push(point);
+                this.inkCurrent = stroke;
+                this.inkPaint();
+            }, { passive: false });
+            // 收笔与中断分 注册：中断（来电/手势抢断）的残笔不成字。
+            const release = event => {
+                const touch = event.changedTouches && Array.from(event.changedTouches).find(
+                    item => item.identifier === this.inkTouchId);
+                if (!touch) return null;
+                this.inkTouchId = null;
+                clearTimeout(this.inkHoldTimer);
+                this.inkHoldTimer = null;
+                return this.inkCurrent;
+            };
+            pad.addEventListener('touchend', event => {
+                const stroke = release(event);
+                if (stroke === null) return;
+                if (stroke && stroke.length) this.inkStrokes.push(stroke);
+                this.inkCurrent = null;
+                this.inkPaint();
+                if (this.inkStrokes.length) {
+                    // 实时识别：落笔结束即识别（无停顿窗口）。
+                    this.inkRecognize();
+                }
+            }, { passive: false });
+            pad.addEventListener('touchcancel', event => {
+                const stroke = release(event);
+                if (stroke === null) return;
+                // 残笔丢弃：不完整的一笔不进识别，也不撤销未决请求。
+                this.inkCurrent = null;
+                this.inkPaint();
+            }, { passive: false });
+        }
+
+        /** 画布分辨率跟 CSS 盒走（devicePixelRatio 保清晰）；无 2d 环境
+         * （mock/预览降级）只记尺寸不画。 */
+        inkResize() {
+            const canvas = document.getElementById('inkCanvas');
+            if (!canvas) return;
+            this.inkSymFont();
+            const rect = typeof canvas.getBoundingClientRect === 'function'
+                ? canvas.getBoundingClientRect() : null;
+            const width = Math.max(1, Math.round((rect && rect.width) || 320));
+            const height = Math.max(1, Math.round((rect && rect.height) || 132));
+            const ratio = typeof window !== 'undefined' &&
+                typeof window.devicePixelRatio === 'number' && window.devicePixelRatio > 0
+                ? window.devicePixelRatio : 1;
+            if (canvas.width === width * ratio && canvas.height === height * ratio) return;
+            canvas.width = width * ratio;
+            canvas.height = height * ratio;
+            this.inkPaint();
+        }
+
+        /** 符号列字号跟格高（视口剥缝三等分）：格高随键盘总高变化，
+         * 写死字号在矮高度下裁字。inkResize 每次几何变化都先跑这里，
+         * 画布早退不影响字号对账。mock/jsdom 无布局（rect=0）跳过，
+         * CSS 落回 22px 缺省。 */
+        inkSymFont() {
+            const scroll = document.querySelector('.ink-scroll');
+            if (!scroll || typeof scroll.getBoundingClientRect !== 'function') return;
+            const vh = scroll.getBoundingClientRect().height;
+            if (!(vh > 0)) return;
+            const cellH = (vh - 10) / 3; // 2 条格缝（gap 5px）
+            const size = Math.max(12, Math.min(22, Math.round(cellH * 0.5)));
+            scroll.style.setProperty('--ink-sym-size', size + 'px');
+        }
+
+        inkContext() {
+            const canvas = document.getElementById('inkCanvas');
+            if (!canvas || typeof canvas.getContext !== 'function') return null;
+            try {
+                return canvas.getContext('2d');
+            } catch (_) {
+                return null;
+            }
+        }
+
+        /** 重放笔迹（局部 CSS px → 画布像素按缩放比映射）。 */
+        inkPaint() {
+            const pad = document.getElementById('inkPad');
+            if (pad) pad.classList.toggle('writing',
+                this.inkStrokes.length > 0 || (this.inkCurrent || []).length > 0);
+            const context = this.inkContext();
+            if (!context || typeof context.scale !== 'function') return;
+            const canvas = document.getElementById('inkCanvas');
+            const ratio = canvas.width && canvas.clientWidth
+                ? canvas.width / canvas.clientWidth : 1;
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.lineWidth = 3.2 * ratio;
+            context.lineCap = 'round';
+            context.lineJoin = 'round';
+            context.strokeStyle = this.inkColor();
+            context.beginPath();
+            const all = this.inkCurrent && this.inkCurrent.length
+                ? this.inkStrokes.concat([this.inkCurrent])
+                : this.inkStrokes;
+            all.forEach(stroke => {
+                stroke.forEach((point, index) => {
+                    const x = point.x * ratio;
+                    const y = point.y * ratio;
+                    if (index === 0) context.moveTo(x, y);
+                    else context.lineTo(x, y);
+                });
+            });
+            context.stroke();
+        }
+
+        /** 墨色跟主题 token 走（§1.1）；取不到 var（mock/降级）用中性灰。 */
+        inkColor() {
+            if (typeof getComputedStyle !== 'function') return '#888';
+            const styles = getComputedStyle(document.documentElement);
+            const value = styles && styles.getPropertyValue &&
+                styles.getPropertyValue('--text');
+            return (value && value.trim()) || '#888';
+        }
+
+        inkSchedule(delay) {
+            clearTimeout(this.inkTimer);
+            this.inkTimer = setTimeout(() => {
+                this.inkTimer = null;
+                this.inkRecognize();
+            }, delay);
+        }
+
+        /** 发送识别请求（design §2/§3）：w/h 承载书写区 CSS 尺寸，坐标
+         * 保留原始比例（归一在 native 侧做）；发送前对每笔做平滑去抖
+         * （smoothInkStroke，只影响这条 payload）。旧 APK 无此桥方法时
+         * 静默跳过（§5.4 feature-detect）。 */
+        inkRecognize() {
+            if (!this.inkStrokes.length) return;
+            if (typeof Native.recognizeInk !== 'function') return;
+            const canvas = document.getElementById('inkCanvas');
+            const rect = canvas && typeof canvas.getBoundingClientRect === 'function'
+                ? canvas.getBoundingClientRect() : { width: 320, height: 132 };
+            const round1 = value => Math.round(value * 10) / 10;
+            const payload = JSON.stringify({
+                w: Math.round(rect.width || 320),
+                h: Math.round(rect.height || 132),
+                strokes: this.inkStrokes.map(stroke =>
+                    smoothInkStroke(stroke).map(point => [round1(point.x), round1(point.y)])),
+            });
+            this.inkReqId += 1;
+            this.call(() => Native.recognizeInk(this.inkReqId, payload, this.token));
+        }
+
+        /** 清笔迹与候选（点选上屏 / 长按清空 / 离开模式共用）。 */
+        inkReset() {
+            this.inkStrokes = [];
+            this.inkCurrent = null;
+            this.inkCandidates = [];
+            clearTimeout(this.inkTimer);
+            this.inkTimer = null;
+            this.inkPaint();
+            if (this.mode === 'handwriting') this.renderCandidates(this.lastEngineState || {});
+            else {
+                // 离开模式：互斥态就地拆除（标识收起、工具栏复位），
+                // 新键面的可见性由各自流程接手。
+                const tag = document.getElementById('inkTag');
+                if (tag) tag.hidden = true;
+                this.setToolbarYield(false);
+            }
+        }
+
+        /** 键盘收起/失焦的触摸卫生（§10.6）：撤长按计时、丢弃进行中的笔。 */
+        inkCancelTouch() {
+            this.inkTouchId = null;
+            this.inkCurrent = null;
+            clearTimeout(this.inkHoldTimer);
+            this.inkHoldTimer = null;
+        }
+
+        /** 手写候选态（wetype 形态，issue #28 round-2）：有识别候选=工具
+         * 栏整行让位（含 mic，仅留 × 与收起键），「手写」标识 + 候选横排
+         * 占满整行；无候选/清空后=工具栏原样。语音进行中不让位——mic 是
+         * stop 入口必须存活（与联想让位的守卫同一口径）。round-3：点选
+         * 上屏后的联想词同一条 bar 接手，让位语义与拼音态一致（× 由
+         * composeClear 的联想分支恢复），但「手写」标识只跟识别候选走。 */
+        applyInkBarChrome() {
+            const active = this.mode === 'handwriting' &&
+                (this.inkCandidates || []).length > 0;
+            const assocOnly = this.mode === 'handwriting' && !active &&
+                (this.assocWords || []).length > 0;
+            const tag = document.getElementById('inkTag');
+            if (tag) tag.hidden = !active;
+            if (this.voiceState === 'idle') {
+                this.setToolbarYield(active || assocOnly);
+                // mic 虽在让位清单里，但 updateComposing 的通用可见性行
+                // （非组合=可见）先于本调用执行，这里显式压回。
+                if (active) {
+                    const mic = document.getElementById('mic');
+                    if (mic) mic.hidden = true;
+                }
+            }
+            return active;
+        }
+
+        /** 点选候选：commitText 直上屏并清笔迹（design §2 数据流）。
+         * 清笔迹同时撤掉互斥态 → 工具栏恢复（wetype 同款：上屏后回
+         * 工具栏，继续写再进候选态）。 */
+        commitInkCandidate(candidate) {
+            // 上屏走 commitAssoc 通道（联想通道）：中文联想开时以该字为
+            // 前词推后继联想（开关语义在 native readAssociation 统一判
+            // 断，对手写与拼音一致）；旧桥缺该方法时退回直发。
+            if (typeof Native.commitAssoc === 'function') {
+                this.call(() => Native.commitAssoc(candidate.text, this.token));
+            } else {
+                this.sendSymbol(candidate.text);
+            }
+            this.inkReset();
+        }
+
+        /** 识别结果（design §3）：reqId 与最新请求不符即丢弃；错误提示
+         * 但不阻塞书写；成功则整条刷新候选（复用候选条 DOM）。 */
+        onInkCandidates(payload) {
+            if (this.mode !== 'handwriting') return;
+            const reqId = Number(payload && payload.reqId);
+            if (reqId !== this.inkReqId) return;
+            const error = payload && payload.error;
+            if (error === 'unavailable') {
+                this.showToast(t("手写模型未就绪"));
+                return;
+            }
+            if (error) {
+                this.showToast(t("手写识别失败"));
+                return;
+            }
+            const candidates = Array.isArray(payload.candidates)
+                ? payload.candidates.filter(item => item && item.text)
+                    .map(item => ({ id: `ink:${item.text}`, text: item.text }))
+                : [];
+            // 手写候选与联想词互斥：新识别到达即让上屏后的联想词退场。
+            this.assocWords = [];
+            this.inkCandidates = candidates;
+            this.renderCandidates(this.lastEngineState || {});
         }
 
         /** 字母组键：主字形=字母组（ABC），右上角标=数字，左上角小字=
@@ -2167,6 +2832,34 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return button;
         }
 
+        /** 手写接入 quick-pair（round-5）：非手写模式记下「上次使用的
+         * 键盘」；进手写时若配对还是出厂默认（拼/En，用户从未定制过），
+         * 迁成 手写↔该键盘——切换键在两个方向都立即可用（拼 ⇄ 手）。
+         * 定制过的对不动（含用户特意选回 拼/En 的情形），改对走
+         * 模式菜单/设置页的 快捷切换 入口。 */
+        adoptQuickPairForHandwriting(nextMode) {
+            if (nextMode !== 'handwriting') {
+                this.lastKbMode = nextMode;
+                try { localStorage.setItem('feelime_last_kb_mode', nextMode); } catch (_) {}
+                return;
+            }
+            // 「用户从未定制过」以持久值为准：内存对可能滞后（备份恢复刚
+            // 写 storage、hello 尾部才同步内存），单看内存会把刚恢复的定制
+            // 对误迁成 手写↔X。
+            let savedPair = null;
+            try { savedPair = JSON.parse(localStorage.getItem('feelime_quick_pair') || 'null'); } catch (_) { /* unset */ }
+            const current = (Array.isArray(savedPair) && savedPair.length === 2) ? savedPair : this.quickPair;
+            const factory = current.length === 2 &&
+                current[0] === 'pinyin' && current[1] === 'direct';
+            if (!factory) return;
+            const other = this.lastKbMode && this.lastKbMode !== 'handwriting' &&
+                MODES[this.lastKbMode] ? this.lastKbMode : 'pinyin';
+            this.quickPair = ['handwriting', other];
+            try {
+                localStorage.setItem('feelime_quick_pair', JSON.stringify(this.quickPair));
+            } catch (_) {}
+        }
+
         /** The saved pair alone determines the shortcut. A temporary mode
          * selected from the long-press menu returns to the first pair entry.
          * While a degrade fallback serves, the short press retries the
@@ -2180,9 +2873,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const target = this.mode === pair[0] ? pair[1] : pair[0];
             // 快捷对里的 strictReady 模式不可用时不出击（codex 评审 P2：
             // 旧 APK 的 hello 不带 stroke 字段，直发 selectMode 只会被
-            // 原生拒绝，切换键看起来坏了）。
+            // 原生拒绝，切换键看起来坏了）。strictReady 与 engine 标志
+            // 解耦：手写（engine:false）同样按就绪位挡。
             const targetConfig = MODES[target];
-            if (targetConfig && targetConfig.engine && targetConfig.strictReady &&
+            if (targetConfig && targetConfig.strictReady &&
                 this.engineReady[target] !== true) {
                 this.showToast(t("该键盘还在准备中"));
                 return;
@@ -2256,6 +2950,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             mic.append(path);
             button.append(mic);
             button.addEventListener('click', () => {
+                // 手写候选在条上时，空格=确认 top1 上屏（issue #28
+                // round-3）：走点选同一通道 commitInkCandidate，联想联动
+                // 与清笔迹行为完全一致；无候选时空格照旧。
+                if (this.mode === 'handwriting' && (this.inkCandidates || []).length) {
+                    this.commitInkCandidate(this.inkCandidates[0]);
+                    return;
+                }
                 // While composing, space must confirm the TOP
                 // candidate. Native space confirms the highlight, which sits
                 // on whatever page the bar/grid preloading dragged the cursor
@@ -2371,6 +3072,62 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
         }
 
+        /** 按键气泡取字（issue #30-1）：qwerty 字母读键面主标（随
+         *  shift/大小写更新），其余按 data-key 直取（符号格/九宫格数字）；
+         *  空格与功能键（无 data-key 无主标）不出气泡；中文态逗/句号
+         *  沿用弹层的全角显示映射。 */
+        bubbleGlyph(button) {
+            const main = button.querySelector('.kb-main');
+            if (main && main.textContent) return main.textContent;
+            const key = button.dataset.key;
+            if (!key || key === ' ') return null;
+            if (this.isChineseMode() && (key === ',' || key === '.')) {
+                return key === ',' ? '，' : '。';
+            }
+            return key.length <= 2 ? key : null;
+        }
+
+        showKeyBubble(button) {
+            const glyph = this.bubbleGlyph(button);
+            if (!glyph) return;
+            const bubble = document.getElementById('keyBubble');
+            if (!bubble) return;
+            bubble.textContent = glyph;
+            bubble.hidden = false;
+            const rect = button.getBoundingClientRect();
+            // 与 openPopup 同一套钳制：水平贴边收拢，垂直不越出视口顶。
+            const left = Math.max(4, Math.min(innerWidth - bubble.offsetWidth - 4,
+                rect.left + rect.width / 2 - bubble.offsetWidth / 2));
+            bubble.style.left = left + 'px';
+            bubble.style.top = Math.max(2, rect.top - bubble.offsetHeight - 6) + 'px';
+        }
+
+        /** flick 判定后把气泡换成实际将上屏的字符（键位不动，仅换文字）。 */
+        updateKeyBubble(glyph) {
+            const bubble = document.getElementById('keyBubble');
+            if (!bubble || bubble.hidden) return;
+            bubble.textContent = glyph;
+            this.scheduleHideBubble();
+        }
+
+        /** 松手后气泡短暂停留（验收 2026-09-24：立刻消失看不清），停留
+         *  时长 hello.bubbleLinger（0=立即，默认 400ms）；新按下或 flick
+         *  换字都会取消在途的隐藏调度。 */
+        scheduleHideBubble() {
+            if (this.bubbleHideTimer) { clearTimeout(this.bubbleHideTimer); this.bubbleHideTimer = 0; }
+            if (!this.bubbleLinger) { this.hideKeyBubble(); return; }
+            this.bubbleHideTimer = setTimeout(() => {
+                this.bubbleHideTimer = 0;
+                this.hideKeyBubble();
+            }, this.bubbleLinger);
+        }
+
+        hideKeyBubble() {
+            if (this.bubbleHideTimer) { clearTimeout(this.bubbleHideTimer); this.bubbleHideTimer = 0; }
+            const bubble = document.getElementById('keyBubble');
+            if (bubble && !bubble.hidden) bubble.hidden = true;
+        }
+
         bindTouch(button, options = {}) {
             if (!button) return; // Toolbar tools may not exist
             if (button.dataset.bound) return;
@@ -2392,6 +3149,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.pressedKeys.add(button);
                 button.classList.add('active-touch');
                 this.nativeKeyFeedback();
+                if (this.keyBubble && !this.popup) this.showKeyBubble(button);
+                else if (this.bubbleHideTimer) this.hideKeyBubble();
                 longFired = false;
                 const touch = event.changedTouches[0];
                 if (!this.touchOrigin) {
@@ -2448,6 +3207,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!this.pressedKeys.has(button)) return;
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
+                this.scheduleHideBubble();
                 clear();
                 if (this.popup) {
                     // 快速甩出时最终位置只出现在 changedTouches：相对跟手
@@ -2464,6 +3224,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.addEventListener('touchcancel', () => {
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
+                this.scheduleHideBubble();
                 clear();
                 if (this.popup) this.closePopup(true);
                 // Review P3: a cancelled gesture never delivers the click
@@ -2474,6 +3235,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         cancelTouches() {
+            this.inkCancelTouch();
+            this.scheduleHideBubble();
             for (const button of this.pressedKeys) {
                 button.classList.remove('active-touch');
                 if (button._cancelPress) button._cancelPress();
@@ -2545,25 +3308,39 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     if ((this.mode === 't9' || this.mode === 'stroke') &&
                         this.t9Flick(originButton, dx, dy)) return;
                     if (Math.abs(dy) >= Math.abs(dx) && button && button.dataset.key) {
+                        // 手写空格挂 data-key 只为借横滑 scrub（round-4）：
+                        // 垂直方向没有字面语义，落进下面的分支会把 0/大写
+                        // 字发出去——上滑是 bindSpaceHold 的语音长按/撤销。
+                        if (this.mode === 'handwriting' &&
+                            button.id === 'spaceKey') return;
                         const key = button.dataset.key;
                         // Chinese-mode punct slot : the main glyph is
                         // 。so a tap/down-flick commits it; up commits the
                         // alt ，- both via the engine punctuator (ASCII '.'
                         // / ','), so the gestures match the printed glyphs.
                         let value;
+                        // 互换开关（issue #29-2）：默认上滑=alt 小字符、下滑=
+                        // 大写；开互换后对调。键面小字提示随 CSS 翻到下侧。
+                        const altOnUp = !this.flickSwap;
                         if (key === '.' && this.isChineseMode()) {
                             // Main ，(tap, down) / alt 。(up);
                             // both keep flowing through the engine punctuator
                             // (Native.key) - full-width directly would be
                             // dropped unprocessed.
-                            value = dy < 0 ? '.' : ',';
+                            value = (dy < 0) === altOnUp ? '.' : ',';
                         } else {
                             // CN_ALTS values are the final
                             // glyphs - committed as-is (commitText); the old
                             // FULLWIDTH widening map is gone.
-                            value = dy < 0 ? this.altCandidates(key)[0] : key.toUpperCase();
+                            value = (dy < 0) === altOnUp
+                                ? this.altCandidates(key)[0]
+                                : key.toUpperCase();
                         }
                         if (value) {
+                            // 气泡反映实际输入字符（验收 2026-09-24）：touchstart
+                            // 先显示键面主字，flick 判定出真实 value 后即刻换掉，
+                            // 上滑/下滑看到的就是将上屏的 alt/大写。
+                            if (this.keyBubble && !this.popup) this.updateKeyBubble(value);
                             // In Chinese modes a flicked digit/symbol
                             // or uppercase letter must LAND in the editor -
                             // Native.key() would feed the composition engine
@@ -2747,6 +3524,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * （commitText，大小写原样落）；数字格=通配，进引擎（与点按
          * 同义）。拼音里确认字母由下滑/横滑手势承担，不经弹层。 */
         openT9HoldPopup(button) {
+            this.hideKeyBubble();
             const key = button.dataset.key;
             const letters = (LAYOUTS.t9.alts[key] || '').split('');
             const syms = LAYOUTS.t9.keySymbols[key] || [];
@@ -2767,6 +3545,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 格数字=点按同义（发部件编码，send 字段），预选中格、相对跟手。
          * 1 键无字母组：退回单排 符号·数字·符号。 */
         openStrokeHoldPopup(button) {
+            this.hideKeyBubble();
             const key = button.dataset.key;
             const def = STROKE_KEYS[key] || {};
             const syms = def.syms || [];
@@ -2874,6 +3653,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         openPopup(button) {
+            this.hideKeyBubble();
             const key = button.dataset.key;
             const upper = key.toUpperCase();
             // letter alternates must offer their uppercase forms too
@@ -2937,6 +3717,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         movePopup(touch) {
             if (!this.popup) return;
+            // 手写标点上滑弹层（round-3）：绝对命中模式——手指压在哪格
+            // 选哪格，无预选格、无相对跟手、无「松手撤销」（没选过谈
+            // 不上撤销）。根级手势层是 capture、先进这里；键面 handler
+            // 的同名调用幂等。
+            if (this.popup.absolute) {
+                this.moveInkPopup(touch);
+                return;
+            }
             // 拆分浮层（T9 7/9 下滑）：下左/下右按两格中点判定，
             // 不做距离取消——下滑开层后继续向左下/右下即选中。
             if (this.popup.split) {
@@ -3011,8 +3799,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const inner = document.getElementById('keyPopupInner');
             inner.style.transform = '';
             inner.style.opacity = '';
-            inner.classList.remove('t9-row', 't9-grid3');
-            document.getElementById('keyPopup').classList.remove('open');
+            inner.style.maxHeight = '';
+            inner.classList.remove('t9-row', 't9-grid3', 'kp-grid', 'kp-drawer');
+            const popupEl = document.getElementById('keyPopup');
+            popupEl.classList.remove('open', 'kp-drawer');
+            // 抽出条按键宽展开，别把宽度带给下一颗长按弹层。
+            popupEl.style.width = '';
             this.showPopupCancelTip(false);
             if (cancel || popup?.cancelled) return;
             // T9 弹层：literal 格（字母大小写 + 中行符号）直上屏，大小写
@@ -3229,6 +4021,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.setControlView(false);
             this.setExpanded(false);
             this.showLetters();
+            // 重唤键盘（onStartInputView 非 restarting 路径）：手写态把
+            // 总高再推一遍——收起期间的高度变化不能把手写面板留在旧值
+            // （applyHeightNow 之外的第二条兜底，preview harness 也走这）。
+            if (this.mode === 'handwriting') this.applyModeHeight();
             // 编辑态是模态 UI：reset 到主视图时不该残留（收起再弹出
             // 的某些路径只走 resetToHome，不走原生 onFinishInputView
             // 的取消通道）。取消语义 = 快照回退、不落盘。
@@ -4118,12 +4914,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 0 = native default (272). Legacy keys held a per-row height (<100)
          * - ignored so an old value cannot clamp the new content height. */
         storedKbHeight() {
-            try {
-                const saved = parseInt(
-                    localStorage.getItem(KB_HEIGHT_KEY(this.landscape ? 'landscape' : 'portrait')) || '0', 10);
-                if (saved >= 120) return saved;
-            } catch (_) { /* unset */ }
-            return 0;
+            // native pref（hello 下发）是唯一事实（AGENTS.md：配置不走
+            // localStorage——曾有的镜像在 force-stop 丢写后与 pref 分裂，
+            // 已废除）。
+            const nativeValue = Math.round(this.nativeStoredHeightCss || 0);
+            return nativeValue >= 120 ? nativeValue : 0;
         }
 
         /** The native side owns the content height; its view also carries the
@@ -4247,6 +5042,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         applyToolbarLayout() {
+            // 面板打开时收起键暂住在 .panel-head（#33-2）——此刻锚点不在
+            // 工具栏里，重排会把工具插进面板头；面板关闭路径自己会对账。
+            if (this.panelOpen) return;
             // 左组锚在候选区之前（candidateBar 行内，F logo 之后）；右组
             // 锚在收起键之前。拼音带 preeditLine 在 softKeyboard 顶部、
             // 候选条之外——拿它当锚点会把左组插成键盘顶部的全宽行，把
@@ -4284,10 +5082,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!el) return;
                 el.hidden = el.closest('#toolbarEditorGrid')
                     ? false
-                    : (composeHidden || overflow.has(dom));
+                    // 让位态（手写候选整行互斥/T9 符号行/联想）优先：
+                    // 重唤键盘触发的对账不得把工具插回让位中的候选行。
+                    : (this.toolbarYield || composeHidden || overflow.has(dom));
             });
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = composeHidden && this.voiceState === 'idle';
+            if (mic) mic.hidden = this.toolbarYield ||
+                (composeHidden && this.voiceState === 'idle');
         }
 
         /** 溢出兜底：已保存的布局可能比当前候选条容量大（典型：单手模式
@@ -4306,7 +5107,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             [...this.toolbarLeft, ...this.toolbarRight].forEach(id => {
                 const el = document.getElementById(TOOL_CATALOG[id]);
-                if (el) el.hidden = this._overflowTools.has(id);
+                // 让位态优先（手写候选整行互斥）：溢出对账不得把工具置回。
+                if (el) el.hidden = this.toolbarYield || this._overflowTools.has(id);
             });
         }
 
@@ -4433,7 +5235,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     if (this.toolbarEdit) return;
                     // 动作型（直达键区视图）：等价长按 123 / t9 的笑脸键，
                     // 收起候选组合由 showNumpad 自己的层切换兜底。
-                    if (key === 'numpad') { this.showNumpad(); return; }
+                    if (key === 'numpad') {
+                        // toggle（验收 2026-09-24）：已在数字键盘再点 = 回字母层。
+                        if (this.keyLayer === 'numpad') this.showLetters();
+                        else this.showNumpad();
+                        return;
+                    }
                     if (key === 'emoji') { this.emojiView = true; this.showNumpad(); return; }
                     this.toggleExtraTool(key);
                 });
@@ -4825,6 +5632,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // native show/resize 必经 applyHeightNow→这里：工具栏对账的
             // 兜底触发点（同输入框收起再弹不走 onStartInputView/resetToHome）。
             this.auditToolbarTools();
+            // 手写：总高/画布分辨率跟视图几何走（重唤键盘的兜底再推——
+            // 高度在收起期间被改过的话，靠 renderMode 的推送接不住）。
+            if (this.mode === 'handwriting') this.inkSyncViewport();
+        }
+
+        /** 书写区几何对账：pad 的 CSS 盒变了（旋转/总高变化/重唤）才重建
+         * 画布分辨率。收起期间改过布局再唤起时，renderHandwriting 不重跑
+         * （模式没变），这里是唯一按新几何重放笔迹的通道。 */
+        inkSyncViewport() {
+            const canvas = document.getElementById('inkCanvas');
+            if (!canvas) return;
+            const rect = typeof canvas.getBoundingClientRect === 'function'
+                ? canvas.getBoundingClientRect() : null;
+            const key = rect ? [Math.round(rect.width), Math.round(rect.height)].join('x') : '';
+            if (!key || key === this._inkViewport) return;
+            this._inkViewport = key;
+            this.inkResize();
         }
 
         /** Push a new CONTENT height to the native side. Old bridges (and the
@@ -4853,10 +5677,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * setKeyboardHeight bridge (which persists the pref) - the old save
          * path wrote only localStorage and the height silently reverted. */
         heightBounds() {
-            const chrome = this.layoutChrome();
+            // 手写（竖屏）的下限按面板口径算：chrome + 控制行 + 一块可写
+            // 的最小面板，而不是 qwerty 的四行键高。
+            const ink = this.mode === 'handwriting' && !this.landscape;
+            const chrome = ink ? this.inkChromeHeight() : this.layoutChrome();
+            const floor = ink ? 96 : 4 * KB_ROW_MIN;
             // The content floor and the native clamp floor - whichever
             // is taller wins (a 170css landscape pref would squeeze the rows).
-            const min = Math.max(chrome + 4 * KB_ROW_MIN, this.heightFloorCss || 0);
+            const min = Math.max(chrome + floor, this.heightFloorCss || 0);
             // The ceiling comes from the hello-pushed REAL-screen
             // fraction (mirrors setKeyboardHeight's clamp) - no synthetic
             // headroom beyond it: on landscape half-screen budgets the ceiling
@@ -4921,7 +5749,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // content floor - say so instead of offering a dead range.
             const capped = bounds.max <= bounds.min + 2;
             const hint = document.getElementById('heightHint');
-            if (hint) hint.textContent = capped ? t("横屏已达屏幕上限") : t("拖动为预览，松手应用");
+            if (hint) hint.textContent = capped ? t("横屏已达屏幕上限") : t("拖动实时预览，保存后生效");
             track.style.opacity = capped ? '.35' : '';
             document.getElementById('heightMinus').disabled = capped;
             document.getElementById('heightPlus').disabled = capped;
@@ -4990,13 +5818,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.heightPreview = Math.round(
                     Math.min(bounds.max, Math.max(bounds.min, startContent + dx / width * (bounds.max - bounds.min))));
                 this.renderHeightCard();
+                // 拖动实时预览（round-6 用户拍板，反转旧「no live resize」
+                // 规则）：每次 move 直接推高度，native requestLayout 即时
+                // 生效、pref 落盘走 native debounce——松手停在预览值，
+                // 保存才写 localStorage 镜像，取消还原。
+                this.applyKbHeight(this.heightPreview);
+                this.placeHeightCard();
             }, { passive: false });
             track.addEventListener('touchend', () => {
                 if (!dragging) return;
                 dragging = false;
                 this.heightEditedLive = true;
-                // Release lands the preview (user rule: no live resize).
-                this.applyKbHeight(this.heightPreview);
+                // 松手停在预览值（拖动中已实时应用）；保存/取消语义
+                // 由按钮收口。
             });
             track.addEventListener('touchcancel', () => { dragging = false; });
             document.getElementById('heightCardCancel').addEventListener('click', () => {
@@ -5007,17 +5841,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.heightResetPending = true;
                 this.heightPreview = this.heightDefaultCss || 272;
                 this.renderHeightCard();
+                // 恢复默认也是一次预览（round-6 用户反馈）：键盘立刻变到
+                // 默认高度，保存才落地、取消还原。
+                this.applyKbHeight(this.heightPreview);
+                this.placeHeightCard();
             });
             document.getElementById('heightCardSave').addEventListener('click', () => {
                 const content = Math.round(this.heightPreview);
                 // applyKbHeight → native setKeyboardHeight persists the pref
                 // per orientation; localStorage mirrors it for the preview.
+                // 持久化走 native（applyKbHeight → setKeyboardHeight →
+                // pref，debounce 落盘）；重置=0 走 native 的清键语义。
                 this.applyKbHeight(this.heightResetPending ? 0 : content);
-                try {
-                    const key = KB_HEIGHT_KEY(this.landscape ? 'landscape' : 'portrait');
-                    if (this.heightResetPending) localStorage.removeItem(key);
-                    else localStorage.setItem(key, String(content));
-                } catch (_) {}
                 this.showToast(t("键盘高度已保存"));
                 this.exitHeightEdit();
             });
@@ -5025,7 +5860,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
                 /* ===== mode menu ===== */
 
-        toggleModeMenu() {
+        toggleModeMenu(anchor) {
             const menu = document.getElementById('modeMenu');
             if (menu.classList.contains('open')) { this.closeModeMenu(); return; }
             this.closeSettingsPanel();
@@ -5033,12 +5868,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.modeOrder().forEach(name => {
                 const config = MODES[name];
                 const button = document.createElement('button');
-                // strictReady（stroke）：只有 hello 明确给 true 才可点——
-                // 旧 APK 的 engineDataReady 不含 stroke 字段，宽松判定
+                // strictReady（stroke/手写）：只有 hello 明确给 true 才可
+                // 点——旧 APK 的 engineDataReady 不含该字段，宽松判定
                 // （!== false）会把缺键当可用，出现可点却无效的入口。
-                const ready = !config.engine || (config.strictReady
+                // 非 strictReady 维持原语义：engine:false 恒可点。
+                const ready = config.strictReady
                     ? this.engineReady[name] === true
-                    : this.engineReady[name] !== false);
+                    : (!config.engine || this.engineReady[name] !== false);
                 const current = name === this.mode;
                 button.className = current ? 'current' : (ready ? '' : 'preparing');
                 // Compact rows - the shorthand leads, the full
@@ -5066,7 +5902,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // (short landscape band) - it never lands on the key rows and
             // never detaches from its trigger.
             menu.style.maxHeight = 'none'; // measure the natural height first
-            const toggle = document.getElementById('modeToggle').getBoundingClientRect();
+            // 锚点 = 调用方传入的触发键（round-4：手写竖屏键面没有
+            // #modeToggle 了，菜单必须能锚在任意触发键上），缺省仍是
+            // 中英切换键。
+            const anchorEl = anchor || document.getElementById('modeToggle');
+            if (!anchorEl) return;
+            this.modeMenuAnchor = anchorEl;
+            const toggle = anchorEl.getBoundingClientRect();
             menu.style.left = 'auto';
             menu.style.right = Math.max(4, innerWidth - toggle.right) + 'px';
             menu.style.bottom = 'auto';
@@ -5083,6 +5925,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         closeModeMenu() {
             document.getElementById('modeMenu').classList.remove('open');
+            this.modeMenuAnchor = null;
             this.syncOverlay();
         }
 
@@ -5120,11 +5963,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.renderSettingsPanel();
             panel.classList.add('open');
             panel.hidden = false;
-            // The full-settings gear rides the toolbar only while the quick
-            // panel is open: as a permanent resident it hovers over the
-            // candidates while typing (tried and rejected).
-            const full = document.getElementById('fullSetupButton');
-            if (full) full.hidden = false;
+            // #33-1：快开面板不再自动插出齿轮（会把用户摆好的图标顶右移
+            // 一格）；完整设置入口 = 面板菜单 + 可选的目录齿轮。
             // The panel REPLACES the key area (no overlay) -
             // remember which key layer to restore on close.
             this.settingsReturnLayer = this.keyLayer;
@@ -5137,8 +5977,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!panel.classList.contains('open')) return;
             panel.classList.remove('open');
             panel.hidden = true;
-            const full = document.getElementById('fullSetupButton');
-            if (full) full.hidden = true;
             this.settingsPage = null;
             this.hideSettingsPageBar();
             // Hand the key layer back unconditionally - the
@@ -5391,11 +6229,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             };
             const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
             const themeText = { auto: t("跟随系统"), light: t("浅色"), dark: t("深色") };
-            const localeText = { auto: t("跟随系统"), zh: t("中文"), en: t("English") };
             const snapText = { 0: t("松"), 1: t("标准"), 2: t("紧") };
             const fontText = { 0: t("标准"), 1: t("大"), 2: t("更大") };
             const oneHandText = { 0: t("关"), 1: t("左手"), 2: t("右手") };
-            const dpText = { ziranma: t("自然码"), flypy: t("小鹤双拼"), sogou: t("搜狗 / 微软双拼"), ziguang: t("紫光双拼") };
             const themeTheme = () => this.themeMode || 'auto';
             const rehome = () => {
                 if (this.settingsPage === null) this.renderSettingsPanel();
@@ -5451,7 +6287,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     {
                         icon: ICONS.swap, label: t("快捷切换"),
                         state: () => this.quickPair.map(m => modeLabel(m)).join(' · '),
-                        tap: () => { this.settingsPage = 'pair'; this.renderSettingsPanel(); },
+                        // 验收 2026-09-24 二改：tile 直达完整设置的「对应设置
+                        // 行」（quickPairA=快捷切换对），不再只落卡级；锚定
+                        // 与呼吸灯由设置页 focusSetting 统一处理。
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('quickPairA', this.token)); },
+                    },
+                    {
+                        icon: ICONS.menu, label: t("长按菜单"),
+                        state: () => t("{0} 个键盘", this.menuModes().length),
+                        // menuModesRow=「长按菜单里列出哪些键盘」设置行。
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('menuModesRow', this.token)); },
                     },
                     {
                         icon: ICONS.font, label: t("候选字号"),
@@ -5461,18 +6306,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             this.candidateFont = this.qStep('candidateFont', [0, 1, 2], this.candidateFont);
                             this.applyCandidateFont();
                             quickPref('candidateFont', this.candidateFont);
-                            rehome();
-                        },
-                    },
-                    {
-                        icon: ICONS.lang, label: t("界面语言"),
-                        // 选择值（auto/zh/en）驱动循环与显示；uiLocale 是
-                        // 解析后的显示语言，英文系统上用它永远回不到中文。
-                        state: () => localeText[this.qRead('uiLocale', this.uiLanguageChoice)] || localeText.auto,
-                        tap: () => {
-                            if (typeof Native.setQuickPref !== 'function') return;
-                            const next = this.qStep('uiLocale', ['auto', 'zh', 'en'], this.uiLanguageChoice || 'auto');
-                            quickPref('uiLocale', next);
                             rehome();
                         },
                     },
@@ -5525,25 +6358,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.menu, label: t("长按菜单"),
-                        state: () => t("{0} 个键盘", this.menuModes().length),
-                        tap: () => { this.settingsPage = 'menu'; this.renderSettingsPanel(); },
-                    },
-                    {
                         icon: ICONS.keyboard, label: t("定制键盘"),
                         state: () => (customRows
                             ? t("已定制 {0} 个键", customRows.reduce((sum, row) => sum + (row || []).length, 0))
                             : t("未定制")),
-                        tap: () => { this.settingsPage = 'custom'; this.renderSettingsPanel(); },
-                    },
-                    {
-                        icon: ICONS.dp, label: t("双拼方案"),
-                        state: () => dpText[this.qRead('dpScheme', dpScheme)] || dpText.ziranma,
-                        tap: () => {
-                            if (typeof Native.setQuickPref !== 'function') return;
-                            quickPref('dpScheme', this.qStep('dpScheme', ['ziranma', 'flypy', 'sogou', 'ziguang'], dpScheme));
-                            rehome();
-                        },
+                        // customTitle=定制键盘卡标题，focusSetting 对卡级锚
+                        // 整卡呼吸。
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('customTitle', this.token)); },
                     },
                     {
                         icon: ICONS.swap, label: t("编辑工具栏"),
@@ -5602,7 +6423,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             template.textContent = t("插入模板 ›");
             template.setAttribute('aria-label', t("插入定制模板"));
             template.addEventListener('click', () => this.openCustomJsonEditor(CUSTOM_TEMPLATE));
-            actions.append(edit, template);
+            // #29-8：官方说明文档（格式/tap 语法/示例），native 只认内置地址。
+            const docs = document.createElement('button');
+            docs.className = 'set-opt set-nav';
+            docs.textContent = t("查看说明 ›");
+            docs.setAttribute('aria-label', t("查看定制键盘说明"));
+            docs.addEventListener('click', () => {
+                if (typeof Native.openDocs === 'function') this.call(() => Native.openDocs(this.token));
+            });
+            actions.append(edit, template, docs);
             box.append(status, actions);
             panel.append(box);
         }
@@ -5798,7 +6627,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         modeOrder() {
             const ordered = this.orderedModeNames();
             // The long-press menu shows ONLY the keyboards the user
-            // enabled (default: all) - not everyone wants fr/ru/ja there.
+            // enabled - not everyone wants fr/ru/ja there. Default set
+            // (round-6): En/全拼/双拼/九宫格/笔画；手写是实验性能力
+            //（识别率有限，issue #28/#32），要用户主动勾选才进菜单。
             // The quick toggle always reaches the pair regardless.
             let menu = null;
             try { menu = JSON.parse(localStorage.getItem('feelime_menu_modes') || 'null'); } catch (_) {}
@@ -5806,7 +6637,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const filtered = ordered.filter(name => menu.includes(name));
                 if (filtered.length) return filtered;
             }
-            return ordered;
+            const enabled = ordered.filter(name => DEFAULT_MENU_MODES.includes(name));
+            return enabled.length ? enabled : ordered;
         }
 
         /** Every known keyboard in the saved drag order (unfiltered). */
@@ -6355,6 +7187,39 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Variant replay bursts intermediate events: freeze the bar like
             // the grid (the replay's target echo repaints it).
             if (this.variantReplaying) return;
+            // 手写（issue #28）：候选来自识别结果而非引擎池。整条自持——
+            // 按键通道（退格/空格）的空引擎事件不得把未点选的识别候选
+            // 洗掉；点选/清笔迹/离开模式时由 inkReset 收走。
+            if (this.mode === 'handwriting') {
+                const inkBar = document.getElementById('candidates');
+                const inkHeld = inkBar.scrollLeft || 0;
+                inkBar.replaceChildren();
+                // 识别候选优先；点选上屏后（笔迹已清）native 推来的联想
+                // 词接手同一条 bar——早先版本在这条分支里只认识别候选并
+                // 提前返回，onAssoc 推来的词被整条吞掉（round-3 修复：
+                // 用户反馈「手写联想没生效」的根因，mock 复现
+                // assoc-after-ink-pick）。
+                const ink = this.inkCandidates || [];
+                const source = ink.length ? ink : (this.assocWords || []).map(word => ({
+                    id: `assoc:${word}`, text: word, assoc: true }));
+                source.forEach((candidate, index) => {
+                    const button = document.createElement('button');
+                    button.className = candidate.assoc ? 'candidate assoc'
+                        : (index === 0 ? 'candidate first' : 'candidate');
+                    button.textContent = candidate.text;
+                    button.addEventListener('click', () => (candidate.assoc
+                        ? this.commitAssocWord(candidate.text)
+                        : this.commitInkCandidate(candidate)));
+                    // Native clicks only：bindTouch 会 preventDefault
+                    // touchstart，正好抵掉横向拖动的取消（同引擎候选条）。
+                    button.addEventListener('mousedown', event => event.preventDefault());
+                    inkBar.append(button);
+                });
+                inkBar.scrollLeft = inkHeld;
+                // 互斥态（整行替换工具栏）跟候选走，每次重渲染都对账。
+                this.applyInkBarChrome();
+                return;
+            }
             // T9：1 键展开的西文/技术符号行。引擎候选/联想/组合任一
             // 出现即让位（符号行是暂态选择面，不与候选池共存）。
             if (this.t9SymBar) {
@@ -6532,6 +7397,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!this.composing && this.expanded && !this.variantReplaying) this.setExpanded(false);
             const mic = document.getElementById('mic');
             if (mic) mic.hidden = this.composing && !recording;
+            // 手写候选态的整行互斥要压过上面 mic/工具的通用可见性规则：
+            // 引擎回声（commitText 后的空事件等）不得把工具栏插回候选行。
+            if (this.mode === 'handwriting') this.applyInkBarChrome();
             // While composing the right side carries exactly two
             // buttons (× and ˅). The keyboard-dismiss chevron looks identical
             // to the expand arrow - hide it until the composition ends.
@@ -6609,6 +7477,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The panel REPLACES the toolbar row instead of adding
             // another line to the keyboard - its own head carries the tabs.
             document.getElementById('candidateBar').hidden = true;
+            // #33-2：收起键盘键跟着面板头走、恒在最右——旧版整条工具栏
+            // （含收起）被藏掉、最右变成「清空」，肌肉记忆点进去清空了
+            // 剪贴板（真机丢数据实录）。清空/＋添加让位到收起左边。
+            const hideBtn = document.getElementById('hide');
+            document.querySelector('.panel-head')?.append(hideBtn);
             this.hideKeyLayers();
             document.getElementById('panelLayer').hidden = false;
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
@@ -6628,6 +7501,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.panelOpen = false;
             document.getElementById('panelLayer').hidden = true;
             document.getElementById('candidateBar').hidden = false;
+            // #33-2 收尾：收起键还栏（原位在 settingsPageBar 之前），
+            // 再对账一次把右组工具重新锚到它左边。用 audit 而非裸
+            // apply：组合中收起面板时 prune 不认 composing，会把
+            // updateComposing 刚藏掉的工具又点亮。
+            const hideBtn = document.getElementById('hide');
+            document.getElementById('candidateBar').insertBefore(
+                hideBtn, document.getElementById('settingsPageBar'));
+            this.auditToolbarTools();
             this.showKeyLayer(this.panelReturnLayer || 'letters');
             // The panel only borrowed the bar from the ctrl
             // view - hand the rows back if the switch is still on.
@@ -7345,6 +8226,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof payload.bgImageDark === 'string') this.bgImageDark = payload.bgImageDark;
             const opacity = Number(payload.keyOpacity);
             if (opacity >= 0 && opacity <= 100) this.keyOpacity = opacity;
+            if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
+            const lingerMs = Number(payload.bubbleLinger);
+            if (lingerMs >= 0) this.bubbleLinger = lingerMs;
             this.applyOneHand();
             this.applyBackground();
             this.applyKeyOpacity();
@@ -7420,6 +8304,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // refresh, restored backup rev) — native owns it now.
                 this.scrubSpeedFromNative = true;
             }
+            if (typeof payload.flickSwap === 'boolean') {
+                this.flickSwap = payload.flickSwap;
+                document.body.classList.toggle('flick-swap', this.flickSwap);
+            }
             if (Number(payload.popupSnap) in { 0: 1, 1: 1, 2: 1 }) {
                 this.popupSnap = Number(payload.popupSnap);
             }
@@ -7431,6 +8319,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // setKeyboardHeight enforces) - innerHeight rides the keyboard
             // itself, so it can never define the drag range (see heightBounds).
             this.heightDefaultCss = Number(payload.heightDefault) || 272;
+            // 高度真相源（round-6）：native pref 经 hello 下发（css px）。
+            this.nativeStoredHeightCss = Number(payload.storedKbHeight) || 0;
             this.heightFloorCss = Number(payload.heightFloor) || 0;
             this.heightCeilCss = Number(payload.heightCeil) || 0;
             {
@@ -7498,6 +8388,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const nextMode = MODES[payload.mode] ? payload.mode : 'direct';
             const modeChanged = nextMode !== this.mode;
             this.mode = nextMode;
+            // 先于 renderMode：切换键的键面（快捷切换目标简写）读的就是
+            // 迁移后的对。
+            this.adoptQuickPairForHandwriting(nextMode);
             this.ready = true;
             // 模式切换=组合语境整体作废：挂起的两步逗号不跨模式补发。
             if (modeChanged) this.pendingPunct = null;
@@ -7695,6 +8588,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.variantReplaying) return;
             if (payload.mode && MODES[payload.mode] && payload.mode !== this.mode) {
                 this.mode = payload.mode;
+                this.adoptQuickPairForHandwriting(payload.mode);
                 this.renderMode();
             }
             this.updateComposing(payload, payload.rawInput || payload.composing || '');
@@ -7833,6 +8727,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         backspace: () => console.log('backspace'),
         enter: () => console.log('enter'),
         moveCursor: delta => console.log('moveCursor', delta),
+        recognizeInk: (reqId, payload) => console.log('recognizeInk', reqId, payload),
         keyEvent: (keyCode, metaState) => console.log('keyEvent', keyCode, metaState),
         chooseCandidate: (revision, id) => console.log('choose', revision, id),
         deleteHighlightedCandidate: () => console.log('deleteHighlightedCandidate'),
@@ -7933,6 +8828,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onEngineState: payload => keyboard.onEngineState(payload),
         onAssoc: payload => keyboard.onAssoc(payload),
         onNativeState: payload => keyboard.onNativeState(payload),
+        onInkCandidates: payload => keyboard.onInkCandidates(payload),
         onEditorInfo: payload => keyboard.onEditorInfo(payload),
         cancelTouches: () => keyboard.cancelTouches(),
         cancelToolbarEdit: () => keyboard.cancelToolbarEdit(),
@@ -7958,7 +8854,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // current size as its baseline (no callback) - a pad/height change
         // made while hidden would then keep a stale row budget (device-gate
         // proven). Re-derive from the live geometry at show time.
-        applyHeightNow: () => keyboard.applyHeight(),
+        // 手写总高也在这里再推一次：重唤键盘不重跑 renderMode（模式没
+        // 变），收起期间动过高度的场合靠这一下回到手写态（P1 重唤折叠）。
+        applyHeightNow: () => {
+            keyboard.applyModeHeight();
+            keyboard.applyHeight();
+        },
         // Read-only automation probe (device gates): the keyboard instance is
         // a closure, so gates cannot reach runtime fields without this.
         debugState: () => ({
@@ -7967,6 +8868,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             scrubSpeed: keyboard.scrubSpeed,
             popupSnap: keyboard.popupSnap,
             bottomPad: keyboard.bottomPad,
+            // 手写（issue #28）：在途请求号 + 笔迹规模，设备门禁断言用。
+            inkReqId: keyboard.inkReqId,
+            inkStrokes: keyboard.inkStrokes.length,
+            // 停顿触发延时档位（设置回归断言用）。
             // Copy: a hand-out reference would let automation mutate the
             // live degrade state (active=false left a stale badge).
             degraded: keyboard.degrade ? { ...keyboard.degrade } : null,
@@ -7990,6 +8895,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // Suite hook: drives the content-height bridge without
         // synthesizing a drag (the drag gesture itself is covered by ).
         applyKbHeight: content => keyboard.applyKbHeight(content),
+        // Suite/preview hook: the height card lives behind a toolbar tap;
+        // tests drive the live-preview semantics directly.
+        enterHeightEdit: () => keyboard.enterHeightEdit(),
+        // Suite/preview hook (issue #28 round-2): the ink delay setting and
+        // the recognition-path smoother, for unit tests and preview probes.
+        inkSmooth: points => smoothInkStroke(points),
         // Preview/suite hook (issue #8): switch the preedit font level
         // without a native hello round-trip.
         setPreeditFont: level => {

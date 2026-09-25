@@ -54,6 +54,17 @@ def open_input_page():
                              lambda value: value == ["input"], timeout=5.0)
 
 
+def open_appearance_page():
+    # 1.0.16（5ba7318 外观页拆分）起 #bottomPadPortrait/#kbHeight 搬进了
+    # appearance 页；本套件 pad 用例仍开 input 页会在隐藏页上量 rect——
+    # collapsed 永不落地，三连 force-stop 兜底又把 IME 进程连杀，后续
+    # feel/clip/i18n 的键盘页 eval 全变僵尸读数（2026-09-23 9n 双连败与
+    # 09-15 solo 同签名，根因同源）。
+    shared.settings_tap('button[data-target="appearance"]')
+    return shared.wait_until(shared.settings_visible_pages,
+                             lambda value: value == ["appearance"], timeout=5.0)
+
+
 def case_degrade_retry():
     kb = d.fresh_kb(refocus=True)
     if not kb:
@@ -125,7 +136,7 @@ def case_bottom_pad():
     # and every later reading would then wait for a delta that never comes.
     if 'value="36"' in prefs_body() or 'bottom_pad_dp' not in prefs_body():
         d.ensure_keyboard_down()
-        if shared.launch_settings() and open_input_page():
+        if shared.launch_settings() and open_appearance_page():
             pick_select_option("#bottomPadPortrait", "0 dp")
             shared.wait_until(
                 lambda: re.search(r'name="bottom_pad_dp_portrait" value="0"', prefs_body()),
@@ -133,7 +144,7 @@ def case_bottom_pad():
 
     def pad_zero_steady():
         d.ensure_keyboard_down()
-        return shared.launch_settings() and open_input_page() \
+        return shared.launch_settings() and open_appearance_page() \
             and pick_select_option("#bottomPadPortrait", "0 dp") and \
             bool(shared.wait_until(
                 lambda: re.search(r'name="bottom_pad_dp_portrait" value="0"', prefs_body()),
@@ -147,7 +158,7 @@ def case_bottom_pad():
     for attempt in range(2):
         if not shared.launch_settings():
             continue
-        if open_input_page() and pick_select_option("#bottomPadPortrait", "36 dp"):
+        if open_appearance_page() and pick_select_option("#bottomPadPortrait", "36 dp"):
             picked = True
             break
         # A wedged settings WebView (resumed instance, stale a11y tree)
@@ -193,7 +204,7 @@ def case_bottom_pad():
             for attempt in range(2):
                 if not shared.launch_settings():
                     continue
-                if open_input_page() and pick_select_option("#bottomPadPortrait", "36 dp"):
+                if open_appearance_page() and pick_select_option("#bottomPadPortrait", "36 dp"):
                     picked2 = True
                     break
                 d.shell(f"am force-stop {d.PKG}")
@@ -389,8 +400,8 @@ def case_feel_bilingual():
         lambda: shared.sev("document.getElementById('feelTitle').textContent"),
         lambda value: value == "Keyboard feel", timeout=6.0)
     en_pad = shared.sev(
-        "[...document.querySelectorAll('#sec-feel .row-label span')]"
-        ".some(s => s.textContent === 'Bottom padding')")
+        "[...document.querySelectorAll('[data-page=\"appearance\"] .row-label span')]"
+        ".some(s => s.textContent === 'Bottom padding · Portrait')")
     # A previous run's failed restore can leave the device on English; the
     # contract under test is the TRANSLATION PAIR, not the starting locale.
     zh_ok = start_title in ("键盘手感", "Keyboard feel")

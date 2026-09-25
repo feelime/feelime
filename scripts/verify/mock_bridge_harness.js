@@ -312,6 +312,13 @@ class FakeElement {
         }
         return null;
     }
+    contains(node) {
+        while (node) {
+            if (node === this) return true;
+            node = node.parentNode;
+        }
+        return false;
+    }
     getBoundingClientRect() {
         // Layout-ish geometry: a cell's rect comes from its own child index
         // within its parent (34px cells, a row per 10 siblings). Consecutive
@@ -358,6 +365,11 @@ class FakeElement {
     // management does not exist in the fake DOM.
     focus() {}
     blur() {}
+    // Settings search anchoring scrolls a row into view; the fake DOM has
+    // no layout, so just record the call for assertions.
+    scrollIntoView(opts) {
+        this._scrollIntoView = opts || null;
+    }
     querySelector(selector) {
         return queryDescendants(this, selector, false)[0] || null;
     }
@@ -367,11 +379,24 @@ class FakeElement {
 }
 
 function matchesSelector(el, selector) {
+    // Comma lists match when ANY branch matches (querySelector semantics).
+    // Settings search code relies on ".row, label.row"-style selectors.
+    if (selector.includes(',')) {
+        return selector.split(',').some(part => matchesSelector(el, part.trim()));
+    }
     const descendant = selector.match(/^(\S+)\s+(\S+)$/);
     if (descendant) {
         const [base, child] = descendant.slice(1);
-        const ancestor = el.closest ? el.closest(base) : null;
+        // Descendant combinator: the element itself never counts as its own
+        // ancestor ("div div" must not match the outer div).
+        const ancestor = el.parentNode && el.parentNode.closest ? el.parentNode.closest(base) : null;
         return !!ancestor && matchesSelector(el, child);
+    }
+    // Compound "tag.class.class" (e.g. "section.card", "label.row").
+    const compound = selector.match(/^(\w+)((?:\.[\w-]+)+)$/);
+    if (compound) {
+        if (el.tagName !== compound[1].toUpperCase()) return false;
+        return compound[2].slice(1).split('.').every(cls => el.classList.contains(cls));
     }
     // Supports "#id", ".class", "tag", ".class[data-x]", "[data-x]",
     // ".class[data-x=\"y\"]".
@@ -386,8 +411,13 @@ function matchesSelector(el, selector) {
         if (el.tagName !== base.toUpperCase()) return false;
     }
     if (attrName) {
-        const value = el.dataset[attrName.replace(/^data-/, '').replace(/-([a-z])/g, (m, c) => c.toUpperCase())];
-        if (attrValue !== undefined ? value !== attrValue : value === undefined) return false;
+        // [id] rides the element's id property, not dataset.
+        if (attrName === 'id') {
+            if (el.id === '' || (attrValue !== undefined && el.id !== attrValue)) return false;
+        } else {
+            const value = el.dataset[attrName.replace(/^data-/, '').replace(/-([a-z])/g, (m, c) => c.toUpperCase())];
+            if (attrValue !== undefined ? value !== attrValue : value === undefined) return false;
+        }
     }
     return true;
 }
@@ -776,11 +806,20 @@ class MockNative {
     panelInput(active, token) {
         this._record('panelInput', [active, token]);
     }
+    // 手写识别（issue #28，design/handwriting.md §3）：只记录调用；
+    // 结果由测试经 world.context.window.Feelime.onInkCandidates 注入。
+    recognizeInk(reqId, payload, token) {
+        this._record('recognizeInk', [reqId, payload, token]);
+    }
     hideKeyboard(token) {
         this._record('hideKeyboard', [token]);
     }
     openSetup(token) {
         this._record('openSetup', [token]);
+    }
+
+    openSetupPage(page, token) {
+        this._record('openSetupPage', [page, token]);
     }
     reloadKeyboard(token) {
         this._record('reloadKeyboard', [token]);

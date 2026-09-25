@@ -16,6 +16,14 @@ let lastModelError = null;
 
 const $ = id => document.getElementById(id);
 
+// 键盘选择（验收 2026-09-24）：与键盘 MODES 一致；默认菜单 = round-6 五项。
+const KEYBOARD_MODES = [
+    ['direct', '英文直出'], ['pinyin', '全拼'], ['double-pinyin', '双拼'],
+    ['t9', '九宫格'], ['stroke', '笔画'], ['handwriting', '手写'],
+    ['french', '法语'], ['russian', '俄语'], ['japanese', '日语'],
+];
+const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
+
 const I18N = {
     zh: {
         "title": "Feelime 设置",
@@ -61,6 +69,28 @@ const I18N = {
         "dict.import.title": "导入词库",
         "dict.import.enable": "rime 词库文件（.dict.yaml）",
         "dict.import.note": "词<TAB>码 逐行导入，上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。",
+        "dict.userwords.title": "自造词",
+        "dict.userwords.enable": "手动维护的常用词",
+        "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，输入码命中即出这个词；适合名字、缩写、行话。改动即时生效，重启保留。",
+        "dict.userwords.manage": "管理词条",
+        "page.userwords": "自造词",
+        "userwords.list.title": "词条",
+        "userwords.list.empty": "还没有词条，在下方添加。",
+        "userwords.form.text": "词条（如 你好世界）",
+        "userwords.form.code": "输入码（留空自动按拼音生成）",
+        "userwords.form.add": "添加",
+        "userwords.form.save": "保存",
+        "userwords.form.cancel": "取消",
+        "userwords.list.note": "输入码留空即自动按拼音生成（多音字会生成全部读音组合，并自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效，上限 200 条。",
+        "userwords.note.saved": "已保存",
+        "userwords.note.deleted": "已删除",
+        "userwords.err.notReady": "正在读取词表，稍后再试",
+        "userwords.err.duplicate": "这个输入码已存在",
+        "userwords.err.limit": "最多 200 条",
+        "userwords.form.textErr": "词条不能为空",
+        "userwords.form.codeErr": "输入码需为 1-48 位字母",
+        "userwords.count": "共 {0} 条",
+        "nav.backDict": "返回词库",
         "dict.base.title": "基底词库",
         "dict.base.badge": "基底",
         "dict.base.hint": "换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。",
@@ -126,8 +156,7 @@ const I18N = {
         "input.double.title": "双拼方案",
         "input.double.badge": "输入",
         "input.double.scheme": "方案",
-        "input.double.hint": "键盘切到「双拼」模式后按所选方案出字。",
-        "input.double.ziranma": "自然码",
+        "input.double.hint": "键盘切到「双拼」模式后按所选方案出字。",        "input.double.ziranma": "自然码",
         "input.double.flypy": "小鹤双拼",
         "input.double.sogou": "搜狗 / 微软双拼",
         "input.double.ziguang": "紫光双拼",
@@ -142,8 +171,21 @@ const I18N = {
         "input.custom.jsonLabel": "定制 JSON（{\"version\":1,\"rows\":[[{\"t\":\"键面\",\"tap\":\"点击输出\",\"note\":\"备注\"}]]}）",
         "input.custom.jsonPlaceholder": "粘贴定制 JSON",
         "input.custom.note": "保存在本机，键盘下次载入时生效。",
+        "input.keyboards.title": "键盘选择",
+        "input.keyboards.badge": "菜单",
+        "input.keyboards.enable": "长按菜单里列出哪些键盘",
+        "input.keyboards.hint": "勾选的键盘出现在长按切换键的菜单里；不勾的还可以在菜单里临时勾回来。改动即时生效。",
+        "input.keyboards.pairA": "快捷切换 · 第一个",
+        "input.keyboards.pairB": "快捷切换 · 第二个",
+        "input.keyboards.pairHint": "点切换键在两个键盘之间往返；选最常用的两个。",
+        "input.keyboards.saved": "已保存，键盘即时生效",
+        "input.feel.bubbleLinger": "气泡停留时长",
+        "input.feel.bubbleLingerHint": "松手后气泡多停留一会儿再消失，看得清按了什么；0 为立即消失。",
+        "search.placeholder": "搜索设置：高度、气泡、双拼、词库…",
+        "search.noResults": "没有匹配的设置项",
         "action.saveCustom": "保存定制",
         "action.insertTemplate": "插入模板",
+        "action.viewDocs": "查看说明",
         "voice.models.title": "麦克风与语音模型",
         "voice.models.badge": "语音",
         "voice.backend.label": "模型来源",
@@ -151,6 +193,7 @@ const I18N = {
         "voice.backend.remote": "使用下载模型",
         "voice.backend.hint": "切换后下次录音生效。选择下载模型后，请在下方补齐所需模型再录音。",
         "voice.downloadSource.label": "模型下载源",
+        "voice.downloadSource.gitee": "Gitee（国内推荐）",
         "voice.downloadSource.hfMirror": "HF / GitHub 镜像（默认）",
         "voice.downloadSource.official": "官方源（HF / GitHub）",
         "voice.downloadSource.custom": "自定义源",
@@ -216,6 +259,8 @@ const I18N = {
         "about.badge": "信息",
         "action.copyVersion": "复制版本信息",
         "action.appStore": "在 Google Play 查看应用",
+        "action.githubRepo": "GitHub 仓库",
+        "action.githubIssues": "问题反馈",
         "about.copyHint": "反馈问题时直接粘贴；复制内容标记为敏感，不会进入键盘剪贴板历史。",
         "about.offlineHint": "全程离线：语音识别与文字候选都不联网。",
         "about.noticesTitle": "第三方许可与组件说明",
@@ -301,6 +346,14 @@ const I18N = {
         "custom.count": "已定制 {count} 个键",
         "error.INVALID_CUSTOM_JSON": "定制 JSON 格式不正确。",
         "error.INVALID_DP_SCHEME": "双拼方案选项无效。",
+                "input.ink.title": "手写输入",
+        "input.ink.badge": "手写",
+        "input.ink.delay": "停顿触发识别",
+        "input.ink.delayHint": "停笔后等这么久就识别上一个字；写得慢选「慢」，抢着识别选「快」。",
+        "input.ink.live": "实时（逐笔识别）",
+        "input.ink.fast": "快（约 300 毫秒）",
+        "input.ink.standard": "标准（约 600 毫秒）",
+        "input.ink.slow": "慢（约 1200 毫秒）",
         "input.feel.title": "键盘手感",
         "input.feel.badge": "微调",
 
@@ -333,6 +386,8 @@ const I18N = {
         "input.feel.kbHeightHint": "竖屏键盘的高度；键盘上拖拽调节与此处等效。",
         "input.feel.kbHeightReset": "恢复默认",
         "input.feel.keyOpacityHint": "键帽在背景图上的透明程度，文字始终实色。",
+        "input.feel.keyBubble": "按键气泡",
+        "input.feel.keyBubbleHint": "按下按键时在键帽上方放大显示所按的字符，方便确认有没有按错（默认关闭）。",
         "entry.appearance.title": "外观",
         "entry.appearance.subtitle": "色彩模式 · 背景图片 · 透明度",
         "input.appearance.title": "外观",
@@ -349,6 +404,8 @@ const I18N = {
         "右手": "右手",
         "input.feel.hold": "长按触发时长",
         "input.feel.holdHint": "长按弹出选字、锁定大写、打开模式菜单的等待时间。",
+"input.feel.flickSwap": "上下滑方向互换",
+        "input.feel.flickSwapHint": "默认上滑出数字/符号、下滑出大写；开启后对调（键面小字提示随之下移）。",
         "input.feel.scrub": "光标移动速度",
         "input.feel.scrubHint": "光标拖拽时每个刻度移动的距离。",
         "input.feel.snap": "滑动选字范围",
@@ -468,6 +525,28 @@ const I18N = {
         "dict.import.title": "Import a dictionary",
         "dict.import.enable": "rime dictionary file (.dict.yaml)",
         "dict.import.note": "Lines of word<TAB>code are imported, up to 5000 entries; handy for cherry-picking words from community dicts such as rime-ice.",
+        "dict.userwords.title": "User words",
+        "dict.userwords.enable": "Hand-maintained words",
+        "dict.userwords.hint": "Add word + full-pinyin code pairs one by one; typing the code surfaces the word. Great for names, abbreviations, jargon. Applies immediately, survives restart.",
+        "dict.userwords.manage": "Manage words",
+        "page.userwords": "User words",
+        "userwords.list.title": "Words",
+        "userwords.list.empty": "No words yet - add one below.",
+        "userwords.form.text": "Word (e.g. hello world)",
+        "userwords.form.code": "Code (leave empty for auto pinyin)",
+        "userwords.form.add": "Add",
+        "userwords.form.save": "Save",
+        "userwords.form.cancel": "Cancel",
+        "userwords.list.note": "Leave the code empty to auto-generate pinyin (polyphones expand to every reading; double-pinyin keys auto-adapt); tap a word to edit, ✕ deletes. Applies immediately, 200-entry cap.",
+        "userwords.note.saved": "Saved",
+        "userwords.note.deleted": "Deleted",
+        "userwords.err.notReady": "Word list still loading, try again shortly",
+        "userwords.err.duplicate": "That code already exists",
+        "userwords.err.limit": "200 entries max",
+        "userwords.form.textErr": "Word cannot be empty",
+        "userwords.form.codeErr": "Code must be 1-48 letters",
+        "userwords.count": "{0} entries",
+        "nav.backDict": "Back to dictionary",
         "dict.base.title": "Base dictionary",
         "dict.base.badge": "Base",
         "dict.base.hint": "Swap the whole lexicon: pick a rime dictionary file (.dict.yaml, e.g. from rime-ice) and it recompiles on this device (a few minutes); fuzzy/double-pinyin/T9 rebuild with it. Built-in can be restored anytime.",
@@ -549,8 +628,21 @@ const I18N = {
         "input.custom.jsonLabel": "Custom JSON ({\"version\":1,\"rows\":[[{\"t\":\"key label\",\"tap\":\"output\",\"note\":\"note\"}]]})",
         "input.custom.jsonPlaceholder": "Paste custom JSON",
         "input.custom.note": "Saved on this device and applied the next time the keyboard loads.",
+        "input.keyboards.title": "Keyboard selection",
+        "input.keyboards.badge": "Menu",
+        "input.keyboards.enable": "Keyboards listed in the long-press menu",
+        "input.keyboards.hint": "Checked keyboards appear in the mode-key long-press menu; unchecked ones can be re-enabled from that menu. Applies immediately.",
+        "input.keyboards.pairA": "Quick switch · first",
+        "input.keyboards.pairB": "Quick switch · second",
+        "input.keyboards.pairHint": "The switch key toggles between these two; pick your two most-used keyboards.",
+        "input.keyboards.saved": "Saved; the keyboard applies it immediately",
+        "input.feel.bubbleLinger": "Bubble linger",
+        "input.feel.bubbleLingerHint": "How long the bubble stays after release; 0 hides it instantly.",
+        "search.placeholder": "Search settings: height, bubble, double-pinyin, lexicon…",
+        "search.noResults": "No matching settings",
         "action.saveCustom": "Save custom layout",
         "action.insertTemplate": "Insert template",
+        "action.viewDocs": "View guide",
         "voice.models.title": "Microphone & voice models",
         "voice.models.badge": "Voice",
         "voice.backend.label": "Model source",
@@ -558,6 +650,7 @@ const I18N = {
         "voice.backend.remote": "Downloaded models",
         "voice.backend.hint": "Changes apply to the next recording. After selecting downloaded models, download any missing models below before recording.",
         "voice.downloadSource.label": "Model download source",
+        "voice.downloadSource.gitee": "Gitee (China-friendly)",
         "voice.downloadSource.hfMirror": "HF / GitHub mirrors (default)",
         "voice.downloadSource.official": "Official sources (HF / GitHub)",
         "voice.downloadSource.custom": "Custom source",
@@ -623,6 +716,8 @@ const I18N = {
         "about.badge": "Info",
         "action.copyVersion": "Copy version info",
         "action.appStore": "View app on Google Play",
+        "action.githubRepo": "GitHub repository",
+        "action.githubIssues": "Report an issue",
         "about.copyHint": "Paste this when reporting a problem. The copied report is marked sensitive and is kept out of keyboard clipboard history.",
         "about.offlineHint": "Everything stays offline: voice recognition and text candidates use no network.",
         "about.noticesTitle": "Third-party licenses & components",
@@ -708,6 +803,14 @@ const I18N = {
         "custom.count": "{count} custom keys",
         "error.INVALID_CUSTOM_JSON": "The custom JSON format is invalid.",
         "error.INVALID_DP_SCHEME": "Invalid double-pinyin scheme.",
+                "input.ink.title": "Handwriting",
+        "input.ink.badge": "Hand",
+        "input.ink.delay": "Pause before recognition",
+        "input.ink.delayHint": "How long to wait after the pen lifts before recognizing; pick Slow if you write slowly, Fast if it fires too eagerly.",
+        "input.ink.live": "Live (per stroke)",
+        "input.ink.fast": "Fast (~300 ms)",
+        "input.ink.standard": "Standard (~600 ms)",
+        "input.ink.slow": "Slow (~1200 ms)",
         "input.feel.title": "Keyboard feel",
         "input.feel.badge": "Tuning",
         "input.feel.pad": "Bottom padding",
@@ -742,6 +845,8 @@ const I18N = {
         "input.feel.kbHeightHint": "Portrait keyboard height; dragging on the keyboard stays equivalent.",
         "input.feel.kbHeightReset": "Reset",
         "input.feel.keyOpacityHint": "How transparent the keycaps sit over the background image; labels stay solid.",
+        "input.feel.keyBubble": "Key bubble",
+        "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
         "entry.appearance.title": "Appearance",
         "entry.appearance.subtitle": "Color mode · Background · Opacity",
         "input.appearance.title": "Appearance",
@@ -760,6 +865,8 @@ const I18N = {
         "空白": "Blank",
         "input.feel.hold": "Long-press trigger",
         "input.feel.holdHint": "How long a press waits before popup selection, caps lock, or the mode menu opens.",
+"input.feel.flickSwap": "Swap flick directions",
+        "input.feel.flickSwapHint": "By default flick up gives the digit/symbol and flick down uppercases; enabling swaps them (the keycap hint moves below).",
         "input.feel.scrub": "Cursor speed",
         "input.feel.scrubHint": "Distance the caret moves per drag step.",
         "input.feel.snap": "Swipe selection range",
@@ -837,7 +944,7 @@ const I18N = {
     },
 };
 
-const PAGES = ["home", "appearance", "input", "dict", "phrases", "voice", "update", "backup", "about", "licenses", "test"];
+const PAGES = ["home", "appearance", "input", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -1023,6 +1130,9 @@ window.FeelimeSettings = {
             case "customPhrasesError":
                 setNote("phrasesNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
                 break;
+            case "userWordsError":
+                setNote("userWordsNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
+                break;
             case "dictImported":
                 setNote("dictImportNote", event.message || "");
                 break;
@@ -1069,6 +1179,7 @@ window.FeelimeSettings = {
     },
 
     showPage,
+    focusSetting,
 };
 
 /* --- pages ------------------------------------------------------------- */
@@ -1100,7 +1211,9 @@ function render(state) {
     renderVoice(state);
     renderAsr(state);
     renderCustom(state);
+    renderKeyboards(state);
     renderCustomPhrases(state);
+    renderUserWords(state);
     renderDictBase(state);
     renderUpdate(state);
     renderAbout(state);
@@ -1131,9 +1244,15 @@ function renderFeel(state) {
     }
     const opacity = $("keyOpacity");
     if (opacity) opacity.value = String(Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100))));
+    const bubble = $("keyBubble");
+    if (bubble) bubble.checked = state.keyBubble === true;
+    const lingerSel = $("bubbleLinger");
+    if (lingerSel && document.activeElement !== lingerSel) {
+        lingerSel.value = String(state.bubbleLinger ?? 400);
+    }
     const kbHeight = $("kbHeight");
     if (kbHeight) {
-        const min = Number(state.kbHeightMin ?? 210);
+        const min = Number(state.kbHeightMin ?? 226);
         const max = Number(state.kbHeightMax ?? 400);
         kbHeight.min = String(min);
         kbHeight.max = String(max);
@@ -1160,6 +1279,8 @@ function renderFeel(state) {
     });
     setSelect("holdMs", state.holdMs ?? 350, ["200", "300", "350", "450", "600"]);
     setSelect("scrubSpeed", state.scrubSpeed ?? 3, ["1", "2", "3", "4", "5"]);
+    const flickSwap = $("flickSwap");
+    if (flickSwap) flickSwap.checked = state.flickSwap === true;
     setSelect("popupSnap", state.popupSnap ?? 1, ["0", "1", "2"]);
     const setToggle = (id, value) => {
         const node = $(id);
@@ -1266,7 +1387,7 @@ function renderVoice(state) {
     }
     const source = state.modelDownloadSource || {};
     if (document.activeElement !== $("modelDownloadSource")) {
-        $("modelDownloadSource").value = ["official", "custom"].includes(source.mode) ? source.mode : "hf_mirror";
+        $("modelDownloadSource").value = ["official", "custom", "gitee"].includes(source.mode) ? source.mode : "hf_mirror";
     }
     if (document.activeElement !== $("modelDownloadCustom")) {
         $("modelDownloadCustom").value = source.customBase || "";
@@ -1523,6 +1644,260 @@ function phraseState() {
     return { enabled: !!($("phrasesOn").checked), items: phraseItems };
 }
 
+/** 设置搜索（验收 2026-09-24，同日二改）：索引到「行」级——每个设置行
+ *  （label + 说明小注 + data-keywords 意图词 + 所在卡标题）都是独立条目，
+ *  搜「背景」出「亮色背景」「暗色背景」而不是只有「外观」。卡片标题条目
+ *  只做兜底：它的行有命中时从结果里隐掉，避免同卡重复。 */
+let searchIndex = null;
+
+function buildSearchIndex() {
+    const entries = [];
+    document.querySelectorAll(".page").forEach(page => {
+        const pageName = page.dataset.page;
+        if (pageName === "home") return;
+        const pageTitle = page.querySelector(".page-title")?.textContent || pageName;
+        page.querySelectorAll("section.card").forEach(card => {
+            const heading = card.querySelector(".section-heading h2");
+            const title = heading?.textContent?.trim() || "";
+            const cardKey = heading?.id || title;
+            card.querySelectorAll(".row, label.row").forEach(row => {
+                // 标签只取主 span：querySelector(".row-label span, .row-label")
+                // 会按文档序先命中 .row-label 本身，textContent 连说明小注
+                // 一起聚合，标题就脏了。
+                const label = row.querySelector(".row-label span") || row.querySelector(".row-label");
+                const labelText = label?.textContent?.trim() || "";
+                const hintParts = [];
+                row.querySelectorAll("small").forEach(node => hintParts.push(node.textContent));
+                const keywords = [];
+                row.querySelectorAll("[data-keywords]").forEach(node =>
+                    keywords.push(node.dataset.keywords));
+                // 无名行（纯布局）不入索引；条目文本聚合 label/说明/意图词/卡名。
+                if (!labelText && !hintParts.length && !keywords.length) return;
+                // 锚 id 优先取行内控件 id（每个设置行都有），其次意图词元素
+                // 或行自身——搜索点击与键盘 tile 深链共用 focusSetting(id)。
+                const control = row.querySelector("select[id], input[id], button[id]");
+                const anchorId = (control && control.id)
+                    || row.querySelector("[data-keywords][id]")?.id
+                    || row.id
+                    || heading?.id
+                    || "";
+                entries.push({
+                    page: pageName,
+                    pageTitle,
+                    title: labelText || title,
+                    desc: hintParts.join(" ").replace(/\s+/g, " ").trim(),
+                    anchorId,
+                    anchorEl: row,
+                    cardKey,
+                    rowHit: true,
+                    text: [labelText, ...hintParts, ...keywords, title]
+                        .filter(Boolean).join(" ").replace(/\s+/g, " "),
+                });
+            });
+            const parts = [title];
+            card.querySelectorAll(".row-label span, .row-label small").forEach(node => {
+                parts.push(node.textContent);
+            });
+            entries.push({
+                page: pageName,
+                pageTitle,
+                title,
+                desc: "",
+                anchorId: heading?.id || "",
+                anchorEl: heading || card,
+                cardKey,
+                rowHit: false,
+                text: parts.filter(Boolean).join(" ").replace(/\s+/g, " "),
+            });
+        });
+    });
+    return entries;
+}
+
+/** 跳转后的呼吸灯提醒：整个设置项背景呼吸三次（约 1.9s）。 */
+function flashAnchor(el) {
+    if (!el) return;
+    el.classList.remove("search-flash");
+    void el.offsetWidth; // reflow 让重播动画可靠触发
+    el.classList.add("search-flash");
+    setTimeout(() => el.classList.remove("search-flash"), 2100);
+}
+
+/** 直达某个设置项（搜索点击 / 键盘快捷设置 tile 深链共用）：翻到所在页
+ *  → 滚到整行 → 整行呼吸三次提醒。hashtag 同步写入便于定位与自动化
+ *  断言。返回 false 表示目标不存在（调用方可以重试）。 */
+function focusSetting(id) {
+    const el = document.getElementById(id);
+    if (!el) return false;
+    const page = el.closest(".page");
+    if (page && page.dataset.page) showPage(page.dataset.page);
+    const row = el.closest(".row, label.row, section.card") || el;
+    // 全程同步执行，不进 rAF/setTimeout：键盘 tile 深链时 WebView 正从
+    // IME 覆盖下恢复，入队的 rAF 回调在 ace 真机上整批丢失；搜索点击
+    // 翻到外观页会弹真键盘预览，WebView 被压后台连 setTimeout 都冻结。
+    // scrollIntoView 与 hidden 切换都是同步布局，无须等帧；呼吸是 CSS
+    // 合成器动画，类挂上就播。
+    if (typeof row.scrollIntoView === "function") {
+        row.scrollIntoView({ block: "center" });
+    }
+    flashAnchor(row);
+    // 显式带 #：不依赖浏览器对 hash 赋值的规范化（fake DOM/自动化同口径）。
+    if (window.location) window.location.hash = "#" + id;
+    return true;
+}
+
+function runSettingsSearch(query) {
+    const box = $("searchResults");
+    if (!box) return;
+    const q = query.trim().toLowerCase();
+    if (!q) { box.hidden = true; box.textContent = ""; return; }
+    if (!searchIndex) searchIndex = buildSearchIndex();
+    const matched = searchIndex.filter(entry => entry.text.toLowerCase().includes(q));
+    // 卡兜底条目在同卡有行命中时让位——行级条目就是更准的答案。
+    const rowCards = new Set(matched.filter(e => e.rowHit).map(e => e.cardKey));
+    const hits = matched.filter(e => e.rowHit || !rowCards.has(e.cardKey)).slice(0, 12);
+    box.textContent = "";
+    if (!hits.length) {
+        const empty = document.createElement("p");
+        empty.className = "search-empty";
+        empty.textContent = t("search.noResults");
+        box.append(empty);
+    } else {
+        hits.forEach(entry => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "search-hit";
+            const main = document.createElement("span");
+            main.className = "search-hit-main";
+            const label = document.createElement("span");
+            label.textContent = entry.title || entry.pageTitle;
+            main.append(label);
+            if (entry.desc) {
+                const desc = document.createElement("small");
+                desc.className = "search-hit-desc";
+                desc.textContent = entry.desc;
+                main.append(desc);
+            }
+            const where = document.createElement("small");
+            where.className = "search-hit-page";
+            where.textContent = entry.pageTitle;
+            button.append(main, where);
+            button.addEventListener("click", () => {
+                $("settingsSearch").value = "";
+                box.hidden = true;
+                if (entry.anchorId) {
+                    focusSetting(entry.anchorId);
+                } else {
+                    showPage(entry.page);
+                    // 同 focusSetting：同步执行（rAF/setTimeout 在 WebView
+                    // 恢复/冻结窗口都会丢）。
+                    if (entry.anchorEl) {
+                        if (typeof entry.anchorEl.scrollIntoView === "function") {
+                            entry.anchorEl.scrollIntoView({ block: "center" });
+                        }
+                        flashAnchor(entry.anchorEl);
+                    }
+                }
+            });
+            box.append(button);
+        });
+    }
+    box.hidden = false;
+}
+
+$("settingsSearch").addEventListener("input", event => runSettingsSearch(event.target.value));
+
+/** 键盘选择（验收 2026-09-24）：菜单模式勾选 + 快捷切换对。真相源在
+ *  键盘 localStorage、经 pushStores 镜像原生（备份走原生）；保存写同一
+ *  镜像（saveKeyboardSelection），键盘 hello 的 pullStores 按 rev 落地。 */
+function keyboardModeLabel(id) {
+    const found = KEYBOARD_MODES.find(([, modeId]) => modeId === id);
+    return found ? found[1] : id;
+}
+
+function selectedMenuModes(state) {
+    const raw = (state.keyboards && state.keyboards.menuModes) || "";
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return parsed.filter(x => typeof x === "string");
+    } catch (_) { /* unset */ }
+    return DEFAULT_MENU_MODES.slice();
+}
+
+function selectedQuickPair(state) {
+    const raw = (state.keyboards && state.keyboards.quickPair) || "";
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length === 2) return parsed;
+    } catch (_) { /* unset */ }
+    return ["pinyin", "direct"];
+}
+
+function renderKeyboards(state) {
+    const host = $("kbModeList");
+    if (!host) return;
+    const selected = selectedMenuModes(state);
+    host.textContent = "";
+    KEYBOARD_MODES.forEach(([id, label]) => {
+        const row = document.createElement("label");
+        row.className = "row switch-row";
+        row.htmlFor = "kbMode_" + id;
+        const text = document.createElement("span");
+        text.className = "row-label";
+        const main = document.createElement("span");
+        main.textContent = label;
+        text.append(main);
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.id = "kbMode_" + id;
+        box.className = "toggle";
+        box.dataset.kbMode = id;
+        box.checked = selected.includes(id);
+        box.addEventListener("change", () => saveKeyboardSelectionFromUi());
+        row.append(text, box);
+        host.append(row);
+    });
+    renderQuickPairSelects(state);
+}
+
+function renderQuickPairSelects(state) {
+    const selected = selectedMenuModes(state);
+    const pair = selectedQuickPair(state);
+    [$("quickPairA"), $("quickPairB")].forEach((sel, slot) => {
+        if (!sel) return;
+        sel.textContent = "";
+        KEYBOARD_MODES.forEach(([id, label]) => {
+            if (!selected.includes(id)) return;
+            const option = document.createElement("option");
+            option.value = id;
+            option.textContent = label;
+            sel.append(option);
+        });
+        if (!selected.includes(pair[slot])) sel.value = selected[0] || "";
+        else sel.value = pair[slot];
+        if (sel.dataset.bound !== "1") {
+            sel.dataset.bound = "1";
+            sel.addEventListener("change", () => saveKeyboardSelectionFromUi());
+        }
+    });
+}
+
+function saveKeyboardSelectionFromUi() {
+    const modes = [...document.querySelectorAll("#kbModeList input[data-kb-mode]")]
+        .filter(box => box.checked)
+        .map(box => box.dataset.kbMode);
+    if (!modes.length) {
+        setNote("keyboardsNote", t("input.keyboards.hint"));
+        return;
+    }
+    const pair = [$("quickPairA").value || modes[0], $("quickPairB").value || modes[0]]
+        .filter(id => modes.includes(id));
+    while (pair.length < 2) pair.push(modes.find(m => !pair.includes(m)) || modes[0]);
+    call("saveKeyboardSelection", JSON.stringify(modes), JSON.stringify(pair.slice(0, 2)));
+    renderQuickPairSelects({ keyboards: { menuModes: JSON.stringify(modes), quickPair: JSON.stringify(pair.slice(0, 2)) } });
+    setNote("keyboardsNote", t("input.keyboards.saved"));
+}
+
 function renderCustomPhrases(state) {
     const phrases = state.customPhrases;
     if (phrases) {
@@ -1693,6 +2068,124 @@ $("btnSavePhrase").addEventListener("click", () => {
     setNote("phrasesNote", t("phrases.note.saved"));
 });
 
+/* --- 自造词（issue #29-5）：词库管理的三级编辑页，镜像候选符号词。
+ * state.userWords = [{text,code}]，CRUD 全量重发 saveUserWords，native
+ * 落盘 json 的 user 段 + 派生 txt + 广播引擎重载。 */
+let userWordItems = null;
+let userWordEditing = -1;
+
+function renderUserWords(state) {
+    const words = state.userWords;
+    if (!words) return;
+    userWordItems = words.map(item => ({
+        text: String(item.text || ""), code: String(item.code || ""),
+    }));
+    renderUserWordList();
+    const count = $("userWordsCount");
+    if (count) count.textContent = userWordItems.length
+        ? t("userwords.count", [userWordItems.length]) : "";
+}
+
+function userWordStateReady() {
+    if (userWordItems !== null) return true;
+    setNote("userWordsNote", t("userwords.err.notReady"));
+    return false;
+}
+
+function renderUserWordList() {
+    const list = $("userWordList");
+    list.textContent = "";
+    userWordItems.forEach((item, index) => {
+        const row = document.createElement("li");
+        row.className = "phrase-row";
+        const label = document.createElement("button");
+        label.type = "button";
+        label.className = "phrase-edit";
+        const text = document.createElement("span");
+        text.className = "phrase-text";
+        text.textContent = item.text;
+        const code = document.createElement("code");
+        code.textContent = item.code;
+        label.append(text, code);
+        label.addEventListener("click", () => startUserWordEdit(index));
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "phrase-del";
+        del.textContent = "✕";
+        del.setAttribute("aria-label", t("userwords.note.deleted"));
+        del.addEventListener("click", () => {
+            if (!userWordStateReady()) return;
+            userWordItems.splice(index, 1);
+            if (userWordEditing === index) resetUserWordForm();
+            if (userWordEditing > index) userWordEditing -= 1;
+            saveUserWordsToBridge();
+            setNote("userWordsNote", t("userwords.note.deleted"));
+        });
+        row.append(label, del);
+        list.append(row);
+    });
+    $("userWordEmpty").hidden = userWordItems.length > 0;
+}
+
+function startUserWordEdit(index) {
+    userWordEditing = index;
+    $("userWordText").value = userWordItems[index].text;
+    $("userWordCode").value = userWordItems[index].code;
+    $("btnSaveUserWord").textContent = t("userwords.form.save");
+    $("btnCancelUserWordEdit").hidden = false;
+}
+
+function resetUserWordForm() {
+    userWordEditing = -1;
+    $("userWordText").value = "";
+    $("userWordCode").value = "";
+    $("btnSaveUserWord").textContent = t("userwords.form.add");
+    $("btnCancelUserWordEdit").hidden = true;
+}
+
+function saveUserWordsToBridge() {
+    const payload = userWordItems.map(item => ({ text: item.text, code: item.code }));
+    call("saveUserWords", JSON.stringify(payload));
+    const count = $("userWordsCount");
+    if (count) count.textContent = userWordItems.length
+        ? t("userwords.count", [userWordItems.length]) : "";
+}
+
+$("btnManageUserWords").addEventListener("click", () => showPage("userwords"));
+$("btnCancelUserWordEdit").addEventListener("click", resetUserWordForm);
+$("btnSaveUserWord").addEventListener("click", () => {
+    if (!userWordStateReady()) return;
+    const text = $("userWordText").value.trim();
+    const code = $("userWordCode").value.trim().toLowerCase();
+    // 校验与壳侧 saveUserWords 一致：词条非空 + 码 1-48 位字母。
+    if (!text) {
+        setNote("userWordsNote", t("userwords.form.textErr"));
+        return;
+    }
+    // 码可留空：空 = 自动注音（壳侧 autoPinyinCodes 生成主码，txt 侧展开
+    // 多音字全组合 + 双拼键序）；填了才校验格式。
+    if (code && !/^[a-z;]{1,48}$/.test(code)) {
+        setNote("userWordsNote", t("userwords.form.codeErr"));
+        return;
+    }
+    if (userWordEditing >= 0) {
+        userWordItems[userWordEditing] = { text, code };
+    } else {
+        if (code && userWordItems.some(item => item.code === code)) {
+            setNote("userWordsNote", t("userwords.err.duplicate"));
+            return;
+        }
+        if (userWordItems.length >= 200) {
+            setNote("userWordsNote", t("userwords.err.limit"));
+            return;
+        }
+        userWordItems.push({ text, code });
+    }
+    saveUserWordsToBridge();
+    resetUserWordForm();
+    setNote("userWordsNote", t("userwords.note.saved"));
+});
+
 function updateStateLabel(value) {
     const key = `update.states.${String(value || "").toUpperCase()}`;
     return I18N[uiLocale][key] || I18N.zh[key] || String(value || "");
@@ -1812,6 +2305,12 @@ $("keyOpacity").addEventListener("change", event => {
     keyOpacityDirty = false;
     call("setKeyOpacity", parseInt(event.target.value, 10));
 });
+// 按键气泡（issue #30-1）：外观页开关，默认关；广播→hello 实时作用到
+// 底下弹出的预览键盘。
+$("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
+$("bubbleLinger").addEventListener("change", event => {
+    call("setBubbleLinger", parseInt(event.target.value, 10) || 0);
+});
 // 键盘高度滑块：拖动即时反映在预览上，松手落盘；「恢复默认」写 0。
 let kbHeightDirty = false;
 $("kbHeight").addEventListener("input", event => {
@@ -1880,6 +2379,7 @@ function pickBgImage(variant) {
 }
 $("holdMs").addEventListener("change", submitFeelOptions);
 $("scrubSpeed").addEventListener("change", submitFeelOptions);
+$("flickSwap").addEventListener("change", event => call("setFlickSwap", event.target.checked));
 $("popupSnap").addEventListener("change", submitFeelOptions);
 $("modelBackend").addEventListener("change", event => call("setModelBackend", event.target.value));
 $("modelDownloadSource").addEventListener("change", event => {
@@ -1922,12 +2422,31 @@ $("btnSaveCustom").addEventListener("click", () => {
 });
 
 $("btnCustomTemplate").addEventListener("click", () => {
+    // 全功能示例（验收 2026-09-24：模板要覆盖每个特性）——三行各自一类：
+    // ①终端/Vim（单键、文本+键混排、组合键）②光标/编辑键 ③短语与符号。
     $("customJson").value = JSON.stringify({
         version: 1,
         rows: [
-            [{ t: "✓", tap: "好的", note: "" }, { t: "…", tap: "等等", note: "" }],
-            [],
-            [],
+            [
+                { t: "Esc", tap: "[esc]", note: "单键" },
+                { t: ":w", tap: ":w[enter]", note: "文本+回车" },
+                { t: "整理", tap: "[esc]ggVGD", note: "Vim 全文缩进" },
+                { t: "保存", tap: "[ctrl+s]", note: "组合键" },
+                { t: "F5", tap: "[f5]", note: "功能键" },
+            ],
+            [
+                { t: "←", tap: "[left]", note: "光标" },
+                { t: "行首", tap: "[home]" },
+                { t: "行尾", tap: "[end]" },
+                { t: "删字", tap: "[bs]" },
+                { t: "Tab", tap: "[tab]" },
+            ],
+            [
+                { t: "邮箱", tap: "me@example.com", note: "整段文本" },
+                { t: "✓", tap: "好的" },
+                { t: "→", tap: "→ " },
+                { t: "￥", tap: "￥" },
+            ],
         ],
     }, null, 2);
 });
@@ -1997,6 +2516,11 @@ $("btnExportDiagnostics").addEventListener("click", () => {
     setNote("diagNote", t("diag.exported"));
 });
 $("btnAppStore").addEventListener("click", () => call("openAppStore"));
+// #29-4：关于页开源仓库/问题反馈入口（native 侧只认内置两址）。
+$("btnGithubRepo").addEventListener("click", () => call("openGithub", "repo"));
+// #29-8：定制键盘 JSON 的官方说明文档（native 只认内置地址）。
+$("btnCustomDocs").addEventListener("click", () => call("openDocs"));
+$("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"));
 $("btnCopyAbout").addEventListener("click", () => {
     if (!lastState) return;
     call("copyText", aboutRows(lastState).map(([label, value]) => `${label}: ${value}`).join("\n"));

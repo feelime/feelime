@@ -195,6 +195,10 @@
                 <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
             </svg>
         </button>
+ <!-- 手写候选态的整行互斥（wetype 形态）：有识别候选时工具栏全部
+             让位，这一行左侧的模式标识与右侧 ×（composeClear）一起构成
+             候选行；平时隐藏，不占布局。 -->
+        <span id="inkTag" class="ink-tag" hidden data-i18n="手写">手写</span>
         <div id="candidates"></div>
  <!-- Engine lifecycle notice (mode-fallback §2.3): overlays the
              candidate strip while the engine warms up or a degrade fallback
@@ -314,17 +318,17 @@
 
     <section id="panelLayer" hidden>
         <div class="panel-head">
-            <button id="panelClose" class="tool" aria-label="关闭面板" data-i18n-aria-label="关闭面板">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
-                    <path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
-                </svg>
-            </button>
             <div class="panel-tabs" role="tablist">
                 <button class="panel-tab active" data-panel-tab="clipboard" data-i18n="剪贴板">剪贴板</button>
                 <button class="panel-tab" data-panel-tab="favorites" data-i18n="常用语">常用语</button>
             </div>
             <button id="panelClear" class="panel-action" aria-label="清空剪贴板" data-i18n-aria-label="清空剪贴板" data-i18n="清空">清空</button>
             <button id="panelManage" class="panel-action" aria-label="添加常用语" data-i18n-aria-label="添加常用语" hidden data-i18n="＋添加">＋添加</button>
+            <button id="panelClose" class="tool" aria-label="关闭面板" data-i18n-aria-label="关闭面板">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                    <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+            </button>
         </div>
         <div id="panelList"></div>
         <div id="panelEmpty" hidden></div>
@@ -388,6 +392,9 @@
         <div id="voiceSlideHint" data-i18n="上滑撤销">上滑撤销</div>
     </div>
 
+    <!-- 按键气泡（issue #30-1，外观开关默认关）：按下时在键帽上方放大
+         显示所按字符；长按弹层接管时立即让位 -->
+    <div id="keyBubble" hidden></div>
     <div id="keyPopup"><div id="keyPopupInner"></div></div>
     <!-- 三行弹层滑出卡片边界时的「松手撤销」提示（issue #9，showPopupCancelTip） -->
     <div id="keyPopupCancelTip"></div>

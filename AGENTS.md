@@ -221,6 +221,29 @@ DevTools 合成 TouchEvent 切到符号层（`<123>`）时会触发 qemu **静�
 - **WebView 限制**：`@JavascriptInterface` 代理对象无法从 JS 侧包装
   （静默 no-op）；观察桥调用要换通道（引擎事件 / 宿主编辑器 / native
   日志）。
+- **桥方法三条铁律**（2026-09-24/25 深链七轮连环修的教训，详见
+  docs/testing/verification.md §9 诊断流程）：
+  ① **注解逐个检查**：`@JavascriptInterface` 只作用于紧随的声明，
+  新增桥方法时确认注解在自己头上——漏注解 = JS 端 undefined、调用
+  TypeError 静默崩，设备上无任何报错（批四 openSetupPage 实录）。
+  ② **桥方法别与外类方法同形**：ImeBridge 的 `openSetup(token)` 与
+  外类 `openSetup(page)` 单 String 参数重叠，inner class 里裸调
+  `openSetup(page)` 被 Kotlin 静默解析到桥方法、page 被当 token 吃
+  掉——跨层同名调用一律 `this@Outer.method(...)` 显式限定。
+  ③ **门闸按语义分级**：导航类桥调用（跳自家设置页，用户明确点击、
+  无数据面）不过 token/throttle 门闸——guarded 静默拒绝 × 导航可见性
+  = 用户感知「按键失灵」；数据读写类照旧全量门闸。
+- **深链/注入脚本只用同步表达式**：`WebView.evaluateJavascript`
+  **不 await Promise**，回调拿到的是 "{}" 而非 resolve 值；需要 JS 侧
+  重试或异步结果时，把重试调度放 Kotlin（postDelayed），注入脚本保持
+  一次性同步返回（2026-09-25 pending 永不清实录）。
+- **交互链路验收要证明链路归属**：看到「设置页显示目标内容」不等于
+  「tile 链路通了」——am start 直发、上轮残留、CDP 僵尸读数都能伪造
+  同样的终态。验收多环节交互时打开诊断开关（设置页 → 诊断），按
+  verification.md §9 的 route 链对账：桥入口 → startActivity →
+  Activity 到达 → 锚命中，四点齐了才算链路通。改时序/状态语义前先
+  列全交互场景（冷启/热启/搜索/预览触发），每轮修完跑一遍清单，
+  只回归报障场景必然把新 bug 带进下一轮。
 - **环境变量注入**：仓库内不落设备序列号/主机名/绝对路径；一次性探针
   放 `scripts/verify/archive/check_*.py`，同样只读环境变量。
 - **发布前**：敏感信息扫描（主机名/IP/绝对路径/私有项目引用/私人内容

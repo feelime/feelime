@@ -10,6 +10,11 @@ enum class InputMode(val wireName: String) {
     JAPANESE("japanese"),
     FRENCH("french"),
     RUSSIAN("russian"),
+    // 手写（design/handwriting.md §1）：模式注册只为 hello/selectMode 的
+    // 模式簿记，笔迹走独立的 HandwritingEngine（recognizeInk），从不进
+    // Key/Backspace 命令契约；控制键（退格/空格/回车）由 Direct 承载
+    // （TextInputCoordinator.servesDirectly 同步起跑，无 warmup）。
+    HANDWRITING("handwriting"),
 }
 
 data class EngineStamp(

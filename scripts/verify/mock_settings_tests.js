@@ -82,6 +82,7 @@ class MockSettingsNative {
     setBottomPadLandscape(...a) { this._rec('setBottomPadLandscape', a); }
     setFeelOptions(...a) { this._rec('setFeelOptions', a); }
     setCandidateFont(...a) { this._rec('setCandidateFont', a); }
+    setInkDelay(...a) { this._rec('setInkDelay', a); }
     setFuzzyPinyinMask(...a) { this._rec('setFuzzyPinyinMask', a); }
     setAssociation(...a) { this._rec('setAssociation', a); }
     setDynamicDateTime(...a) { this._rec('setDynamicDateTime', a); }
@@ -98,6 +99,10 @@ class MockSettingsNative {
     reportPage(...a) { this._rec('reportPage', a); }
     setThemeMode(...a) { this._rec('setThemeMode', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
+    setKeyBubble(...a) { this._rec('setKeyBubble', a); }
+    setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
+    saveUserWords(...a) { this._rec('saveUserWords', a); }
+    setFlickSwap(...a) { this._rec('setFlickSwap', a); }
     setKbHeight(...a) { this._rec('setKbHeight', a); }
     previewKeyboard(...a) { this._rec('previewKeyboard', a); }
     setBgImage(...a) { this._rec('setBgImage', a); }
@@ -123,7 +128,15 @@ class SettingsWorld {
             // Keep this suite deterministic even when Node runs under an
             // English host locale; the production fallback is navigator.language.
             navigator: { language: 'zh-CN' },
+            // 搜索/锚定（验收 2026-09-24 二改）：rAF 同步执行让断言无需等
+            // 帧；flashAnchor 的清理 setTimeout 只入队不跑（flushTimers 手动
+            // 冲洗）；location.hash 由 focusSetting 写入，断言直达锚。
+            requestAnimationFrame: fn => { fn(); return 0; },
+            setTimeout: fn => { this.timers.push(fn); return this.timers.length; },
+            clearTimeout: () => {},
+            location: { hash: '' },
         };
+        this.timers = [];
         sandbox.window = sandbox;
         this.doc = loadDocument(fs.readFileSync(HTML_PATH, 'utf8'));
         sandbox.document = this.doc;
@@ -583,13 +596,13 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     const hiddenMap = () => Object.fromEntries(
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
-        home: false, appearance: true, input: true, dict: true, phrases: true, voice: true, update: true,
+        home: false, appearance: true, input: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
         backup: true, about: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
-        home: true, appearance: true, input: true, dict: true, phrases: true, voice: false, update: true,
+        home: true, appearance: true, input: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
         backup: true, about: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', world.token], 'reportPage(page name) on sub-page');
@@ -777,6 +790,64 @@ test('custom phrases: the 200-entry cap is enforced locally before the bridge ca
     equal(JSON.parse(world.lastCall('saveCustomPhrases').args[0]).length, 200, 'add passes at 200');
 });
 
+// ---- 自造词（issue #29-5）：词库管理的三级编辑页 ----
+test('user words: state renders the list; CRUD resends the full payload with the token', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, userWords: [{ text: '你好世界', code: 'nihaoshijie' }] });
+    const rows = [...world.doc.querySelectorAll('#userWordList .phrase-row')];
+    equal(rows.length, 1, 'one row rendered');
+    equal(rows[0].querySelector('.phrase-text').textContent, '你好世界', 'row text');
+    equal(rows[0].querySelector('code').textContent, 'nihaoshijie', 'row code');
+    equal(world.$('userWordEmpty').hidden, true, 'empty hint hidden with rows');
+
+    // 添加：全量重发（saveUserWords 只带 items+token，无 enabled）。
+    world.$('userWordText').value = '张伟';
+    world.$('userWordCode').value = 'ZhangWei';
+    world.$('btnSaveUserWord').click();
+    const args = world.lastCall('saveUserWords').args;
+    equal(args.length, 2, 'items + token');
+    equal(args[1], world.token, 'token');
+    equal(JSON.parse(args[0]).length, 2, 'full list resent');
+    equal(JSON.parse(args[0])[1], { text: '张伟', code: 'zhangwei' }, 'code normalized to lowercase');
+
+    // 重复码拒绝、且不发桥调用；超长码本地拒绝。
+    const calls = world.native.of('saveUserWords').length;
+    world.$('userWordText').value = 'dup';
+    world.$('userWordCode').value = 'zhangwei';
+    world.$('btnSaveUserWord').click();
+    equal(world.native.of('saveUserWords').length, calls, 'duplicate code not saved');
+    world.$('userWordText').value = 'bad';
+    world.$('userWordCode').value = 'a'.repeat(49);
+    world.$('btnSaveUserWord').click();
+    equal(world.native.of('saveUserWords').length, calls, 'over-long code rejected locally');
+
+    // 编辑与删除。
+    [...world.doc.querySelectorAll('#userWordList .phrase-edit')][0].click();
+    equal(world.$('btnSaveUserWord').textContent, '保存', 'edit mode label');
+    world.$('userWordText').value = '改';
+    world.$('btnSaveUserWord').click();
+    equal(JSON.parse(world.lastCall('saveUserWords').args[0])[0], { text: '改', code: 'nihaoshijie' }, 'edit rewrites the row');
+    [...world.doc.querySelectorAll('#userWordList .phrase-del')][0].click();
+    equal(JSON.parse(world.lastCall('saveUserWords').args[0]).length, 1, 'delete shrinks the list');
+});
+
+test('user words: CRUD is refused before the first state push; 200 cap local', () => {
+    const world = new SettingsWorld();
+    // state 未到：空副本全量重发会把用户词表清空——必须拒绝。
+    world.$('userWordText').value = 'x';
+    world.$('userWordCode').value = 'xx';
+    world.$('btnSaveUserWord').click();
+    equal(world.native.of('saveUserWords').length, 0, 'no bridge call before state');
+
+    world.push({ ...BASE_STATE, userWords: [] });
+    const filled = Array.from({ length: 200 }, (_, i) => ({ text: `t${i}`, code: `c${i}` }));
+    world.push({ ...BASE_STATE, userWords: filled });
+    world.$('userWordText').value = 'overflow';
+    world.$('userWordCode').value = 'overflow';
+    world.$('btnSaveUserWord').click();
+    equal(world.native.of('saveUserWords').length, 0, '201st entry rejected locally');
+});
+
 test('custom phrases: CRUD is refused before the first state push (no seed wipe)', () => {
     const world = new SettingsWorld();
     // Bridge hello only - no state push yet. phraseItems is still null.
@@ -859,6 +930,19 @@ test('double-pinyin key map renders the active scheme chart from dp-data.js', ()
 
 // ------------------------------------------------- feel tuning card (UI-18/19)
 
+// ---- 上下滑方向互换（issue #29-2）：feel 卡开关 ----
+test('flick swap toggle reflects state and commits setFlickSwap with the token', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    equal(world.$('flickSwap').checked, false, 'default off');
+    world.push({ ...BASE_STATE, flickSwap: true });
+    equal(world.$('flickSwap').checked, true, 'follows state');
+    const box = world.$('flickSwap');
+    box.checked = true;
+    box.listeners.find(l => l.type === 'change').handler({ target: box });
+    equal(world.lastCall('setFlickSwap').args, [true, world.token], 'commit + token');
+});
+
 test('feel card renders state values and commits each control with the token', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE, bottomPadPortrait: 24, bottomPadLandscape: 12, holdMs: 450, scrubSpeed: 2, popupSnap: 2, candidateFont: 2 });
@@ -887,6 +971,7 @@ test('feel card renders state values and commits each control with the token', (
     fire('candidateFont');
     equal(world.lastCall('setCandidateFont').args, [2, world.token], 'candidate font + token');
 });
+
 
 test('feel card defaults when state omits the values and never adopts off-whitelist ones', () => {
     const world = new SettingsWorld();
@@ -1048,6 +1133,25 @@ test('appearance page reflects state and commits themeMode / keyOpacity with the
     theme.listeners.find(l => l.type === 'change').handler({ target: { value: 'light' } });
     equal(world.lastCall('setThemeMode').args, ['light', world.token], 'theme mode commit + token');
 
+    // 按键气泡（issue #30-1）：默认关，state 回显，change 带提交。
+    const bubbleToggle = world.$('keyBubble');
+    equal(bubbleToggle.checked, false, 'key bubble defaults off');
+    world.push({ ...BASE_STATE, keyBubble: true });
+    equal(bubbleToggle.checked, true, 'key bubble follows state');
+    bubbleToggle.listeners.find(l => l.type === 'change')
+        .handler({ target: { checked: true } });
+    equal(world.lastCall('setKeyBubble').args, [true, world.token],
+        'key bubble commit + token');
+
+    // 气泡停留档（验收 2026-09-24）：回显 + 换档过桥。
+    const lingerSel = world.$('bubbleLinger');
+    world.push({ ...BASE_STATE, bubbleLinger: 400 });
+    equal(lingerSel.value, '400', 'linger echo renders the tier');
+    lingerSel.value = '600';
+    lingerSel.listeners.find(l => l.type === 'change').handler({ target: { value: '600' } });
+    equal(world.lastCall('setBubbleLinger').args, [600, world.token],
+        'linger tier commit + token');
+
     // Slider: input only marks dirty, change commits once with the parsed value.
     const slider = world.$('keyOpacity');
     const inputEvt = slider.listeners.find(l => l.type === 'input');
@@ -1130,6 +1234,66 @@ test('bridge validation errors surface on the feel note', () => {
     assert(world.$('feelNote').textContent.length > 0, 'bottom pad error also lands on the note');
     world.FeelimeSettings().onEvent({ type: 'candidateFontError', code: 'BAD_CANDIDATE_FONT' });
     assert(world.$('feelNote').textContent.length > 0, 'candidate font error lands on the note');
+});
+
+// ------------------------------------------------- 搜索与直达锚（验收二改）
+
+test('settings search surfaces setting rows with hints: 背景 → 亮色/暗色背景', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const input = world.$('settingsSearch');
+    input.value = '背景';
+    input.listeners.find(l => l.type === 'input').handler({ target: input });
+    const box = world.$('searchResults');
+    assert(!box.hidden, 'results visible');
+    const hits = [...box.querySelectorAll('.search-hit')];
+    const titles = hits.map(b => b.querySelector('.search-hit-main span').textContent);
+    equal(titles[0], '亮色背景', '亮色背景 is the first hit');
+    equal(titles[1], '暗色背景', '暗色背景 is the second hit');
+    assert(titles.indexOf('外观') < 0, 'card fallback is hidden when its rows hit');
+    // 说明小注跟着条目走（用户要看的不只是名字）。
+    assert(hits[0].querySelector('.search-hit-desc').textContent.includes('铺满整个键盘区域'),
+        'row hint rides along as the description');
+    assert(hits[0].querySelector('.search-hit-page').textContent.length > 0, 'page label shown');
+});
+
+test('search hit click routes to the exact row via focusSetting', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const input = world.$('settingsSearch');
+    input.value = '亮色背景';
+    input.listeners.find(l => l.type === 'input').handler({ target: input });
+    const hit = world.$('searchResults').querySelectorAll('.search-hit')[0];
+    hit.listeners.find(l => l.type === 'click').handler();
+    // 输入清空 + 下拉收起 + hashtag 锚到具体控件 + 整行呼吸。
+    equal(world.$('settingsSearch').value, '', 'query cleared');
+    equal(world.$('searchResults').hidden, true, 'dropdown hidden');
+    equal(world.sandbox.location.hash, '#bgImageLight', 'hashtag anchors the exact row');
+    const row = world.$('bgImageLight').closest('.row, label.row');
+    assert(row.classList.contains('search-flash'), 'the whole row breathes');
+    assert(row._scrollIntoView, 'row scrolled into view');
+    assert(!world.$('bgImageLight').closest('.page').hidden, 'appearance page shown');
+});
+
+test('focusSetting anchors rows and whole cards; unknown ids return false', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    // 行级：quickPairA（键盘 tile 深链的锚）→ 所在行整行呼吸。
+    equal(world.FeelimeSettings().focusSetting('quickPairA'), true, 'row anchor resolves');
+    const pairRow = world.$('quickPairA').closest('.row, label.row');
+    assert(pairRow.classList.contains('search-flash'), 'whole row breathes');
+    assert(pairRow._scrollIntoView, 'row scrolled into view');
+    equal(world.sandbox.location.hash, '#quickPairA', 'hashtag updated');
+    // 卡级：customTitle（定制键盘 tile 的锚）→ 整卡呼吸。
+    equal(world.FeelimeSettings().focusSetting('customTitle'), true, 'card anchor resolves');
+    const card = world.$('customTitle').closest('section.card');
+    assert(card.classList.contains('search-flash'), 'whole card breathes');
+    assert(!world.$('customTitle').closest('.page').hidden, 'input page shown for the card');
+    // 未知锚点不炸，返回 false（Kotlin 侧轮询重试依赖此契约）。
+    equal(world.FeelimeSettings().focusSetting('nope'), false, 'unknown anchor returns false');
+    // 呼吸类到点清理（定时器挂起队列手动冲洗）。
+    world.timers.splice(0).forEach(fn => fn());
+    assert(!pairRow.classList.contains('search-flash'), 'breathe class clears after the timer');
 });
 
 // ---------------------------------------------------------------- runner

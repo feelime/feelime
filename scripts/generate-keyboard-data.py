@@ -132,24 +132,33 @@ def variant_table(prism_id):
     return {k: ''.join(sorted(v)) for k, v in sorted(table.items())}
 
 
-def phrase_code_table(rules_by_scheme):
-    """pinyin syllable -> union of full spelling and every double-pinyin
-    spelling across schemes (issue #17 custom-phrase expansion). The
-    canonical syllable set is the prism's SECOND column (the syllable each
-    spelling maps to) - the first column also carries abbreviated and
-    typo-corrected spellings (sh -> sha, agn -> ang) which must never be
-    expanded as if they were syllables."""
+def phrase_code_table():
+    """pinyin syllable -> {"full": [syllable], "<scheme>": [keys...]} (issues
+    #17/#29-5 custom-phrase expansion). Read straight from each scheme's
+    prism.txt - the exact mapping the device compiles - keeping only
+    complete spellings (column 3 == '-'): abbreviated/typo shapes (a -> ang)
+    would collide with other syllables' key sequences. Scheme grouping is
+    REQUIRED for multi-syllable codes: a per-syllable union cannot be
+    concatenated (fg+mb mixes schemes into a spelling nobody types). The
+    canonical syllable set is the full-pinyin prism's SECOND column."""
     syllables = set()
     for line in (RIME_DIR / 'luna_pinyin.prism.txt').read_text().splitlines():
         parts = line.split('\t')
         if len(parts) >= 2 and parts[1] and re.fullmatch(r'[a-z]+', parts[1]):
             syllables.add(parts[1])
+    per_scheme = {scheme: {} for scheme in SCHEMAS}
+    for scheme, prism_id in SCHEMAS.items():
+        for line in (RIME_DIR / f'{prism_id}.prism.txt').read_text().splitlines():
+            parts = line.split('\t')
+            if len(parts) >= 3 and parts[2] == '-' and parts[1] in syllables:
+                per_scheme[scheme].setdefault(parts[1], set()).add(parts[0])
     table = {}
     for syllable in sorted(syllables):
-        codes = {syllable}
-        for rules in rules_by_scheme.values():
-            codes.update(spell(syllable, rules))
-        table[syllable] = sorted(codes)
+        entry = {'full': [syllable]}
+        for scheme, mapping in per_scheme.items():
+            if syllable in mapping:
+                entry[scheme] = sorted(mapping[syllable])
+        table[syllable] = entry
     return table
 
 
@@ -167,7 +176,7 @@ def main():
         maps[scheme] = keymap_rows(rules)
         tables[scheme] = variant_table(prism_id)
         digests.append(f'{scheme}={hashlib.sha256((RIME_DIR / (prism_id + ".schema.yaml")).read_bytes()).hexdigest()[:16]}')
-    phrase_codes = phrase_code_table(rules_by_scheme)
+    phrase_codes = phrase_code_table()
     generated = ('    // BEGIN GENERATED SCHEMA_MAP\n    // schema-sha256: '
                  + ' '.join(digests) + '\n')
     generated += ('    const DP_INITIAL_FINALS = '

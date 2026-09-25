@@ -298,8 +298,13 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 - **热生效**：stabledb 只在引擎生命周期加载一次（切 schema 重建会话不重
   读）。任何词条/开关变更走 `RimeTextEngine.reloadGlobal`（finalize +
   重新 init，synchronized(gate) 串行；换代 epoch 防 closeNative 对悬垂
-  handle 误 destroy）+ `recreateEngineSession`。开关关闭或词条清空=删
+  handle 误 destroy）+ `recreateEngineSession`。三段全空才删
   custom_phrase.txt（json 保留，用户数据不因开关丢失）。
+- **gating 边界（issue #29-5 起）**：json 真相源三段——`items`（符号词，
+  受「附加符号/emoji 候选」开关管）、`imported`（.dict.yaml 导入表）、
+  `user`（自造词，词库管理三级页手动维护，词+全拼码，上限 200、码
+  1–48 位字母）。后两段是词库本体：不随符号词开关消失（各用自己的
+  清空/管理入口），只有 items 参与开关 gating。
 - **恢复联动**：userdata 恢复换入 rime-user 后，按恢复的 json 幂等重派生
   txt 并广播 `CUSTOM_PHRASES_CHANGED`——设置页的 phraseItems 是全量重发
   语义的镜像副本，不刷新的话下一次保存会把旧副本写回（恢复竞态）。
@@ -657,6 +662,7 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 | 笔画五键 | librime（RimeTextEngine） | §9.3a |
 | 法语 / 俄语 | Hunspell（HunspellTextEngine） | §9.2 |
 | 日语 | Mozc（MozcTextEngine） | §9.4 |
+| 手写（单字） | 独立识别引擎（HandwritingEngine，不实现 TextEngine） | §9.7 / handwriting.md |
 
 ### 9.1 英文 Direct
 
@@ -835,6 +841,24 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   全拼、双拼。空闲态仍发 ASCII 走 punctuator。
 - 数字与 CN_ALTS 表指定符号保持半角；CN_ALTS 是第二行/第三行的副字表
   （全拼/双拼共用，表值即最终提交字形）。
+
+### 9.7 手写输入（issue #28）
+
+单字手写模式：键面 = 书写区 canvas + 控制行（退格/空格/回车/模式键），
+笔迹经独立桥 `recognizeInk(reqId, payload, token)` 识别，候选经
+`onInkCandidates` 回调整条刷新，点选 `commitText` 上屏并清笔迹。不接
+按键引擎（`engine: false`，退格/空格/回车由原生 Direct 承载），识别/
+预处理/解码参数与模型分发见 [handwriting.md](handwriting.md)。行为要点：
+
+- **strictReady**：hello 的 `engineDataReady.handwriting === true`（模型
+  落地）才有菜单入口；快捷对切换同样按就绪位挡——strictReady 与
+  `engine` 标志解耦判定。
+- 手势仲裁与键面手势解耦：书写区不挂 `bindTouch`（根级 setupFlick 只认
+  bindTouch 记下的 touchOrigin），事件 `stopPropagation` + preventDefault。
+- 停笔 600ms 触发识别；识别期间候选条保持原样；书写中再来新笔撤未决
+  请求（reqId 单调，失配结果整包丢弃）；长按书写区清空；按键通道的空
+  引擎事件不得洗掉未点选的识别候选。
+- 错误（模型未就绪 `unavailable` / 推理 `failed`）只提示，不阻塞书写。
 
 ## 10. 编辑、手势与宿主兼容
 

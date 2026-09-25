@@ -113,6 +113,7 @@ body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; 
   <button id="actOneHand">单手 关→左→右</button>
   <button id="actNumpad">九宫格</button>
   <button id="actT9">T9 键盘</button>
+  <button id="actHandwriting">手写键盘</button>
   <button id="actVoiceOverlay">语音浮层(mic)</button>
   <button id="actVoiceHold">长按语音浮层</button>
   <label class="dim">上滑 <input type="range" id="voiceSlideRange" min="0" max="100" value="0" style="vertical-align:middle;width:90px"></label>
@@ -411,6 +412,27 @@ function makeBridge() {
         },
         pageNext(rev) { log('pageNext', 'rev=' + rev); },
         pagePrevious(rev) { log('pagePrevious', 'rev=' + rev); },
+        // 手写识别（issue #28）：延时回固定候选，演示书写→候选条→点选
+        // 上屏全链路（真机由 PP-OCRv5 引擎回推）。
+        recognizeInk(reqId, payload, token) {
+            let strokes = 0;
+            try { strokes = (JSON.parse(payload).strokes || []).length; } catch (_) {}
+            log('recognizeInk', `req=${reqId} strokes=${strokes} <span class="dim">→ 模拟识别</span>`);
+            const win = frame.contentWindow;
+            setTimeout(() => {
+                if (!win || !win.Feelime) return;
+                win.Feelime.onInkCandidates({
+                    reqId,
+                    candidates: [
+                        { text: '感', score: 0.62 }, { text: '憾', score: 0.14 },
+                        { text: '城', score: 0.09 }, { text: '成', score: 0.06 },
+                        { text: '诚', score: 0.04 }, { text: '盛', score: 0.03 },
+                        { text: '晟', score: 0.012 }, { text: '咸', score: 0.008 },
+                    ],
+                    error: null,
+                });
+            }, 300);
+        },
         selectMode(mode) {
             log('selectMode', esc(mode) + ' <span class="dim">→ 重推 hello（真机原生行为）</span>');
             keyboardMode = mode;
@@ -583,7 +605,7 @@ function pushHello() {
         pageGenerationToken: 'tok-1',
         mode: keyboardMode,
         engineDataReady: { pinyin: true, 'double-pinyin': true, japanese: true,
-            french: true, russian: true, t9: true },
+            french: true, russian: true, t9: true, stroke: true, handwriting: true },
         // 键盘侧偏好（真机由原生 hello 下发；值同 previewPrefs）。
         uiLanguage: previewPrefs.uiLanguage,
         associationOn: previewPrefs.associationOn,
@@ -759,6 +781,14 @@ document.getElementById('actT9').onclick = () => {
     pushEngineState('', false);
     pushHello();
 };
+// 手写键面（issue #28）：笔迹走书写区 canvas，候选由 recognizeInk 假桥
+// 延时回推。
+document.getElementById('actHandwriting').onclick = () => {
+    keyboardMode = 'handwriting';
+    rawInput = '';
+    pushEngineState('', false);
+    pushHello();
+};
 // 单手模式（issue #15）：关→左→右循环，走键盘门面钩子。
 let oneHandLevel = 0;
 document.getElementById('actOneHand').onclick = () => {
@@ -883,6 +913,7 @@ build();
  * ?act=t9popup           T9 长按三行弹层（按住 5 键的瞬间）
  * ?act=t9track           相对跟手：手往左滑，高亮滑到数字左边的符号
  * ?act=t9cancel          虚拟光标滑出卡片：缩小变淡 + 「松手撤销」
+ * ?act=handwriting       手写键面（canvas 书写 + 模拟识别候选）
  * 可叠加 &theme=light / &locale=en。 */
 (() => {
     const params = new URLSearchParams(location.search);
@@ -898,7 +929,7 @@ build();
         touches: [new win.Touch({ identifier: 1, target: el, clientX: x, clientY: y })],
         changedTouches: [new win.Touch({ identifier: 1, target: el, clientX: x, clientY: y })],
     }));
-    setTimeout(() => {
+    const run = () => {
         const win = frame.contentWindow;
         if (!win || !win.Feelime) return;
         if (theme || locale) pushHello();
@@ -915,6 +946,8 @@ build();
             }
         } else if (act === 't9' || act === 't9popup' || act === 't9cancel' || act === 't9track') {
             document.getElementById('actT9').click();
+        } else if (act === 'handwriting') {
+            document.getElementById('actHandwriting').click();
         }
         if (act === 't9popup' || act === 't9cancel' || act === 't9track') {
             // 按住 5 键到长按阈值，弹层出现；（t9cancel）再滑出取消圈；
@@ -938,7 +971,18 @@ build();
                 }
             }, 400);
         }
-    }, 700);
+    };
+    // 键盘文档是异步 fetch 后才 srcdoc 的：固定延时在冷启动会抢在
+    // Feelime 就绪前空跑一次然后 return（?act 直达假死，表现为还是
+    // QWERTY）。轮询就绪位，上限 10s。
+    let waited = 0;
+    const waitReady = () => {
+        const win = frame.contentWindow;
+        if (win && win.Feelime) { run(); return; }
+        if ((waited += 100) > 10000) return;
+        setTimeout(waitReady, 100);
+    };
+    setTimeout(waitReady, 300);
 })();
 </script>
 </body>

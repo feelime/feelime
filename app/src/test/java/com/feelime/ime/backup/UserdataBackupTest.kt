@@ -349,16 +349,18 @@ class UserdataBackupTest {
             UserdataBackup.WEBVIEW_PREFS,
             UserdataBackup.WEBVIEW_KEY,
             JSONObject().put("rev", 2).put(
-                "values", JSONObject().put("feelime_theme", "dark"),
+                // feelime_theme 已迁原生 pref（3.45.1）：镜像白名单里只剩
+                // 纯 UI 缓存/使用痕迹键，用 scrub_speed 断言恢复语义。
+                "values", JSONObject().put("feelime_scrub_speed", "4"),
             ).toString(),
         )
         val exported = UserdataBackup(prefs, newDir()).export()
-        assertEquals("dark", exported.getJSONObject("webviewStores").getString("feelime_theme"))
+        assertEquals("4", exported.getJSONObject("webviewStores").getString("feelime_scrub_speed"))
 
         val target = FakePrefs()
         UserdataBackup(target, newDir()).restore(exported.toString().toByteArray())
         val mirror = JSONObject(target.all(UserdataBackup.WEBVIEW_PREFS)[UserdataBackup.WEBVIEW_KEY] as String)
-        assertEquals("dark", mirror.getJSONObject("values").getString("feelime_theme"))
+        assertEquals("4", mirror.getJSONObject("values").getString("feelime_scrub_speed"))
         // 目标原来没有镜像（rev 从 0 起算），恢复后 rev=1。
         assertEquals(1, mirror.getInt("rev"))
     }

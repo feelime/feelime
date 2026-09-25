@@ -51,6 +51,12 @@ const val ACTION_CUSTOM_PHRASES_CHANGED = "com.feelime.ime.CUSTOM_PHRASES_CHANGE
 /** 设置页改动键盘侧偏好（底部留白/手感参数）后通知 IME 重推 hello。 */
 const val ACTION_KEYBOARD_PREFS_CHANGED = "com.feelime.ime.KEYBOARD_PREFS_CHANGED"
 
+/** 模型集合变化（下载完成/删除）：设置页发，IME 收到重推 hello。hello 的
+ *  engineDataReady 只在键盘加载时算一次，手写模型下载落地后不重推的话，
+ *  长按菜单里的手写一直灰，用户得去键盘选择里取消再勾选才恢复（验收
+ *  2026-09-24 实录）。 */
+const val ACTION_MODELS_CHANGED = "com.feelime.ime.MODELS_CHANGED"
+
 /** 外观页预览：设置页让 IME 弹出/收起真实键盘（无编辑框场景，由 IME
  *  自己 requestShowSelf，不依赖输入焦点）。 */
 const val ACTION_PREVIEW_KEYBOARD = "com.feelime.ime.PREVIEW_KEYBOARD"
@@ -69,7 +75,13 @@ const val PREF_FEEL_SCRUB_SPEED = "feel_scrub_speed"
 const val PREF_FEEL_HOLD_MS = "feel_hold_ms"
 val FEEL_HOLD_STEPS = intArrayOf(200, 300, 350, 450, 600)
 const val PREF_FEEL_POPUP_SNAP = "feel_popup_snap"
+/** 上下滑方向互换（issue #29-2，默认关）：开=上滑大写/下滑小字符。 */
+const val PREF_FLICK_SWAP = "flick_swap"
 const val PREF_CANDIDATE_FONT = "candidate_font"
+
+fun readFlickSwap(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_FLICK_SWAP, false)
 
 /** 拼音字号档位：0=标准 1=大 2=特大（issue #8）。 */
 const val PREF_PREEDIT_FONT = "preedit_font"
@@ -77,8 +89,8 @@ const val PREF_PREEDIT_FONT = "preedit_font"
 fun readPreeditFont(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_PREEDIT_FONT, 0)
-        .takeIf { it in 0..2 }
-        ?: 0
+        .takeIf { it in 0..2 } ?: 0
+
 
 /** 拼音加粗开关（issue #8）：默认关。 */
 const val PREF_PREEDIT_BOLD = "preedit_bold"
@@ -126,12 +138,26 @@ fun readToolbarLayout(context: Context): String =
 
 /** 键帽不透明度（0-100，默认 100）：背景图开启时键帽可半透。 */
 const val PREF_KEY_OPACITY = "key_opacity"
+/** 按键气泡（issue #30-1，默认关）：按下时放大预览所按字符。 */
+const val PREF_KEY_BUBBLE = "key_bubble"
+/** 气泡停留时长（验收 2026-09-24：松手立即消失看不清）。0/250/400/600ms。 */
+const val PREF_BUBBLE_LINGER = "bubble_linger_ms"
+val BUBBLE_LINGER_STEPS = intArrayOf(0, 250, 400, 600)
+
+fun readBubbleLinger(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_BUBBLE_LINGER, 400)
+        .takeIf { it in BUBBLE_LINGER_STEPS.asList() } ?: 400
 const val KB_HEIGHT_PORTRAIT_KEY = "keyboard_height_portrait"
 
 fun readKeyOpacity(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_KEY_OPACITY, 100)
         .let { if (it in 0..100) it else 100 }
+
+fun readKeyBubble(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_KEY_BUBBLE, false)
 
 /** 键盘高度（竖屏存值；pref 物理px，对外统一转 CSS px；0=默认）。 */
 fun readKbHeightPortrait(context: Context): Int {
@@ -143,10 +169,12 @@ fun readKbHeightPortrait(context: Context): Int {
 }
 
 /** 竖屏高度滑块边界（CSS px，与 FeelimeService.setKeyboardHeight 的
- *  clamp 同源：min 210dp，max 竖屏可用高度 45%）。 */
+ *  clamp 同源：min 226（round-6 起竖屏内容下限，含手写 chrome+96；
+ *  旧值 210 低于 native 钳制，滑杆 210~225 会被暗改到 226——滑杆
+ *  读数与键盘实际高度对不上），max 竖屏可用高度 45%）。 */
 fun readKbHeightBounds(context: Context): Pair<Int, Int> {
     val metrics = context.resources.displayMetrics
-    val min = 210
+    val min = 226
     val max = ((metrics.heightPixels * 45 / 100) / metrics.density).toInt()
     return Pair(min, maxOf(min, max))
 }
@@ -305,6 +333,11 @@ class SettingsBridge(
         fun requestMicPermission()
         fun showImeEnableSettings()
         fun showImePicker()
+        /** 页面 JS 完全就绪（ready ping）——tile 深链的锚定路由在这个
+         *  时机重放一次：冷启动 WebView 加载慢时 onPageFinished 后的
+         *  轮询窗口可能在 JS 就绪前耗尽（用户实测「第一次只到首页，
+         *  第二次才定位」的根因）。 */
+        fun onSettingsPageReady() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a verified model archive. */
         fun openModelDocument(modelId: String)
         /** Launch ACTION_OPEN_DOCUMENT for a local keyboard ZIP package. */
@@ -417,6 +450,7 @@ class SettingsBridge(
                 )
             }
             pushState()
+            if (error.isNullOrBlank()) notifyModelsChanged()
         }
 
         override fun onStatus(modelId: String, status: String) {
@@ -525,6 +559,11 @@ class SettingsBridge(
                 })
                 put("importedCount", state.imported.size)
             })
+            .put("userWords", JSONArray().apply {
+                com.feelime.ime.engine.CustomPhraseStore.load(context).user.forEach { (text, code) ->
+                    put(JSONObject().put("text", text).put("code", code))
+                }
+            })
             .put("associationOn", readAssociation(context))
             .put("dynamicDateTimeOn", readDynamicDateTime(context))
             .put("keySound", readKeySoundEnabled(context))
@@ -545,6 +584,11 @@ class SettingsBridge(
             .put("bgImageLightSource", readBgImageSource(context, "light"))
             .put("bgImageDarkSource", readBgImageSource(context, "dark"))
             .put("keyOpacity", readKeyOpacity(context))
+            .put("keyBubble", readKeyBubble(context))
+            .put("bubbleLinger", readBubbleLinger(context))
+            // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
+            // 点开开关后 pushState 一到就弹回——「开了看不出开」。
+            .put("flickSwap", readFlickSwap(context))
             .put("themeMode", readThemeMode(context))
             .put("kbHeightPortrait", readKbHeightPortrait(context))
             .apply {
@@ -569,6 +613,10 @@ class SettingsBridge(
                 .put("enabled", customKeysStore.enabled())
                 .put("summary", customKeysStore.summary(context))
                 .put("json", customKeysStore.json()))
+            // 键盘选择/快捷切换对（快捷设置 tile 直达设置页管理）：值是
+            // 键盘 localStorage 的 JSON 字符串（["pinyin",...]），空串=未设
+            // 置（键盘用默认菜单）。
+            .put("keyboards", keyboardsState())
             .put("update", JSONObject()
                 // Keep the absence of a preference distinct from an explicit
                 // empty value: a fresh install shows the official source,
@@ -801,6 +849,7 @@ class SettingsBridge(
     fun ready(token: String) = guarded(token) {
         pushState()
         maybeAutoCheck()
+        host.onSettingsPageReady()
     }
 
     @JavascriptInterface
@@ -965,37 +1014,7 @@ class SettingsBridge(
         pushState()
     }
 
-    /** 拼音加粗开关（issue #8）：默认关。 */
-    @JavascriptInterface
-    fun setPreeditBold(on: Boolean, token: String) = guarded(token) {
-        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putBoolean(PREF_PREEDIT_BOLD, on).apply()
-        context.sendBroadcast(
-            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-        )
-        pushState()
-    }
 
-    /** 单手模式（issue #15）：0=关 1=左手 2=右手。 */
-    @JavascriptInterface
-    fun setOneHandMode(mode: Int, token: String) = guarded(token) {
-        if (mode !in 0..2) {
-            pushEvent(
-                JSONObject()
-                    .put("type", "oneHandError")
-                    .put("code", "BAD_ONE_HAND")
-                    .put("message", t(context, "单手模式选项无效", "Invalid one-hand option")),
-            )
-            pushState()
-            return@guarded
-        }
-        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_ONE_HAND, mode).apply()
-        context.sendBroadcast(
-            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-        )
-        pushState()
-    }
 
     /** 单手压缩比例：0=默认让位 15/25/35=让位占屏宽百分比。 */
     @JavascriptInterface
@@ -1079,6 +1098,17 @@ class SettingsBridge(
         pushState()
     }
 
+    /** 上下滑方向互换（issue #29-2，默认关）。 */
+    @JavascriptInterface
+    fun setFlickSwap(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_FLICK_SWAP, on).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
     /** 键帽不透明度（0-100）。 */
     @JavascriptInterface
     fun setKeyOpacity(pct: Int, token: String) = guarded(token) {
@@ -1090,6 +1120,30 @@ class SettingsBridge(
         )
         pushState()
     }
+
+    /** 按键气泡开关（issue #30-1，默认关）。 */
+    @JavascriptInterface
+    fun setKeyBubble(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_KEY_BUBBLE, on).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 气泡停留时长（验收 2026-09-24）：0=立即隐藏，250/400/600ms 档。 */
+    @JavascriptInterface
+    fun setBubbleLinger(ms: Int, token: String) = guarded(token) {
+        if (ms !in BUBBLE_LINGER_STEPS.asList()) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_BUBBLE_LINGER, ms).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
 
     /** 外观页预览：让 IME 显示/收起真实键盘（service 自己 show self）。 */
     @JavascriptInterface
@@ -1243,7 +1297,75 @@ class SettingsBridge(
         // 手管 items 全量重发不触碰导入段（imported 由导入/清空入口专管）。
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
         com.feelime.ime.engine.CustomPhraseStore.save(
-            context, enabled, items, imported = state.imported,
+            context, enabled, items, imported = state.imported, user = state.user,
+        )
+        context.sendBroadcast(
+            Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 自造词（issue #29-5）：词库管理里手动维护的用户词表，独立于
+     *  符号词（items）与导入表（imported），不受符号词开关 gating。
+     *  校验：text 非空、code 1..48 位字母（真实拼音串比符号码长），
+     *  上限 200 条。 */
+    @JavascriptInterface
+    fun saveUserWords(itemsJson: String, token: String) = guarded(token) {
+        val items = ArrayList<Pair<String, String>>()
+        val parseError = try {
+            val array = JSONArray(itemsJson)
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val text = item.optString("text").trim()
+                val code = item.optString("code").trim().lowercase()
+                if (text.isEmpty()) continue
+                if (code.isEmpty()) {
+                    // 自动注音（#29-5 验收）：码留空=只输词。user 段只存主码
+                    // （词频最高组合，UI 一词一行）；deriveTxt 落 txt 时对
+                    // user 段做 autoPinyinCodes 全组合展开（多音字）再叠双
+                    // 拼键序。含无法注音字符（字母/数字）回落为要求手输码。
+                    val auto = com.feelime.ime.engine.CustomPhraseStore.autoPinyinCodes(context, text)
+                    if (auto.isEmpty()) {
+                        pushEvent(
+                            JSONObject()
+                                .put("type", "userWordsError")
+                                .put("code", "AUTO_PINYIN_FAILED")
+                                .put("message", t(context,
+                                    "「" + text.take(8) + "」含无法自动注音的字符，请手动填写输入码",
+                                    "\"" + text.take(8) + "\" needs a manual code (non-Han characters)")),
+                        )
+                        return@guarded
+                    }
+                    items.add(text to auto[0])
+                    continue
+                }
+                if (!Regex("^[a-z;]{1,48}$").matches(code)) {
+                    pushEvent(
+                        JSONObject()
+                            .put("type", "userWordsError")
+                            .put("code", "BAD_PHRASE_CODE")
+                            .put("message", t(context, "输入码需为 1-48 位字母", "Code must be 1-48 letters")),
+                    )
+                    return@guarded
+                }
+                items.add(text to code)
+            }
+            false
+        } catch (_: Exception) {
+            true
+        }
+        if (parseError || items.size > 200) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "userWordsError")
+                    .put("code", "BAD_PHRASES_PAYLOAD")
+                    .put("message", t(context, "词表格式错误", "Invalid phrase list")),
+            )
+            return@guarded
+        }
+        val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+        com.feelime.ime.engine.CustomPhraseStore.save(
+            context, state.enabled, state.items, imported = state.imported, user = items,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1275,7 +1397,7 @@ class SettingsBridge(
             }
             val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
             com.feelime.ime.engine.CustomPhraseStore.save(
-                context, state.enabled, state.items, imported = result.items,
+                context, state.enabled, state.items, imported = result.items, user = state.user,
             )
             context.sendBroadcast(
                 Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1302,7 +1424,7 @@ class SettingsBridge(
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
         if (state.imported.isEmpty()) return@guarded
         com.feelime.ime.engine.CustomPhraseStore.save(
-            context, state.enabled, state.items, imported = emptyList(),
+            context, state.enabled, state.items, imported = emptyList(), user = state.user,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1744,6 +1866,14 @@ class SettingsBridge(
         val model = modelStore.manifest().models.firstOrNull { it.id == id } ?: return@guarded
         modelStore.delete(model)
         pushState()
+        notifyModelsChanged()
+    }
+
+    /** 见 [ACTION_MODELS_CHANGED]：IME 重推 hello 让 engineDataReady 跟上。 */
+    private fun notifyModelsChanged() {
+        context.sendBroadcast(
+            android.content.Intent(ACTION_MODELS_CHANGED).setPackage(context.packageName),
+        )
     }
 
     @JavascriptInterface
@@ -1826,6 +1956,73 @@ class SettingsBridge(
         }
         customKeysStore.save(json, enabled)
         pushState()
+        // 验收 2026-09-24：不发广播键盘 hello 不重推，localStorage 镜像不
+        // 刷新，符号页的「定制」tab 要等键盘进程重启才出现。
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+    }
+
+    /** 快捷设置入口外移（验收 2026-09-24）：键盘选择（长按菜单内容）与
+     *  快捷切换对在设置页管理。真相源仍是键盘 localStorage + pushStores
+     *  原生镜像（备份走原生）；设置页写同一镜像（rev+1），广播后键盘
+     *  hello 的 pullStores 按 rev 落地。 */
+    @JavascriptInterface
+    fun saveKeyboardSelection(menuJson: String, pairJson: String, token: String) = guarded(token) {
+        fun allStrings(json: String): Boolean = try {
+            val array = JSONArray(json)
+            var ok = true
+            for (i in 0 until array.length()) {
+                if (array.opt(i) !is String) ok = false
+            }
+            ok
+        } catch (_: Exception) {
+            false
+        }
+        val menuOk = allStrings(menuJson)
+        val pairOk = allStrings(pairJson)
+        if (!menuOk || !pairOk) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "keyboardsError")
+                    .put("code", "BAD_KEYBOARD_SELECTION")
+                    .put("message", t(context, "键盘选择数据格式错误", "Invalid keyboard selection data")),
+            )
+            return@guarded
+        }
+        val values = JSONObject()
+            .put("feelime_menu_modes", menuJson)
+            .put("feelime_quick_pair", pairJson)
+        val mirror = storesMirror()
+        val merged = mirror.optJSONObject("values") ?: JSONObject()
+        for (key in values.keys()) merged.put(key, values.get(key))
+        com.feelime.ime.backup.AndroidPrefs(context).put(
+            com.feelime.ime.backup.UserdataBackup.WEBVIEW_PREFS,
+            com.feelime.ime.backup.UserdataBackup.WEBVIEW_KEY,
+            JSONObject()
+                .put("rev", mirror.optInt("rev", 0) + 1)
+                .put("values", merged)
+                .toString(),
+        )
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    private fun keyboardsState(): JSONObject {
+        val values = storesMirror().optJSONObject("values") ?: JSONObject()
+        return JSONObject()
+            .put("menuModes", values.optString("feelime_menu_modes", ""))
+            .put("quickPair", values.optString("feelime_quick_pair", ""))
+    }
+
+    /** webview stores 原生镜像（与 ImeBridge.pushStores 同一存储）。 */
+    private fun storesMirror(): JSONObject {
+        val raw = com.feelime.ime.backup.AndroidPrefs(context)
+            .all(com.feelime.ime.backup.UserdataBackup.WEBVIEW_PREFS)
+            .get(com.feelime.ime.backup.UserdataBackup.WEBVIEW_KEY) as? String
+        return runCatching { JSONObject(raw ?: "{}") }.getOrDefault(JSONObject())
     }
 
     @JavascriptInterface
@@ -1941,6 +2138,37 @@ class SettingsBridge(
                 KeyboardUpdateCenter.notifyUpdated(context)
             }.onFailure { Log.w(TAG, "restoreBuiltIn failed", it) }
             pushState()
+        }
+    }
+
+    /** 定制键盘 JSON 说明文档（#29-8）：固定官方地址。 */
+    @JavascriptInterface
+    fun openDocs(token: String) = guarded(token) {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://feelime.github.io/custom-keyboard.html"),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
+    /** 关于页开源仓库入口（#29-4）：只认内置两址（仓库/issues），
+     *  不收任意 URL——设置页 WebView 不该能驱动任意 intent 跳转。 */
+    @JavascriptInterface
+    fun openGithub(page: String, token: String) = guarded(token) {
+        val url = when (page) {
+            "issues" -> "https://github.com/feelime/feelime/issues"
+            else -> "https://github.com/feelime/feelime"
+        }
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(url),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
     }
 

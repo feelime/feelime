@@ -167,8 +167,9 @@ main { max-width: 680px; margin: 0 auto; }
     display: inline-grid;
     place-items: center;
     flex: 0 0 auto;
-    width: 36px;
-    height: 36px;
+    /* 44px 触控标准（验收 2026-09-24：36px 太窄，误触率高）。 */
+    width: 44px;
+    height: 44px;
     border: 1px solid var(--line);
     border-radius: 5px;
     background: var(--panel);
@@ -416,7 +417,10 @@ textarea { resize: vertical; min-height: 96px; font-family: var(--mono); font-si
     margin: 0;
     border: 1px solid var(--line);
     border-radius: 999px;
-    background: var(--pill);
+    /* OFF 态轨道必须可辨：--pill 在浅色主题是纯白，白底白胶囊只剩一圈
+     * 细边，「看不出开还是关」（flickSwap 默认关，验收 2026-09-24 实录）。
+     * --line 两主题都是可见中性色。 */
+    background: var(--line);
     position: relative;
     transition: background .15s ease, border-color .15s ease;
 }
@@ -672,3 +676,77 @@ details summary {
     font-size: 14px;
 }
 .phrase-del:active { background: var(--pressed); border-radius: 8px; }
+
+/* 设置搜索（验收 2026-09-24）：hero 下的胶囊搜索框（卡片同源配色）+
+ * 下拉结果卡 + 跳转锚的呼吸灯提醒。 */
+.search-box { padding: 0 16px 6px; position: relative; max-width: 680px; margin: 0 auto; }
+.search-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card-bg);
+    box-shadow: 0 2px 9px #0002;
+}
+.search-field:focus-within { border-color: var(--focus-ring); }
+.search-icon { color: var(--card-sub); flex: none; }
+.search-field input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--card-text);
+    outline: none;
+}
+.search-field input::placeholder { color: var(--card-sub); }
+.search-field input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.search-results {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    top: calc(100% - 2px);
+    z-index: 30;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / .25);
+    overflow: hidden;
+}
+.search-hit {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 14px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+}
+.search-hit:active { background: var(--pressed); }
+.search-hit + .search-hit { border-top: 1px solid var(--line); }
+.search-hit small { color: var(--muted); flex: none; }
+/* 结果条目：左侧主列（标题 + 说明小注），右侧所属页。 */
+.search-hit-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.search-hit-desc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+.search-empty { padding: 10px 14px; margin: 0; color: var(--muted); }
+
+/* 跳转定位的呼吸灯：整个设置项背景呼吸三次（每次渐亮渐隐约 .6s），
+ * inset 描边勾出整行边界，比只亮文字区域醒目。 */
+@keyframes search-breathe {
+    0%, 100% { background: transparent; box-shadow: inset 0 0 0 2px transparent; }
+    50% {
+        background: rgb(35 200 144 / .30);
+        box-shadow: inset 0 0 0 2px rgb(35 200 144 / .40);
+    }
+}
+.search-flash { animation: search-breathe .62s ease-in-out 3; border-radius: 8px; }

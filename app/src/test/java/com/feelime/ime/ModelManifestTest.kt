@@ -92,6 +92,42 @@ class ModelManifestTest {
         assertEquals(0, ModelManifest.parse(json).models.size)
     }
 
+    /** 手写条目（design/handwriting.md §5.3）：urls 首位是 gitee 镜像
+     * （国内直连，默认按 manifest 顺序直用），downloadPath 与 gitee
+     * release 资产名对齐。 */
+    @Test
+    fun repoManifestHandwritingEntryPinsDistributionShape() {
+        val repo = java.io.File("../models/manifest.json")
+        if (!repo.isFile) return // 非 app/ 工作目录的运行环境跳过
+        val manifest = ModelManifest.parse(repo.readText())
+        val model = manifest.byRole("handwriting-rec")
+            ?: return // 旧分支无此条目
+        // 模型 v2（issue #32）：Melnyk-Net int8，唯一权威源是我们自己转换
+        // 的产物，gitee release 是一手分发位（无上游直链）。
+        assertEquals("melnyk-net-int8", model.id)
+        assertEquals(listOf("model.onnx"), model.files.map { it.path.substringAfter('/') })
+        assertTrue(model.verified)
+        assertTrue(model.urls.first().startsWith("https://gitee.com/"))
+        assertTrue(model.urls.first().endsWith("/"))
+        assertEquals(
+            "https://gitee.com/feelime/models/releases/download/handwriting-v2/model.onnx",
+            model.urls.first() + model.files.first().downloadPath,
+        )
+        assertEquals(6613389L, model.files.first().bytes)
+        assertEquals(
+            "04bf65859482f2e9f4836fb872c5a881940a8f6f81bd0994542187617793e932",
+            model.files.first().sha256,
+        )
+    }
+
+    @Test
+    fun modelDownloadSourceAcceptsGitee() {
+        assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue("gitee"))
+        assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue("GITEE"))
+        assertEquals(ModelDownloadSource.HF_MIRROR, ModelDownloadSource.fromValue(null))
+        assertEquals(ModelDownloadSource.HF_MIRROR, ModelDownloadSource.fromValue("nonsense"))
+    }
+
     @Test
     fun modelBackendUsesStableWireValuesAndChannelDefaults() {
         assertEquals(ModelBackend.AUTO, ModelBackend.fromValue("AUTO"))

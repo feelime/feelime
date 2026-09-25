@@ -41,13 +41,15 @@ import java.util.ArrayDeque
 import org.json.JSONArray
 import org.json.JSONObject
 
-class FeelimeService : InputMethodService(), AsrEngine.Listener {
+class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngine.Listener {
     private val main = Handler(Looper.getMainLooper())
     private val background = java.util.concurrent.Executors.newSingleThreadExecutor()
     /** getExtractedText is a synchronous editor RPC. Keep it off the IME
      * main thread; one scrub call handles its whole bounded delta. */
     private val cursorQueryExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private lateinit var engine: AsrEngine
+    /** 手写识别（design/handwriting.md）：独立于 EngineCoordinator，见 §5.1。 */
+    private var handwritingEngine: HandwritingEngine? = null
     private lateinit var editorPort: InputConnectionEditorPort
     private lateinit var coordinator: TextInputCoordinator
     private lateinit var clipboardStore: com.feelime.ime.panel.ClipboardStore
@@ -174,6 +176,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             if (intent?.action != ACTION_USERDATA_RESTORED) return
             applyRestoredUserdata()
+        }
+    }
+
+    /** 模型集合变化（下载完成/删除，[ACTION_MODELS_CHANGED]）：重推 hello
+     *  让 engineDataReady 重算——手写是 strictReady，模型落地后不重推的话
+     *  长按菜单的手写一直灰，用户得去键盘选择里取消再勾选才恢复（验收
+     *  2026-09-24 实录）。手写引擎 lazy 加载模型，无需会话重建。 */
+    private val modelsChangedReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action != ACTION_MODELS_CHANGED) return
+            onMain { pushBridgeHello() }
         }
     }
 
@@ -335,7 +348,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
                     val state = com.feelime.ime.engine.CustomPhraseStore.load(applicationContext)
                     com.feelime.ime.engine.CustomPhraseStore.save(
                         applicationContext, state.enabled, state.items,
-                        imported = state.imported,
+                        imported = state.imported, user = state.user,
                     )
                 }
                 sendBroadcast(
@@ -371,6 +384,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
 
     /** Language data readiness for the HTML mode menu. */
     private fun engineDataReady(mode: String): Boolean {
+        // 手写（design/handwriting.md §3）不在 engine-data：就绪 = 模型
+        // 文件已落地（assets 或 ModelStore 下载完成），缺失当不可用。
+        if (mode == com.feelime.ime.engine.InputMode.HANDWRITING.wireName) {
+            return handwritingEngine?.isModelAvailable() == true
+        }
         val inputMode = InputModeBridge.fromWire(mode) ?: com.feelime.ime.engine.InputMode.DIRECT
         return com.feelime.ime.engine.EngineDataStore.isModeReady(applicationContext, inputMode)
     }
@@ -400,6 +418,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         UiLanguage.preferences(this)
             .registerOnSharedPreferenceChangeListener(uiLanguageListener)
         engine = AsrEngine(applicationContext, this)
+        // 手写（design/handwriting.md §5.1）：独立引擎，onCreate 建实例、
+        // 模型在首次识别时后台懒加载。
+        handwritingEngine = HandwritingEngine(applicationContext, this)
         editorPort = InputConnectionEditorPort(this)
         clipboardStore = com.feelime.ime.panel.ClipboardStore(applicationContext)
         favoritesStore = com.feelime.ime.panel.FavoritesStore(applicationContext)
@@ -428,6 +449,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         registerReceiver(
             dpSchemeReceiver,
             android.content.IntentFilter(ACTION_DP_SCHEME_CHANGED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        registerReceiver(
+            modelsChangedReceiver,
+            android.content.IntentFilter(ACTION_MODELS_CHANGED),
             androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         registerReceiver(
@@ -659,7 +685,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
                 }
             }
             WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-            loadUrl(KEYBOARD_URL)
+            // 首帧几何注入（query）：--band/--safe-bottom 的 CSS 初值。
+            // 不注入时 JS 首帧的 --band=0，#softKeyboard 画满整个 IME 窗口
+            // （含 200dp 弹层带），hello 到达后才缩回——真机首载闪一下
+            // 「更高的键盘」（ace 录屏定罪，frame1-7 比稳态高 ~180px+）。
+            // hello 仍按权威值覆盖；query 只救首帧。
+            loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
         }
         keyboardView = view
         // v3 埋点（issue #13）：窗口焦点变化在 DiagWebView.onWindowFocusChanged
@@ -925,6 +956,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         // close any live engine session before tearing down.
         runCatching { coordinator.close() }
         engine.release()
+        handwritingEngine?.release()
+        handwritingEngine = null
         background.shutdown()
         cursorQueryExecutor.shutdownNow()
         keyboardView?.apply {
@@ -948,7 +981,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         assetStore = KeyboardAssetStore(active.dir)
         pageToken = newToken()
         pageReady = false
-        keyboardView?.loadUrl(KEYBOARD_URL)
+        keyboardView?.loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
     }
 
     private fun startVoice() = onMain {
@@ -1432,21 +1465,27 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         // accept it before the system hands the editor to another IME.  The
         // coordinator also resets its engine session, so returning to this
         // IME cannot replay the same composition a second time.
+        // 验收 2026-09-24：工具栏切换键不再「有下家就直接静默切过去」——
+        // 静默切换用户感知是按键失灵（键盘突然没了）。恒弹系统输入法
+        // 选择器，与设置页 pickIme 的 showImePicker 对齐；选择权留给用户。
         coordinator.acceptCurrentComposition {
-            if (shouldOfferSwitchingToNextInputMethod()) {
-                switchToNextInputMethod(false)
-            } else {
-                getSystemService(InputMethodManager::class.java).showInputMethodPicker()
-            }
+            getSystemService(InputMethodManager::class.java).showInputMethodPicker()
         }
     }
 
-    private fun openSetup() = onMain {
+    private fun openSetup(page: String = "") = onMain {
         startActivity(
             Intent(this, SetupActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(SetupActivity.SETUP_LAUNCH_EXTRA, android.os.SystemClock.elapsedRealtimeNanos()),
+                .putExtra(SetupActivity.SETUP_LAUNCH_EXTRA, android.os.SystemClock.elapsedRealtimeNanos())
+                // 快捷设置 tile 直达设置页对应设置行（验收 2026-09-24
+                // 二改）：quickPairA=快捷切换对、menuModesRow=长按菜单、
+                // customTitle=定制键盘卡（设置页 focusSetting 负责翻页
+                // + 锚定 + 呼吸提醒）。
+                .putExtra(SetupActivity.SETUP_PAGE_EXTRA, page),
         )
+        // route 诊断链 2/3：startActivity 发出（page 空 = 只开首页）。
+        Diagnostics.log("route", "openSetup startActivity page=$page")
     }
 
     /** System dark/light for the keyboard's auto theme (WebView prefers-
@@ -1489,8 +1528,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
  // The transparent popup band above the keyboard.
             .put("floatBand", (floatBandPx() / resources.displayMetrics.density).toInt())
             .put("heightDefault", (minOf(dp(272), if (landscape) realHeightPixels() / 2
-                else resources.displayMetrics.heightPixels * 45 / 100) /
+                else (realHeightPixels() * 45) / 100) /
                 resources.displayMetrics.density).toInt())
+            // 高度真相源（round-6）：native pref 是唯一事实，hello 下发
+            // 当前方向的已存高度（css px）——JS 的 localStorage 镜像在
+            // force-stop 丢写后会与 pref 分裂（真机实录），读取一律以
+            // native 为准，localStorage 仅作旧包兜底。
+            .put(
+                "storedKbHeight",
+                (storedKeyboardHeight() / resources.displayMetrics.density).toInt(),
+            )
             // The height-card drag range must follow the REAL screen
             // ceiling (same formula as setKeyboardHeight's clamp). The WebView's
             // own innerHeight rides the keyboard (band + keys), so deriving the
@@ -1498,14 +1545,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
             // min).
             .put(
                 "heightFloor",
-                if (landscape) 170 else 210,
+                // round-6: portrait floor 对齐手写内容下限（chrome+96≈226），
+                // 拼音/手写能调到的最小值一致，切换不跳高度。
+                if (landscape) 170 else 226,
             )
             .put(
                 "heightCeil",
                 (
                     (
                         if (landscape) realHeightPixels() / 2
-                        else (resources.displayMetrics.heightPixels * 45) / 100
+                        else (realHeightPixels() * 45) / 100
                     ) / resources.displayMetrics.density
                 ).toInt(),
             )
@@ -1523,6 +1572,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
             // px inside this WebView; numbers pass through as-is.
             .put("bottomPad", bottomPadDp())
             .put("scrubSpeed", feelScrubSpeed())
+            .put("flickSwap", readFlickSwap(this))
             .put("holdMs", feelHoldMs())
             .put("popupSnap", feelPopupSnap())
             .put("candidateFont", candidateFont())
@@ -1536,6 +1586,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
             .put("bgImageLightSource", readBgImageSource(this, "light"))
             .put("bgImageDarkSource", readBgImageSource(this, "dark"))
             .put("keyOpacity", readKeyOpacity(this))
+            .put("keyBubble", readKeyBubble(this))
+            .put("bubbleLinger", readBubbleLinger(this))
             .put("themeMode", readThemeMode(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("associationOn", readAssociation(this))
@@ -1547,7 +1599,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
             .put(
                 "engineDataReady",
                 JSONObject().apply {
-                    listOf("pinyin", "double-pinyin", "t9", "stroke", "japanese", "french", "russian").forEach { mode ->
+                    listOf("pinyin", "double-pinyin", "t9", "stroke", "handwriting", "japanese", "french", "russian").forEach { mode ->
                         put(mode, engineDataReady(mode))
                     }
                 },
@@ -1799,6 +1851,27 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         pushState(message = t(this, message, english), messageCode = "ASR_ERROR")
     }
 
+    /** 手写识别回调（design/handwriting.md §3）：后台线程 → 主线程推送。
+     *  reqId 单调，JS 侧与最新请求不符时丢弃。 */
+    override fun onInkResult(reqId: Int, candidates: List<InkCandidate>, error: String?) = onMain {
+        val payload = JSONObject()
+            .put("reqId", reqId)
+            .put(
+                "candidates",
+                JSONArray().apply {
+                    candidates.forEach { candidate ->
+                        put(
+                            JSONObject()
+                                .put("text", candidate.text)
+                                .put("score", candidate.score.toDouble()),
+                        )
+                    }
+                },
+            )
+            .put("error", error ?: JSONObject.NULL)
+        evaluate("window.Feelime && window.Feelime.onInkCandidates && window.Feelime.onInkCandidates($payload)")
+    }
+
     inner class ImeBridge {
         /** JS 侧诊断上报（issue #13 v3）：键盘页的 rAF/timer 双通道心跳
          *  与触摸到达计数。诊断未开启时 Diagnostics.log 自行丢弃，JS 侧
@@ -2006,6 +2079,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
                     keyboardPrefs.edit().putInt(PREF_KEY_OPACITY, pct).apply()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
+                "keyBubble" -> {
+                    keyboardPrefs.edit().putBoolean(PREF_KEY_BUBBLE, value == "1" || value == "true").apply()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
                 "themeMode" -> {
                     // 外观页的三态主题（设置 app 写、键盘 hello 读回应用）；
                     // 键盘侧 pushStores 会把 tile/工具的改动同步回这里。
@@ -2050,6 +2127,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
                     val hold = value.toIntOrNull()
                     if (hold == null || hold !in FEEL_HOLD_STEPS) return@guarded
                     keyboardPrefs.edit().putInt(PREF_FEEL_HOLD_MS, hold).apply()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "flickSwap" -> {
+                    keyboardPrefs.edit().putBoolean(PREF_FLICK_SWAP, value == "1" || value == "true").apply()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "popupSnap" -> {
@@ -2270,6 +2351,20 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         @JavascriptInterface
         fun startVoice(token: String) = guarded(token, limited = false) { startVoice() }
 
+        /** 手写识别（design/handwriting.md §3）：payload JSON
+         * {"w":..,"h":..,"strokes":[[[x,y],..],..]}。方法在 JavaBridge
+         * 线程被调，guarded 转主线程后交引擎（引擎内部再转后台线程推理，
+         * 立即返回；结果只经 onInkResult 回调）。 */
+        @JavascriptInterface
+        fun recognizeInk(reqId: Int, payload: String, token: String) =
+            guarded(token, limited = false) {
+                if (reqId < 0 || payload.length > MAX_JSON_CHARS) {
+                    rejectedCalls += 1
+                    return@guarded
+                }
+                handwritingEngine?.recognizeInk(reqId, payload)
+            }
+
         @JavascriptInterface
         fun stopVoice(token: String) = guarded(token, limited = false) { stopVoice() }
 
@@ -2306,16 +2401,21 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
             }
             val metrics = resources.displayMetrics
             val physical = (heightCssPx * metrics.density).toInt()
-            val available = metrics.heightPixels
  // C: the old landscape budget (screen/3) sat BELOW the
             // 170dp floor, so coerceIn(min, min) pinned every drag to the
             // same value - the gesture read as dead. Half the screen lifts
             // the ceiling back above the floor.
-            val min = dp(if (landscape) 170 else 210)
+            // round-6: 与 hello heightFloor 同源（226），见上方注释。
+            val min = dp(if (landscape) 170 else 226)
  // the landscape ceiling is a fraction of the REAL
             // screen (app-space heightPixels drops the system bars and landed
             // BELOW the keyboard's content minimum - bottom row clipped).
-            val max = if (landscape) realHeightPixels() / 2 else (available * 45) / 100
+            // round-8: 竖屏 45% 同理必须用真屏——IME 上下文的 heightPixels
+            // 是 app-space（≈2267，比真屏少状态栏），45% 只有 340css：设置
+            // 页滑杆按真屏给到 361，这里会把回推值钳回 340 并 debounce 写
+            // 回 pref，滑杆 360/键盘 340 的「调节不生效」就是这么来的
+            // （真机实录：361 落盘 1083 被回写 1020 覆盖）。
+            val max = if (landscape) realHeightPixels() / 2 else (realHeightPixels() * 45) / 100
             val clamped = physical.coerceIn(min, maxOf(min, max))
             if (clamped != keyboardHeightOverride) {
                 keyboardHeightOverride = clamped
@@ -2348,7 +2448,38 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
         fun hideKeyboard(token: String) = guarded(token, limited = false) { onMain { requestHideSelf(0) } }
 
         @JavascriptInterface
-        fun openSetup(token: String) = guarded(token, limited = false) { openSetup() }
+        fun openSetup(token: String) = onMain { openSetup() }
+        // 2026-09-25 定罪（diag_trace.log 实录）：openSetupPage 走 guarded
+        // 时被 token 世代失配拦过——用户点 tile 的瞬间键盘 WebView 可能
+        // 处于 hello 前后窗口（onCreateInputView/reloadKeyboardFiles 换
+        // token 后旧页面还握着旧 token）。导航到自家设置页是用户明确
+        // 点击意图、无数据面风险，不该被 token 门闸拦：openSetup/
+        // openSetupPage 改为无条件执行。数据类桥调用仍走 guarded。
+        @JavascriptInterface
+        fun openSetupPage(page: String, token: String) = onMain {
+            // route 诊断链 1/3（Diagnostics，开关控制，仅锚 id 无用户
+            // 数据）：tile→桥入口。
+            Diagnostics.log("route", "openSetupPage page=$page")
+            // 必须显式限定外类：裸调 openSetup(page) 会解析到本类桥方法
+            // openSetup(token)——单 String 参数同形，page 被当 token 吃掉，
+            // SETUP_PAGE_EXTRA 落空 → 设置页只开首页不定位（用户实测
+            // 「跳了但没到对应设置项」，diag_trace issued page= 空定罪）。
+            this@FeelimeService.openSetup(page)
+        }
+
+        /** 定制键盘 JSON 的说明文档（#29-8）：固定官方地址，不收任意
+         *  URL——WebView 侧不该能驱动任意 intent 跳转。 */
+        @JavascriptInterface
+        fun openDocs(token: String) = guarded(token, limited = false) {
+            runCatching {
+                startActivity(
+                    android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://feelime.github.io/custom-keyboard.html"),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
 
         /** design §15: the custom-keyboard table's native mirror (the
          * settings page edits the same store). Synchronous prefs read on the
@@ -2964,7 +3095,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener {
                 // clamped content height in every branch.
                 landscape && screenH > 0 ->
                     minOf(base, realHeightPixels() / 2) + navBottomInset() + bottomPadPx()
-                screenH > 0 -> minOf(base, (screenH * 45) / 100) + navBottomInset() + bottomPadPx()
+                // round-8: 竖屏同样按真屏 45%（screenH 是 app-space，会把
+                // 上限压到 340css——与 setKeyboardHeight 的钳制口径不一致，
+                // 调高了也会在这里被量回去）。见 setKeyboardHeight 注释。
+                screenH > 0 -> minOf(base, (realHeightPixels() * 45) / 100) + navBottomInset() + bottomPadPx()
                 else -> base + navBottomInset() + bottomPadPx()
             }
  // The view carries the transparent popup band on

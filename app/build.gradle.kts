@@ -151,6 +151,10 @@ if (devModelUrlsOptIn) {
 val devModelUrlsRequested = devModelUrlsOptIn && hasDirectDebugTask && !hasPlayOrReleaseTask
 val modelPack = (properties["feelimeModels"] as? String) ?: "full"
 
+// Thin-build handwriting subtree (see sourceSets below): copied so the
+// packaged asset path matches the full build exactly.
+val thinInkAssetsDir = layout.buildDirectory.dir("generated/thinInkAssets")
+
 // ASR model bytes live OUTSIDE the repo (never committed): the shared
 // per-machine tree (~/.config/feelime/models, installed by
 // scripts/setup-assets.sh) wins; the legacy in-tree copy stays a fallback
@@ -283,8 +287,8 @@ android {
         applicationId = "com.feelime.ime"
         minSdk = 26
         targetSdk = 36
-        versionCode = 51
-        versionName = "1.0.21"
+        versionCode = 53
+        versionName = "1.2.0"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -309,6 +313,13 @@ android {
             // same tree through the install-time PAD pack below; keeping this
             // source set flavor-specific prevents duplicate bundle assets.
             getByName("direct") { modelsDir?.let { assets.srcDirs(it) } }
+        } else {
+            // Thin build ships the 6.6MB handwriting model (issue #32: small
+            // enough to bundle, saves every thin user the first-run download);
+            // the ~200MB ASR tree stays excluded and downloads on demand. The
+            // subtree is copied into a generated dir to keep the packaged
+            // path `handwriting/model.onnx` identical to the full build.
+            modelsDir?.let { getByName("direct").assets.srcDir(thinInkAssetsDir) }
         }
         getByName("main") {
             // The sha-verified model manifest travels with
@@ -392,7 +403,13 @@ android {
     }
 
     packaging {
-        jniLibs { useLegacyPackaging = true }
+        jniLibs {
+            useLegacyPackaging = true
+            // 仅 x86 ABI 需要：sherpa static-link 变体只在该 ABI 仍带
+            // libonnxruntime.so（arm64/armv7/x86_64 都已静态化），而
+            // abiFilters 只出 arm64-v8a——merge 任务仍会撞名，兜底去重。
+            pickFirsts += "**/libonnxruntime.so"
+        }
     }
 }
 
@@ -400,11 +417,30 @@ android {
 // input. Bind the model mode explicitly and clear the merge output before a
 // mode-changing execution; this makes a thin build safe immediately after a
 // full build without requiring a manual clean.
+tasks.register<Sync>("prepareThinInkAssets") {
+    // Sync (not Copy): files removed from the source tree (e.g. stale
+    // model backups) must not linger in the generated dir and ride along
+    // into the APK for the rest of the build tree's life.
+    val models = modelsDir
+    if (models != null) {
+        from(File(models, "handwriting")) { into("handwriting") }
+        into(thinInkAssetsDir)
+    }
+}
+
 tasks.configureEach {
     if (name == "mergeDirectDebugAssets" || name == "mergeDirectReleaseAssets" ||
         name == "packageDirectDebug" || name == "packageDirectRelease"
     ) {
         inputs.property("feelimeModels", modelPack)
+    }
+    // Anything consuming main/direct assets (merge, package, lint model
+    // writers) must see the copied handwriting subtree first in thin mode.
+    if (modelPack == "thin" &&
+        (name.startsWith("mergeDirect") || name.startsWith("packageDirect") ||
+            name.contains("LintVitalReportModel"))
+    ) {
+        dependsOn("prepareThinInkAssets")
     }
 }
 
@@ -493,9 +529,13 @@ tasks.register("checkReleaseSigning") {
 }
 
 dependencies {
-    // The sherpa-onnx AAR is machine-local (setup-assets.sh installs it to
-    // ~/.config/feelime/android); the in-tree app/libs copy stays a fallback.
-    val aarName = "sherpa-onnx-1.13.6.aar"
+    // sherpa-onnx 必须「static-link-onnxruntime」变体：它把 onnxruntime 1.27.1
+    // 静态链进 libsherpa-onnx-jni.so，APK 里不再有 sherpa 版的
+    // libonnxruntime.so。普通变体与 onnxruntime-android 的同名 so 不能共存——
+    // 两边都带 GNU symbol version（OrtGetApiBase@VERS_1.27.1 vs @VERS_1.27.0，
+    // Maven 无 1.27.1），dlopen 会因版本失配报 cannot locate symbol
+    // （真机实测 2026-09-21）。手写识别（issue #28）因此只能用本变体。
+    val aarName = "sherpa-onnx-static-link-onnxruntime-1.13.6.aar"
     val sharedAarDir = File(
         feelimeEnv("FEELIME_ANDROID_DIR")
             ?: (System.getProperty("user.home") + "/.config/feelime/android"),
@@ -507,6 +547,10 @@ dependencies {
                 "~/.config/feelime/android) or place a copy in app/libs/",
         )
     implementation(files(sherpaAar))
+    // 手写识别推理（design/handwriting.md §1）：Maven Central 没有 1.27.1
+    // （1.27.0 直跳 1.28.0），取 1.27.0——APK 里唯一的 libonnxruntime.so
+    // 就是它，配合 onnxruntime4j_jni（VERS_1.27.0）成对加载。
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("org.apache.commons:commons-compress:1.28.0")

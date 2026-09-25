@@ -990,6 +990,13 @@ class TextInputCoordinator(
         closed = false
     }
 
+    /** 这些模式同步起跑引擎、不进 Direct-first warmup（无语言数据装载）。
+     * DIRECT 之外只有手写：其 Direct 引擎只承载控制键，笔迹识别走独立的
+     * HandwritingEngine（design/handwriting.md §1）——挂进 warmup 只会让
+     * 切换平白多一个 LOADING 相位。 */
+    private fun servesDirectly(mode: InputMode): Boolean =
+        mode == InputMode.DIRECT || mode == InputMode.HANDWRITING
+
     private fun startEngine(next: InputMode) {
         // Transition table (mode-fallback §2.2): a deliberate start clears the
         // degraded state — EXCEPT the retry of the very mode that failed,
@@ -1013,8 +1020,8 @@ class TextInputCoordinator(
             degradeToDirect(next, DegradeReason.ENGINE_FACTORY_FAILED)
             return
         }
-        engineMatchesMode = next == InputMode.DIRECT || background == null
-        if (next == InputMode.DIRECT || background == null) {
+        engineMatchesMode = servesDirectly(next) || background == null
+        if (servesDirectly(next) || background == null) {
             engine = target
             liveEngineStarted = true
             val ack = target.dispatch(EngineRequest(stamp, EngineCommand.Start)) { event ->

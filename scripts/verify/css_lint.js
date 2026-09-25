@@ -50,7 +50,9 @@ while ((match = blockRe.exec(CSS))) {
 // `none` is only sanctioned on the letter-key grid (keys preventDefault
 // touchstart by design and never live in a horizontal scroller). Anything
 // else needs an explicit, commented addition to this list.
-const ALLOW_TOUCH_NONE = new Set(['kb-key', 'pair-drag', 'height-handle', 'hc-track']); // height-handle/hc-track: keyboard-height drag surfaces (the height handle, the band-floating card) - fixed inside their own card, never inside an overflow-x scroller; pair-drag: settings drag handle, never inside an overflow-x scroller
+// ink-canvas: 手写书写区（issue #28）——非滚动容器，笔迹事件全
+// preventDefault，touch-action:none 封掉浏览器默认手势。
+const ALLOW_TOUCH_NONE = new Set(['kb-key', 'pair-drag', 'height-handle', 'hc-track', 'ink-canvas']); // height-handle/hc-track: keyboard-height drag surfaces (the height handle, the band-floating card) - fixed inside their own card, never inside an overflow-x scroller; pair-drag: settings drag handle, never inside an overflow-x scroller; ink-canvas: handwriting pad (issue #28), never inside a scroller
 for (const block of blocks) {
     if (!/touch-action:\s*none/.test(block.body)) continue;
     const classes = [...block.selector.matchAll(/\.([a-zA-Z][\w-]*)/g)]

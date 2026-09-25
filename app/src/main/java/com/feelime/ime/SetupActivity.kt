@@ -175,6 +175,8 @@ class SetupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         destroyed = false
+        // route 诊断链 3/3：设置页到达（target 空 = 普通打开）。
+        Diagnostics.log("route", "SetupActivity onCreate target=${intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""}")
         // P1-5 补口（真机第 5 轮 G 段定罪）：force-stop 中断安装后直接开
         // 设置页不走 FeelimeService.onCreate，卡片会残留误导性的「自定义」
         // 态——这里也扫一遍（幂等，prefs 无 installing 标记即 no-op）。
@@ -240,6 +242,7 @@ class SetupActivity : AppCompatActivity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     Log.i(TAG, "settings page finished: $url")
                     pushHello()
+                    routeToSetupTarget()
                 }
             }
             webChromeClient = object : android.webkit.WebChromeClient() {
@@ -300,6 +303,7 @@ class SetupActivity : AppCompatActivity() {
         }
         setContentView(rootLayout)
         updateSetupLaunchMarker(intent)
+        takeSetupTarget(intent)
         onBackPressedDispatcher.addCallback(this) {
             // A sub-page is open - the first BACK returns home
             // (design §6.2). The flag is also cleared here because the
@@ -392,6 +396,10 @@ class SetupActivity : AppCompatActivity() {
 
         override fun showImePicker() {
             getSystemService(InputMethodManager::class.java).showInputMethodPicker()
+        }
+
+        override fun onSettingsPageReady() {
+            rerouteSetupTargetOnReady()
         }
 
         override fun openModelDocument(modelId: String) {
@@ -605,8 +613,11 @@ class SetupActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        Diagnostics.log("route", "SetupActivity onNewIntent target=${intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""}")
         setIntent(intent)
         updateSetupLaunchMarker(intent)
+        takeSetupTarget(intent)
+        routeToSetupTarget()
         // The fixtures follow the launch intent in BOTH entries (the
         // activity is singleTop - a relaunch with the extra lands here).
         if (BuildConfig.DEBUG) {
@@ -664,6 +675,59 @@ class SetupActivity : AppCompatActivity() {
     private fun updateSetupLaunchMarker(intent: Intent) {
         val nonce = intent.getLongExtra(SETUP_LAUNCH_EXTRA, 0L)
         launchMarker.contentDescription = "$SETUP_LAUNCH_DESCRIPTION_PREFIX$nonce"
+    }
+
+    /** 快捷设置 tile 直达（SETUP_PAGE_EXTRA）：页面加载后调设置页的
+     *  focusSetting(id)——它自己翻页（目标可能在 input 之外的页）、滚到
+     *  整行并呼吸提醒。onPageFinished 时 JS 未必初始化完，注入的脚本自带
+     *  轮询重试（30×200ms）；页面 ready（ready ping）时再重放一次兜底
+     *  ——冷启动 WebView 慢于轮询窗口时第一次会落空。锚点：quickPairA=
+     *  快捷切换对、menuModesRow=长按菜单、customTitle=定制键盘卡。 */
+    private var pendingSetupTarget = ""
+
+    private fun takeSetupTarget(intent: Intent) {
+        pendingSetupTarget = intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""
+    }
+
+    /** 注入一次 focusSetting 调用；命中（同步返回 true）才消费 pending，
+     *  否则 Kotlin 侧延迟重试。不能把轮询/Promise 放进注入脚本：
+     *  evaluateJavascript 不 await Promise，回调只拿到 "{}"——上一版
+     *  因此永远判不成 true，pending 不清、ready 每次重放旧锚，覆盖
+     *  用户后续的搜索定位（实测「搜背景被拉回旧锚」）。 */
+    private fun routeToSetupTarget(attempt: Int = 0) {
+        val target = pendingSetupTarget
+        if (target.isEmpty()) return
+        runOnUiThread {
+            runCatching {
+                webView.evaluateJavascript(
+                    "(window.FeelimeSettings&&window.FeelimeSettings.focusSetting)?" +
+                        "window.FeelimeSettings.focusSetting('" + target + "'):'pending'",
+                ) { r ->
+                    when {
+                        r == "true" -> {
+                            pendingSetupTarget = ""
+                            // route 诊断链 4/4：锚命中（含重试次数——冷启
+                            // 动 WebView 慢时会 >0，配合 3/3 看到达与命中
+                            // 的间隔）。
+                            Diagnostics.log("route", "target hit=$target attempt=$attempt")
+                        }
+                        // JS 未就绪（'pending'）或锚未命中：页面加载慢于
+                        // 首次注入，Kotlin 侧重试（约 40×250ms）。
+                        attempt < 40 -> webView.postDelayed(
+                            { routeToSetupTarget(attempt + 1) }, 250)
+                        else -> Diagnostics.log("route", "target MISS=$target retries exhausted")
+                    }
+                }
+            }
+        }
+    }
+
+    /** 页面 ready（SettingsBridge.ready）时重放未消费的 pending：冷启动
+     *  WebView 慢于重试窗口时路由落空，ready 是 JS 完全就绪的确定时机。
+     *  只消费 pending（一次性语义），已完成的锚不会越权重放。 */
+    private fun rerouteSetupTargetOnReady() {
+        if (pendingSetupTarget.isEmpty()) return
+        routeToSetupTarget()
     }
 
     /**
@@ -773,6 +837,10 @@ class SetupActivity : AppCompatActivity() {
         const val SEARCH_RESULT_FIRED_DESCRIPTION = "feelime-search-action:fired"
         const val PASSWORD_INPUT_DESCRIPTION = "feelime-password-input"
         const val SETUP_LAUNCH_EXTRA = "com.feelime.ime.extra.SETUP_LAUNCH_NONCE"
+
+        /** 快捷设置 tile 直达的目标卡（custom=定制键盘，keyboards=键盘选择）。
+         *  值是设置页 JS 侧的锚 id，SetupActivity 就绪后注入路由脚本。 */
+        const val SETUP_PAGE_EXTRA = "com.feelime.ime.extra.SETUP_TARGET"
         const val SETUP_LAUNCH_DESCRIPTION_PREFIX = "feelime-setup-launch:"
         // Debug fixtures show ONLY when the launcher passes this
         // boolean extra (automation does; humans never see the block).
