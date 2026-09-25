@@ -685,7 +685,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 }
             }
             WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-            loadUrl(KEYBOARD_URL)
+            // 首帧几何注入（query）：--band/--safe-bottom 的 CSS 初值。
+            // 不注入时 JS 首帧的 --band=0，#softKeyboard 画满整个 IME 窗口
+            // （含 200dp 弹层带），hello 到达后才缩回——真机首载闪一下
+            // 「更高的键盘」（ace 录屏定罪，frame1-7 比稳态高 ~180px+）。
+            // hello 仍按权威值覆盖；query 只救首帧。
+            loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
         }
         keyboardView = view
         // v3 埋点（issue #13）：窗口焦点变化在 DiagWebView.onWindowFocusChanged
@@ -976,7 +981,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         assetStore = KeyboardAssetStore(active.dir)
         pageToken = newToken()
         pageReady = false
-        keyboardView?.loadUrl(KEYBOARD_URL)
+        keyboardView?.loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
     }
 
     private fun startVoice() = onMain {

@@ -7,6 +7,24 @@
 (() => {
     'use strict';
 
+    // 首帧几何（native 经 URL query 注入的物理 px）：在 hello 之前先把
+    // --band/--safe-bottom 落到根元素。CSS 的 fallback 是 0，不设的话
+    // 首帧 #softKeyboard 画满整个 IME 窗口（含 200dp 弹层带），hello 到
+    // 达后再缩回——真机首载会闪一个「更高的键盘」。hello 仍按权威值
+    // 覆盖这里；预览 harness 等无 query 场景保持 0。
+    try {
+        const geom = new URLSearchParams(location.search);
+        const dpr = window.devicePixelRatio || 1;
+        const band = Number(geom.get('band'));
+        const sb = Number(geom.get('sb'));
+        if (band > 0) {
+            document.documentElement.style.setProperty('--band', (band / dpr) + 'px');
+        }
+        if (sb > 0) {
+            document.documentElement.style.setProperty('--safe-bottom', (sb / dpr) + 'px');
+        }
+    } catch (_) {}
+
     // Interface language is independent of the active input engine.
     let uiLocale = 'zh';
     try {
