@@ -690,32 +690,35 @@ class SetupActivity : AppCompatActivity() {
         pendingSetupTarget = intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""
     }
 
-    /** 注入路由脚本；focusSetting 命中（返回 true）才消费 pending。
-     *  冷启动 WebView 慢时 JS 未就绪、轮询耗尽返回 false——pending 保
-     *  留，等页面 ready（ready ping）时重放。 */
-    private fun routeToSetupTarget() {
+    /** 注入一次 focusSetting 调用；命中（同步返回 true）才消费 pending，
+     *  否则 Kotlin 侧延迟重试。不能把轮询/Promise 放进注入脚本：
+     *  evaluateJavascript 不 await Promise，回调只拿到 "{}"——上一版
+     *  因此永远判不成 true，pending 不清、ready 每次重放旧锚，覆盖
+     *  用户后续的搜索定位（实测「搜背景被拉回旧锚」）。 */
+    private fun routeToSetupTarget(attempt: Int = 0) {
         val target = pendingSetupTarget
         if (target.isEmpty()) return
         runOnUiThread {
             runCatching {
                 webView.evaluateJavascript(
-                    "(function go(n){" +
-                        "if(window.FeelimeSettings&&window.FeelimeSettings.focusSetting){" +
-                        "return Promise.resolve(window.FeelimeSettings.focusSetting('" + target + "'));" +
-                        "}else if(n>0){return new Promise(function(res){setTimeout(function(){go(n-1).then(res);},200);});}" +
-                        "return Promise.resolve(false);})(30)",
+                    "(window.FeelimeSettings&&window.FeelimeSettings.focusSetting)?" +
+                        "window.FeelimeSettings.focusSetting('" + target + "'):'pending'",
                 ) { r ->
-                    if (r == "true") pendingSetupTarget = ""
+                    when {
+                        r == "true" -> pendingSetupTarget = ""
+                        // JS 未就绪（'pending'）或锚未命中：页面加载慢于
+                        // 首次注入，Kotlin 侧重试（约 40×250ms）。
+                        attempt < 40 -> webView.postDelayed(
+                            { routeToSetupTarget(attempt + 1) }, 250)
+                    }
                 }
             }
         }
     }
 
     /** 页面 ready（SettingsBridge.ready）时重放未消费的 pending：冷启动
-     *  WebView 慢于轮询窗口时第一次路由落空，ready 是 JS 完全就绪的确
-     *  定时机。只重放 pending（一次性语义）——不能记 last 无限重放：
-     *  搜索点击翻外观页会弹真键盘触发新 hello→ready，旧锚重放会覆盖
-     *  用户刚点击的搜索定位（用户实测「搜背景却跳回定制键盘」）。 */
+     *  WebView 慢于重试窗口时路由落空，ready 是 JS 完全就绪的确定时机。
+     *  只消费 pending（一次性语义），已完成的锚不会越权重放。 */
     private fun rerouteSetupTargetOnReady() {
         if (pendingSetupTarget.isEmpty()) return
         routeToSetupTarget()
