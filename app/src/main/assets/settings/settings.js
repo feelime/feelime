@@ -174,7 +174,9 @@ const I18N = {
         "input.keyboards.title": "键盘选择",
         "input.keyboards.badge": "菜单",
         "input.keyboards.enable": "长按菜单里列出哪些键盘",
-        "input.keyboards.hint": "勾选的键盘出现在长按切换键的菜单里；不勾的还可以在菜单里临时勾回来。改动即时生效。",
+        "input.keyboards.hint": "勾选的键盘出现在长按切换键的菜单里，行序即菜单顺序（箭头调整）；不勾的还可以在菜单里临时勾回来。改动即时生效。",
+        "input.keyboards.moveUp": "上移",
+        "input.keyboards.moveDown": "下移",
         "input.keyboards.pairA": "快捷切换 · 第一个",
         "input.keyboards.pairB": "快捷切换 · 第二个",
         "input.keyboards.pairHint": "点切换键在两个键盘之间往返；选最常用的两个。",
@@ -631,7 +633,9 @@ const I18N = {
         "input.keyboards.title": "Keyboard selection",
         "input.keyboards.badge": "Menu",
         "input.keyboards.enable": "Keyboards listed in the long-press menu",
-        "input.keyboards.hint": "Checked keyboards appear in the mode-key long-press menu; unchecked ones can be re-enabled from that menu. Applies immediately.",
+        "input.keyboards.hint": "Checked keyboards appear in the mode-key long-press menu; row order is the menu order (arrow buttons). Unchecked ones can be re-enabled from that menu. Applies immediately.",
+        "input.keyboards.moveUp": "Move up",
+        "input.keyboards.moveDown": "Move down",
         "input.keyboards.pairA": "Quick switch · first",
         "input.keyboards.pairB": "Quick switch · second",
         "input.keyboards.pairHint": "The switch key toggles between these two; pick your two most-used keyboards.",
@@ -1838,10 +1842,39 @@ function renderKeyboards(state) {
     if (!host) return;
     const selected = selectedMenuModes(state);
     host.textContent = "";
-    KEYBOARD_MODES.forEach(([id, label]) => {
-        const row = document.createElement("label");
+    // 排序能力（2026-09-26 用户反馈）：勾选项按 menuModes 顺序排前——
+    // 即长按菜单的实际顺序；未勾项按目录序排后。保存按 DOM 序收集勾
+    // 选项，上下移重排行序即重写菜单顺序。行是 div 包 label：按钮放在
+    // label 外，点按钮不会带翻勾选框。
+    const ordered = [
+        ...selected.filter(id => KEYBOARD_MODES.some(([modeId]) => modeId === id)),
+        ...KEYBOARD_MODES.filter(([modeId]) => !selected.includes(modeId)).map(([modeId]) => modeId),
+    ];
+    ordered.forEach((id, index) => {
+        const found = KEYBOARD_MODES.find(([modeId]) => modeId === id);
+        const label = found ? found[1] : id;
+        const row = document.createElement("div");
         row.className = "row switch-row";
-        row.htmlFor = "kbMode_" + id;
+        const btns = document.createElement("span");
+        btns.className = "kb-order-btns";
+        const up = document.createElement("button");
+        up.type = "button";
+        up.className = "btn small kb-move";
+        up.textContent = "↑";
+        up.setAttribute("aria-label", t("input.keyboards.moveUp"));
+        up.disabled = index === 0;
+        up.addEventListener("click", () => moveKbRow(row, -1));
+        const down = document.createElement("button");
+        down.type = "button";
+        down.className = "btn small kb-move";
+        down.textContent = "↓";
+        down.setAttribute("aria-label", t("input.keyboards.moveDown"));
+        down.disabled = index === ordered.length - 1;
+        down.addEventListener("click", () => moveKbRow(row, 1));
+        btns.append(up, down);
+        const lab = document.createElement("label");
+        lab.className = "kb-order-label";
+        lab.htmlFor = "kbMode_" + id;
         const text = document.createElement("span");
         text.className = "row-label";
         const main = document.createElement("span");
@@ -1854,10 +1887,28 @@ function renderKeyboards(state) {
         box.dataset.kbMode = id;
         box.checked = selected.includes(id);
         box.addEventListener("change", () => saveKeyboardSelectionFromUi());
-        row.append(text, box);
+        lab.append(text, box);
+        row.append(btns, lab);
         host.append(row);
     });
     renderQuickPairSelects(state);
+}
+
+/** 上下移一行并即时保存（#kbModeList 内部重排；保存读 DOM 序）。 */
+function moveKbRow(row, delta) {
+    const host = row.parentElement;
+    if (!host) return;
+    const rows = [...host.children];
+    const at = rows.indexOf(row);
+    const to = at + delta;
+    if (to < 0 || to >= rows.length) return;
+    host.insertBefore(row, delta < 0 ? rows[to] : rows[to].nextSibling);
+    [...host.children].forEach((r, i) => {
+        const [up, down] = r.querySelectorAll(".kb-move");
+        if (up) up.disabled = i === 0;
+        if (down) down.disabled = i === host.children.length - 1;
+    });
+    saveKeyboardSelectionFromUi();
 }
 
 function renderQuickPairSelects(state) {
