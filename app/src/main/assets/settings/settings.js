@@ -177,6 +177,8 @@ const I18N = {
         "input.keyboards.hint": "勾选的键盘出现在长按切换键的菜单里，行序即菜单顺序（箭头调整）；不勾的还可以在菜单里临时勾回来。改动即时生效。",
         "input.keyboards.moveUp": "上移",
         "input.keyboards.moveDown": "下移",
+        "input.english.enable": "英文词直出",
+        "input.english.hint": "拼音组合里直接敲 github、ios、android 这类英文词出候选，不用切英文模式；全拼和双拼通用。",
         "input.keyboards.pairA": "快捷切换 · 第一个",
         "input.keyboards.pairB": "快捷切换 · 第二个",
         "input.keyboards.pairHint": "点切换键在两个键盘之间往返；选最常用的两个。",
@@ -591,6 +593,8 @@ const I18N = {
         "input.phrases.badge": "Input",
         "input.phrases.enable": "Symbol / emoji candidates",
         "input.phrases.hint": "Adds words like ↑ for shang and ✓ for dui near candidate #3; works in full and double Pinyin.",
+        "input.english.enable": "English word candidates",
+        "input.english.hint": "Type english words like github, ios or android right inside Pinyin composing — no mode switch; works in full and double Pinyin.",
         "input.phrases.manage": "Manage entries",
         "input.phrases.importHint": "Entries from a rime dictionary join the candidates as an overlay (the built-in lexicon stays; original frequencies are not carried). Importing again replaces the previous import.",
         "input.phrases.importBtn": "Pick a file",
@@ -1956,6 +1960,7 @@ function renderCustomPhrases(state) {
             text: String(item.text || ""), code: String(item.code || ""),
         }));
         if (document.activeElement !== $("phrasesOn")) $("phrasesOn").checked = !!phrases.enabled;
+        if (document.activeElement !== $("englishWordsOn")) $("englishWordsOn").checked = phrases.englishEnabled !== false;
         renderPhraseList();
         const imported = phrases.importedCount || 0;
         const note = $("dictImportNote");
@@ -2044,6 +2049,11 @@ $("phrasesOn").addEventListener("change", event => {
         JSON.stringify(phraseItems.map(item => ({ text: item.text, code: item.code }))),
         event.target.checked);
     setNote("phrasesNote", t("phrases.note.saved"));
+});
+
+// #29-3 英文词直出：内置词表整体开关（词表不进增删 UI）。
+$("englishWordsOn").addEventListener("change", event => {
+    call("setEnglishWords", event.target.checked);
 });
 $("btnManagePhrases").addEventListener("click", () => showPage("phrases"));
 $("btnOpenLicenses").addEventListener("click", () => showPage("licenses"));

@@ -282,6 +282,12 @@
 
     <section class="card" id="sec-phrases" aria-labelledby="phrasesTitle">
       <div class="section-heading"><h2 id="phrasesTitle" data-i18n="input.phrases.title">候选符号词</h2><span class="eyebrow" data-i18n="input.phrases.badge">输入</span></div>
+      <!-- #29-3 英文词直出：github/ios/android 等内置英文词在拼音/双拼
+           组合态直接出候选，免切英文模式。 -->
+      <label class="row switch-row no-rule" for="englishWordsOn">
+        <span class="row-label"><span data-i18n="input.english.enable">英文词直出</span><small data-i18n="input.english.hint">拼音组合里直接敲 github、ios、android 这类英文词出候选，不用切英文模式；全拼和双拼通用。</small></span>
+        <input type="checkbox" id="englishWordsOn" data-keywords="英文 english 英文词 直出 github" class="toggle">
+      </label>
       <label class="row switch-row no-rule" for="phrasesOn">
         <span class="row-label"><span data-i18n="input.phrases.enable">附加符号/emoji 候选</span><small data-i18n="input.phrases.hint">打 shang 出 ↑、dui 出 ✓ 这类符号词，排在候选第 3 位附近；全拼和双拼通用。</small></span>
         <input type="checkbox" id="phrasesOn" class="toggle">

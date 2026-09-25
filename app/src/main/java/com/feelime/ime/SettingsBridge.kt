@@ -552,6 +552,7 @@ class SettingsBridge(
             .put("customPhrases", JSONObject().apply {
                 val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
                 put("enabled", state.enabled)
+                put("englishEnabled", state.englishEnabled)
                 put("items", JSONArray().apply {
                     state.items.forEach { (text, code) ->
                         put(JSONObject().put("text", text).put("code", code))
@@ -1298,6 +1299,23 @@ class SettingsBridge(
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, enabled, items, imported = state.imported, user = state.user,
+            englishEnabled = state.englishEnabled,
+        )
+        context.sendBroadcast(
+            Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #29-3 英文词直出开关：重派生 custom_phrase.txt 的 english 段并
+     *  广播引擎重载。内置词表常驻（不进增删 UI），只做整体开关。 */
+    @JavascriptInterface
+    fun setEnglishWords(enabled: Boolean, token: String) = guarded(token) {
+        val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+        if (state.englishEnabled == enabled) return@guarded
+        com.feelime.ime.engine.CustomPhraseStore.save(
+            context, state.enabled, state.items, imported = state.imported, user = state.user,
+            englishEnabled = enabled,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1366,6 +1384,7 @@ class SettingsBridge(
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = state.imported, user = items,
+            englishEnabled = state.englishEnabled,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1398,6 +1417,7 @@ class SettingsBridge(
             val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
             com.feelime.ime.engine.CustomPhraseStore.save(
                 context, state.enabled, state.items, imported = result.items, user = state.user,
+                englishEnabled = state.englishEnabled,
             )
             context.sendBroadcast(
                 Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -1425,6 +1445,7 @@ class SettingsBridge(
         if (state.imported.isEmpty()) return@guarded
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = emptyList(), user = state.user,
+            englishEnabled = state.englishEnabled,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),

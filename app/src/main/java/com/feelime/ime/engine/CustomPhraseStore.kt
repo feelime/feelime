@@ -51,6 +51,53 @@ object CustomPhraseStore {
     fun txtFile(context: Context): File =
         File(File(context.filesDir, "rime-user"), TXT_FILE)
 
+    /** #29-3 英文词直出内置表（text 展示 / code 按键字面，code 恒小写
+     *  字母）。派生时过滤掉能被完整切成拼音音节的词（如 ai/mode/
+     *  mini）——那些按键序列本就是正常拼音输入，插英文候选是打扰；
+     *  github/ios/android 这类切不开的词才直出。 */
+    val DEFAULT_ENGLISH_WORDS: List<Pair<String, String>> = listOf(
+        "GitHub" to "github", "iOS" to "ios", "Android" to "android",
+        "iPhone" to "iphone", "iPad" to "ipad", "MacBook" to "macbook",
+        "App" to "app", "APK" to "apk", "Windows" to "windows",
+        "Linux" to "linux", "Ubuntu" to "ubuntu", "macOS" to "macos",
+        "Python" to "python", "Java" to "java", "JavaScript" to "javascript",
+        "TypeScript" to "typescript", "Golang" to "golang", "Rust" to "rust",
+        "Kotlin" to "kotlin", "Dart" to "dart", "Flutter" to "flutter",
+        "React" to "react", "Vue" to "vue", "HTML" to "html", "JSON" to "json",
+        "XML" to "xml", "YAML" to "yaml", "SQL" to "sql", "API" to "api",
+        "SDK" to "sdk", "IDE" to "ide", "URL" to "url", "HTTP" to "http",
+        "HTTPS" to "https", "DNS" to "dns", "VPN" to "vpn", "WiFi" to "wifi",
+        "GPT" to "gpt", "LLM" to "llm", "GPU" to "gpu", "CPU" to "cpu",
+        "RAM" to "ram", "SSD" to "ssd", "USB" to "usb", "HDMI" to "hdmi",
+        "OCR" to "ocr", "OTG" to "otg", "NFC" to "nfc", "SIM" to "sim",
+        "eSIM" to "esim", "QR" to "qr", "bug" to "bug", "debug" to "debug",
+        "demo" to "demo", "log" to "log", "crash" to "crash",
+        "update" to "update", "upgrade" to "upgrade", "beta" to "beta",
+        "commit" to "commit", "push" to "push", "pull" to "pull",
+        "merge" to "merge", "branch" to "branch", "fork" to "fork",
+        "issue" to "issue", "PR" to "pr", "repo" to "repo", "code" to "code",
+        "review" to "review", "test" to "test", "spec" to "spec",
+        "doc" to "doc", "docs" to "docs", "wiki" to "wiki", "blog" to "blog",
+        "email" to "email", "spam" to "spam", "login" to "login",
+        "logout" to "logout", "token" to "token", "cache" to "cache",
+        "cookie" to "cookie", "server" to "server", "client" to "client",
+        "cloud" to "cloud", "docker" to "docker", "nginx" to "nginx",
+        "redis" to "redis", "mysql" to "mysql", "git" to "git",
+        "vim" to "vim", "ssh" to "ssh", "sudo" to "sudo", "bash" to "bash",
+        "zsh" to "zsh", "curl" to "curl", "wget" to "wget", "grep" to "grep",
+        "ping" to "ping", "download" to "download", "upload" to "upload",
+        "copy" to "copy", "paste" to "paste", "undo" to "undo",
+        "redo" to "redo", "save" to "save", "share" to "share",
+        "tips" to "tips", "hint" to "hint", "note" to "note",
+        "task" to "task", "todo" to "todo", "ok" to "ok", "yes" to "yes",
+        "no" to "no", "hello" to "hello", "sorry" to "sorry", "thanks" to "thanks",
+        "wechat" to "wechat", "telegram" to "telegram", "whatsapp" to "whatsapp",
+        "youtube" to "youtube", "netflix" to "netflix", "spotify" to "spotify",
+        "twitter" to "twitter", "google" to "google", "chrome" to "chrome",
+        "firefox" to "firefox", "safari" to "safari", "edge" to "edge",
+        "office" to "office", "photoshop" to "photoshop", "bluetooth" to "bluetooth",
+    )
+
     data class State(
         val enabled: Boolean,
         val items: List<Pair<String, String>>,
@@ -59,6 +106,10 @@ object CustomPhraseStore {
          *  items（符号词）与 imported（文件导入），同一 txt 通道派生，
          *  但不受符号词开关 gating——用户词是词库本体，不是附加候选。 */
         val user: List<Pair<String, String>> = emptyList(),
+        /** #29-3 英文词直出：拼音/双拼下直接敲出常见英文词。同一 txt
+         *  通道派生（码列=字母序列字面，全拼/双拼通吃），独立开关，
+         *  不进词库管理的增删 UI（内置表，后续再开用户自定义）。 */
+        val englishEnabled: Boolean = true,
     )
 
     /** 读取真相源；json 不存在时（首装/升级）种子写入默认表并派生 txt。 */
@@ -94,7 +145,8 @@ object CustomPhraseStore {
                 val code = item.optString("code")
                 if (text.isNotEmpty() && code.isNotEmpty()) user.add(text to code)
             }
-            State(root.optBoolean("enabled", true), items, imported, user)
+            State(root.optBoolean("enabled", true), items, imported, user,
+                root.optBoolean("englishEnabled", true))
         } catch (_: Exception) {
             State(true, DEFAULT_ITEMS)
         }
@@ -109,10 +161,12 @@ object CustomPhraseStore {
         imported: List<Pair<String, String>> = emptyList(),
         user: List<Pair<String, String>> = emptyList(),
         seed: Boolean = false,
+        englishEnabled: Boolean = true,
     ) {
         val root = JSONObject()
             .put("version", 1)
             .put("enabled", enabled)
+            .put("englishEnabled", englishEnabled)
             .put("items", JSONArray().apply {
                 items.forEach { (text, code) -> put(JSONObject().put("text", text).put("code", code)) }
             })
@@ -125,30 +179,34 @@ object CustomPhraseStore {
         val dir = jsonFile(context).parentFile
         dir?.mkdirs()
         jsonFile(context).writeText(root.toString())
-        deriveTxt(context, enabled, items, imported, user)
+        deriveTxt(context, enabled, items, imported, user, englishEnabled)
         android.util.Log.i(
             "FeelimeCustomPhrase",
-            "saved seed=$seed enabled=$enabled items=${items.size} imported=${imported.size} user=${user.size} txt=${txtFile(context).exists()}",
+            "saved seed=$seed enabled=$enabled items=${items.size} imported=${imported.size} " +
+                "user=${user.size} english=$englishEnabled txt=${txtFile(context).exists()}",
         )
     }
 
     /** 派生 custom_phrase.txt（每词条多行展开）。gating 边界（#29-5 起）：
      *  开关只管 items（符号词附加候选）；imported 与 user 是词库本体，
-     *  各有自己的清空/管理入口，不随符号词开关消失。三段全空才删 txt。 */
+     *  各有自己的清空/管理入口，不随符号词开关消失。english（#29-3）
+     *  同为独立开关。全部段为空（或关）才删 txt。 */
     private fun deriveTxt(
         context: Context,
         enabled: Boolean,
         items: List<Pair<String, String>>,
         imported: List<Pair<String, String>>,
         user: List<Pair<String, String>>,
+        englishEnabled: Boolean,
     ) {
         val txt = txtFile(context)
         val deriving = (if (enabled) items else emptyList()) + imported + user
-        if (deriving.isEmpty()) {
+        val codes = codeTable(context)
+        val english = if (englishEnabled) englishLines(codes) else emptyList()
+        if (deriving.isEmpty() && english.isEmpty()) {
             txt.delete()
             return
         }
-        val codes = codeTable(context)
         val lines = ArrayList<String>()
         // 三段全部落 txt（#29-5 验收修复：旧循环只写 items 段，自造词/导入
         // 词从未真正进引擎）。user 段额外做自动注音全组合（#29-5：多音字
@@ -166,7 +224,31 @@ object CustomPhraseStore {
             }
             for (variant in variants) lines.add("$text\t$variant\t1")
         }
+        // #29-3 英文词直出：码=字母序列字面（stabledb 按键字面匹配，
+        // 全拼/双拼同一份码通吃，无需双拼变体展开——双拼下这些键的
+        // 字面序列就是它本身）。
+        lines.addAll(english)
         txt.writeText(lines.joinToString("\n", postfix = "\n"))
+    }
+
+    /** #29-3：内置英文表 -> txt 行，过滤能被完整切成拼音音节的词
+     *  （如 sudo/beta/demo——su+do/be+ta/de+mo 是正常拼音键序，插英文
+     *  候选反而打扰）。码表缺失（资产未就绪）时不过滤全量落表。
+     *  参数化 words 便于单测。 */
+    internal fun englishLines(
+        codes: JSONObject?,
+        words: List<Pair<String, String>> = DEFAULT_ENGLISH_WORDS,
+    ): List<String> {
+        val syllables = HashSet<String>()
+        if (codes != null) {
+            val keys = codes.keys()
+            while (keys.hasNext()) syllables.add(keys.next())
+        }
+        return words.mapNotNull { (text, code) ->
+            val collides = syllables.isNotEmpty() &&
+                syllableSegmentations(code, syllables).any { seg -> seg.isNotEmpty() }
+            if (collides) null else "$text\t$code\t1"
+        }
     }
 
     /**
