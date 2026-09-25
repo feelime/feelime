@@ -399,13 +399,40 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
+    // #27 手势条跟主题色：键盘页推来的当前底色（null=尚未推送）。
+    private var chromeColor: Int? = null
+
+    /** #27：把 chromeColor 同步涂到 IME 窗口的导航栏与窗口背景。
+     * CSS 侧已铺同一色（#softKeyboard 的 --bg 含 --safe-bottom 带），
+     * 这里补齐 WebView 之外的两种露出路径。 */
+    private fun applyChromeColor() {
+        getWindow()?.window?.let { w ->
+            val color = chromeColor ?: Color.TRANSPARENT
+            w.navigationBarColor = color
+            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(color))
+        }
+    }
+
+    /** 桥侧颜色解析：#RGB/#RRGGBB/#AARRGGBB、rgb()/rgba()、transparent。
+     * 无法解析返回 null（调用方丢弃，保持旧值）。 */
+    private fun parseChromeColor(raw: String): Int? {
+        val s = raw.trim()
+        if (s.equals("transparent", ignoreCase = true)) return Color.TRANSPARENT
+        if (s.startsWith("#")) return try { Color.parseColor(s) } catch (_: IllegalArgumentException) { null }
+        val m = Regex("rgba?\\(\\s*(\\d+)\\D+(\\d+)\\D+(\\d+)(?:\\D+([\\d.]+))?").find(s) ?: return null
+        val (r, g, b) = m.destructured
+        val a = m.groupValues.getOrNull(4)?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
+        return Color.argb((a * 255).toInt(), r.toInt(), g.toInt(), b.toInt())
+    }
+
     override fun onCreate() {
         super.onCreate()
         // 手势导航条区域：窗口是 bottom-anchored 到屏幕的（高度含
         // navBottomInset），系统默认的 navigationBarColor 黑色对比保护层
         // 会把最底 24dp 涂黑——背景图开启后键盘要一路铺到屏幕底，必须
         // 透明并关掉对比强制，否则图和屏幕底之间隔着一条黑带（真机截图
-        // 定罪）。
+        // 定罪）。#27：初始按透明（键盘页就绪后 setChromeColor 推主题色
+        // 覆盖导航栏+窗口背景，背景图模式维持透明）。
         // SoftInputWindow is a Dialog: the Window hangs off .window.
         getWindow()?.window?.let { w ->
             w.navigationBarColor = Color.TRANSPARENT
@@ -2428,6 +2455,19 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             main.removeCallbacks(flushHeightPref)
             main.postDelayed(flushHeightPref, HEIGHT_PREF_DEBOUNCE_MS)
             android.util.Log.i("FeelimeBridge", "setKeyboardHeight css=$heightCssPx px=$clamped orientation=${if (landscape) "landscape" else "portrait"}")
+        }
+
+        /** #27 手势条区域跟主题色：键盘页把当前主题底色（或背景图模式
+         * 的 transparent）推过来，native 把 IME 窗口的 navigationBarColor
+         * 与窗口背景都涂成该色。真机定罪口径（MIUI）：WebView 铺不满
+         * 手势条时露黑的是系统导航栏涂层或窗口背景，三层（CSS/nav/
+         * window）同色后无论 OEM 哪层胜出都不再穿帮。 */
+        @JavascriptInterface
+        fun setChromeColor(color: String, token: String) = guarded(token, limited = false) {
+            val parsed = parseChromeColor(color)
+            if (parsed == null) return@guarded
+            chromeColor = parsed
+            applyChromeColor()
         }
 
         /** A popup moved into the float band above the keyboard -

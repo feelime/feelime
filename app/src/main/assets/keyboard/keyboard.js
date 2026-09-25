@@ -5016,6 +5016,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     image ? `url("data:image/jpeg;base64,${image}")` : '';
             }
             document.body.dataset.bgImage = image ? 'on' : 'off';
+            this.pushChromeColor();
+        }
+
+        /** #27 手势条跟主题色：把键盘底色推给壳，native 把 IME 窗口
+         * 的导航栏与窗口背景涂成同色——WebView 铺不满手势条的机型
+         * （MIUI 实录黑条）不再露出系统黑层。背景图模式推 transparent
+         * （CSS 的 bgImage 层自己铺到屏底）。 */
+        pushChromeColor() {
+            if (typeof Native.setChromeColor !== 'function' || !this.token) return;
+            const wallpaper = document.body.dataset.bgImage === 'on';
+            const host = document.getElementById('softKeyboard');
+            const color = wallpaper || !host ? 'transparent'
+                : getComputedStyle(host).backgroundColor;
+            try { Native.setChromeColor(color, this.token); } catch (_) { /* bridge absent */ }
         }
 
         /** 键帽不透明度：只动背景 alpha 变量，键帽文字保持实色。 */
