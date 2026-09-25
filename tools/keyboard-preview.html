@@ -119,6 +119,7 @@ body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; 
   <label class="dim">上滑 <input type="range" id="voiceSlideRange" min="0" max="100" value="0" style="vertical-align:middle;width:90px"></label>
   <label>界面 <select id="previewLocale"><option value="zh">中文</option><option value="en">English</option></select></label>
   <label>主题 <select id="previewTheme"><option value="auto">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
+  <label>色调 <select id="previewPreset"><option value="classic">默认绿</option><option value="ocean">海蓝</option><option value="violet">紫罗兰</option><option value="amber">蜜橙</option><option value="sakura">樱粉</option><option value="teal">青碧</option></select></label>
   <label>底部留白 <select id="previewBottomPad"><option value="0">0 dp</option><option value="12">12 dp</option><option value="24">24 dp</option><option value="36">36 dp</option><option value="48">48 dp</option></select></label>
   <a href="settings-preview.html">完整设置预览</a>
   <button id="actLog">桥日志</button>
@@ -589,6 +590,7 @@ function pushHello() {
             ? document.getElementById('previewTheme').value
             : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
             ? 'light' : 'dark',
+        themePreset: document.getElementById('previewPreset').value,
         orientation: landscape ? 'landscape' : 'portrait',
         // 手势条避让（真机由原生下发 px；预览默认 0）。
         safeBottom: previewSafeBottom,
@@ -733,6 +735,7 @@ function setMode(name) {
 }
 document.getElementById('previewLocale').onchange = pushHello;
 document.getElementById('previewTheme').onchange = pushHello;
+    document.getElementById('previewPreset').onchange = pushHello;
 document.getElementById('previewBottomPad').onchange = pushHello;
 document.getElementById('modePortrait').onclick = () => setMode('portrait');
 document.getElementById('modeLandscape').onclick = () => setMode('landscape');

@@ -24,6 +24,13 @@ const KEYBOARD_MODES = [
 ];
 const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
 
+// #31 键盘色调：与 native THEME_PRESETS / keyboard.css html[data-preset] 同源。
+const THEME_PRESET_LIST = ['classic', 'ocean', 'violet', 'amber', 'sakura', 'teal'];
+const THEME_PRESET_COLORS = {
+    classic: '#23c890', ocean: '#4da3ff', violet: '#a78bfa',
+    amber: '#ff9f45', sakura: '#ff8fb1', teal: '#2ec8c8',
+};
+
 const I18N = {
     zh: {
         "title": "Feelime 设置",
@@ -380,6 +387,14 @@ const I18N = {
         "input.feel.bgImageLight": "亮色背景",
         "input.feel.bgImageDark": "暗色背景",
         "input.feel.themeMode": "色彩模式",
+        "input.feel.themePreset": "键盘色调",
+        "input.feel.themePresetHint": "按键与强调色换成另一套色相；深浅模式各自适配。",
+        "preset.classic": "默认绿",
+        "preset.ocean": "海蓝",
+        "preset.violet": "紫罗兰",
+        "preset.amber": "蜜橙",
+        "preset.sakura": "樱粉",
+        "preset.teal": "青碧",
         "input.feel.themeModeHint": "跟随系统，或固定浅色/深色。",
         "input.feel.keyOpacity": "按键不透明度",
         "input.feel.kbHeight": "键盘高度",
@@ -837,6 +852,14 @@ const I18N = {
         "input.feel.bgImageLight": "Light background",
         "input.feel.bgImageDark": "Dark background",
         "input.feel.themeMode": "Color mode",
+        "input.feel.themePreset": "Keyboard tint",
+        "input.feel.themePresetHint": "Swap keys and accents to another hue; adapts to light and dark.",
+        "preset.classic": "Classic green",
+        "preset.ocean": "Ocean",
+        "preset.violet": "Violet",
+        "preset.amber": "Amber",
+        "preset.sakura": "Sakura",
+        "preset.teal": "Teal",
         "input.feel.themeModeHint": "Follow the system, or pin light/dark.",
                 "无": "None",
         "选择图片": "Pick an image…",
@@ -1241,6 +1264,23 @@ function renderFeel(state) {
     if (themeSel) {
         const mode = state.themeMode || "auto";
         themeSel.value = ["auto", "light", "dark"].includes(mode) ? mode : "auto";
+    }
+    // #31 键盘色调：预置色板（单选 swatch 行）。
+    const swatches = $("themePresetSwatches");
+    if (swatches) {
+        const current = THEME_PRESET_LIST.includes(state.themePreset) ? state.themePreset : "classic";
+        swatches.textContent = "";
+        THEME_PRESET_LIST.forEach(id => {
+            const dot = document.createElement("button");
+            dot.type = "button";
+            dot.className = "preset-swatch" + (id === current ? " active" : "");
+            dot.dataset.preset = id;
+            dot.style.setProperty("--sw", THEME_PRESET_COLORS[id] || "#23c890");
+            dot.setAttribute("aria-label", t("preset." + id));
+            dot.setAttribute("aria-pressed", id === current ? "true" : "false");
+            dot.addEventListener("click", () => call("setThemePreset", id));
+            swatches.append(dot);
+        });
     }
     const opacity = $("keyOpacity");
     if (opacity) opacity.value = String(Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100))));

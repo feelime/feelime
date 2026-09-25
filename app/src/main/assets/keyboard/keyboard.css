@@ -78,6 +78,25 @@ html.theme-light {
     --mod-active-bg: #d7f0e4;
 }
 
+/* ===== #31 预置色调（issue #31 v1）：html[data-preset] 覆盖 accent
+ * 三件套（--accent 键面/按钮填充、--accent-ink 强调底上的墨色、
+ * --accent-text 强调文字）。--accent-text 深浅两主题深浅相反（深色
+ * 主题要亮字、浅色要深字），preset 给两套；--accent 作填充色两主题
+ * 通用。特异性：html[data-preset] 与 html.theme-light 同为 (0,1,1)，
+ * preset 块在后故叠加时胜；theme-light 的 preset 分支再压一次
+ * accent-text。classic = 无 data-preset（默认绿）。 */
+html[data-preset="ocean"]  { --accent: #4da3ff; --accent-text: #82bcff; --accent-ink: #06172b; }
+html[data-preset="violet"] { --accent: #a78bfa; --accent-text: #c3b1fd; --accent-ink: #170f2e; }
+html[data-preset="amber"]  { --accent: #ff9f45; --accent-text: #ffb875; --accent-ink: #2b1602; }
+html[data-preset="sakura"] { --accent: #ff8fb1; --accent-text: #ffacc6; --accent-ink: #2b0b17; }
+html[data-preset="teal"]   { --accent: #2ec8c8; --accent-text: #6adcdc; --accent-ink: #04201f; }
+html.theme-light[data-preset="ocean"]  { --accent-text: #0b57a4; }
+html.theme-light[data-preset="violet"] { --accent-text: #5b46a8; }
+html.theme-light[data-preset="amber"]  { --accent-text: #a35a10; }
+html.theme-light[data-preset="sakura"] { --accent-text: #b8406a; }
+html.theme-light[data-preset="teal"]   { --accent-text: #0b6f6d; }
+
+
 html.theme-dark {
     color-scheme: dark;
 }
