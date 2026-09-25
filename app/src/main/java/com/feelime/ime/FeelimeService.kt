@@ -58,6 +58,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     /** 按键音（issue #5 问题 2）合成器：实例化开销高，懒加载复用，
      *  onDestroy 释放。 */
     private var keyTone: ToneGenerator? = null
+
+    // #30-2 自定义按键音效：SoundPool 预载状态（keySoundStamp=文件
+    //  mtime，文件被换时重载；load 是异步的，keySoundLoaded 由回调置位）。
+    private var keySoundPool: android.media.SoundPool? = null
+    private var keySoundId: Int = 0
+    private var keySoundStamp: Long = 0
+    private var keySoundLoaded: Boolean = false
     /** Host of [keyboardView]; re-measured when keyboard-side prefs change
      *  while the keyboard is already visible (bottom pad, mode-fallback §3). */
     private var inputViewHost: FixedHeightInputView? = null
@@ -970,6 +977,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         cursorSnapshotSupport.reset()
         runCatching { keyTone?.release() }
         keyTone = null
+        // #30-2：自定义音效的 SoundPool 同生命周期释放。
+        runCatching { keySoundPool?.release() }
+        keySoundPool = null
         clipboardStore.stop()
         unregisterReceiver(updateReceiver)
         unregisterReceiver(userdataReceiver)
@@ -2048,10 +2058,58 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
 
         private fun playKeySound() {
+            // #30-2 音效风格：custom=用户文件（SoundPool 预载）、keypress=
+            // 系统键击效果音、default=原来的 ToneGenerator 哔声。
+            when (keySoundStyle(this@FeelimeService)) {
+                KEY_SOUND_STYLE_CUSTOM -> playCustomKeySound()
+                KEY_SOUND_STYLE_KEYPRESS -> runCatching {
+                    (getSystemService(AUDIO_SERVICE) as? AudioManager)
+                        ?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD, -1f)
+                }
+                else -> playDefaultKeyTone()
+            }
+        }
+
+        private fun playDefaultKeyTone() {
             val tone = keyTone ?: runCatching {
                 ToneGenerator(AudioManager.STREAM_SYSTEM, 80)
             }.getOrNull()?.also { keyTone = it } ?: return
             runCatching { tone.startTone(ToneGenerator.TONE_PROP_BEEP, 40) }
+        }
+
+        /** #30-2 自定义音效：SoundPool 预载一次（文件变化按 mtime 重载，
+         *  加载失败回退默认哔声），按键时 play。 */
+        private fun playCustomKeySound() {
+            val file = keySoundFile(this@FeelimeService)
+            if (!file.isFile) { playDefaultKeyTone(); return }
+            val stamp = file.lastModified()
+            val pool = keySoundPool
+            if (pool == null || keySoundStamp != stamp) {
+                pool?.release()
+                val fresh = runCatching {
+                    android.media.SoundPool.Builder()
+                        .setMaxStreams(1)
+                        .setAudioAttributes(
+                            android.media.AudioAttributes.Builder()
+                                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build(),
+                        ).build()
+                }.getOrNull()
+                if (fresh == null) { playDefaultKeyTone(); return }
+                val id = runCatching { fresh.load(file.path, 1) }.getOrDefault(0)
+                if (id == 0) { fresh.release(); playDefaultKeyTone(); return }
+                keySoundPool = fresh
+                keySoundId = id
+                keySoundStamp = stamp
+                keySoundLoaded = false
+                fresh.setOnLoadCompleteListener { _, _, status -> keySoundLoaded = status == 0 }
+                // 首按可能还没 load 完：等一拍的兜底就是默认音，下一按生效。
+            }
+            val pool2 = keySoundPool ?: run { playDefaultKeyTone(); return }
+            if (!keySoundLoaded) { playDefaultKeyTone(); return }
+            runCatching { pool2.play(keySoundId, 0.6f, 0.6f, 1, 0, 1f) }
+                .onFailure { playDefaultKeyTone() }
         }
 
         /** 快捷设置方块面板的偏好写通道：与设置页写同一批偏好

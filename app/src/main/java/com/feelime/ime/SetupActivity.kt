@@ -123,6 +123,14 @@ class SetupActivity : AppCompatActivity() {
         if (uri != null) bridge.importDictFromUri(uri)
     }
 
+    /** ACTION_OPEN_DOCUMENT for a custom key sound (#30-2): short audio
+     *  copied into filesDir; SoundPool plays it on key taps. */
+    private val keySoundOpenLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) bridge.importKeySoundFromUri(uri)
+    }
+
     /** ACTION_OPEN_DOCUMENT for the base dictionary (issue #23: device-side
      *  rebuild via librime maintenance). Display name via DISPLAY_NAME query
      *  —— SAF 的 lastPathSegment 是 document id（真机实测「msf:491」），
@@ -430,6 +438,16 @@ class SetupActivity : AppCompatActivity() {
                         "application/x-yaml",
                     ))
                 }.onFailure { Log.w(TAG, "dict picker launch dropped", it) }
+            }
+        }
+
+        override fun openKeySoundDocument() {
+            if (!canTouchWebView()) return
+            runOnUiThread {
+                if (!canTouchWebView()) return@runOnUiThread
+                runCatching {
+                    keySoundOpenLauncher.launch(arrayOf("audio/*", "application/ogg"))
+                }.onFailure { Log.w(TAG, "key sound picker launch dropped", it) }
             }
         }
 

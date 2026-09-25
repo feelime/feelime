@@ -440,6 +440,26 @@
         <span class="row-label"><span data-i18n="input.feel.keySound">按键声音</span><small data-i18n="input.feel.keySoundHint">按键时轻响一声，跟随系统音量，静音时不响。</small></span>
         <input type="checkbox" id="keySound" class="toggle">
       </label>
+      <!-- #30-2 音效风格：默认哔声 / 系统键击音 / 自定义文件（SAF 选音频，
+           拷进应用私有目录，SoundPool 预载播放）。 -->
+      <div class="row language-row" id="keySoundStyleRow" data-keywords="音效 自定义 按键音 key sound style">
+        <span class="row-label">
+          <span data-i18n="input.feel.keySoundStyle">按键音效</span>
+          <small><span data-i18n="input.feel.keySoundStyleHint">默认哔声之外的音效；</span><span id="keySoundName"></span></small>
+        </span>
+        <select id="keySoundStyle" class="select" aria-label="按键音效" data-i18n-aria="input.feel.keySoundStyle">
+          <option value="default" data-i18n="input.feel.kssDefault">默认哔声</option>
+          <option value="keypress" data-i18n="input.feel.kssKeypress">系统键击音</option>
+          <option value="custom" data-i18n="input.feel.kssCustom">自定义音效</option>
+        </select>
+      </div>
+      <div class="row" id="keySoundFileRow" hidden>
+        <span class="row-label"><span data-i18n="input.feel.keySoundFile">自定义音效文件</span><small data-i18n="input.feel.keySoundFileHint">选一段 2MB 内的短音频（ogg/mp3/wav）；不合适可清除换回默认。</small></span>
+        <span style="display:flex;gap:8px">
+          <button class="btn small" id="btnPickKeySound" type="button" data-i18n="input.feel.keySoundPick">选择文件</button>
+          <button class="btn small" id="btnClearKeySound" type="button" data-i18n="input.feel.keySoundClear">清除</button>
+        </span>
+      </div>
       <label class="row switch-row" for="keyHaptic">
         <span class="row-label"><span data-i18n="input.feel.keyHaptic">按键振动</span><small data-i18n="input.feel.keyHapticHint">按键时轻短振动一下，强度跟随机型；系统触感总开关关闭时不震。</small></span>
         <input type="checkbox" id="keyHaptic" class="toggle">

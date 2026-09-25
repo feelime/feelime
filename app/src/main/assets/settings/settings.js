@@ -419,6 +419,17 @@ const I18N = {
         "input.feel.snapTight": "紧",
         "input.feel.keySound": "按键声音",
         "input.feel.keySoundHint": "按键时轻响一声，跟随系统音量，静音时不响。",
+        "input.feel.keySoundStyle": "按键音效",
+        "input.feel.keySoundStyleHint": "默认哔声之外的音效；",
+        "input.feel.kssDefault": "默认哔声",
+        "input.feel.kssKeypress": "系统键击音",
+        "input.feel.kssCustom": "自定义音效",
+        "input.feel.keySoundFile": "自定义音效文件",
+        "input.feel.keySoundFileHint": "选一段 2MB 内的短音频（ogg/mp3/wav）；不合适可清除换回默认。",
+        "input.feel.keySoundPick": "选择文件",
+        "input.feel.keySoundClear": "清除",
+        "feel.keySound.current": "当前：",
+        "feel.keySound.none": "未选择",
         "input.feel.keyHaptic": "按键振动",
         "diag.title": "诊断记录",
         "diag.badge": "调试",
@@ -881,6 +892,17 @@ const I18N = {
         "input.feel.snapHint": "How far the finger may drift during popup swipe before the pick cancels: loose = forgiving, tight = early cancel.",
         "input.feel.keySound": "Key sound",
         "input.feel.keySoundHint": "A soft click on each key press; follows system volume, silent in mute mode.",
+        "input.feel.keySoundStyle": "Key sound style",
+        "input.feel.keySoundStyleHint": "Sounds beyond the default beep;",
+        "input.feel.kssDefault": "Default beep",
+        "input.feel.kssKeypress": "System keypress tone",
+        "input.feel.kssCustom": "Custom sound",
+        "input.feel.keySoundFile": "Custom sound file",
+        "input.feel.keySoundFileHint": "Pick a short audio (ogg/mp3/wav) within 2MB; clear to fall back to the default.",
+        "input.feel.keySoundPick": "Choose file",
+        "input.feel.keySoundClear": "Clear",
+        "feel.keySound.current": "Current: ",
+        "feel.keySound.none": "none",
         "input.feel.keyHaptic": "Key vibration",
         "diag.title": "Diagnostics",
         "diag.badge": "Debug",
@@ -1138,6 +1160,11 @@ window.FeelimeSettings = {
             case "customPhrasesError":
                 setNote("phrasesNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
                 break;
+            case "keySoundError":
+                // #30-2：音效文件不可用（超限/损坏）——提示后 state 回推
+                // 会把风格弹回实际生效值。
+                setNote("feelNote", eventText(event, "error.KEY_SOUND_FILE"));
+                break;
             case "userWordsError":
                 setNote("userWordsNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
                 break;
@@ -1295,6 +1322,18 @@ function renderFeel(state) {
         if (node && document.activeElement !== node) node.checked = !!value;
     };
     setToggle("keySound", state.keySound);
+    // #30-2 音效风格回读：custom 需文件在（native 已保证不悬空），文件行
+    // 仅在选了 custom 或已有文件时露出。
+    {
+        const style = state.keySoundStyle || "default";
+        const sel = $("keySoundStyle");
+        if (sel && document.activeElement !== sel) sel.value = style;
+        const name = $("keySoundName");
+        if (name) name.textContent = state.keySoundName
+            ? t("feel.keySound.current") + state.keySoundName : t("feel.keySound.none");
+        const fileRow = $("keySoundFileRow");
+        if (fileRow) fileRow.hidden = !(style === "custom" || state.keySoundName);
+    }
     setToggle("keyHaptic", state.keyHaptic);
     setToggle("preeditBold", state.preeditBold);
 }
@@ -2517,6 +2556,15 @@ $("autoUpdateCheck").addEventListener("change", event => call("setAutoUpdateChec
 $("associationOn").addEventListener("change", event => call("setAssociation", event.target.checked));
 $("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateTime", event.target.checked));
 $("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));
+
+// #30-2 音效风格：custom 但文件还没选过时先走选文件（native 拒绝无文件的
+// custom，state 回推会把 select 弹回实际生效值）。
+$("keySoundStyle").addEventListener("change", event => {
+    if (event.target.value === "custom") call("openKeySoundDocument");
+    else call("setKeySoundStyle", event.target.value);
+});
+$("btnPickKeySound").addEventListener("click", () => call("openKeySoundDocument"));
+$("btnClearKeySound").addEventListener("click", () => call("clearKeySoundFile"));
 $("keyHaptic").addEventListener("change", event => call("setKeyHaptic", event.target.checked));
 document.querySelectorAll("input[data-fuzzy-bit]").forEach(box => {
     box.addEventListener("change", () => {

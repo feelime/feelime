@@ -302,6 +302,30 @@ fun readKeySoundEnabled(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_KEY_SOUND, false)
 
+/** #30-2 按键音效风格：default=系统哔声（ToneGenerator）、keypress=
+ *  系统键击效果音、custom=用户文件（filesDir/key-sound/custom.*）。 */
+const val PREF_KEY_SOUND_STYLE = "key_sound_style"
+const val PREF_KEY_SOUND_NAME = "key_sound_custom_name"
+const val KEY_SOUND_STYLE_DEFAULT = "default"
+const val KEY_SOUND_STYLE_KEYPRESS = "keypress"
+const val KEY_SOUND_STYLE_CUSTOM = "custom"
+private const val KEY_SOUND_MAX_BYTES = 2 * 1024 * 1024
+
+fun keySoundStyle(context: Context): String {
+    val prefs = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+    val style = prefs.getString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_DEFAULT) ?: KEY_SOUND_STYLE_DEFAULT
+    // custom 但文件已丢（备份恢复/清理）：回退默认，不悬空。
+    if (style == KEY_SOUND_STYLE_CUSTOM && !keySoundFile(context).isFile) return KEY_SOUND_STYLE_DEFAULT
+    return style
+}
+
+fun keySoundFile(context: Context): java.io.File =
+    java.io.File(java.io.File(context.filesDir, "key-sound"), "custom")
+
+fun keySoundName(context: Context): String =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_KEY_SOUND_NAME, "") ?: ""
+
 fun readKeyHapticEnabled(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_KEY_HAPTIC, false)
@@ -344,6 +368,8 @@ class SettingsBridge(
         fun openKeyboardDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a rime .dict.yaml lexicon import. */
         fun openDictDocument() = Unit
+        /** Launch ACTION_OPEN_DOCUMENT for a custom key sound file (#30-2). */
+        fun openKeySoundDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a base dictionary (.dict.yaml). */
         fun openBaseDictDocument() = Unit
         /** Launch ACTION_CREATE_DOCUMENT for the userdata backup (userdata.md §1). */
@@ -568,6 +594,8 @@ class SettingsBridge(
             .put("associationOn", readAssociation(context))
             .put("dynamicDateTimeOn", readDynamicDateTime(context))
             .put("keySound", readKeySoundEnabled(context))
+            .put("keySoundStyle", keySoundStyle(context))
+            .put("keySoundName", keySoundName(context))
             .put("keyHaptic", readKeyHapticEnabled(context))
             .put("bottomPadPortrait", readBottomPadPortraitDp(context))
             .put("bottomPadLandscape", readBottomPadLandscapeDp(context))
@@ -1438,6 +1466,13 @@ class SettingsBridge(
         host.openDictDocument()
     }
 
+    /** #30-2 自定义按键音效：SAF 选择音频文件，宿主 Activity 起选择器，
+     *  结果经 importKeySoundFromUri 落地。 */
+    @JavascriptInterface
+    fun openKeySoundDocument(token: String) = guarded(token) {
+        host.openKeySoundDocument()
+    }
+
     /** 清空导入词（手管 items 不动）。 */
     @JavascriptInterface
     fun clearImportedDict(token: String) = guarded(token) {
@@ -1511,6 +1546,81 @@ class SettingsBridge(
     @JavascriptInterface
     fun setKeySound(on: Boolean, token: String) = guarded(token) {
         applyKeyFeedbackPref(PREF_KEY_SOUND, on)
+    }
+
+    /** #30-2 音效风格：default/keypress/custom（custom 需文件已在，
+     *  否则拒绝并回推 state 让页面回读）。 */
+    @JavascriptInterface
+    fun setKeySoundStyle(style: String, token: String) = guarded(token) {
+        if (style != KEY_SOUND_STYLE_DEFAULT && style != KEY_SOUND_STYLE_KEYPRESS &&
+            style != KEY_SOUND_STYLE_CUSTOM
+        ) return@guarded
+        if (style == KEY_SOUND_STYLE_CUSTOM && !keySoundFile(context).isFile) return@guarded
+        if (style == keySoundStyle(context)) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_KEY_SOUND_STYLE, style).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 清除自定义音效文件并回退默认风格。 */
+    @JavascriptInterface
+    fun clearKeySoundFile(token: String) = guarded(token) {
+        keySoundFile(context).delete()
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
+            .putString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_DEFAULT)
+            .putString(PREF_KEY_SOUND_NAME, "")
+            .apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #30-2 SAF 结果：拷贝音频到 filesDir/key-sound/custom（大小上限
+     *  2MB——按键音是短音效，SoundPool 的合理域），置风格 custom，
+     *  广播让 IME 侧重载播放配置。非法/超限文件不落地，通知页面。 */
+    fun importKeySoundFromUri(uri: Uri) {
+        val name = runCatching {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+            }
+        }.getOrNull() ?: "sound"
+        val target = keySoundFile(context)
+        target.parentFile?.mkdirs()
+        val ok = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                java.io.FileOutputStream(target).use { out ->
+                    val copied = input.copyTo(out, bufferSize = 64 * 1024)
+                    if (copied > KEY_SOUND_MAX_BYTES) {
+                        target.delete()
+                        return@runCatching false
+                    }
+                    true
+                }
+            } ?: false
+        }.getOrDefault(false)
+        if (!ok) {
+            if (target.isFile) target.delete()
+            pushEvent(
+                JSONObject()
+                    .put("type", "keySoundError")
+                    .put("code", if (target.isFile) "TOO_LARGE_OR_BAD" else "OPEN_FAILED")
+                    .put("message", t(context, "音效文件不可用（需 2MB 内的音频）", "Key sound file unusable (audio within 2MB)")),
+            )
+            return
+        }
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
+            .putString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_CUSTOM)
+            .putString(PREF_KEY_SOUND_NAME, name)
+            .apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
     }
 
     @JavascriptInterface
