@@ -2121,9 +2121,14 @@ class SettingsBridge(
     /** 快捷设置入口外移（验收 2026-09-24）：键盘选择（长按菜单内容）与
      *  快捷切换对在设置页管理。真相源仍是键盘 localStorage + pushStores
      *  原生镜像（备份走原生）；设置页写同一镜像（rev+1），广播后键盘
-     *  hello 的 pullStores 按 rev 落地。 */
+     *  hello 的 pullStores 按 rev 落地。
+     *
+     *  参数顺序契约：settings.js 的 call() 把 token 追加在实参末尾，所以
+     *  token 必须是最后一个形参——排在前面的可选参数（orderJson）不能放
+     *  token 之后（真机验收 2026-09-26：token 排第 3 位时 order JSON 落进
+     *  token 参数，guarded 静默拒绝，排序功能整个假死）。 */
     @JavascriptInterface
-    fun saveKeyboardSelection(menuJson: String, pairJson: String, token: String, orderJson: String = "") = guarded(token) {
+    fun saveKeyboardSelection(menuJson: String, pairJson: String, orderJson: String, token: String) = guarded(token) {
         fun allStrings(json: String): Boolean = try {
             val array = JSONArray(json)
             var ok = true

@@ -1336,6 +1336,15 @@ test('keyboard rows render in modeOrder and up-move saves the full order', () =>
     // 勾选集仍按行序收集 checked（menuModes 只是集合，序无关紧要）。
     equal(JSON.parse(call.args[0]).slice().sort(), ['direct', 'double-pinyin', 'pinyin', 'stroke', 't9'],
         'checked set follows rows');
+    // 实参顺序契约：call() 把 token 追加在末尾，第 3 参必须是 order——
+    // Kotlin 签名 token 若排第 3 位会静默拒绝（真机验收 2026-09-26 问题 A）。
+    equal(typeof call.args[3], 'string', 'token rides last after the order json');
+    equal(JSON.parse(call.args[2]).length, 9, 'arg #3 parses as the order array');
+    // 保存失败要可见：keyboardsError 事件落到同一 note（覆盖乐观「已保存」）。
+    world.FeelimeSettings().onEvent({ type: 'keyboardsError', code: 'BAD_KEYBOARD_SELECTION',
+        message: '键盘选择数据格式错误' });
+    assert(world.doc.getElementById('keyboardsNote').textContent.includes('键盘选择'),
+        'keyboardsError surfaces on the card note');
 });
 
 test('english words toggle posts setEnglishWords with the checkbox value', () => {

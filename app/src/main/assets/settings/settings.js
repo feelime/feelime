@@ -1191,6 +1191,12 @@ window.FeelimeSettings = {
             case "userWordsError":
                 setNote("userWordsNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
                 break;
+            case "keyboardsError":
+                // 排序/勾选保存失败要让用户看见（验收 2026-09-26 问题 A：
+                // 参数错位时静默拒绝，UI 还提示「已保存」）。事件比乐观的
+                // 「已保存」晚到，覆盖同一 note。
+                setNote("keyboardsNote", eventText(event, "error.BAD_KEYBOARD_SELECTION"));
+                break;
             case "dictImported":
                 setNote("dictImportNote", event.message || "");
                 break;

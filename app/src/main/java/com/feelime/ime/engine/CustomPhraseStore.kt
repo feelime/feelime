@@ -32,6 +32,12 @@ object CustomPhraseStore {
     private const val JSON_FILE = "custom-phrases.json"
     const val TXT_FILE = "custom_phrase.txt"
 
+    /** 派生规则版本戳：deriveTxt 的产出规则变了就 bump（v2=#29-3 加
+     *  english 段）。老 json 无此字段按 v1；load 见版本不匹配按当前规则
+     *  重派生一次——否则升级用户的 txt 停在旧规则（英文词直出静默失效，
+     *  真机验收 2026-09-26 问题 B），要碰一次开关才恢复。 */
+    private const val DERIVE_VERSION = 2
+
     /** 预设符号词（issue #17 原始需求：箭头/对错/心星手势/动物/天象/
      * 性别符号；用户可在设置的三级页增删改）。 */
     val DEFAULT_ITEMS: List<Pair<String, String>> = listOf(
@@ -111,7 +117,9 @@ object CustomPhraseStore {
         val englishEnabled: Boolean = true,
     )
 
-    /** 读取真相源；json 不存在时（首装/升级）种子写入默认表并派生 txt。 */
+    /** 读取真相源；json 不存在时（首装）种子写入默认表并派生 txt；
+     *  已存在但派生版本落后时按当前规则重派生（升级路径，见
+     *  [DERIVE_VERSION]）。 */
     fun load(context: Context): State {
         val file = jsonFile(context)
         if (!file.isFile) {
@@ -144,8 +152,13 @@ object CustomPhraseStore {
                 val code = item.optString("code")
                 if (text.isNotEmpty() && code.isNotEmpty()) user.add(text to code)
             }
-            State(root.optBoolean("enabled", true), items, imported, user,
+            val state = State(root.optBoolean("enabled", true), items, imported, user,
                 root.optBoolean("englishEnabled", true))
+            if (root.optInt("derive", 1) != DERIVE_VERSION) {
+                save(context, state.enabled, state.items, state.imported, state.user,
+                    englishEnabled = state.englishEnabled)
+            }
+            state
         } catch (_: Exception) {
             State(true, DEFAULT_ITEMS)
         }
@@ -164,6 +177,7 @@ object CustomPhraseStore {
     ) {
         val root = JSONObject()
             .put("version", 1)
+            .put("derive", DERIVE_VERSION)
             .put("enabled", enabled)
             .put("englishEnabled", englishEnabled)
             .put("items", JSONArray().apply {

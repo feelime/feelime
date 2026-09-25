@@ -2046,17 +2046,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             coordinator.setComposition(keys)
         }
 
-        /** 按键反馈（issue #5 问题 2）：声音/触感各自受设置页开关控制，
-         * 默认都关——都关时这里只是一次空操作。走系统通道：
-         * 触感 KEYBOARD_TAP（跟随机型调校；FLAG_IGNORE_GLOBAL_SETTING
-         * 让本开关成为唯一权威，避免「开了没反应」），声音
-         * FX_KEY_CLICK（跟随系统音量与静音，与 WeType 行为一致）。 */
-        /** 按键声音/触感（issue #5 问题 2；issue #15 真机返工）：直接走
-         *  Vibrator/ToneGenerator。原先 performHapticFeedback(
-         *  FLAG_IGNORE_GLOBAL_SETTING) 在 Android 14+（ColorOS 实测）不再
-         *  被尊重——系统「触摸振动」总开关一关整条通道静默，开关形同虚设；
-         *  playSoundEffect 同样受系统「触摸提示音」开关拦截。自播通道只
-         *  摆脱这两个总开关，音量仍跟系统。 */
+        /** 按键声音/触感（issue #5 问题 2；issue #15 真机返工；#30-2 三风格）：
+         *  直接走 Vibrator/ToneGenerator 自播通道。原先 View 层的
+         *  performHapticFeedback(FLAG_IGNORE_GLOBAL_SETTING) 在 Android 14+
+         *  （ColorOS 实测）不再被尊重——系统「触摸振动」总开关一关整条
+         *  通道静默；View.playSoundEffect 同样受「触摸提示音」开关拦截。
+         *  自播通道摆脱这两个总开关，音量仍跟系统。注意：#30-2 的系统
+         *  键击音走 AudioManager.playSoundEffect 直调，真机实测（验收
+         *  2026-09-26）不受「触摸提示音」开关影响，仅音量/静音兜底。 */
         @JavascriptInterface
         fun keyFeedback(token: String) = guarded(token, limited = false) {
             if (readKeyHapticEnabled(this@FeelimeService)) playKeyHaptic()
