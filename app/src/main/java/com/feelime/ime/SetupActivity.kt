@@ -686,41 +686,39 @@ class SetupActivity : AppCompatActivity() {
      *  快捷切换对、menuModesRow=长按菜单、customTitle=定制键盘卡。 */
     private var pendingSetupTarget = ""
 
-    /** 最近一次深链锚（不消费）：ready 重放用。 */
-    private var lastSetupTarget = ""
-
     private fun takeSetupTarget(intent: Intent) {
         pendingSetupTarget = intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""
-        if (pendingSetupTarget.isNotEmpty()) lastSetupTarget = pendingSetupTarget
     }
 
+    /** 注入路由脚本；focusSetting 命中（返回 true）才消费 pending。
+     *  冷启动 WebView 慢时 JS 未就绪、轮询耗尽返回 false——pending 保
+     *  留，等页面 ready（ready ping）时重放。 */
     private fun routeToSetupTarget() {
         val target = pendingSetupTarget
         if (target.isEmpty()) return
-        pendingSetupTarget = ""
-        injectSetupTargetRoute(target)
-    }
-
-    /** 页面 ready（SettingsBridge.ready）时重放：冷启动 WebView 慢于
-     *  onPageFinished 后的轮询窗口时，第一次路由会落空（首页），ready
-     *  是 JS 完全就绪的确定时机，重放幂等（focusSetting 重复只是呼吸
-     *  灯重播）。 */
-    private fun rerouteSetupTargetOnReady() {
-        if (lastSetupTarget.isEmpty()) return
-        injectSetupTargetRoute(lastSetupTarget)
-    }
-
-    private fun injectSetupTargetRoute(target: String) {
         runOnUiThread {
             runCatching {
                 webView.evaluateJavascript(
-                    "(function go(n){ if(window.FeelimeSettings&&window.FeelimeSettings.focusSetting){" +
-                        "FeelimeSettings.focusSetting('" + target + "');" +
-                        "} else if(n>0){setTimeout(function(){go(n-1);},200);} })(30);",
-                    null,
-                )
+                    "(function go(n){" +
+                        "if(window.FeelimeSettings&&window.FeelimeSettings.focusSetting){" +
+                        "return Promise.resolve(window.FeelimeSettings.focusSetting('" + target + "'));" +
+                        "}else if(n>0){return new Promise(function(res){setTimeout(function(){go(n-1).then(res);},200);});}" +
+                        "return Promise.resolve(false);})(30)",
+                ) { r ->
+                    if (r == "true") pendingSetupTarget = ""
+                }
             }
         }
+    }
+
+    /** 页面 ready（SettingsBridge.ready）时重放未消费的 pending：冷启动
+     *  WebView 慢于轮询窗口时第一次路由落空，ready 是 JS 完全就绪的确
+     *  定时机。只重放 pending（一次性语义）——不能记 last 无限重放：
+     *  搜索点击翻外观页会弹真键盘触发新 hello→ready，旧锚重放会覆盖
+     *  用户刚点击的搜索定位（用户实测「搜背景却跳回定制键盘」）。 */
+    private fun rerouteSetupTargetOnReady() {
+        if (pendingSetupTarget.isEmpty()) return
+        routeToSetupTarget()
     }
 
     /**
