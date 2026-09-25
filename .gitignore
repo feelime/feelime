@@ -45,7 +45,8 @@ app/src/main/assets/punctuation/
 models/dev-urls.json
 
 # Model binaries arrive via scripts/setup-assets.sh (GitHub 100MB limit).
-app/src/modelAssets/
+# 无尾斜杠：目录与指向目录的 symlink（worktree 复用主仓资产）都拦。
+app/src/modelAssets
 
 # Signing material never enters the repo (the committed round-trip test PEM
 # under app/src/test/resources/ is a deliberate, published throwaway identity).
