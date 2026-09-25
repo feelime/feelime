@@ -1479,6 +1479,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 // + 锚定 + 呼吸提醒）。
                 .putExtra(SetupActivity.SETUP_PAGE_EXTRA, page),
         )
+        diagTrace("startActivity issued page=$page")
+    }
+
+    /** 诊断期打点：files/diag_trace.log（run-as 读，事后清理）。 */
+    private fun diagTrace(msg: String) {
+        runCatching {
+            filesDir.resolve("diag_trace.log").appendText(
+                "${android.os.SystemClock.elapsedRealtime()} $msg\n")
+        }
     }
 
     /** System dark/light for the keyboard's auto theme (WebView prefers-
@@ -2441,14 +2450,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         fun hideKeyboard(token: String) = guarded(token, limited = false) { onMain { requestHideSelf(0) } }
 
         @JavascriptInterface
-        fun openSetup(token: String) = guarded(token, limited = false) { openSetup() }
-        // 批四引入此方法时漏了 @JavascriptInterface：注解只作用于紧随的
-        // 声明，不注解的话 JS 端 Native.openSetupPage 是 undefined，tile
-        // 点击 TypeError 静默崩——面板关了（close 在前）而设置页永远起
-        // 不来，即「点了没反应」。ace 实测 ENTRY 打点定罪后补注解。
+        fun openSetup(token: String) = onMain { openSetup() }
+        // 2026-09-25 定罪（diag_trace.log 实录）：openSetupPage 走 guarded
+        // 时被 token 世代失配拦过——用户点 tile 的瞬间键盘 WebView 可能
+        // 处于 hello 前后窗口（onCreateInputView/reloadKeyboardFiles 换
+        // token 后旧页面还握着旧 token）。导航到自家设置页是用户明确
+        // 点击意图、无数据面风险，不该被 token 门闸拦：openSetup/
+        // openSetupPage 改为无条件执行。数据类桥调用仍走 guarded。
         @JavascriptInterface
-        fun openSetupPage(page: String, token: String) =
-            guarded(token, limited = false) { openSetup(page) }
+        fun openSetupPage(page: String, token: String) = onMain {
+            diagTrace("openSetupPage page=$page")
+            openSetup(page)
+        }
 
         /** 定制键盘 JSON 的说明文档（#29-8）：固定官方地址，不收任意
          *  URL——WebView 侧不该能驱动任意 intent 跳转。 */
