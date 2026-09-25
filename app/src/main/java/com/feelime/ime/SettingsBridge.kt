@@ -333,6 +333,11 @@ class SettingsBridge(
         fun requestMicPermission()
         fun showImeEnableSettings()
         fun showImePicker()
+        /** 页面 JS 完全就绪（ready ping）——tile 深链的锚定路由在这个
+         *  时机重放一次：冷启动 WebView 加载慢时 onPageFinished 后的
+         *  轮询窗口可能在 JS 就绪前耗尽（用户实测「第一次只到首页，
+         *  第二次才定位」的根因）。 */
+        fun onSettingsPageReady() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a verified model archive. */
         fun openModelDocument(modelId: String)
         /** Launch ACTION_OPEN_DOCUMENT for a local keyboard ZIP package. */
@@ -844,6 +849,7 @@ class SettingsBridge(
     fun ready(token: String) = guarded(token) {
         pushState()
         maybeAutoCheck()
+        host.onSettingsPageReady()
     }
 
     @JavascriptInterface

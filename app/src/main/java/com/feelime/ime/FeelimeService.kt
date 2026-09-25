@@ -2460,7 +2460,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         @JavascriptInterface
         fun openSetupPage(page: String, token: String) = onMain {
             diagTrace("openSetupPage page=$page")
-            openSetup(page)
+            // 必须显式限定外类：裸调 openSetup(page) 会解析到本类桥方法
+            // openSetup(token)——单 String 参数同形，page 被当 token 吃掉，
+            // SETUP_PAGE_EXTRA 落空 → 设置页只开首页不定位（用户实测
+            // 「跳了但没到对应设置项」，diag_trace issued page= 空定罪）。
+            this@FeelimeService.openSetup(page)
         }
 
         /** 定制键盘 JSON 的说明文档（#29-8）：固定官方地址，不收任意

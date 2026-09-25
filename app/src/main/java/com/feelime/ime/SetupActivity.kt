@@ -400,6 +400,10 @@ class SetupActivity : AppCompatActivity() {
             getSystemService(InputMethodManager::class.java).showInputMethodPicker()
         }
 
+        override fun onSettingsPageReady() {
+            rerouteSetupTargetOnReady()
+        }
+
         override fun openModelDocument(modelId: String) {
             if (!canTouchWebView()) return
             runOnUiThread {
@@ -677,24 +681,42 @@ class SetupActivity : AppCompatActivity() {
     /** 快捷设置 tile 直达（SETUP_PAGE_EXTRA）：页面加载后调设置页的
      *  focusSetting(id)——它自己翻页（目标可能在 input 之外的页）、滚到
      *  整行并呼吸提醒。onPageFinished 时 JS 未必初始化完，注入的脚本自带
-     *  轮询重试。锚点：quickPairA=快捷切换对、menuModesRow=长按菜单、
-     *  customTitle=定制键盘卡。 */
+     *  轮询重试（30×200ms）；页面 ready（ready ping）时再重放一次兜底
+     *  ——冷启动 WebView 慢于轮询窗口时第一次会落空。锚点：quickPairA=
+     *  快捷切换对、menuModesRow=长按菜单、customTitle=定制键盘卡。 */
     private var pendingSetupTarget = ""
+
+    /** 最近一次深链锚（不消费）：ready 重放用。 */
+    private var lastSetupTarget = ""
 
     private fun takeSetupTarget(intent: Intent) {
         pendingSetupTarget = intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""
+        if (pendingSetupTarget.isNotEmpty()) lastSetupTarget = pendingSetupTarget
     }
 
     private fun routeToSetupTarget() {
         val target = pendingSetupTarget
         if (target.isEmpty()) return
         pendingSetupTarget = ""
+        injectSetupTargetRoute(target)
+    }
+
+    /** 页面 ready（SettingsBridge.ready）时重放：冷启动 WebView 慢于
+     *  onPageFinished 后的轮询窗口时，第一次路由会落空（首页），ready
+     *  是 JS 完全就绪的确定时机，重放幂等（focusSetting 重复只是呼吸
+     *  灯重播）。 */
+    private fun rerouteSetupTargetOnReady() {
+        if (lastSetupTarget.isEmpty()) return
+        injectSetupTargetRoute(lastSetupTarget)
+    }
+
+    private fun injectSetupTargetRoute(target: String) {
         runOnUiThread {
             runCatching {
                 webView.evaluateJavascript(
                     "(function go(n){ if(window.FeelimeSettings&&window.FeelimeSettings.focusSetting){" +
                         "FeelimeSettings.focusSetting('" + target + "');" +
-                        "} else if(n>0){setTimeout(function(){go(n-1);},120);} })(12);",
+                        "} else if(n>0){setTimeout(function(){go(n-1);},200);} })(30);",
                     null,
                 )
             }
