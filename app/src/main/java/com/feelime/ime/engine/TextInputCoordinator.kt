@@ -590,6 +590,24 @@ class TextInputCoordinator(
         return dispatch(EngineCommand.Backspace)
     }
 
+    /** #34 删除键手势：非组合态跟手逐字删的批量通道。不走引擎
+     *  Backspace——组合态已在键盘侧门闸排除，这里删的是已上屏文本，
+     *  直接发 DEL 键事件（与 deleteOneEditorUnit 同源：终端类宿主只认
+     *  键事件）。顺手作废词撤销：法/俄的「退格重开上一词」不该被滑删
+     *  误触。面板编辑器经 editor 端口的改道规则自然路由到 panelDelete。 */
+    fun gestureBackspace(count: Int) {
+        invalidateWordUndo()
+        repeat(count) { editor.sendDeleteKey() }
+    }
+
+    /** #34 回滑恢复：把会话缓冲里最后删掉的一个字符弹回编辑器。
+     *  onExternalEditorMutation 先作废选择预测与词撤销——commit 会移动
+     *  光标，残留的撤销记录按代际校验必须失效。 */
+    fun gestureRestore(text: String) {
+        onExternalEditorMutation()
+        editor.commitText(text)
+    }
+
     fun enterRaw(): DispatchAck {
         invalidateWordUndo()
         lastEnterConsumedComposing = false

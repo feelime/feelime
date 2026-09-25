@@ -709,6 +709,23 @@ class MockNative {
     backspace(token) {
         this._record('backspace', [token]);
     }
+    // #34 删除键手势四件套：只记录调用（native 侧恢复缓冲不进 mock）。
+    backspaceGestureBegin(token) {
+        this._record('backspaceGestureBegin', [token]);
+    }
+    backspaceN(count, token) {
+        this._record('backspaceN', [count, token]);
+    }
+    backspaceRestoreOne(token) {
+        this._record('backspaceRestoreOne', [token]);
+    }
+    backspaceGestureEnd(token) {
+        this._record('backspaceGestureEnd', [token]);
+    }
+    // 单手模式侧条的全选/剪切/复制/粘贴通道（#34 上滑全选复用它）。
+    editorAction(action, token) {
+        this._record('editorAction', [action, token]);
+    }
     enter(token) {
         this._record('enter', [token]);
     }

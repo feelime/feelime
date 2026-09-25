@@ -106,6 +106,20 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private var cursorQueryRequest = 0L
     private val cursorSnapshotSupport = CursorSnapshotSupport()
     private val expectedCursorSelections = ArrayDeque<Pair<Int, Int>>()
+    // ===== #34 删除键手势会话（跟手删的字符恢复缓冲）=====
+    // 键盘 JS 读不到编辑器文本，恢复内容只能 native 记账：begin 时后台
+    // 读一次光标前文本作基线，其后每删一个单位从基线尾部按 code point
+    // 弹出入栈，restoreOne 弹栈顶 commitText 回去。读编辑器文本必须
+    // 离开主线程——进程内 WebView 宿主对同步读不应答，会烧框架 2s
+    // watchdog（deleteOneEditorUnit 注释记录的既有教训），故复用
+    // cursorQueryExecutor。基线到达前的删除先记数量，到达后补账。
+    // 所有字段只在主线程触碰（guarded→onMain、executor 结果 main.post
+    // 回主线程）。
+    private var backspaceGestureSession = 0
+    /** null=基线未到达；""=读到文本头或读取失败（恢复通道空转）。 */
+    private var backspaceGestureBaseline: String? = null
+    private var backspaceGesturePending = 0
+    private val backspaceGestureStack = ArrayDeque<String>()
  // Set while a keyboard-panel input (phrase add/edit) has
     // focus. The system InputConnection always belongs to the host app
     // editor - a WebView input inside the IME's own view never re-routes
@@ -2257,6 +2271,101 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         @JavascriptInterface
         fun backspace(token: String) = guarded(token, limited = true) { coordinator.backspace() }
 
+        // ===== #34 删除键手势四件套（issue #34 v1）=====
+        // 门闸取 limited=false：四个桥都由手指位移节律约束（一个手势
+        // 至多几十次、随松手终止），与同形态的 moveCursor/commitText
+        // 一致；取 limited=true 反而会让快速甩动的删除步被 25/s 滑窗
+        // 静默丢弃（guarded 的拒绝无回执，手指跨过 10 键只删 6 字）。
+
+        /** 手势会话开始：后台读一次光标前文本作恢复缓冲的记账基线。
+         *  面板编辑器（IC 改道）与敏感编辑器跳过读——恢复通道空转，
+         *  删除照常；密码不入 IME 内存缓冲（评审 F-4）。 */
+        @JavascriptInterface
+        fun backspaceGestureBegin(token: String) = guarded(token, limited = false) {
+            beginBackspaceGestureSession()
+        }
+
+        /** 跟手逐字删的批量桥：一次位移事件跨过的单位数合一次调用。
+         *  只发 DEL 键事件不过引擎（组合态已在键盘侧排除）。 */
+        @JavascriptInterface
+        fun backspaceN(count: Int, token: String) = guarded(token, limited = false) {
+            if (count !in 1..MAX_BACKSPACE_GESTURE_UNITS) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            repeat(count) {
+                val unit = popBackspaceGestureUnit()
+                if (unit != null) backspaceGestureStack.addLast(unit)
+                else if (backspaceGestureBaseline == null) backspaceGesturePending += 1
+            }
+            coordinator.gestureBackspace(count)
+        }
+
+        /** 回滑恢复：弹出本会话最近删掉的一个字符发回编辑器。无可恢复
+         *  内容（宿主读不到编辑器文本/已删空）时静默空转。 */
+        @JavascriptInterface
+        fun backspaceRestoreOne(token: String) = guarded(token, limited = false) {
+            if (backspaceGestureStack.isEmpty()) return@guarded
+            val unit = backspaceGestureStack.removeLast()
+            // 回填记账镜像：再左滑删它时还有账可弹。
+            backspaceGestureBaseline = (backspaceGestureBaseline ?: "") + unit
+            coordinator.gestureRestore(unit)
+        }
+
+        /** 手势会话结束：恢复缓冲清空（spec：恢复只在会话内有效，不做
+         *  跨手势撤销栈——那是下滑 Ctrl+Z 的事）。 */
+        @JavascriptInterface
+        fun backspaceGestureEnd(token: String) = guarded(token, limited = false) {
+            endBackspaceGestureSession()
+        }
+
+        private fun beginBackspaceGestureSession() {
+            backspaceGestureSession += 1
+            backspaceGestureBaseline = null
+            backspaceGesturePending = 0
+            backspaceGestureStack.clear()
+            val session = backspaceGestureSession
+            val connection = currentInputConnection ?: return
+            if (panelInputActive || isSensitiveEditor()) return
+            cursorQueryExecutor.execute {
+                val before = runCatching {
+                    connection.getTextBeforeCursor(BACKSPACE_GESTURE_BASELINE_CHARS, 0)?.toString()
+                }.getOrNull()
+                main.post {
+                    // 会话已翻篇（下一个手势/已结束）：迟到基线作废。
+                    if (backspaceGestureSession != session) return@post
+                    backspaceGestureBaseline = before ?: ""
+                    // 补记基线到达前的删除：先删的是基线最尾的字符，
+                    // 依次弹出入栈后栈顶恰是最近删的。
+                    while (backspaceGesturePending > 0) {
+                        val unit = popBackspaceGestureUnit() ?: break
+                        backspaceGestureStack.addLast(unit)
+                        backspaceGesturePending -= 1
+                    }
+                }
+            }
+        }
+
+        /** 从基线尾部弹一个删除单位（按 code point，代理对不劈半）。
+         *  基线未到达或已弹空返回 null。 */
+        private fun popBackspaceGestureUnit(): String? {
+            val base = backspaceGestureBaseline ?: return null
+            if (base.isEmpty()) return null
+            val tail = if (base.length >= 2 &&
+                Character.isLowSurrogate(base.last()) &&
+                Character.isHighSurrogate(base[base.length - 2])
+            ) 2 else 1
+            backspaceGestureBaseline = base.substring(0, base.length - tail)
+            return base.substring(base.length - tail)
+        }
+
+        private fun endBackspaceGestureSession() {
+            backspaceGestureSession += 1
+            backspaceGestureBaseline = null
+            backspaceGesturePending = 0
+            backspaceGestureStack.clear()
+        }
+
         @JavascriptInterface
         fun enter(token: String) = guarded(token, limited = false) { enter() }
 
@@ -3294,6 +3403,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         const val MAX_CURSOR_DELTA = 256
         const val MAX_CURSOR_CONTEXT_CHARS = 2048
         const val MAX_PENDING_CURSOR_DELTA = 16_384L
+        // #34 删除键手势：单次 backspaceN 的单位上限（一次位移事件至多
+        // 跨过几个步长，16 已远超）与恢复缓冲的基线读取长度（字符数，
+        // 超长会话删到基线尽头后恢复通道自然空转）。
+        const val MAX_BACKSPACE_GESTURE_UNITS = 16
+        const val BACKSPACE_GESTURE_BASELINE_CHARS = 256
         const val CALLS_PER_SECOND = 25
         const val HEIGHT_PREF_DEBOUNCE_MS = 300L
 

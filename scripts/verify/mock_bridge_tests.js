@@ -194,6 +194,144 @@ test('backspace repeats while held (390ms then 75ms cadence)', () => {
     equal(world.native.of('backspace').length, before, 'no repeats after release');
 });
 
+// ---------------------------------------------------------------- #34 delete gestures
+// 步长=键宽 60%（FakeElement rect 恒 44px → 26.4px），识别 slop 38px。
+// 坐标算例：起点 (100,20)，engage 锚 crossingX=62、delBase=88.4。
+function bsKey(world) {
+    return [...world.document.querySelectorAll('.kb-special')].find(
+        el => el.dataset.role === 'backspace',
+    );
+}
+
+test('delete gesture: left swipe two steps batches backspaceN and closes the session', {since: '3.68.0'}, () => {
+    const world = fresh();
+    const bs = bsKey(world);
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20); // dx=-40 过 38px slop → engage，恰删一字
+    world.move(bs, 30, 20); // 再跨一个 26.4px 步长
+    world.touchUp(bs, 30, 20);
+    equal(world.native.of('backspaceGestureBegin').length, 1, 'session begins');
+    equal(world.native.of('backspaceN').reduce((s, c) => s + c.args[0], 0), 2,
+        'two units deleted in total');
+    equal(world.native.of('backspaceGestureEnd').length, 1, 'session ends on release');
+    equal(world.native.of('backspace').length, 0, 'swipe suppresses the tap click');
+});
+
+test('delete gesture: swipe back right restores one unit at a time', {since: '3.68.0'}, () => {
+    const world = fresh();
+    const bs = bsKey(world);
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20); // net 1
+    world.move(bs, 30, 20); // net 2
+    world.move(bs, 61, 20); // steps=-1 → 净删回到 1：弹回一字
+    world.touchUp(bs, 61, 20);
+    equal(world.native.of('backspaceRestoreOne').length, 1, 'one unit restored');
+    // 已全部恢复后再右滑：净删已为 0，不多发恢复
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20);
+    world.move(bs, 61, 20); // 仍在同一格内：无新调用
+    world.move(bs, 120, 20); // 右滑跨两格（-1→+1）：净删 1→0，只恢复 1
+    world.touchUp(bs, 120, 20);
+    equal(world.native.of('backspaceRestoreOne').length, 2, 'restore capped at deleted count');
+});
+
+test('delete gesture: down swipe releases Ctrl+Z keyEvent', {since: '3.68.0'}, () => {
+    const world = fresh();
+    const bs = bsKey(world);
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 100, 90); // dy=+70 纵向主导向下
+    world.touchUp(bs, 100, 90);
+    const ev = world.native.of('keyEvent');
+    equal(ev.length, 1, 'one keyEvent');
+    equal(ev[0].args[0], 54, 'KEYCODE_Z');
+    equal(ev[0].args[1], 0x1000, 'META_CTRL_ON');
+    equal(world.native.of('backspaceN').length, 0, 'no live deletes');
+    equal(world.native.of('backspace').length, 0, 'no stray tap delete');
+});
+
+test('delete gesture: up swipe releases selectAll then backspace', {since: '3.68.0'}, () => {
+    const world = fresh();
+    const bs = bsKey(world);
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 100, -50); // dy=-70 纵向主导向上
+    world.touchUp(bs, 100, -50);
+    const act = world.native.of('editorAction');
+    equal(act.length, 1, 'one editorAction');
+    equal(act[0].args[0], 'selectAll', 'select all first');
+    equal(world.native.of('backspace').length, 1, 'delete lands after select');
+});
+
+test('delete gesture: composing keeps swipes engine-side', {since: '3.68.0'}, () => {
+    const world = fresh();
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }] });
+    const bs = bsKey(world);
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20); // 组合态左滑=既有「整段撤销组合」，不是四件套
+    world.touchUp(bs, 60, 20);
+    equal(world.native.of('clearComposing').length, 1, 'preedit aborted the old way');
+    equal(world.native.of('backspaceGestureBegin').length, 0, 'no gesture session');
+    equal(world.native.of('backspaceN').length, 0, 'no committed-text deletes');
+    // 重新进入组合后垂直滑也不接手势（组合中退格仍是引擎退格）
+    world.engineState({ mode: 'pinyin', revision: 2, composing: 'hao', rawInput: 'hao',
+        candidates: [{ id: 'c1', text: '好' }] });
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 100, 90);
+    world.touchUp(bs, 100, 90);
+    equal(world.native.of('keyEvent').length, 0, 'no undo while composing');
+    equal(world.native.of('editorAction').length, 0, 'no select-all while composing');
+});
+
+test('delete gesture: recognized swipe cancels the live repeat', {since: '3.68.0'}, () => {
+    const world = fresh();
+    const bs = bsKey(world);
+    // 直证仲裁链路：mock 的 elementFromPoint 缺失会让 bindTouch 的
+    // touchmove 顺手清掉计时器，单看 repeat 停不停不够强。
+    let cancelled = 0;
+    const orig = bs._cancelRepeat;
+    bs._cancelRepeat = () => { cancelled += 1; orig(); };
+    world.touchDown(bs, 100, 20);
+    world.clock.advance(500); // holdTimer(390ms) 已过，75ms repeat 在跑
+    const before = world.native.of('backspace').length;
+    assert(before >= 1, 'repeat was running before the swipe');
+    world.move(bs, 60, 20); // 手势接管：必须取消在跑的 repeat
+    world.clock.advance(500);
+    equal(world.native.of('backspace').length, before, 'no repeat clicks after takeover');
+    assert(cancelled >= 1, 'flick layer explicitly cancelled the repeat');
+    world.touchUp(bs, 60, 20);
+});
+
+test('delete gesture: layer backspaces (nine-pad) stay gesture-free', {since: '3.68.0'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    const key123 = [...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    );
+    world.touchDown(key123);
+    world.clock.advance(360);
+    world.touchUp(key123);
+    assert(!world.$('numPadLayer').hidden, 'nine-pad open');
+    const bs = world.$('numPadLayer').querySelector('[data-role="backspace"]');
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20);
+    world.touchUp(bs, 60, 20);
+    equal(world.native.of('backspaceGestureBegin').length, 0, 'layer backspace has no gestures');
+    equal(world.native.of('backspaceN').length, 0, 'no deletes either');
+});
+
+test('delete gesture: sensitive editor disables the four gestures', {since: '3.68.0'}, () => {
+    const world = fresh();
+    world.editorInfo({ sensitive: true });
+    const bs = bsKey(world);
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20);
+    world.touchUp(bs, 60, 20);
+    equal(world.native.of('backspaceGestureBegin').length, 0, 'no session');
+    equal(world.native.of('backspaceN').length, 0, 'no deletes');
+    equal(world.native.of('backspace').length, 0, 'swipe still suppresses the tap');
+    world.tap(bs); // 普通点按退格不受敏感门闸影响
+    equal(world.native.of('backspace').length, 1, 'plain tap still deletes');
+});
+
 test('enter/hide/globe taps', () => {
     const world = fresh();
     const enter = [...world.document.querySelectorAll('.kb-special')].find(
@@ -6224,6 +6362,18 @@ function inkStroke(world, points) {
     points.slice(1).forEach(point => world.move(pad, point[0], point[1]));
     world.touchUp(pad, points[points.length - 1][0], points[points.length - 1][1]);
 }
+
+test('delete gesture: handwriting backspace keeps ink semantics, no gestures', {since: '3.68.0'}, () => {
+    const world = handwritingWorld();
+    const bs = bsKey(world);
+    assert(bs.classList.contains('ink-key'), 'handwriting backspace is the ink key');
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]); // 书写区留有笔迹的真实场景
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20); // 左滑不转成删编辑器文本
+    world.touchUp(bs, 60, 20);
+    equal(world.native.of('backspaceGestureBegin').length, 0, 'no session on ink key');
+    equal(world.native.of('backspaceN').length, 0, 'no editor deletes');
+});
 
 test('handwriting: menu entry gated by strictReady (missing field = no entry)', {since: '3.59.0'}, () => {
     // round-6：手写默认不进菜单——先显式勾选（用户主动开启实验性能力）。

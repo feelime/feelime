@@ -277,7 +277,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.67.0';
+    const KEYBOARD_VERSION = '3.68.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -392,6 +392,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // recognition-threshold crossing. Exposes 1x..5x in the quick
     // settings panel.
     const SCRUB_UNIT_BASE_PX = 36;
+    // #34 删除键下滑=撤销：Ctrl+Z 直发宿主（keyEvent 白名单内：A..Z +
+    // CTRL 位）。宿主不支持就无操作——spec 定案不做 fallback。Z 的
+    // 键码沿用 Fn 层的 29+字母 公式（KEYCODE_A=29）。
+    const BS_UNDO_KEYCODE = 29 + 'Z'.charCodeAt(0) - 65;
 
     const MODES = {
         'direct': { label: 'En', title: '英文 Direct', layout: 'qwerty', engine: false },
@@ -1231,6 +1235,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             catch (_) { this.lastKbMode = ''; }
             this.scrubBase = null;
             this.scrubSteps = 0;
+            // #34 删除键手势四件套的会话态：delBase=null 表示跟手删未
+            // 激活；bsVertical 是 backspace 垂直手势的方向锁定（0 无、
+            // -1 上、1 下），松手才派发。
+            this.delBase = null;
+            this.delSteps = 0;
+            this.delUnit = 0;
+            this.delNet = 0;
+            this.bsVertical = 0;
             this.expandCandidates = [];
             this.expandHasNext = false;
             this.loadingMore = false;
@@ -3247,6 +3259,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.touchOrigin = null;
             this.scrubBase = null;
             this.scrubSteps = 0;
+            // #34 手势会话随程序化取消一并复位（native 会话也要关——
+            // 不关则恢复缓冲滞留到下次 begin）。
+            if (this.delBase !== null) {
+                this.call(() => Native.backspaceGestureEnd(this.token));
+            }
+            this.delBase = null;
+            this.delSteps = 0;
+            this.delNet = 0;
+            this.bsVertical = 0;
             this.swiping = false;
         }
 
@@ -3288,18 +3309,49 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // 中途会拉起语音浮层）。已激活的语音会话不动——上滑
                     // 撤销是 bindSpaceHold 自己的手势，这里抢了会破坏它。
                     clearTimeout(this.spaceHoldTimer);
-                    // A LEFT swipe on the backspace key aborts the
-                    // whole live composition (pinyin preedit...) in one go -
-                    // repeat-tapping it down letter by letter is the old way.
-                    // Swipes while idle do nothing (the click stays suppressed
-                    // by this.swiping, so no stray delete either). The pending
-                    // hold/repeat timers die with the swipe: the finger may
-                    // still be ON the key (elementFromPoint never left it) and
-                    // a late repeat would eat COMMITTED text .
+                    // #34 删除键手势四件套的仲裁入口。任何被识别的手势
+                    // 先杀 repeat——手指可能仍在键上（elementFromPoint 没
+                    // 离开），迟到的 repeat 会多吃已上屏文本；repeat 已在
+                    // 跑则同样被取消（先滑后按住的用户路径）。
                     const bsKey = originButton.closest('.kb-key[data-role="backspace"]');
-                    if (Math.abs(dx) > Math.abs(dy) && dx < 0 && bsKey) {
+                    if (bsKey) {
                         if (bsKey._cancelRepeat) bsKey._cancelRepeat();
-                        if (this.composing) this.clearComposing();
+                        // 手写模式的退格是「清笔迹优先」（inkBackspace），
+                        // 四件套在这里没有对应设计——v1 不启用，键自身
+                        // 行为不变。
+                        if (bsKey.classList.contains('ink-key')) return;
+                        // 四件套只挂主键盘（qwertyLayer：qwerty/双拼/T9/
+                        // 笔画共用）的退格。数字/符号/自定义表层内的退格
+                        // 常挨着滚动网格，从它起手的滚动不该在松手时变成
+                        // 撤销/全选删（垂直动作是松手才发的破坏性操作）。
+                        if (!bsKey.closest('#qwertyLayer')) return;
+                        // 组合态不启用四件套（spec v1 裁剪，评审 F-2 的
+                        // 最大正确性坑）：组合中退格属于引擎世界（删拼音）。
+                        // 左滑保留既有「整段撤销组合」语义；垂直滑动不接
+                        // 手势。组合被收掉后恢复缓冲也无从谈起——重发
+                        // commitText 与原输入不等价。
+                        if (this.composing) {
+                            if (Math.abs(dx) > Math.abs(dy) && dx < 0) this.clearComposing();
+                            return;
+                        }
+                        // 密码框等敏感编辑器禁用（评审 F-4：恢复重发/全选
+                        // 删不碰敏感文本）。sensitive 经 onEditorInfo 下发。
+                        if (this.editorSensitive) return;
+                        if (Math.abs(dx) > Math.abs(dy)) {
+                            // 右滑起始无语义：恢复只针对本会话已删字符。
+                            if (dx < 0 && this.deleteGestureSupported()) {
+                                this.engageDeleteScrub(bsKey, dx, dy, threshold);
+                            }
+                            return;
+                        }
+                        // 垂直主导：方向锁定在跨越样本上，动作延迟到松手
+                        // （上=全选+删、下=Ctrl+Z）。与字母键 flick 即发不
+                        // 同——删内容的手势先看用户最终意图，防误触即吞。
+                        // 四件套整套降级（旧壳/预览无新桥）：垂直方向也
+                        // 不锁，松手自然无派发。
+                        if (this.deleteGestureSupported()) {
+                            this.bsVertical = dy < 0 ? -1 : 1;
+                        }
                         return;
                     }
                     // T9 手势仲裁（t9.md §3）：字母键四向=引擎字母/字面
@@ -3381,6 +3433,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     }
                 } else if (this.scrubBase !== null) {
                     this.applyScrub(touch.clientX);
+                } else if (this.delBase !== null) {
+                    // #34 跟手删与 scrub 并行连续段（键源互斥：scrub 只
+                    // 认 data-key 键，delBase 只来自 backspace）。
+                    this.applyDeleteScrub(touch.clientX);
                 }
             }, { passive: false, capture: true });
             const finish = (event, cancelled) => {
@@ -3395,6 +3451,34 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         item => item.identifier === origin.id);
                     if (touch) this.applyScrub(touch.clientX);
                 }
+                // #34 跟手删收尾：末次位置先结算（与 scrub 同理，最后
+                // 半步不丢），松手即关 native 会话——恢复缓冲随之清空
+                // （spec：恢复只在会话内有效，不做跨手势撤销栈）。
+                // touchcancel 不结算但同样要关会话。
+                if (origin && this.delBase !== null) {
+                    if (!cancelled) {
+                        const touch = Array.from(event.changedTouches || []).find(
+                            item => item.identifier === origin.id);
+                        if (touch) this.applyDeleteScrub(touch.clientX);
+                    }
+                    this.delBase = null;
+                    this.delSteps = 0;
+                    this.delNet = 0;
+                    this.call(() => Native.backspaceGestureEnd(this.token));
+                }
+                // #34 垂直手势在松手派发（方向已在跨越时锁定）。上=全选
+                // 后退格：KEYCODE_DEL 对选区是整段删（native 侧 device-
+                // verified 的既有事实，无需新通道）；下=Ctrl+Z。
+                if (!cancelled && origin && this.bsVertical) {
+                    if (this.bsVertical < 0) {
+                        this.call(() => Native.editorAction('selectAll', this.token));
+                        this.call(() => Native.backspace(this.token));
+                    } else {
+                        this.call(() => Native.keyEvent(BS_UNDO_KEYCODE,
+                            CTRL_META_BITS.Ctrl, this.token));
+                    }
+                }
+                this.bsVertical = 0;
                 this.touchOrigin = null;
                 this.scrubBase = null;
                 this.scrubSteps = 0;
@@ -3423,6 +3507,57 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const move = Math.max(-256, Math.min(256, remaining));
                 this.call(() => Native.moveCursor(move, this.token));
                 remaining -= move;
+            }
+        }
+
+        /** #34 新桥能力探测：键盘可热更到旧 APK 上，四个手势桥缺任何
+         * 一个就把整套手势降级为不启用（typeof 守卫，与 keyFeedback 的
+         * 兼容模式同款；不进 REQUIRED_CAPABILITIES——那会让旧壳拒绝
+         * 整个新键盘）。 */
+        deleteGestureSupported() {
+            return typeof Native.backspaceGestureBegin === 'function' &&
+                typeof Native.backspaceN === 'function' &&
+                typeof Native.backspaceRestoreOne === 'function' &&
+                typeof Native.backspaceGestureEnd === 'function';
+        }
+
+        /** #34 跟手删启动：锚点数学与空格 scrub 同源（在固定阈值跨越处
+         * 定锚、首个跨越恰删一字），步长换成退格键宽的 60%（spec --del-step
+         * 建议值，用实际行内键宽度量）。begin 先行——native 侧恢复缓冲
+         * 的光标前文本基线读取是异步的，越早开始越好。 */
+        engageDeleteScrub(bsKey, dx, dy, threshold) {
+            this.delUnit = Math.max(12, (bsKey.getBoundingClientRect().width || 44) * 0.6);
+            const distance = Math.hypot(dx, dy) || threshold;
+            const crossingX = this.touchOrigin.x + (dx / distance) * threshold;
+            this.delBase = crossingX + this.delUnit;
+            this.delSteps = -1;
+            this.delNet = 1;
+            this.call(() => Native.backspaceGestureBegin(this.token));
+            this.call(() => Native.backspaceN(1, this.token));
+        }
+
+        /** #34 跟手删连续段。净删除数是位置的函数（target = max(0,
+         * -steps)）：左滑删、右滑把本会话已删的恢复回来、恢复完再右滑
+         * 无操作——纯位置语义让「右滑抖动再回来」不会误删新字符。
+         * 删除走批量桥（一次事件跨过的单位合一次调用，快速甩动不丢步，
+         * 与 applyScrub 的批量理由相同；单次上限 16 与 native 的
+         * MAX_BACKSPACE_GESTURE_UNITS 对齐）；恢复逐字弹回。native 侧
+         * 没账可弹（宿主读不到编辑器文本）时静默空转。 */
+        applyDeleteScrub(clientX) {
+            const steps = Math.trunc((clientX - this.delBase) / this.delUnit);
+            if (steps === this.delSteps) return;
+            this.delSteps = steps;
+            const target = Math.max(0, -steps);
+            let delta = target - this.delNet;
+            this.delNet = target;
+            while (delta > 0) {
+                const count = Math.min(16, delta);
+                this.call(() => Native.backspaceN(count, this.token));
+                delta -= count;
+            }
+            while (delta < 0) {
+                this.call(() => Native.backspaceRestoreOne(this.token));
+                delta += 1;
             }
         }
 
