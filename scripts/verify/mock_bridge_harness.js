@@ -185,6 +185,11 @@ class FakeElement {
     get firstElementChild() {
         return (this.children || []).find(child => child.nodeType === 1) || null;
     }
+    /** Real DOM counterpart of parentNode for element parents; settings.js
+     *  moveKbRow relies on it (fidelity gap caught by the 1.2.1 suite). */
+    get parentElement() {
+        return this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null;
+    }
 
     /** The textContent setter replaced every child with one text
      * string; the real DOM keeps that string as a child TEXT NODE, so a

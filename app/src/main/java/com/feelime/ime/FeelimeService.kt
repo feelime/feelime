@@ -412,27 +412,35 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     /** #27：把 chromeColor 同步涂到 IME 窗口的导航栏与窗口背景。
      * CSS 侧已铺同一色（#softKeyboard 的 --bg 含 --safe-bottom 带），
-     * 这里补齐 WebView 之外的两种露出路径。 */
+     * 这里补齐 WebView 之外的露出路径。窗口背景只涂**底部手势条带**
+     * （评审 P1：整窗 ColorDrawable 会把键盘上方至多 200dp 的透明
+     * 悬浮候选带（float band，设计上透出 app）变成实色条）——带之上
+     * 保持透明，条带高度跟 navBottomInset() 动态取。 */
     private fun applyChromeColor() {
         getWindow()?.window?.let { w ->
             val color = chromeColor ?: Color.TRANSPARENT
             w.navigationBarColor = color
-            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(color))
+            w.setBackgroundDrawable(object : android.graphics.drawable.Drawable() {
+                private val paint = android.graphics.Paint()
+                override fun draw(canvas: android.graphics.Canvas) {
+                    val strip = navBottomInset()
+                    if (strip <= 0 || color == Color.TRANSPARENT) return
+                    paint.color = color
+                    canvas.drawRect(
+                        0f, (bounds.height() - strip).toFloat(),
+                        bounds.width().toFloat(), bounds.height().toFloat(), paint,
+                    )
+                }
+                override fun setAlpha(alpha: Int) {}
+                override fun setColorFilter(cf: android.graphics.ColorFilter?) {}
+                @Deprecated("Deprecated in Java")
+                override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+            })
         }
     }
 
     /** 桥侧颜色解析：#RGB/#RRGGBB/#AARRGGBB、rgb()/rgba()、transparent。
      * 无法解析返回 null（调用方丢弃，保持旧值）。 */
-    private fun parseChromeColor(raw: String): Int? {
-        val s = raw.trim()
-        if (s.equals("transparent", ignoreCase = true)) return Color.TRANSPARENT
-        if (s.startsWith("#")) return try { Color.parseColor(s) } catch (_: IllegalArgumentException) { null }
-        val m = Regex("rgba?\\(\\s*(\\d+)\\D+(\\d+)\\D+(\\d+)(?:\\D+([\\d.]+))?").find(s) ?: return null
-        val (r, g, b) = m.destructured
-        val a = m.groupValues.getOrNull(4)?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
-        return Color.argb((a * 255).toInt(), r.toInt(), g.toInt(), b.toInt())
-    }
-
     override fun onCreate() {
         super.onCreate()
         // 手势导航条区域：窗口是 bottom-anchored 到屏幕的（高度含
@@ -2091,7 +2099,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                         .setMaxStreams(1)
                         .setAudioAttributes(
                             android.media.AudioAttributes.Builder()
-                                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                                // 输入法按键声绝不抢焦点/压媒体音量（评审：
+                                // USAGE_ASSISTANCE_SONIFICATION 系统按 UI 提示
+                                // 音处理，USAGE_MEDIA 会 duck 正在放的音乐）。
+                                .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
                                 .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
                                 .build(),
                         ).build()
@@ -3297,4 +3308,32 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             "com.ohmyterm.mobile",
         )
     }
+}
+
+/** #27 setChromeColor 的颜色解析：纯 Kotlin（无 android.graphics 依赖，
+ *  JVM 单测可直接钉住——ChromeColorParseTest）。接受 #RGB/#RRGGBB/
+ *  #AARRGGBB、rgb()/rgba()（getComputedStyle 的产出形态）、transparent；
+ *  垃圾值返回 null，调用方保持旧值。返回 ARGB Int（transparent=0）。 */
+internal fun parseChromeColor(raw: String): Int? {
+    val s = raw.trim()
+    if (s.equals("transparent", ignoreCase = true)) return 0
+    if (s.startsWith("#")) {
+        val hex = s.substring(1)
+        val v = hex.toLongOrNull(16) ?: return null
+        fun chan(x: Long, shift: Int) = ((x shr shift) and 0xF).toInt() * 17
+        return when (hex.length) {
+            3 -> (0xFF shl 24) or (chan(v, 8) shl 16) or (chan(v, 4) shl 8) or chan(v, 0)
+            6 -> (0xFF shl 24) or v.toInt()
+            8 -> v.toInt()
+            else -> null
+        }
+    }
+    val m = Regex("rgba?\\(\\s*(\\d+)\\D+(\\d+)\\D+(\\d+)(?:\\D+([\\d.]+))?").find(s) ?: return null
+    val (r, g, b) = m.destructured
+    val a = m.groupValues.getOrNull(4)?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
+    fun chan(x: String): Int? = x.toIntOrNull()?.coerceIn(0, 255)
+    val rr = chan(r) ?: return null
+    val gg = chan(g) ?: return null
+    val bb = chan(b) ?: return null
+    return (((a * 255).toInt().coerceIn(0, 255)) shl 24) or (rr shl 16) or (gg shl 8) or bb
 }

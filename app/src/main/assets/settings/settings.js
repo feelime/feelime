@@ -1857,11 +1857,6 @@ $("settingsSearch").addEventListener("input", event => runSettingsSearch(event.t
 /** 键盘选择（验收 2026-09-24）：菜单模式勾选 + 快捷切换对。真相源在
  *  键盘 localStorage、经 pushStores 镜像原生（备份走原生）；保存写同一
  *  镜像（saveKeyboardSelection），键盘 hello 的 pullStores 按 rev 落地。 */
-function keyboardModeLabel(id) {
-    const found = KEYBOARD_MODES.find(([, modeId]) => modeId === id);
-    return found ? found[1] : id;
-}
-
 function selectedMenuModes(state) {
     const raw = (state.keyboards && state.keyboards.menuModes) || "";
     try {
@@ -1880,19 +1875,32 @@ function selectedQuickPair(state) {
     return ["pinyin", "direct"];
 }
 
+/** 排序真相源（评审 P1 修正）：键盘长按菜单/快捷设置拖拽共用的全序是
+ *  feelime_mode_order（键盘侧 orderedModeNames：已知项过滤 + 未列补齐）。
+ *  这里做同语义展开；无存序时回 null（渲染落目录序）。 */
+function selectedModeOrder(state) {
+    const raw = (state.keyboards && state.keyboards.modeOrder) || "";
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) {
+            const known = parsed.filter(id => KEYBOARD_MODES.some(([m]) => m === id));
+            KEYBOARD_MODES.forEach(([id]) => { if (!known.includes(id)) known.push(id); });
+            return known;
+        }
+    } catch (_) { /* unset */ }
+    return null;
+}
+
 function renderKeyboards(state) {
     const host = $("kbModeList");
     if (!host) return;
     const selected = selectedMenuModes(state);
     host.textContent = "";
-    // 排序能力（2026-09-26 用户反馈）：勾选项按 menuModes 顺序排前——
-    // 即长按菜单的实际顺序；未勾项按目录序排后。保存按 DOM 序收集勾
-    // 选项，上下移重排行序即重写菜单顺序。行是 div 包 label：按钮放在
+    // 排序能力（2026-09-26 用户反馈；评审 P1 修正真相源）：行序 =
+    // feelime_mode_order（长按菜单与键盘快捷设置拖拽共用），勾选只决定
+    // 谁进菜单。上下移重排全序并即时保存。行是 div 包 label：按钮放在
     // label 外，点按钮不会带翻勾选框。
-    const ordered = [
-        ...selected.filter(id => KEYBOARD_MODES.some(([modeId]) => modeId === id)),
-        ...KEYBOARD_MODES.filter(([modeId]) => !selected.includes(modeId)).map(([modeId]) => modeId),
-    ];
+    const ordered = selectedModeOrder(state) || KEYBOARD_MODES.map(([id]) => id);
     ordered.forEach((id, index) => {
         const found = KEYBOARD_MODES.find(([modeId]) => modeId === id);
         const label = found ? found[1] : id;
@@ -1977,9 +1985,9 @@ function renderQuickPairSelects(state) {
 }
 
 function saveKeyboardSelectionFromUi() {
-    const modes = [...document.querySelectorAll("#kbModeList input[data-kb-mode]")]
-        .filter(box => box.checked)
-        .map(box => box.dataset.kbMode);
+    const boxes = [...document.querySelectorAll("#kbModeList input[data-kb-mode]")];
+    const order = boxes.map(box => box.dataset.kbMode);
+    const modes = boxes.filter(box => box.checked).map(box => box.dataset.kbMode);
     if (!modes.length) {
         setNote("keyboardsNote", t("input.keyboards.hint"));
         return;
@@ -1987,8 +1995,10 @@ function saveKeyboardSelectionFromUi() {
     const pair = [$("quickPairA").value || modes[0], $("quickPairB").value || modes[0]]
         .filter(id => modes.includes(id));
     while (pair.length < 2) pair.push(modes.find(m => !pair.includes(m)) || modes[0]);
-    call("saveKeyboardSelection", JSON.stringify(modes), JSON.stringify(pair.slice(0, 2)));
-    renderQuickPairSelects({ keyboards: { menuModes: JSON.stringify(modes), quickPair: JSON.stringify(pair.slice(0, 2)) } });
+    // 全序（含未勾项）落 feelime_mode_order——长按菜单/快捷设置拖拽的
+    // 共用真相源；勾选集落 feelime_menu_modes。
+    call("saveKeyboardSelection", JSON.stringify(modes), JSON.stringify(pair.slice(0, 2)), JSON.stringify(order));
+    renderQuickPairSelects({ keyboards: { menuModes: JSON.stringify(modes), quickPair: JSON.stringify(pair.slice(0, 2)), modeOrder: JSON.stringify(order) } });
     setNote("keyboardsNote", t("input.keyboards.saved"));
 }
 

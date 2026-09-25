@@ -109,6 +109,13 @@ class MockSettingsNative {
     clearBgImage(...a) { this._rec('clearBgImage', a); }
     setBuiltinBgImage(...a) { this._rec('setBuiltinBgImage', a); }
     copyText(...a) { this._rec('copyText', a); }
+    // 1.2.1 批次：键盘排序（mode_order 真相源）+ 英文词直出开关 + 按键
+    // 音效风格（#排序/#29-3/#30-2）。
+    saveKeyboardSelection(...a) { this._rec('saveKeyboardSelection', a); }
+    setEnglishWords(...a) { this._rec('setEnglishWords', a); }
+    setKeySoundStyle(...a) { this._rec('setKeySoundStyle', a); }
+    openKeySoundDocument(...a) { this._rec('openKeySoundDocument', a); }
+    clearKeySoundFile(...a) { this._rec('clearKeySoundFile', a); }
     of(method) {
         return this.calls.filter(c => c.method === method);
     }
@@ -1294,6 +1301,63 @@ test('focusSetting anchors rows and whole cards; unknown ids return false', () =
     // 呼吸类到点清理（定时器挂起队列手动冲洗）。
     world.timers.splice(0).forEach(fn => fn());
     assert(!pairRow.classList.contains('search-flash'), 'breathe class clears after the timer');
+});
+
+// --------------------------------------------------- 1.2.1 批次（排序/英文词/音效）
+
+// fake DOM 没有 Event 构造器/dispatchEvent：直调元素上挂的 listener，
+// handler 抛错会直接浮出到测试断言（比 click() 的静默吞错更可诊断）。
+const fire = (el, type) => {
+    const handlers = (el.listeners || []).filter(l => l.type === type);
+    assert(handlers.length > 0, `element has a ${type} listener`);
+    handlers.forEach(l => l.handler({ target: el, type }));
+};
+
+// 排序真相源（评审 P1 修正）：行序 = feelime_mode_order（键盘长按菜单/
+// 快捷设置拖拽共用），勾选只是集合。上下移保存全序作第 3 参。
+test('keyboard rows render in modeOrder and up-move saves the full order', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, keyboards: {
+        menuModes: JSON.stringify(['direct', 'pinyin', 'double-pinyin', 't9', 'stroke']),
+        quickPair: JSON.stringify(['pinyin', 'direct']),
+        modeOrder: JSON.stringify(['t9', 'pinyin', 'direct', 'double-pinyin', 'stroke']),
+    } });
+    const ids = () => [...world.doc.querySelectorAll('#kbModeList input[data-kb-mode]')]
+        .map(b => b.dataset.kbMode);
+    equal(ids(), ['t9', 'pinyin', 'direct', 'double-pinyin', 'stroke', 'handwriting', 'french', 'russian', 'japanese'],
+        'rows follow modeOrder, unlisted modes appended in catalog order');
+    // 第 2 行（pinyin）上移一格：与 t9 交换，全序落盘作第 3 参。
+    const rows = [...world.doc.querySelectorAll('#kbModeList .row')];
+    fire(rows[1].querySelectorAll('.kb-move')[0], 'click');
+    const call = world.lastCall('saveKeyboardSelection');
+    equal(JSON.parse(call.args[2]), ['pinyin', 't9', 'direct', 'double-pinyin', 'stroke', 'handwriting', 'french', 'russian', 'japanese'],
+        'up-move persists the full row order as the 3rd arg (feelime_mode_order)');
+    // 勾选集仍按行序收集 checked（menuModes 只是集合，序无关紧要）。
+    equal(JSON.parse(call.args[0]).slice().sort(), ['direct', 'double-pinyin', 'pinyin', 'stroke', 't9'],
+        'checked set follows rows');
+});
+
+test('english words toggle posts setEnglishWords with the checkbox value', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, customPhrases: { enabled: true, items: [], englishEnabled: true } });
+    const box = world.$('englishWordsOn');
+    assert(box.checked, 'english words default on from state');
+    box.checked = false;
+    fire(box, 'change');
+    equal(world.lastCall('setEnglishWords').args[0], false, 'setEnglishWords(false)');
+});
+
+test('key sound style select posts style; custom routes to the file picker', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, keySound: false, keySoundStyle: 'default', keySoundName: '' });
+    const sel = world.$('keySoundStyle');
+    assert(world.$('keySoundFileRow').hidden, 'file row hidden at default');
+    sel.value = 'keypress';
+    fire(sel, 'change');
+    equal(world.lastCall('setKeySoundStyle').args[0], 'keypress', 'style change posts');
+    sel.value = 'custom';
+    fire(sel, 'change');
+    assert(world.native.of('openKeySoundDocument').length > 0, 'choosing custom opens the picker');
 });
 
 // ---------------------------------------------------------------- runner

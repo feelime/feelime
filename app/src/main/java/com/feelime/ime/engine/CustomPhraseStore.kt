@@ -52,9 +52,11 @@ object CustomPhraseStore {
         File(File(context.filesDir, "rime-user"), TXT_FILE)
 
     /** #29-3 英文词直出内置表（text 展示 / code 按键字面，code 恒小写
-     *  字母）。派生时过滤掉能被完整切成拼音音节的词（如 ai/mode/
-     *  mini）——那些按键序列本就是正常拼音输入，插英文候选是打扰；
-     *  github/ios/android 这类切不开的词才直出。 */
+     *  字母）。派生时过滤掉能被完整切成拼音音节的词（如 api=a+pi、
+     *  demo=de+mo）——那些按键序列本就是正常拼音输入，插英文候选是
+     *  打扰；github/ios/android 这类切不开的词才直出。选词时已按真实
+     *  音节表剔除过死词条（api/demo/repo/cache/ping/share/safari），
+     *  运行时过滤是防线不是常态路径。 */
     val DEFAULT_ENGLISH_WORDS: List<Pair<String, String>> = listOf(
         "GitHub" to "github", "iOS" to "ios", "Android" to "android",
         "iPhone" to "iphone", "iPad" to "ipad", "MacBook" to "macbook",
@@ -64,37 +66,34 @@ object CustomPhraseStore {
         "TypeScript" to "typescript", "Golang" to "golang", "Rust" to "rust",
         "Kotlin" to "kotlin", "Dart" to "dart", "Flutter" to "flutter",
         "React" to "react", "Vue" to "vue", "HTML" to "html", "JSON" to "json",
-        "XML" to "xml", "YAML" to "yaml", "SQL" to "sql", "API" to "api",
-        "SDK" to "sdk", "IDE" to "ide", "URL" to "url", "HTTP" to "http",
+        "XML" to "xml", "YAML" to "yaml", "SQL" to "sql", "SDK" to "sdk", "IDE" to "ide", "URL" to "url", "HTTP" to "http",
         "HTTPS" to "https", "DNS" to "dns", "VPN" to "vpn", "WiFi" to "wifi",
         "GPT" to "gpt", "LLM" to "llm", "GPU" to "gpu", "CPU" to "cpu",
         "RAM" to "ram", "SSD" to "ssd", "USB" to "usb", "HDMI" to "hdmi",
         "OCR" to "ocr", "OTG" to "otg", "NFC" to "nfc", "SIM" to "sim",
         "eSIM" to "esim", "QR" to "qr", "bug" to "bug", "debug" to "debug",
-        "demo" to "demo", "log" to "log", "crash" to "crash",
+        "log" to "log", "crash" to "crash",
         "update" to "update", "upgrade" to "upgrade", "beta" to "beta",
         "commit" to "commit", "push" to "push", "pull" to "pull",
         "merge" to "merge", "branch" to "branch", "fork" to "fork",
-        "issue" to "issue", "PR" to "pr", "repo" to "repo", "code" to "code",
+        "issue" to "issue", "PR" to "pr", "code" to "code",
         "review" to "review", "test" to "test", "spec" to "spec",
         "doc" to "doc", "docs" to "docs", "wiki" to "wiki", "blog" to "blog",
         "email" to "email", "spam" to "spam", "login" to "login",
-        "logout" to "logout", "token" to "token", "cache" to "cache",
-        "cookie" to "cookie", "server" to "server", "client" to "client",
+        "logout" to "logout", "token" to "token", "cookie" to "cookie", "server" to "server", "client" to "client",
         "cloud" to "cloud", "docker" to "docker", "nginx" to "nginx",
         "redis" to "redis", "mysql" to "mysql", "git" to "git",
         "vim" to "vim", "ssh" to "ssh", "sudo" to "sudo", "bash" to "bash",
         "zsh" to "zsh", "curl" to "curl", "wget" to "wget", "grep" to "grep",
-        "ping" to "ping", "download" to "download", "upload" to "upload",
+        "download" to "download", "upload" to "upload",
         "copy" to "copy", "paste" to "paste", "undo" to "undo",
-        "redo" to "redo", "save" to "save", "share" to "share",
-        "tips" to "tips", "hint" to "hint", "note" to "note",
+        "redo" to "redo", "save" to "save", "tips" to "tips", "hint" to "hint", "note" to "note",
         "task" to "task", "todo" to "todo", "ok" to "ok", "yes" to "yes",
         "no" to "no", "hello" to "hello", "sorry" to "sorry", "thanks" to "thanks",
         "wechat" to "wechat", "telegram" to "telegram", "whatsapp" to "whatsapp",
         "youtube" to "youtube", "netflix" to "netflix", "spotify" to "spotify",
         "twitter" to "twitter", "google" to "google", "chrome" to "chrome",
-        "firefox" to "firefox", "safari" to "safari", "edge" to "edge",
+        "firefox" to "firefox", "edge" to "edge",
         "office" to "office", "photoshop" to "photoshop", "bluetooth" to "bluetooth",
     )
 

@@ -2099,7 +2099,7 @@ class SettingsBridge(
      *  原生镜像（备份走原生）；设置页写同一镜像（rev+1），广播后键盘
      *  hello 的 pullStores 按 rev 落地。 */
     @JavascriptInterface
-    fun saveKeyboardSelection(menuJson: String, pairJson: String, token: String) = guarded(token) {
+    fun saveKeyboardSelection(menuJson: String, pairJson: String, token: String, orderJson: String = "") = guarded(token) {
         fun allStrings(json: String): Boolean = try {
             val array = JSONArray(json)
             var ok = true
@@ -2112,7 +2112,11 @@ class SettingsBridge(
         }
         val menuOk = allStrings(menuJson)
         val pairOk = allStrings(pairJson)
-        if (!menuOk || !pairOk) {
+        // #排序真相源（评审 P1）：feelime_mode_order 是长按菜单/快捷设置
+        // 拖拽共用的全序（keyboard.orderedModeNames）；空串=本页没动顺序，
+        // 不碰旧值（老版本页面/其他入口不带该参数）。
+        val orderOk = orderJson.isEmpty() || allStrings(orderJson)
+        if (!menuOk || !pairOk || !orderOk) {
             pushEvent(
                 JSONObject()
                     .put("type", "keyboardsError")
@@ -2124,6 +2128,7 @@ class SettingsBridge(
         val values = JSONObject()
             .put("feelime_menu_modes", menuJson)
             .put("feelime_quick_pair", pairJson)
+        if (orderJson.isNotEmpty()) values.put("feelime_mode_order", orderJson)
         val mirror = storesMirror()
         val merged = mirror.optJSONObject("values") ?: JSONObject()
         for (key in values.keys()) merged.put(key, values.get(key))
@@ -2146,6 +2151,7 @@ class SettingsBridge(
         return JSONObject()
             .put("menuModes", values.optString("feelime_menu_modes", ""))
             .put("quickPair", values.optString("feelime_quick_pair", ""))
+            .put("modeOrder", values.optString("feelime_mode_order", ""))
     }
 
     /** webview stores 原生镜像（与 ImeBridge.pushStores 同一存储）。 */

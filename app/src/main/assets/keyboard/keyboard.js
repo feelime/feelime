@@ -277,7 +277,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.66.0';
+    const KEYBOARD_VERSION = '3.67.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -8449,6 +8449,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (document.getElementById('heightCard').classList.contains('open')) this.renderHeightCard();
             }
             Native.keyboardReady(KEYBOARD_VERSION, MIN_NATIVE_API, JSON.stringify(REQUIRED_CAPABILITIES), this.token);
+            // #27 补推（评审 P1）：hello handler 里 applyBackground 早于
+            // keyboardReady，首推 pushChromeColor 必被 native 的 !pageReady
+            // 门闸吞掉；此刻 pageReady 已置位，补一次不再依赖二次 hello。
+            this.pushChromeColor();
             // design §7.4: the candidate injection matches against this
             // cache - it must be warm before the favorites panel ever opens.
             this.call(() => Native.getFavorites(this.token));

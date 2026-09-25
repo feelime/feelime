@@ -57,7 +57,8 @@ class EnglishWordDerivationTest {
     @Test
     fun `内置表不含可完整切分的词`() {
         // 用真实码表资产跑一遍内置表：任何词都不应被音节表完整切分
-        // （否则该词会与正常拼音输入抢候选，属于选词失误）。
+        // （选词时已剔除 api/demo/repo/cache/ping/share/safari 这类
+        //  死词条——运行时过滤是防线，常态不应命中）。
         val codesJson = java.io.File(
             "src/main/assets/custom-phrase-codes.json",
         ).takeIf { it.isFile }?.readText()
@@ -69,11 +70,9 @@ class EnglishWordDerivationTest {
         val kept = lines.map { it.substringBefore('\t').lowercase() }.toSet()
         assertFalse(kept.isEmpty())
         assertTrue("github" in kept && "ios" in kept && "android" in kept)
-        // 被过滤的内置词（真实音节表下可完整切分）不落表。
-        val colliding = CustomPhraseStore.DEFAULT_ENGLISH_WORDS.filter { (text, _) ->
-            text.lowercase() !in kept
-        }
-        println("filtered out by pinyin collision: ${colliding.map { it.first }}")
-        assertTrue(colliding.isNotEmpty())
+        assertEquals(
+            "内置表出现新的拼音碰撞死词条（应从 DEFAULT_ENGLISH_WORDS 剔除）",
+            CustomPhraseStore.DEFAULT_ENGLISH_WORDS.size, kept.size,
+        )
     }
 }

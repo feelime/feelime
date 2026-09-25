@@ -1648,9 +1648,8 @@ body.landscape #ctrlLayer .ctrl-close svg { width: 12px; height: 12px; }
     padding: 7px 13px;
 }
 #heightHint #heightSave { background: var(--accent); color: #07180e; font-weight: 600; }
-/* The card owns its slice of layout: the bar drops below it while editing
- * ( - the old overlay covered the first key row). */
-body.height-editing #candidateBar { margin-top: 39px; }
+/* （body.height-editing #candidateBar 已删：高度卡是浮层 placeHeightCard，
+ * 无 JS 挂该类——独立评审点名的死 CSS。） */
 
 /* ===== Mode menu ===== */
 /* Opened by LONG-PRESSING the space-adjacent toggle key. 
