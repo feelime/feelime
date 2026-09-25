@@ -1312,19 +1312,23 @@ body.landscape .num-grid { gap: 3px; }
     gap: 8px;
     padding: 2px 0 8px;
 }
+/* #33 统一内外视觉：面板头圆钮与候选条工具钮同尺寸同材质
+ * （--pill 底 + --pressed 按下，portrait 32 / landscape 30）。 */
 .panel-head .tool {
     flex: none;
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: var(--logo-bg);
+    background: var(--pill);
     color: var(--icon);
     display: flex;
     align-items: center;
     justify-content: center;
 }
+.panel-head .tool:active { background: var(--pressed); }
+body.landscape .panel-head .tool { width: 30px; height: 30px; }
 /* The clipboard/favorites tabs live in one pale capsule (the
  * expanded area's tab container); the ACTIVE tab is the white pill. The
  * inactive tabs are transparent with muted text so the selection reads
@@ -1350,10 +1354,21 @@ body.landscape .num-grid { gap: 3px; }
     color: var(--text);
     font-weight: 600;
 }
-/* 面板头改版（验收 2026-09-24）：收起箭头撤掉，tabs 用两侧 auto margin
- * 落中，清空/添加顺排右侧，最右是 X（关闭面板返回键盘）。 */
-.panel-tabs { margin: 0 auto; }
-.panel-action { color: var(--text); height: 30px; }
+/* 面板头改版（验收 2026-09-24）：收起箭头撤掉，清空/添加顺排右侧，
+ * 最右是收起键。#33 二轮（2026-09-26）：tabs 两侧 auto 居中在
+ * 清空(2字)/＋添加(3字) 间左右位移且不贴左——改为 tabs 靠左、
+ * action 组 auto margin 推右；面板头几何与 candidateBar 逐像素对齐
+ * （portrait 40px 高 + 2/10 边距；landscape 40px 高 + preedit 带
+ * 上边距），打开/关闭面板顶部零跳变，真机 CJK 行盒差异由定高吸收。 */
+.panel-head { height: 40px; padding: 0; margin: 2px 0 10px; }
+body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
+.panel-tabs { margin: 0; }
+.panel-action { color: var(--text); height: 30px; margin-left: auto; }
+/* #33 toggle 图标：× 换成当前面板自己的工具图标（与工具栏同图标
+ * 同尺寸），面板开着时点它关闭——点图标开、再点图标关。 */
+#panelClose .ic-fav { display: none; }
+#panelLayer[data-tab="favorites"] #panelClose .ic-clip { display: none; }
+#panelLayer[data-tab="favorites"] #panelClose .ic-fav { display: block; }
 #panelList {
     flex: 1;
     min-height: 0;

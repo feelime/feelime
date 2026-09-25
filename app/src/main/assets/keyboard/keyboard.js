@@ -277,7 +277,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.65.0';
+    const KEYBOARD_VERSION = '3.66.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -5241,7 +5241,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         else this.showNumpad();
                         return;
                     }
-                    if (key === 'emoji') { this.emojiView = true; this.showNumpad(); return; }
+                    // #33 统一 toggle 语义：已在表情视图再点 = 回到之前的字母层。
+                    if (key === 'emoji') {
+                        if (this.emojiView && this.keyLayer === 'numpad') this.showLetters();
+                        else { this.emojiView = true; this.showNumpad(); }
+                        return;
+                    }
                     this.toggleExtraTool(key);
                 });
                 if (pool) pool.append(b);
@@ -7489,6 +7494,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             document.getElementById('panelClear').hidden = this.panelTab !== 'clipboard';
             document.getElementById('panelManage').hidden = this.panelTab !== 'favorites';
+            // #33 toggle 图标：面板头关闭钮显示当前面板的工具图标（CSS 驱动）。
+            document.getElementById('panelLayer').dataset.tab = this.panelTab;
             this.renderPanel();
             if (this.panelTab === 'clipboard') Native.getClipboard(this.token);
             else Native.getFavorites(this.token);
