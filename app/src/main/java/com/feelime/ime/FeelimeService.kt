@@ -176,6 +176,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         timedOut: Boolean = false,
     ) {
         var flush = 0
+        var generation = 0L
         synchronized(backspaceGestureLock) {
             // 会话已翻篇（下一个手势/已结束/已真实结算）：迟到方作废。
             if (backspaceGestureSession != session || backspaceGestureBaseline != null) return
@@ -189,8 +190,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             backspaceGesturePending = 0
             flush = backspaceGestureQueued
             backspaceGestureQueued = 0
+            generation = inputConnectionGeneration
         }
-        if (flush > 0) onMain { coordinator.gestureBackspace(flush) }
+        val gen = generation
+        if (flush > 0) onMain {
+            if (gen == inputConnectionGeneration) coordinator.gestureBackspace(flush)
+        }
     }
 
     /** 从基线尾部弹一个删除单位（按 code point，代理对不劈半）。
@@ -211,6 +216,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
      *  切换）时未执行的延迟删除一并丢弃——旧编辑器的删除不能进新框。 */
     private fun endBackspaceGestureSession(executeQueued: Boolean = true) {
         var flush = 0
+        var generation = 0L
         synchronized(backspaceGestureLock) {
             backspaceGestureSession += 1
             if (executeQueued) flush = backspaceGestureQueued
@@ -218,8 +224,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             backspaceGesturePending = 0
             backspaceGestureQueued = 0
             backspaceGestureStack.clear()
+            generation = inputConnectionGeneration
         }
-        if (flush > 0) onMain { coordinator.gestureBackspace(flush) }
+        val gen = generation
+        if (flush > 0) onMain {
+            if (gen == inputConnectionGeneration) coordinator.gestureBackspace(flush)
+        }
     }
 
     /** 桥线程上发现代际不符时的作废路径：调用方已持
@@ -2409,10 +2419,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
         /** 手势会话开始：后台读一次光标前文本作恢复缓冲的记账基线。
          *  面板编辑器（IC 改道）与敏感编辑器跳过读——恢复通道空转，
-         *  删除照常；密码不入 IME 内存缓冲（评审 F-4）。 */
+         *  删除照常；密码不入 IME 内存缓冲（评审 F-4）。
+         *  与 backspaceN 同为桥线程同步执行（codex 二轮 P1-1）：begin 走
+         *  guarded→onMain 的话，紧随的首笔删除可在 begin 落地前运行，
+         *  撞上陈旧代际被整笔丢弃。四个桥全同步，桥线程内天然串行。 */
         @JavascriptInterface
-        fun backspaceGestureBegin(token: String) = guarded(token, limited = false) {
-            if (panelInputActive || isSensitiveEditor()) return@guarded
+        fun backspaceGestureBegin(token: String) {
+            if (token != pageToken || !pageReady) {
+                rejectedCalls += 1
+                return
+            }
+            if (panelInputActive || isSensitiveEditor()) return
             beginBackspaceGestureSession()
         }
 
@@ -2431,6 +2448,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 return
             }
             var execute = 0
+            var generation = 0L
             synchronized(backspaceGestureLock) {
                 if (backspaceGestureEditorGeneration != inputConnectionGeneration) {
                     endBackspaceGestureSessionLockedDrop()
@@ -2446,8 +2464,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 }
                 if (backspaceGestureBaseline == null) backspaceGestureQueued += count
                 else execute = count
+                generation = inputConnectionGeneration
             }
-            if (execute > 0) onMain { coordinator.gestureBackspace(execute) }
+            val gen = generation
+            if (execute > 0) onMain {
+                // 执行前复核代际（codex 二轮 P1-2）：入队与执行之间编辑器
+                // 可能已切换，旧编辑器的删除不得进新输入框。
+                if (gen == inputConnectionGeneration) coordinator.gestureBackspace(execute)
+            }
         }
 
         /** 回滑恢复：弹出本会话最近删掉的一个字符发回编辑器。返回
@@ -2461,6 +2485,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 return false
             }
             var unit: String? = null
+            var generation = 0L
             synchronized(backspaceGestureLock) {
                 if (backspaceGestureEditorGeneration != inputConnectionGeneration) {
                     endBackspaceGestureSessionLockedDrop()
@@ -2470,16 +2495,24 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 unit = backspaceGestureStack.removeLast()
                 // 回填记账镜像：再左滑删它时还有账可弹。
                 backspaceGestureBaseline = (backspaceGestureBaseline ?: "") + unit
+                generation = inputConnectionGeneration
             }
             val text = unit ?: return false
-            onMain { coordinator.gestureRestore(text) }
+            val gen = generation
+            onMain { if (gen == inputConnectionGeneration) coordinator.gestureRestore(text) }
             return true
         }
 
         /** 手势会话结束：恢复缓冲清空（spec：恢复只在会话内有效，不做
-         *  跨手势撤销栈——那是下滑 Ctrl+Z 的事）。延迟删除冲账执行。 */
+         *  跨手势撤销栈——那是下滑 Ctrl+Z 的事）。延迟删除冲账执行。
+         *  同步执行（与 begin/N/restore 同线程串行，防止 end 经 onMain
+         *  排到下一个 begin 之后翻错会话）。 */
         @JavascriptInterface
-        fun backspaceGestureEnd(token: String) = guarded(token, limited = false) {
+        fun backspaceGestureEnd(token: String) {
+            if (token != pageToken || !pageReady) {
+                rejectedCalls += 1
+                return
+            }
             endBackspaceGestureSession()
         }
 

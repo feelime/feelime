@@ -278,8 +278,27 @@ test('delete gesture: refused restores do not advance the net-delete position', 
     world.touchUp(bs, 120, 20);
     equal(world.native.of('backspaceN').reduce((s, c) => s + c.args[0], 0), 2,
         'deletes never exceed the swiped distance');
-    equal(world.native.of('backspaceRestoreOne').length, 2,
-        'one refused attempt per event (break), retried idempotently on the next');
+    // 3 笔 = 61 处拒绝 + 120 处拒绝 + 松手结算的同位置重试（delRetry）。
+    equal(world.native.of('backspaceRestoreOne').length, 3,
+        'refused attempts retried idempotently, never converting to deletes');
+});
+
+// codex 二轮 P2-3：恢复被拒后，同位置的后续事件（含松手前的最终结算）
+// 也要重试——基线在手指原地停顿时结算好后恢复能力即恢复。
+test('delete gesture: refused restore retries on same-position moves and final settle', {since: '3.68.0'}, () => {
+    const world = fresh();
+    const bs = bsKey(world);
+    world.native.restoreResult = false;
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20); // engage：net 1
+    world.move(bs, 30, 20); // net 2
+    world.move(bs, 61, 20); // steps=-1：恢复被拒，delNet 回滚到 2
+    world.move(bs, 61, 20); // 同位置：delRetry 强制重算再试一笔
+    world.touchUp(bs, 61, 20); // 松手结算：再试一笔
+    equal(world.native.of('backspaceN').reduce((s, c) => s + c.args[0], 0), 2,
+        'deletes unchanged through all retries');
+    equal(world.native.of('backspaceRestoreOne').length, 3,
+        'refused + same-position retry + settle retry');
 });
 
 test('delete gesture: accepted restores keep draining the net position', {since: '3.68.0'}, () => {

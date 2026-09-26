@@ -1629,6 +1629,9 @@ class SettingsBridge(
                 val dir = java.io.File(context.filesDir, "key-sound")
                 dir.mkdirs()
                 val tmp = java.io.File(dir, "custom.tmp")
+                // 复制与替换全程 runCatching + finally 清理（codex 二轮
+                // P2-4）：替换阶段抛异常不能逃出 worker（进程级未捕获），
+                // 临时文件不残留，页面收到统一的失败事件。
                 var reason = "OPEN_FAILED"
                 val ok = runCatching {
                     context.contentResolver.openInputStream(uri)?.use { input ->
@@ -1649,28 +1652,36 @@ class SettingsBridge(
                         }
                     } ?: false
                 }.getOrDefault(false)
-                if (!ok) {
-                    tmp.delete()
-                    pushEvent(
-                        JSONObject()
-                            .put("type", "keySoundError")
-                            .put("code", reason)
-                            .put("message", t(context, "音效文件不可用（需 2MB 内的音频）", "Key sound file unusable (audio within 2MB)")),
-                    )
-                    return@execute
+                if (ok) {
+                    val replaced = runCatching {
+                        java.nio.file.Files.move(
+                            tmp.toPath(), keySoundFile(context).toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        )
+                        true
+                    }.getOrDefault(false)
+                    if (!replaced) reason = "REPLACE_FAILED"
+                    if (replaced) {
+                        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
+                            .putString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_CUSTOM)
+                            .putString(PREF_KEY_SOUND_NAME, name)
+                            .apply()
+                        context.sendBroadcast(
+                            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+                        )
+                    }
+                    if (replaced) {
+                        pushState()
+                        return@execute
+                    }
                 }
-                java.nio.file.Files.move(
-                    tmp.toPath(), keySoundFile(context).toPath(),
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                tmp.delete()
+                pushEvent(
+                    JSONObject()
+                        .put("type", "keySoundError")
+                        .put("code", reason)
+                        .put("message", t(context, "音效文件不可用（需 2MB 内的音频）", "Key sound file unusable (audio within 2MB)")),
                 )
-                context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
-                    .putString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_CUSTOM)
-                    .putString(PREF_KEY_SOUND_NAME, name)
-                    .apply()
-                context.sendBroadcast(
-                    Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-                )
-                pushState()
             }
         }.onFailure { Log.w(TAG, "key-sound import rejected", it) }
     }

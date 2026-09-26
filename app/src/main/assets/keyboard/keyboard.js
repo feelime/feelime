@@ -929,27 +929,40 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         return stores;
     }
 
-    function pushStores(retry) {
+    function pushStores(retry, pending) {
         // 类型守卫：热更键盘（新 JS）跑在旧原生（无 pushStores）上时，
         // 不许在 hello 路径抛错——能力握手之外的方法一律探测后再调。
         // 载荷内嵌 __rev（本地最后见到的镜像 rev）做 CAS：设置页已推进
         // 镜像（如排序）而键盘还揣着旧 localStorage 时，native 拒绝并返
-        // 回 "-1"——先拉取新值再重推一次（codex 评审 P2-6：旧协议整表
-        // 替换，键盘全量重推会静默抹掉设置页写的键）。旧原生不认 __rev
-        // （白名单外自然忽略），行为不变。
+        // 回 "-1"。冲突处理（codex 二轮 P2-5）：拉取会把远端值铺进
+        // localStorage，若直接重推，本次用户修改就被远端值顶掉——先
+        // 记住本次要写的键值，拉取后回放（本次交互最后写入者胜）再推。
+        // 二次仍冲突则放弃（console 留痕），下次任何存储变化会再推。
+        // 旧原生不认 __rev（白名单外自然忽略），行为不变。
         try {
             if (typeof Native.pushStores === 'function') {
-                const payload = collectStores();
-                payload.__rev = localStorage.getItem('feelime_stores_rev') || '0';
-                const rev = Native.pushStores(JSON.stringify(payload), keyboard.token);
+                const payload = pending || collectStores();
+                const carry = {};
+                for (const key of STORE_BACKUP_KEYS) {
+                    if (payload[key] !== undefined) carry[key] = payload[key];
+                }
+                carry.__rev = localStorage.getItem('feelime_stores_rev') || '0';
+                const rev = Native.pushStores(JSON.stringify(carry), keyboard.token);
                 if (rev === '-1' && !retry) {
                     pullStores(keyboard.token);
-                    pushStores(true);
+                    for (const key of STORE_BACKUP_KEYS) {
+                        if (payload[key] !== undefined) {
+                            try { localStorage.setItem(key, payload[key]); } catch (_) {}
+                        }
+                    }
+                    pushStores(true, payload);
                     return;
                 }
-                if (rev && rev !== '-1') {
-                    localStorage.setItem('feelime_stores_rev', String(rev));
+                if (rev === '-1' && retry) {
+                    console.warn('pushStores: CAS conflict persists, giving up this round');
+                    return;
                 }
+                if (rev) localStorage.setItem('feelime_stores_rev', String(rev));
             }
         } catch (_) { /* bridge unavailable */ }
     }
@@ -3485,6 +3498,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.delBase = null;
                     this.delSteps = 0;
                     this.delNet = 0;
+                    this.delRetry = false;
                     this.call(() => Native.backspaceGestureEnd(this.token));
                 }
                 // #34 垂直手势在松手派发（方向已在跨越时锁定）。上=全选
@@ -3559,6 +3573,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.delBase = crossingX + this.delUnit;
             this.delSteps = -1;
             this.delNet = 1;
+            this.delRetry = false;
             this.call(() => Native.backspaceGestureBegin(this.token));
             this.call(() => Native.backspaceN(1, this.token));
         }
@@ -3572,7 +3587,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * backspaceRestoreOne 的回执决定成败（见函数内注释）。 */
         applyDeleteScrub(clientX) {
             const steps = Math.trunc((clientX - this.delBase) / this.delUnit);
-            if (steps === this.delSteps) return;
+            // 恢复被拒后同格不再重试的缺口（codex 二轮 P2-3）：拒绝时立
+            // delRetry，位置未变的后续事件（含松手前的最终结算）也强制
+            // 重算一次——基线在手指原地停顿期间结算好后，恢复能力即恢复。
+            if (steps === this.delSteps && !this.delRetry) return;
+            this.delRetry = false;
             this.delSteps = steps;
             const target = Math.max(0, -steps);
             let delta = target - this.delNet;
@@ -3588,7 +3607,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 该步，净删除仍是位置的诚实函数；下次事件重算会重试，
                 // 幂等无害。旧壳无返回值（undefined）按成功处理。
                 const ok = this.call(() => Native.backspaceRestoreOne(this.token));
-                if (ok === false) break;
+                if (ok === false) { this.delRetry = true; break; }
                 delta += 1;
             }
             if (delta < 0) this.delNet = target - delta;
