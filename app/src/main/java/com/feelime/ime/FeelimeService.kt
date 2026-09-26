@@ -685,6 +685,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         com.feelime.ime.engine.EngineDataStore.ensureAsync(applicationContext) {
             main.post { pushBridgeHello() }
         }
+        android.view.Choreographer.getInstance().postFrameCallback(choreoTick)
+        main.post(uiSampler)
         coordinator = TextInputCoordinator(
             editor = object : com.feelime.ime.engine.EditorPort by editorPort {
                 override fun commitText(text: String) {
@@ -1902,6 +1904,32 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     private fun onMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)
+    }
+
+    // #12 取证七期：原生帧时钟计数（Choreographer 每帧+1），2.5s 打一次
+    // delta——JS raf=0 而 nativeFrames>0 = 原生还在产帧、Chromium 帧源被
+    // 断（IsClientVisible 假阴性实锤）；两边都 0 = 窗口整体不可见（正常
+    // 隐藏）。几何快照捎带在同一节拍里。
+    private var choreoFrames = 0L
+    private var choreoLast = 0L
+    private val choreoTick = object : android.view.Choreographer.FrameCallback {
+        override fun doFrame(timeNanos: Long) {
+            choreoFrames += 1
+            android.view.Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
+    private val uiSampler = object : Runnable {
+        override fun run() {
+            val delta = choreoFrames - choreoLast
+            choreoLast = choreoFrames
+            val web = keyboardView
+            val geom = if (web != null) {
+                val w = IntArray(2); web.getLocationOnScreen(w)
+                " web=[${w[0]},${w[1]},${w[0] + web.width},${w[1] + web.height}]"
+            } else " web=null"
+            Diagnostics.log("ui", "nativeFrames=$delta$geom")
+            main.postDelayed(this, 2500)
+        }
     }
 
     private fun renderVoiceText(session: VoiceSession) {
@@ -3457,6 +3485,31 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     }
 
     private inner class DiagWebView(context: android.content.Context) : WebView(context) {
+        // #12 取证七期（codex 诊断矩阵）：M133 BrowserViewRenderer::
+        // IsClientVisible 要求「未 pause + attached + window visible」，
+        // 否则断 BeginFrame 帧时钟（JS rAF 停摆的机制路径）。这里把
+        // 三条件的真实值随生命周期打出来，与 Choreographer 原生帧对照。
+        private var lastVisDiag = 0L
+        private fun visDiag(at: String) {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastVisDiag < 500) return
+            lastVisDiag = now
+            Diagnostics.log("ui",
+                "webView $at attached=$isAttachedToWindow winVis=$windowVisibility shown=$isShown")
+        }
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow(); lastVisDiag = 0; visDiag("attach")
+        }
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow(); lastVisDiag = 0; visDiag("detach")
+        }
+        override fun onWindowVisibilityChanged(visibility: Int) {
+            super.onWindowVisibilityChanged(visibility); lastVisDiag = 0; visDiag("winVis=$visibility")
+        }
+        override fun onVisibilityChanged(changedView: android.view.View, visibility: Int) {
+            super.onVisibilityChanged(changedView, visibility)
+            visDiag("vis=${if (visibility == android.view.View.VISIBLE) "V" else "G"}")
+        }
         override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
             if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) noteTouchDown()
             return super.dispatchTouchEvent(event)

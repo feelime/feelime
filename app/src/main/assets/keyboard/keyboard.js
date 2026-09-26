@@ -278,7 +278,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.68.0';
+    const KEYBOARD_VERSION = '3.69.8';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -1303,6 +1303,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 window.addEventListener(
                     'pointerdown', () => { this._diagTouch += 1; },
                     { capture: true, passive: true });
+                // rAF 探针盲区修正（codex 六期 review）：2600ms 窗口会被
+                // 隐藏前的旧回调污染（弹出后首条心跳假 raf=1）——可见性
+                // 恢复时清零时间戳，逼下一条心跳如实反映当前帧源状态。
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) this._diagRafAt = 0;
+                });
                 window.setInterval(() => {
                     if (!this.token || typeof Native.diagEvent !== 'function') return;
                     const rafAlive = Date.now() - this._diagRafAt < 2600;
@@ -1318,6 +1324,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         ` noClick=${this._diagNoClick.swipe}/${this._diagNoClick.pop}/${this._diagNoClick.long}` +
                         ` states=${window.__diagStates || 0} preedit=${pl ? pl.textContent.length : -1}` +
                         ` vr=${ds.vr} warm=${ds.warm} comp=${ds.comp}` +
+                        ` vis=${document.hidden ? 'h' : 'v'} rev=${window.__diagRev || 0}` +
                         (err ? ` err=${err}` : ''),
                         this.token);
                     this._diagTouch = 0;
@@ -9142,6 +9149,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // 相等=JS 收到了（查渲染层）；少=推送丢（查 evaluate 层））。
         onEngineState: payload => {
             window.__diagStates = (window.__diagStates || 0) + 1;
+            window.__diagRev = payload && payload.revision;
             try { return keyboard.onEngineState(payload); }
             catch (e) { window.__diagErr = String(e && e.message || e).slice(0, 60); throw e; }
         },
