@@ -26,6 +26,30 @@ class ChromeColorParseTest {
     }
 
     @Test
+    fun `函数名与十六进制的大小写容错`() {
+        // codex 评审 C：颜色可能来自任意来源，RGB()/RGBA()/大写 hex
+        // 不该卡壳（正则 IGNORE_CASE，hex 解析本身大小写无关）。
+        assertEquals((0xFF shl 24) or (226 shl 16) or (227 shl 8) or 232, parseChromeColor("RGB(226, 227, 232)"))
+        assertEquals((0xFF shl 24) or 0xE2E3E8, parseChromeColor("#E2E3E8"))
+        // #3f3：R=3 G=f B=3 → 各位重复成 33 FF 33。
+        assertEquals((0xFF shl 24) or 0x33FF33, parseChromeColor("#3f3"))
+        assertEquals(0x80E2E3E8.toInt(), parseChromeColor("#80E2E3E8"))
+    }
+
+    @Test
+    fun `rgba 分数 alpha`() {
+        // 0.5×255=127.5 截断为 127（0x7F）。
+        assertEquals(
+            (0x7F shl 24) or (32 shl 16) or (32 shl 8) or 32,
+            parseChromeColor("rgba(32, 32, 32, 0.5)"),
+        )
+        assertEquals(
+            (0x7F shl 24) or (32 shl 16) or (32 shl 8) or 32,
+            parseChromeColor("RGBA(32, 32, 32, .5)"),
+        )
+    }
+
+    @Test
     fun `rgba 的 alpha 缩放`() {
         assertEquals((0xFF shl 24) or (32 shl 16) or (32 shl 8) or 32, parseChromeColor("rgba(32, 32, 32, 1)"))
         assertEquals((32 shl 16) or (32 shl 8) or 32, parseChromeColor("rgba(32, 32, 32, 0)"))

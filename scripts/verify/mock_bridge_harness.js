@@ -716,11 +716,18 @@ class MockNative {
     backspaceN(count, token) {
         this._record('backspaceN', [count, token]);
     }
+    // codex 评审 P1-1 回执协议：默认恢复成功；测试置
+    // native.restoreResult = false 模拟「无账可弹/基线未结算」。
     backspaceRestoreOne(token) {
         this._record('backspaceRestoreOne', [token]);
+        return this.restoreResult !== false;
     }
     backspaceGestureEnd(token) {
         this._record('backspaceGestureEnd', [token]);
+    }
+    // #34 上滑全选删的独立通道（codex 评审 P1-3）。
+    clearEditorText(token) {
+        this._record('clearEditorText', [token]);
     }
     // 单手模式侧条的全选/剪切/复制/粘贴通道（#34 上滑全选复用它）。
     editorAction(action, token) {

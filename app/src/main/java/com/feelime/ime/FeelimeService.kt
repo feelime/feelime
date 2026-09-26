@@ -108,18 +108,115 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private val expectedCursorSelections = ArrayDeque<Pair<Int, Int>>()
     // ===== #34 删除键手势会话（跟手删的字符恢复缓冲）=====
     // 键盘 JS 读不到编辑器文本，恢复内容只能 native 记账：begin 时后台
-    // 读一次光标前文本作基线，其后每删一个单位从基线尾部按 code point
-    // 弹出入栈，restoreOne 弹栈顶 commitText 回去。读编辑器文本必须
-    // 离开主线程——进程内 WebView 宿主对同步读不应答，会烧框架 2s
-    // watchdog（deleteOneEditorUnit 注释记录的既有教训），故复用
-    // cursorQueryExecutor。基线到达前的删除先记数量，到达后补账。
-    // 所有字段只在主线程触碰（guarded→onMain、executor 结果 main.post
-    // 回主线程）。
+    // 读一次光标前文本（+选区探测）作基线，其后每删一个单位从基线尾部
+    // 按 code point 弹出入栈，restoreOne 弹栈顶 commitText 回去。读编辑
+    // 器文本必须离开主线程——进程内 WebView 宿主对同步读不应答，会烧
+    // 框架 2s watchdog（deleteOneEditorUnit 注释记录的既有教训），故复用
+    // cursorQueryExecutor。
+    //
+    // 线程模型（codex 评审 P1-1/P1-2 收口）：桥线程（回执需要同步校验，
+    // 与 guardedStore 同款）与主线程（executor 结果 main.post 回来结算）
+    // 都会触碰这些字段，全部经 backspaceGestureLock 串行。基线未结算前
+    // 到达的删除【延迟执行】（queued），结算时先按真实快照补账再冲账
+    // 执行——快照是删除前的文本，账实一致；有选区/读取失败则整会话禁
+    // 恢复（DEL 对选区整段删，按 code point 的账对不上）。会话绑定
+    // inputConnectionGeneration，编辑器切换即作废（延迟删除丢弃，不进
+    // 新输入框）。
+    private val backspaceGestureLock = Any()
     private var backspaceGestureSession = 0
-    /** null=基线未到达；""=读到文本头或读取失败（恢复通道空转）。 */
+    private var backspaceGestureEditorGeneration = 0L
+    /** null=基线未结算；""=读到文本头/读取失败/存在选区（恢复通道空转）。 */
     private var backspaceGestureBaseline: String? = null
+    /** 基线结算前到达的删除意图数（结算时补账）。 */
     private var backspaceGesturePending = 0
+    /** 基线结算前延迟执行的 DEL 数（结算/会话结束冲账执行；作废时丢弃）。 */
+    private var backspaceGestureQueued = 0
     private val backspaceGestureStack = ArrayDeque<String>()
+
+    /** 会话开始：翻代清账 + 后台读基线（文本与选区一批读）。 */
+    private fun beginBackspaceGestureSession() {
+        synchronized(backspaceGestureLock) {
+            backspaceGestureSession += 1
+            backspaceGestureEditorGeneration = inputConnectionGeneration
+            backspaceGestureBaseline = null
+            backspaceGesturePending = 0
+            backspaceGestureQueued = 0
+            backspaceGestureStack.clear()
+        }
+        val session = backspaceGestureSession
+        val connection = currentInputConnection ?: return
+        cursorQueryExecutor.execute {
+            val snapshot = runCatching {
+                // 选区探测与文本读取同批：有选区即禁恢复（P1-2），避免
+                // 「DEL 删整段、账本记一个码点」的错位。
+                Pair(
+                    connection.getSelectedText(0),
+                    connection.getTextBeforeCursor(BACKSPACE_GESTURE_BASELINE_CHARS, 0)?.toString(),
+                )
+            }.getOrNull()
+            main.post { settleBackspaceGestureBaseline(session, snapshot?.first, snapshot?.second) }
+        }
+    }
+
+    /** 基线结算：先按快照补记延迟期的删除（此刻它们尚未执行，快照即
+     *  删除前文本，弹出的正是即将被删的字符），再冲账执行延迟删除。 */
+    private fun settleBackspaceGestureBaseline(session: Int, selection: CharSequence?, before: String?) {
+        var flush = 0
+        synchronized(backspaceGestureLock) {
+            // 会话已翻篇（下一个手势/已结束）：迟到基线作废。
+            if (backspaceGestureSession != session) return
+            val noAccount = selection != null || before == null
+            backspaceGestureBaseline = if (noAccount) "" else before
+            while (backspaceGesturePending > 0 && !noAccount) {
+                val unit = popBackspaceGestureUnitLocked() ?: break
+                backspaceGestureStack.addLast(unit)
+                backspaceGesturePending -= 1
+            }
+            backspaceGesturePending = 0
+            flush = backspaceGestureQueued
+            backspaceGestureQueued = 0
+        }
+        if (flush > 0) onMain { coordinator.gestureBackspace(flush) }
+    }
+
+    /** 从基线尾部弹一个删除单位（按 code point，代理对不劈半）。
+     *  基线未结算或已弹空返回 null。调用方须持 backspaceGestureLock。 */
+    private fun popBackspaceGestureUnitLocked(): String? {
+        val base = backspaceGestureBaseline ?: return null
+        if (base.isEmpty()) return null
+        val tail = if (base.length >= 2 &&
+            Character.isLowSurrogate(base.last()) &&
+            Character.isHighSurrogate(base[base.length - 2])
+        ) 2 else 1
+        backspaceGestureBaseline = base.substring(0, base.length - tail)
+        return base.substring(base.length - tail)
+    }
+
+    /** 会话结束/作废：恢复缓冲清空（spec：恢复只在会话内有效，不做跨
+     *  手势撤销栈——那是下滑 Ctrl+Z 的事）。executeQueued=false（编辑器
+     *  切换）时未执行的延迟删除一并丢弃——旧编辑器的删除不能进新框。 */
+    private fun endBackspaceGestureSession(executeQueued: Boolean = true) {
+        var flush = 0
+        synchronized(backspaceGestureLock) {
+            backspaceGestureSession += 1
+            if (executeQueued) flush = backspaceGestureQueued
+            backspaceGestureBaseline = null
+            backspaceGesturePending = 0
+            backspaceGestureQueued = 0
+            backspaceGestureStack.clear()
+        }
+        if (flush > 0) onMain { coordinator.gestureBackspace(flush) }
+    }
+
+    /** 桥线程上发现代际不符时的作废路径：调用方已持
+     *  backspaceGestureLock，这里只清状态（延迟删除丢弃，不再发 DEL）。 */
+    private fun endBackspaceGestureSessionLockedDrop() {
+        backspaceGestureSession += 1
+        backspaceGestureBaseline = null
+        backspaceGesturePending = 0
+        backspaceGestureQueued = 0
+        backspaceGestureStack.clear()
+    }
  // Set while a keyboard-panel input (phrase add/edit) has
     // focus. The system InputConnection always belongs to the host app
     // editor - a WebView input inside the IME's own view never re-routes
@@ -839,6 +936,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         inputConnectionGeneration += 1
+        // #34：连接已换（含同编辑器重启），手势会话作废——旧基线/延迟
+        // 删除不得进新连接（codex 评审 P1-1 的代际收口）。
+        endBackspaceGestureSession(executeQueued = false)
         invalidatePendingVoiceStartOnEditorChange()
         cursorQueryGeneration += 1
         pendingCursorDeltas.clear()
@@ -921,6 +1021,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     override fun onFinishInputView(finishingInput: Boolean) {
         Diagnostics.log("ui", "inputViewHidden finishing=$finishingInput")
         inputConnectionGeneration += 1
+        // 键盘已收起：在途手势会话一并作废（延迟删除丢弃）。
+        endBackspaceGestureSession(executeQueued = false)
         invalidatePendingVoiceStartOnEditorChange()
         cursorQueryGeneration += 1
         pendingCursorDeltas.clear()
@@ -993,6 +1095,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     override fun onDestroy() {
         acceptAsrResults = false
         inputConnectionGeneration += 1
+        endBackspaceGestureSession(executeQueued = false)
         cursorQueryGeneration += 1
         pendingCursorDeltas.clear()
         cursorQueryActive = false
@@ -2030,6 +2133,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             onMain { currentInputConnection?.performContextMenuAction(id) }
         }
 
+        /** #34 上滑全选删（独立通道）：先作废词撤销再全选再发一个 DEL。
+         *  复用普通 backspace 会踩法/俄「退格重开上一词」的语言编辑语义
+         *  （codex 评审 P1-3）；KEYCODE_DEL 对选区是整段删（既有事实）。
+         *  gestureBackspace 自带 invalidateWordUndo + 直发键事件。 */
+        @JavascriptInterface
+        fun clearEditorText(token: String) = guarded(token, limited = false) {
+            onMain {
+                currentInputConnection?.performContextMenuAction(android.R.id.selectAll)
+                coordinator.gestureBackspace(1)
+            }
+        }
+
         @JavascriptInterface
         fun setComposition(keys: String, token: String) = guarded(token, limited = false) {
             // Variant parses are short key sequences ('xc'an').  Unicode
@@ -2280,88 +2395,75 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
          *  删除照常；密码不入 IME 内存缓冲（评审 F-4）。 */
         @JavascriptInterface
         fun backspaceGestureBegin(token: String) = guarded(token, limited = false) {
+            if (panelInputActive || isSensitiveEditor()) return@guarded
             beginBackspaceGestureSession()
         }
 
         /** 跟手逐字删的批量桥：一次位移事件跨过的单位数合一次调用。
-         *  只发 DEL 键事件不过引擎（组合态已在键盘侧排除）。 */
+         *  只发 DEL 键事件不过引擎（组合态已在键盘侧排除）。同步 token
+         *  校验（guarded 的校验在 onMain 里、拿不到回执，这里与
+         *  guardedStore 同款）：基线未结算时删除延迟到结算后执行，账实
+         *  一致（外层线程模型注释）。编辑器已换（代际不符）整会话作废
+         *  并丢弃延迟删除。 */
         @JavascriptInterface
-        fun backspaceN(count: Int, token: String) = guarded(token, limited = false) {
-            if (count !in 1..MAX_BACKSPACE_GESTURE_UNITS) {
+        fun backspaceN(count: Int, token: String) {
+            if (token != pageToken || !pageReady ||
+                count !in 1..MAX_BACKSPACE_GESTURE_UNITS
+            ) {
                 rejectedCalls += 1
-                return@guarded
+                return
             }
-            repeat(count) {
-                val unit = popBackspaceGestureUnit()
-                if (unit != null) backspaceGestureStack.addLast(unit)
-                else if (backspaceGestureBaseline == null) backspaceGesturePending += 1
+            var execute = 0
+            synchronized(backspaceGestureLock) {
+                if (backspaceGestureEditorGeneration != inputConnectionGeneration) {
+                    endBackspaceGestureSessionLockedDrop()
+                    return
+                }
+                repeat(count) {
+                    if (backspaceGestureBaseline == null) {
+                        backspaceGesturePending += 1
+                    } else {
+                        val unit = popBackspaceGestureUnitLocked()
+                        if (unit != null) backspaceGestureStack.addLast(unit)
+                    }
+                }
+                if (backspaceGestureBaseline == null) backspaceGestureQueued += count
+                else execute = count
             }
-            coordinator.gestureBackspace(count)
+            if (execute > 0) onMain { coordinator.gestureBackspace(execute) }
         }
 
-        /** 回滑恢复：弹出本会话最近删掉的一个字符发回编辑器。无可恢复
-         *  内容（宿主读不到编辑器文本/已删空）时静默空转。 */
+        /** 回滑恢复：弹出本会话最近删掉的一个字符发回编辑器。返回
+         *  false=无账可弹/基线未结算/编辑器已换——键盘侧据回执不推进
+         *  delNet（codex 评审 P1-1：静默丢弃会让净删除的位置函数漂移）。
+         *  旧壳无返回值（undefined），键盘按成功处理（热更兼容）。 */
         @JavascriptInterface
-        fun backspaceRestoreOne(token: String) = guarded(token, limited = false) {
-            if (backspaceGestureStack.isEmpty()) return@guarded
-            val unit = backspaceGestureStack.removeLast()
-            // 回填记账镜像：再左滑删它时还有账可弹。
-            backspaceGestureBaseline = (backspaceGestureBaseline ?: "") + unit
-            coordinator.gestureRestore(unit)
+        fun backspaceRestoreOne(token: String): Boolean {
+            if (token != pageToken || !pageReady) {
+                rejectedCalls += 1
+                return false
+            }
+            var unit: String? = null
+            synchronized(backspaceGestureLock) {
+                if (backspaceGestureEditorGeneration != inputConnectionGeneration) {
+                    endBackspaceGestureSessionLockedDrop()
+                    return false
+                }
+                if (backspaceGestureStack.isEmpty()) return false
+                unit = backspaceGestureStack.removeLast()
+                // 回填记账镜像：再左滑删它时还有账可弹。
+                backspaceGestureBaseline = (backspaceGestureBaseline ?: "") + unit
+            }
+            val text = unit ?: return false
+            onMain { coordinator.gestureRestore(text) }
+            return true
         }
 
         /** 手势会话结束：恢复缓冲清空（spec：恢复只在会话内有效，不做
-         *  跨手势撤销栈——那是下滑 Ctrl+Z 的事）。 */
+         *  跨手势撤销栈——那是下滑 Ctrl+Z 的事）。延迟删除冲账执行。 */
         @JavascriptInterface
         fun backspaceGestureEnd(token: String) = guarded(token, limited = false) {
             endBackspaceGestureSession()
-        }
-
-        private fun beginBackspaceGestureSession() {
-            backspaceGestureSession += 1
-            backspaceGestureBaseline = null
-            backspaceGesturePending = 0
-            backspaceGestureStack.clear()
-            val session = backspaceGestureSession
-            val connection = currentInputConnection ?: return
-            if (panelInputActive || isSensitiveEditor()) return
-            cursorQueryExecutor.execute {
-                val before = runCatching {
-                    connection.getTextBeforeCursor(BACKSPACE_GESTURE_BASELINE_CHARS, 0)?.toString()
-                }.getOrNull()
-                main.post {
-                    // 会话已翻篇（下一个手势/已结束）：迟到基线作废。
-                    if (backspaceGestureSession != session) return@post
-                    backspaceGestureBaseline = before ?: ""
-                    // 补记基线到达前的删除：先删的是基线最尾的字符，
-                    // 依次弹出入栈后栈顶恰是最近删的。
-                    while (backspaceGesturePending > 0) {
-                        val unit = popBackspaceGestureUnit() ?: break
-                        backspaceGestureStack.addLast(unit)
-                        backspaceGesturePending -= 1
-                    }
-                }
-            }
-        }
-
-        /** 从基线尾部弹一个删除单位（按 code point，代理对不劈半）。
-         *  基线未到达或已弹空返回 null。 */
-        private fun popBackspaceGestureUnit(): String? {
-            val base = backspaceGestureBaseline ?: return null
-            if (base.isEmpty()) return null
-            val tail = if (base.length >= 2 &&
-                Character.isLowSurrogate(base.last()) &&
-                Character.isHighSurrogate(base[base.length - 2])
-            ) 2 else 1
-            backspaceGestureBaseline = base.substring(0, base.length - tail)
-            return base.substring(base.length - tail)
-        }
-
-        private fun endBackspaceGestureSession() {
-            backspaceGestureSession += 1
-            backspaceGestureBaseline = null
-            backspaceGesturePending = 0
-            backspaceGestureStack.clear()
         }
 
         @JavascriptInterface
@@ -2721,27 +2823,39 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
          * docs/design/userdata.md §1.4）：握手后与这些键变化时各调一次。
          * 只收录白名单键，最近符号/emoji 等使用痕迹不进备份。
          * 返回递增的 rev——键盘页存下它，握手时与原生比对决定
-         * 谁更新（设置页导入会让 rev 跳号，键盘页据此拉取恢复值）。 */
+         * 谁更新（设置页导入会让 rev 跳号，键盘页据此拉取恢复值）。
+         *
+         * codex 评审 P2-6 收口：旧实现用上传键【整表替换】镜像——键盘
+         * 上传 5 个键就会把设置页刚写的键（如 feelime_mode_order）抹掉。
+         * 现改为合并进既有镜像；载荷内嵌 __rev（键盘侧最后见到的 rev）
+         * 做 CAS：不匹配说明镜像已被别人推进，返回 "-1" 让键盘先拉取
+         * 再重推。旧键盘不带 __rev（<0）不比较，维持旧语义。 */
         @JavascriptInterface
         fun pushStores(json: String, token: String): String = guardedStore(token) {
             if (json.isEmpty() || json.length > MAX_JSON_CHARS) return@guardedStore ""
             runCatching {
                 val parsed = JSONObject(json)
-                val mirror = readStoresMirror()
-                val merged = JSONObject()
-                for (key in com.feelime.ime.backup.UserdataBackup.WEBVIEW_STORE_KEYS) {
-                    val value = parsed.opt(key) ?: continue
-                    merged.put(key, value)
+                val baseRev = parsed.optInt("__rev", -1)
+                synchronized(com.feelime.ime.StoreMirrorLock) {
+                    val mirror = readStoresMirror()
+                    val mirrorRev = mirror.optInt("rev", 0)
+                    if (baseRev >= 0 && mirrorRev != baseRev) return@runCatching "-1"
+                    // 合并而非替换：未上传的键保留镜像现值。
+                    val merged = mirror.optJSONObject("values") ?: JSONObject()
+                    for (key in com.feelime.ime.backup.UserdataBackup.WEBVIEW_STORE_KEYS) {
+                        val value = parsed.opt(key) ?: continue
+                        merged.put(key, value)
+                    }
+                    val nextRev = mirrorRev + 1
+                    val payload = JSONObject().put("rev", nextRev).put("values", merged)
+                    com.feelime.ime.backup.AndroidPrefs(applicationContext)
+                        .put(
+                            com.feelime.ime.backup.UserdataBackup.WEBVIEW_PREFS,
+                            com.feelime.ime.backup.UserdataBackup.WEBVIEW_KEY,
+                            payload.toString(),
+                        )
+                    nextRev.toString()
                 }
-                val nextRev = mirror.optInt("rev", 0) + 1
-                val payload = JSONObject().put("rev", nextRev).put("values", merged)
-                com.feelime.ime.backup.AndroidPrefs(applicationContext)
-                    .put(
-                        com.feelime.ime.backup.UserdataBackup.WEBVIEW_PREFS,
-                        com.feelime.ime.backup.UserdataBackup.WEBVIEW_KEY,
-                        payload.toString(),
-                    )
-                nextRev.toString()
             }.getOrDefault("")
         }
 
@@ -3440,7 +3554,12 @@ internal fun parseChromeColor(raw: String): Int? {
             else -> null
         }
     }
-    val m = Regex("rgba?\\(\\s*(\\d+)\\D+(\\d+)\\D+(\\d+)(?:\\D+([\\d.]+))?").find(s) ?: return null
+    // 函数名大小写容错（RGB()/RGBA()）：computedStyle 正常输出小写，但
+    // 壁纸色/主题色可能来自任意来源，解析契约不该卡壳（codex 评审 C）。
+    // alpha 前导分隔用懒惰 \D*?——贪婪 \D+ 会把 ".5" 的点吃掉（. 非数字）
+    // 只剩 "5"，alpha 恒 1。
+    val m = Regex("rgba?\\(\\s*(\\d+)\\D+(\\d+)\\D+(\\d+)(?:\\D*?([\\d.]+))?",
+        RegexOption.IGNORE_CASE).find(s) ?: return null
     val (r, g, b) = m.destructured
     val a = m.groupValues.getOrNull(4)?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
     fun chan(x: String): Int? = x.toIntOrNull()?.coerceIn(0, 255)

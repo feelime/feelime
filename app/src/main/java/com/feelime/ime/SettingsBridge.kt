@@ -39,6 +39,12 @@ import java.util.concurrent.Executors
  * 换目录+重建引擎会话，docs/design/userdata.md §1.2）。 */
 const val ACTION_USERDATA_RESTORED = "com.feelime.ime.USERDATA_RESTORED"
 
+/** webview stores 镜像（备份数据源）的进程内写锁：设置页
+ *  [SettingsBridge.saveKeyboardSelection] 与键盘页 ImeBridge.pushStores
+ *  都对同一份 prefs 做「读-合并-写 rev+1」，交错会把对方刚写的键丢掉
+ *  （codex 评审 P2-6）。两个写入方共持此锁串行化。 */
+internal object StoreMirrorLock
+
 /** 双拼方案切换广播：设置页发，IME 收（当前是双拼会话时按新 schema
  * 重建会话，并重推 hello 让键盘换解析表/sep 键，double-pinyin.md §2）。 */
 const val ACTION_DP_SCHEME_CHANGED = "com.feelime.ime.DP_SCHEME_CHANGED"
@@ -1605,46 +1611,68 @@ class SettingsBridge(
 
     /** #30-2 SAF 结果：拷贝音频到 filesDir/key-sound/custom（大小上限
      *  2MB——按键音是短音效，SoundPool 的合理域），置风格 custom，
-     *  广播让 IME 侧重载播放配置。非法/超限文件不落地，通知页面。 */
+     *  广播让 IME 侧重载播放配置。
+     *  codex 评审 P1-4 收口：拷贝走 worker（主线程整段复制会卡设置页）、
+     *  限量读（超 2MB+1 立即中断，云端大文件不再全量落盘）、写独立临时
+     *  文件成功后原子替换——失败路径只清临时文件，旧音效原样保留。 */
     fun importKeySoundFromUri(uri: Uri) {
-        val name = runCatching {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
-            }
-        }.getOrNull() ?: "sound"
-        val target = keySoundFile(context)
-        target.parentFile?.mkdirs()
-        val ok = runCatching {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                java.io.FileOutputStream(target).use { out ->
-                    val copied = input.copyTo(out, bufferSize = 64 * 1024)
-                    if (copied > KEY_SOUND_MAX_BYTES) {
-                        target.delete()
-                        return@runCatching false
+        if (closed) return
+        runCatching {
+            worker.execute {
+                if (closed) return@execute
+                val name = runCatching {
+                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
                     }
-                    true
+                }.getOrNull() ?: "sound"
+                val dir = java.io.File(context.filesDir, "key-sound")
+                dir.mkdirs()
+                val tmp = java.io.File(dir, "custom.tmp")
+                var reason = "OPEN_FAILED"
+                val ok = runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        java.io.FileOutputStream(tmp).use { out ->
+                            val buffer = ByteArray(64 * 1024)
+                            var total = 0L
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read < 0) break
+                                total += read
+                                if (total > KEY_SOUND_MAX_BYTES) {
+                                    reason = "TOO_LARGE_OR_BAD"
+                                    return@runCatching false
+                                }
+                                out.write(buffer, 0, read)
+                            }
+                            total > 0
+                        }
+                    } ?: false
+                }.getOrDefault(false)
+                if (!ok) {
+                    tmp.delete()
+                    pushEvent(
+                        JSONObject()
+                            .put("type", "keySoundError")
+                            .put("code", reason)
+                            .put("message", t(context, "音效文件不可用（需 2MB 内的音频）", "Key sound file unusable (audio within 2MB)")),
+                    )
+                    return@execute
                 }
-            } ?: false
-        }.getOrDefault(false)
-        if (!ok) {
-            if (target.isFile) target.delete()
-            pushEvent(
-                JSONObject()
-                    .put("type", "keySoundError")
-                    .put("code", if (target.isFile) "TOO_LARGE_OR_BAD" else "OPEN_FAILED")
-                    .put("message", t(context, "音效文件不可用（需 2MB 内的音频）", "Key sound file unusable (audio within 2MB)")),
-            )
-            return
-        }
-        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
-            .putString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_CUSTOM)
-            .putString(PREF_KEY_SOUND_NAME, name)
-            .apply()
-        context.sendBroadcast(
-            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-        )
-        pushState()
+                java.nio.file.Files.move(
+                    tmp.toPath(), keySoundFile(context).toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                )
+                context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
+                    .putString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_CUSTOM)
+                    .putString(PREF_KEY_SOUND_NAME, name)
+                    .apply()
+                context.sendBroadcast(
+                    Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+                )
+                pushState()
+            }
+        }.onFailure { Log.w(TAG, "key-sound import rejected", it) }
     }
 
     @JavascriptInterface
@@ -2158,17 +2186,21 @@ class SettingsBridge(
             .put("feelime_menu_modes", menuJson)
             .put("feelime_quick_pair", pairJson)
         if (orderJson.isNotEmpty()) values.put("feelime_mode_order", orderJson)
-        val mirror = storesMirror()
-        val merged = mirror.optJSONObject("values") ?: JSONObject()
-        for (key in values.keys()) merged.put(key, values.get(key))
-        com.feelime.ime.backup.AndroidPrefs(context).put(
-            com.feelime.ime.backup.UserdataBackup.WEBVIEW_PREFS,
-            com.feelime.ime.backup.UserdataBackup.WEBVIEW_KEY,
-            JSONObject()
-                .put("rev", mirror.optInt("rev", 0) + 1)
-                .put("values", merged)
-                .toString(),
-        )
+        // 读-合并-写整段上锁（与键盘侧 pushStores 串行，P2-6）：不锁的话
+        // 键盘握手全量重推与这里的写交错会互相丢键。
+        synchronized(StoreMirrorLock) {
+            val mirror = storesMirror()
+            val merged = mirror.optJSONObject("values") ?: JSONObject()
+            for (key in values.keys()) merged.put(key, values.get(key))
+            com.feelime.ime.backup.AndroidPrefs(context).put(
+                com.feelime.ime.backup.UserdataBackup.WEBVIEW_PREFS,
+                com.feelime.ime.backup.UserdataBackup.WEBVIEW_KEY,
+                JSONObject()
+                    .put("rev", mirror.optInt("rev", 0) + 1)
+                    .put("values", merged)
+                    .toString(),
+            )
+        }
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

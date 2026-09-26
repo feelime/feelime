@@ -249,16 +249,51 @@ test('delete gesture: down swipe releases Ctrl+Z keyEvent', {since: '3.68.0'}, (
     equal(world.native.of('backspace').length, 0, 'no stray tap delete');
 });
 
-test('delete gesture: up swipe releases selectAll then backspace', {since: '3.68.0'}, () => {
+// codex 评审 P1-3：上滑改走独立桥 clearEditorText（先作废词撤销再全选
+// 再 DEL），不再复用带语言编辑语义的 backspace；旧壳（无该桥）回落
+// selectAll+backspace——mock 里桥存在，走新路径。
+test('delete gesture: up swipe uses the dedicated clearEditorText channel', {since: '3.68.0'}, () => {
     const world = fresh();
     const bs = bsKey(world);
     world.touchDown(bs, 100, 20);
     world.move(bs, 100, -50); // dy=-70 纵向主导向上
     world.touchUp(bs, 100, -50);
-    const act = world.native.of('editorAction');
-    equal(act.length, 1, 'one editorAction');
-    equal(act[0].args[0], 'selectAll', 'select all first');
-    equal(world.native.of('backspace').length, 1, 'delete lands after select');
+    equal(world.native.of('clearEditorText').length, 1, 'dedicated channel called once');
+    equal(world.native.of('editorAction').length, 0, 'no legacy selectAll');
+    equal(world.native.of('backspace').length, 0, 'no plain backspace (fr/ru word reopen)');
+});
+
+// codex 评审 P1-1 回执协议：restoreOne 返回 false（无账可弹/基线未结算/
+// 编辑器已换）时，delNet 不推进——净删除仍是位置的诚实函数；后续事件
+// 的重算是幂等重试，不补发删除。
+test('delete gesture: refused restores do not advance the net-delete position', {since: '3.68.0'}, () => {
+    const world = fresh();
+    const bs = bsKey(world);
+    world.native.restoreResult = false;
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20); // engage：net 1
+    world.move(bs, 30, 20); // net 2（backspaceN 共 2）
+    world.move(bs, 61, 20); // 右滑回 steps=-1：两笔恢复被拒，delNet 回滚到 2
+    world.move(bs, 120, 20); // 再右滑（steps=+1）：重算 delta=-2，重试两笔仍被拒
+    world.touchUp(bs, 120, 20);
+    equal(world.native.of('backspaceN').reduce((s, c) => s + c.args[0], 0), 2,
+        'deletes never exceed the swiped distance');
+    equal(world.native.of('backspaceRestoreOne').length, 2,
+        'one refused attempt per event (break), retried idempotently on the next');
+});
+
+test('delete gesture: accepted restores keep draining the net position', {since: '3.68.0'}, () => {
+    const world = fresh();
+    const bs = bsKey(world);
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20); // net 1
+    world.move(bs, 30, 20); // net 2
+    world.move(bs, 61, 20); // 恢复 1（成功，delNet=1）
+    world.move(bs, 100, 20); // steps=0：恢复 1（成功，delNet=0）
+    world.move(bs, 120, 20); // steps=+1：target=0，无动作
+    world.touchUp(bs, 120, 20);
+    equal(world.native.of('backspaceRestoreOne').length, 2, 'restores drained both units');
+    equal(world.native.of('backspaceN').reduce((s, c) => s + c.args[0], 0), 2, 'deletes unchanged');
 });
 
 test('delete gesture: composing keeps swipes engine-side', {since: '3.68.0'}, () => {

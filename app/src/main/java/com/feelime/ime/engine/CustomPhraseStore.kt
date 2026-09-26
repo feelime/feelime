@@ -119,7 +119,10 @@ object CustomPhraseStore {
 
     /** 读取真相源；json 不存在时（首装）种子写入默认表并派生 txt；
      *  已存在但派生版本落后时按当前规则重派生（升级路径，见
-     *  [DERIVE_VERSION]）。 */
+     *  [DERIVE_VERSION]）。@Synchronized 与 save 互斥：迁移的
+     *  读-重派生-写若与设置页保存交错，旧状态会覆盖用户的新保存
+     *  （codex 评审 P2-5）。 */
+    @Synchronized
     fun load(context: Context): State {
         val file = jsonFile(context)
         if (!file.isFile) {
@@ -157,6 +160,13 @@ object CustomPhraseStore {
             if (root.optInt("derive", 1) != DERIVE_VERSION) {
                 save(context, state.enabled, state.items, state.imported, state.user,
                     englishEnabled = state.englishEnabled)
+                // 迁移改写了 txt：已在跑的 IME 引擎还挂着旧 txt，广播让它
+                // 整引擎重载（stabledb 生命周期绑定引擎）。迁移只发生一次
+                // （版本戳落定），不会刷屏。
+                context.sendBroadcast(
+                    android.content.Intent("com.feelime.ime.CUSTOM_PHRASES_CHANGED")
+                        .setPackage(context.packageName),
+                )
             }
             state
         } catch (_: Exception) {
@@ -165,7 +175,12 @@ object CustomPhraseStore {
     }
 
     /** 落盘 json + 派生/删除 txt。seed=true 时跳过 enabled 持久化语义
-     * （首装默认开，行为一致，仅日志区分）。 */
+     * （首装默认开，行为一致，仅日志区分）。@Synchronized 见 load。
+     * 落盘顺序：先 txt 后 json——derive 版本戳是「派生已完成」的提交点；
+     * 反过来（旧顺序）时进程死在两写之间会留下「戳已新、txt 停在旧规
+     * 则」且永不重试（codex 评审 P2-5）。先 txt 后 json，中断后的下一
+     * 次 load 仍见旧戳、重派生一次，幂等收敛。 */
+    @Synchronized
     fun save(
         context: Context,
         enabled: Boolean,
@@ -191,8 +206,8 @@ object CustomPhraseStore {
             })
         val dir = jsonFile(context).parentFile
         dir?.mkdirs()
-        jsonFile(context).writeText(root.toString())
         deriveTxt(context, enabled, items, imported, user, englishEnabled)
+        jsonFile(context).writeText(root.toString())
         android.util.Log.i(
             "FeelimeCustomPhrase",
             "saved seed=$seed enabled=$enabled items=${items.size} imported=${imported.size} " +

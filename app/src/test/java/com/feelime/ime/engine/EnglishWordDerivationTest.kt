@@ -59,14 +59,11 @@ class EnglishWordDerivationTest {
         // 用真实码表资产跑一遍内置表：任何词都不应被音节表完整切分
         // （选词时已剔除 api/demo/repo/cache/ping/share/safari 这类
         //  死词条——运行时过滤是防线，常态不应命中）。
-        val codesJson = java.io.File(
-            "src/main/assets/custom-phrase-codes.json",
-        ).takeIf { it.isFile }?.readText()
-        if (codesJson == null) {
-            println("asset not packaged in unit test env; skip")
-            return
-        }
-        val lines = store.englishLines(JSONObject(codesJson))
+        // 资产缺失=断言失败而非跳过（codex 评审 H：早返回会让该测试
+        // 在打包漏资产时假绿）。
+        val codesFile = java.io.File("src/main/assets/custom-phrase-codes.json")
+        assertTrue("custom-phrase-codes.json missing (worktree needs app/src/modelAssets link or fresh checkout)", codesFile.isFile)
+        val lines = store.englishLines(JSONObject(codesFile.readText()))
         val kept = lines.map { it.substringBefore('\t').lowercase() }.toSet()
         assertFalse(kept.isEmpty())
         assertTrue("github" in kept && "ios" in kept && "android" in kept)

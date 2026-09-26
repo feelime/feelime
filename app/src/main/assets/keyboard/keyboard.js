@@ -926,16 +926,30 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (value !== null) stores[key] = value;
             }
         } catch (_) { /* storage unavailable */ }
-        return JSON.stringify(stores);
+        return stores;
     }
 
-    function pushStores() {
+    function pushStores(retry) {
         // 类型守卫：热更键盘（新 JS）跑在旧原生（无 pushStores）上时，
         // 不许在 hello 路径抛错——能力握手之外的方法一律探测后再调。
+        // 载荷内嵌 __rev（本地最后见到的镜像 rev）做 CAS：设置页已推进
+        // 镜像（如排序）而键盘还揣着旧 localStorage 时，native 拒绝并返
+        // 回 "-1"——先拉取新值再重推一次（codex 评审 P2-6：旧协议整表
+        // 替换，键盘全量重推会静默抹掉设置页写的键）。旧原生不认 __rev
+        // （白名单外自然忽略），行为不变。
         try {
             if (typeof Native.pushStores === 'function') {
-                const rev = Native.pushStores(collectStores(), keyboard.token);
-                if (rev) localStorage.setItem('feelime_stores_rev', String(rev));
+                const payload = collectStores();
+                payload.__rev = localStorage.getItem('feelime_stores_rev') || '0';
+                const rev = Native.pushStores(JSON.stringify(payload), keyboard.token);
+                if (rev === '-1' && !retry) {
+                    pullStores(keyboard.token);
+                    pushStores(true);
+                    return;
+                }
+                if (rev && rev !== '-1') {
+                    localStorage.setItem('feelime_stores_rev', String(rev));
+                }
             }
         } catch (_) { /* bridge unavailable */ }
     }
@@ -1581,7 +1595,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         call(action) {
             if (!this.ready || !this.token) return;
-            action(this.lastRevision);
+            // 透传桥返回值：#34 回滑恢复靠 backspaceRestoreOne 的同步
+            // 回执决定是否推进 delNet（codex 评审 P1-1），无回执=undefined
+            // 按成功处理（旧壳热更兼容）。
+            return action(this.lastRevision);
         }
 
         isChineseMode() {
@@ -3471,12 +3488,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.call(() => Native.backspaceGestureEnd(this.token));
                 }
                 // #34 垂直手势在松手派发（方向已在跨越时锁定）。上=全选
-                // 后退格：KEYCODE_DEL 对选区是整段删（native 侧 device-
-                // verified 的既有事实，无需新通道）；下=Ctrl+Z。
+                // 删：独立桥 clearEditorText（先作废词撤销再全选再 DEL——
+                // 复用普通 backspace 会踩法/俄「退格重开上一词」，codex
+                // 评审 P1-3）；旧壳无该桥回落 selectAll+backspace。
+                // 下=Ctrl+Z。
                 if (!cancelled && origin && this.bsVertical) {
                     if (this.bsVertical < 0) {
-                        this.call(() => Native.editorAction('selectAll', this.token));
-                        this.call(() => Native.backspace(this.token));
+                        if (typeof Native.clearEditorText === 'function') {
+                            this.call(() => Native.clearEditorText(this.token));
+                        } else {
+                            this.call(() => Native.editorAction('selectAll', this.token));
+                            this.call(() => Native.backspace(this.token));
+                        }
                     } else {
                         this.call(() => Native.keyEvent(BS_UNDO_KEYCODE,
                             CTRL_META_BITS.Ctrl, this.token));
@@ -3545,8 +3568,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 无操作——纯位置语义让「右滑抖动再回来」不会误删新字符。
          * 删除走批量桥（一次事件跨过的单位合一次调用，快速甩动不丢步，
          * 与 applyScrub 的批量理由相同；单次上限 16 与 native 的
-         * MAX_BACKSPACE_GESTURE_UNITS 对齐）；恢复逐字弹回。native 侧
-         * 没账可弹（宿主读不到编辑器文本）时静默空转。 */
+         * MAX_BACKSPACE_GESTURE_UNITS 对齐）；恢复逐字弹回，凭
+         * backspaceRestoreOne 的回执决定成败（见函数内注释）。 */
         applyDeleteScrub(clientX) {
             const steps = Math.trunc((clientX - this.delBase) / this.delUnit);
             if (steps === this.delSteps) return;
@@ -3560,9 +3583,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 delta -= count;
             }
             while (delta < 0) {
-                this.call(() => Native.backspaceRestoreOne(this.token));
+                // 回执协议（codex 评审 P1-1）：restoreOne 返回 false（无账
+                // 可弹/基线未结算/编辑器已换）时不把它当成功——delNet 回退
+                // 该步，净删除仍是位置的诚实函数；下次事件重算会重试，
+                // 幂等无害。旧壳无返回值（undefined）按成功处理。
+                const ok = this.call(() => Native.backspaceRestoreOne(this.token));
+                if (ok === false) break;
                 delta += 1;
             }
+            if (delta < 0) this.delNet = target - delta;
         }
 
         /** T9 手势仲裁（t9.md §3）。返回 true=已消费；false=落回通用
