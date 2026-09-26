@@ -32,10 +32,13 @@ third_party/                    许可证清单与来源闭包
 ```bash
 ./scripts/setup-assets.sh          # 首次：下载 sherpa-onnx AAR/模型（SHA-256 校验，
                                    #   安装到 ~/.config/feelime，全 worktree 共享）
-ANDROID_HOME=… ./gradlew :app:assembleDirectDebug
-                                   # 构建（产物 app/build/outputs/apk/direct/debug/）
+./scripts/install-debug-apk.sh <serial>
+                                   # 构建+装机一条龙：assembleDirectDebug → 核验
+                                   #   APK 内键盘/设置资产 sha 与仓库一致（防「改完
+                                   #   代码忘重建、装旧 APK 假失败」）→ adb install。
+                                   #   --no-build 复用现有产物；--allow-stale 显式
+                                   #   强装旧产物（仅复现历史 bug 用）
 ./scripts/push-keyboard.sh --local # 键盘热更新：打包本仓键盘并推到设备（裸调需要 zip 参数）
-adb install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk
 ```
 
 **debug 包名带 `.dev` 后缀**（`com.feelime.ime.dev`，名称 "Feelime Dev"），
