@@ -2236,8 +2236,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
 
         private fun playDefaultKeyTone() {
+            // STREAM_MUSIC 而非 STREAM_SYSTEM（验收 2026-09-26 ace 实录）：
+            // ColorOS 对 STREAM_SYSTEM 的实际输出静音——ToneGenerator 链路
+            // 完整（AudioTrack 1984 帧送达 AudioFlinger）但写硬件时被
+            // muted，用户三档「完全没声」；系统流音量 dumpsys 显示 16/16，
+            // 那是音量值不是 ROM 的输出开关。媒体流（160/160）不受该
+            // 策略影响，另一台 ColorOS 旧版有声也说明 ROM 间策略不一。
             val tone = keyTone ?: runCatching {
-                ToneGenerator(AudioManager.STREAM_SYSTEM, 80)
+                ToneGenerator(AudioManager.STREAM_MUSIC, 60)
             }.getOrNull()?.also { keyTone = it } ?: return
             runCatching { tone.startTone(ToneGenerator.TONE_PROP_BEEP, 40) }
         }
