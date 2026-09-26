@@ -7066,55 +7066,75 @@ test('issue12: a prefix favorite must not mask the dead-string clear', {since: '
         'no fav: id ever rides the engine choose channel');
     equal(world.native.of('clearComposing').length, 1,
         'the dead engine pool still clears with a favorite masking the bar');
+    // ≥40 且引擎候选空（fav 顶在展示池首）也绝不能拿 fav: 去选词。
+    const longDead = 'n'.repeat(41);
+    world.engineState({ mode: 'pinyin', revision: 2, composing: longDead,
+        rawInput: longDead, candidates: [], hasNextPage: false });
+    equal(world.native.of('chooseCandidate').length, 0,
+        'a favorite pool head never becomes an auto-commit id at 40+');
 });
 
-test('issue12: collapse requests are throttled, not one per echo', {since: '3.68.0'}, () => {
-    // codex P1：无在途保护时连续回声会重复发清空，迟到的第二次可能
-    // 打到清空之后的新输入上。800ms 窗口内只发一次。
-    const realNow = Date.now;
-    let now = 10_000;
-    Date.now = () => now;
-    try {
-        const world = fresh({ mode: 'pinyin' });
-        const echo = (rev, n) => world.engineState({ mode: 'pinyin', revision: rev,
-            composing: 'v'.repeat(n), rawInput: 'v'.repeat(n),
-            candidates: [], hasNextPage: false });
-        echo(1, 16);
-        echo(2, 17);
-        equal(world.native.of('clearComposing').length, 1,
-            'echoes inside the collapse window do not re-clear');
-        now += 801;
-        echo(3, 18);
-        equal(world.native.of('clearComposing').length, 2,
-            'a still-dead composition retries in the next window');
-    } finally {
-        Date.now = realNow;
-    }
+test('issue12: one collapse per composition fingerprint, in-flight safe', {since: '3.68.0'}, () => {
+    // codex R2 P1：在途保护靠组合指纹——同一 raw 只收束一次，迟到的
+    // 同态回声不重发（原生清空是无条件 Reset，重复的第二次会打到新
+    // 输入上）；raw 推进（新键）立即重评。
+    const world = fresh({ mode: 'pinyin' });
+    const echo = (rev, n, cands) => world.engineState({ mode: 'pinyin', revision: rev,
+        composing: 'v'.repeat(n), rawInput: 'v'.repeat(n),
+        candidates: cands || [], hasNextPage: false });
+    echo(1, 16);
+    echo(2, 16); // 迟到的同态回声（清空请求在途）
+    echo(3, 16); // 再来一次也不重发
+    equal(world.native.of('clearComposing').length, 1,
+        'the same composition clears exactly once');
+    echo(4, 17); // 新键推进死串 → 新指纹 → 再清
+    equal(world.native.of('clearComposing').length, 2,
+        'a growing dead string re-collapses on its new fingerprint');
+});
+
+test('issue12: partial selection progress re-collapses without new keys', {since: '3.68.0'}, () => {
+    // codex R2 P1 场景：40 字母触发选词后部分选词回声仍剩 44 字母（且
+    // 有候选）——指纹已变，立即再次收束，不依赖用户再按键。
+    const world = fresh({ mode: 'pinyin' });
+    const raw40 = 'a '.repeat(39) + 'a';
+    world.engineState({ mode: 'pinyin', revision: 1, composing: raw40, rawInput: raw40,
+        candidates: [{ id: 'c1', text: '啊' }], hasNextPage: false });
+    const left44 = 'b'.repeat(44);
+    world.engineState({ mode: 'pinyin', revision: 2, composing: left44, rawInput: left44,
+        candidates: [{ id: 'c2', text: '把' }], hasNextPage: false });
+    const picks = world.native.of('chooseCandidate');
+    equal(picks.length, 2, 'the leftover over-limit composition re-commits by itself');
+    equal(picks[1].args[1], 'c2', 'the new pool head rides the second choose');
+});
+
+test('issue12: the settle echo re-arms the fingerprint for a repeat offense', {since: '3.68.0'}, () => {
+    // 清空回声（composing=false）清指纹：用户重打同一死串仍会被清。
+    const world = fresh({ mode: 'pinyin' });
+    const dead = 'v'.repeat(16);
+    const echo = (rev, raw, comp, cands) => world.engineState({ mode: 'pinyin', revision: rev,
+        composing: comp, rawInput: raw, candidates: cands || [], hasNextPage: false });
+    echo(1, dead, dead);
+    echo(2, '', '', []); // 清空后的空组合回声
+    echo(3, dead, dead); // 重打同一串
+    equal(world.native.of('clearComposing').length, 2,
+        'clearing re-arms: the same dead string typed again still clears');
 });
 
 test('issue12: the settle echo and fresh input do not re-trigger', {since: '3.68.0'}, () => {
-    const realNow = Date.now;
-    let now = 20_000;
-    Date.now = () => now;
-    try {
-        const world = fresh({ mode: 'pinyin' });
-        const raw40 = 'a '.repeat(39) + 'a';
-        world.engineState({ mode: 'pinyin', revision: 1, composing: raw40, rawInput: raw40,
-            candidates: [{ id: 'c1', text: '啊' }], hasNextPage: false });
-        // 上屏后的空组合回声：不触发任何收束。
-        world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
-            candidates: [], hasNextPage: false });
-        // 新组合 39 字母：阈值下不触发。
-        now += 801;
-        world.engineState({ mode: 'pinyin', revision: 3,
-            composing: 'a'.repeat(39), rawInput: 'a'.repeat(39),
-            candidates: [{ id: 'c2', text: '阿' }], hasNextPage: false });
-        equal(world.native.of('chooseCandidate').length, 1,
-            'only the over-threshold echo commits');
-        equal(world.native.of('clearComposing').length, 0, 'nothing clears on the happy path');
-    } finally {
-        Date.now = realNow;
-    }
+    const world = fresh({ mode: 'pinyin' });
+    const raw40 = 'a '.repeat(39) + 'a';
+    world.engineState({ mode: 'pinyin', revision: 1, composing: raw40, rawInput: raw40,
+        candidates: [{ id: 'c1', text: '啊' }], hasNextPage: false });
+    // 上屏后的空组合回声：不触发任何收束。
+    world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    // 新组合 39 字母：阈值下不触发。
+    world.engineState({ mode: 'pinyin', revision: 3,
+        composing: 'a'.repeat(39), rawInput: 'a'.repeat(39),
+        candidates: [{ id: 'c2', text: '阿' }], hasNextPage: false });
+    equal(world.native.of('chooseCandidate').length, 1,
+        'only the over-threshold echo commits');
+    equal(world.native.of('clearComposing').length, 0, 'nothing clears on the happy path');
 });
 
 test('issue12: double-pinyin auto-commits too', {since: '3.68.0'}, () => {

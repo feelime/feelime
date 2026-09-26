@@ -8884,22 +8884,30 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 判定只认引擎原生候选（payload.candidates）：展示池混有常用语
             // /联想等注入项，前缀匹配会在引擎候选已空时冒充池首，既遮住
             // 死串分支、又把 fav: 等非引擎 id 送进 chooseCandidate（codex
-            // P1）。800ms 节流充当在途保护：收束请求→回声闭环内不重发，
-            // 免得迟到的重复清空打到后续新输入上；失败/部分选词留下的超
-            // 长组合在下一个窗口重试，自然收敛（codex P1）。
-            if ((this.mode === 'pinyin' || this.mode === 'double-pinyin') &&
-                payload.composing &&
-                Date.now() - (this._autoCollapseAt || 0) > 800) {
-                const engineCands = payload.candidates || [];
-                const rawLen = (payload.rawInput || '').replace(/ /g, '').length;
-                if (rawLen >= 40 && engineCands.length) {
-                    this._autoCollapseAt = Date.now();
-                    this.call(revision => Native.chooseCandidate(
-                        revision, engineCands[0].id, this.token));
-                } else if (rawLen >= 16 && !engineCands.length) {
-                    this._autoCollapseAt = Date.now();
-                    this.call(() => Native.clearComposing(this.token));
-                    this.showToast(t("组合过长，已清空"));
+            // R1 P1）。在途保护用组合指纹（codex R2 P1）：同一 raw 只收束
+            // 一次——请求在途时迟到的同态回声不重发（原生清空是无条件
+            // Reset，重复的第二次会打到新输入上）；指纹变化（新键/部分
+            // 选词推进）立即重评，收束链随状态推进自然收敛；组合结束清
+            // 指纹，同一死串被打第二次仍会被清。不用时间窗：墙上时钟回
+            // 退会误禁用，且「到期重试」并不正确——无回声时无用户事件
+            // 也无风险，收束只该由回声驱动。
+            if (this.mode === 'pinyin' || this.mode === 'double-pinyin') {
+                if (!payload.composing) {
+                    this._autoCollapseKey = null;
+                } else {
+                    const raw = (payload.rawInput || '').replace(/ /g, '');
+                    const engineCands = payload.candidates || [];
+                    if (raw && raw !== this._autoCollapseKey) {
+                        if (raw.length >= 40 && engineCands.length) {
+                            this._autoCollapseKey = raw;
+                            this.call(revision => Native.chooseCandidate(
+                                revision, engineCands[0].id, this.token));
+                        } else if (raw.length >= 16 && !engineCands.length) {
+                            this._autoCollapseKey = raw;
+                            this.call(() => Native.clearComposing(this.token));
+                            this.showToast(t("组合过长，已清空"));
+                        }
+                    }
                 }
             }
         }
