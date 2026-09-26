@@ -1309,14 +1309,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // #12 复发取证：touch=触摸到达数；blocked=call 门闸
                     // 拒绝；noClick=swipe滑动手势/pop弹层/long长按各吞掉的
                     // 键数（touch>0 而 0 事件时，这三个计数指出触摸死在哪层）。
+                    const pl = document.getElementById('preeditLine');
                     Native.diagEvent(
                         `heartbeat raf=${rafAlive ? 1 : 0} touch=${this._diagTouch}` +
                         ` blocked=${this._diagCallBlocked}` +
-                        ` noClick=${this._diagNoClick.swipe}/${this._diagNoClick.pop}/${this._diagNoClick.long}`,
+                        ` noClick=${this._diagNoClick.swipe}/${this._diagNoClick.pop}/${this._diagNoClick.long}` +
+                        ` states=${window.__diagStates || 0} preedit=${pl ? pl.textContent.length : -1}`,
                         this.token);
                     this._diagTouch = 0;
                     this._diagCallBlocked = 0;
                     this._diagNoClick = { swipe: 0, pop: 0, long: 0 };
+                    window.__diagStates = 0;
                 }, 2500);
             }
         }
@@ -9130,7 +9133,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
     window.Feelime = {
         onBridgeHello: payload => keyboard.onBridgeHello(payload),
-        onEngineState: payload => keyboard.onEngineState(payload),
+        // #12 复发取证：native 推送到达 JS 的对账计数（心跳捎带
+        // states=N preedit=L，与 native 日志的 stateApplied 行数对照：
+        // 相等=JS 收到了（查渲染层）；少=推送丢（查 evaluate 层））。
+        onEngineState: payload => { window.__diagStates = (window.__diagStates || 0) + 1; return keyboard.onEngineState(payload); },
         onAssoc: payload => keyboard.onAssoc(payload),
         onNativeState: payload => keyboard.onNativeState(payload),
         onInkCandidates: payload => keyboard.onInkCandidates(payload),
