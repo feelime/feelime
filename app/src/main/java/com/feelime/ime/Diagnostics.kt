@@ -58,7 +58,7 @@ object Diagnostics {
     fun setEnabled(context: Context, on: Boolean) {
         synchronized(lock) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putBoolean(KEY_ENABLED, on).apply()
+                .edit().putBoolean(KEY_ENABLED, on).commit()
             recording = on
             events.clear()
             seq = 0

@@ -1023,7 +1023,7 @@ class SettingsBridge(
             return@guarded
         }
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(key, dp).apply()
+            .edit().putInt(key, dp).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1044,7 +1044,7 @@ class SettingsBridge(
             return@guarded
         }
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_CANDIDATE_FONT, size).apply()
+            .edit().putInt(PREF_CANDIDATE_FONT, size).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1065,7 +1065,7 @@ class SettingsBridge(
             return@guarded
         }
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_PREEDIT_FONT, size).apply()
+            .edit().putInt(PREF_PREEDIT_FONT, size).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1088,7 +1088,7 @@ class SettingsBridge(
             return@guarded
         }
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_ONE_HAND_PAD, pct).apply()
+            .edit().putInt(PREF_ONE_HAND_PAD, pct).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1109,7 +1109,7 @@ class SettingsBridge(
             return@guarded
         }
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_SIDE_CONTENT, mode).apply()
+            .edit().putInt(PREF_SIDE_CONTENT, mode).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1136,7 +1136,7 @@ class SettingsBridge(
             return@guarded
         }
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putString("bg_image_" + variant + "_src", "custom").apply()
+            .edit().putString("bg_image_" + variant + "_src", "custom").commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1149,7 +1149,7 @@ class SettingsBridge(
     fun setThemeMode(mode: String, token: String) = guarded(token) {
         if (mode !in listOf("auto", "light", "dark")) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putString(PREF_THEME_MODE, mode).apply()
+            .edit().putString(PREF_THEME_MODE, mode).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1160,7 +1160,7 @@ class SettingsBridge(
     @JavascriptInterface
     fun setFlickSwap(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putBoolean(PREF_FLICK_SWAP, on).apply()
+            .edit().putBoolean(PREF_FLICK_SWAP, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1174,7 +1174,7 @@ class SettingsBridge(
         if (preset !in THEME_PRESETS) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putString(PREF_THEME_PRESET, preset)
-            .putInt(PREF_THEME_HUE, -1).apply()
+            .putInt(PREF_THEME_HUE, -1).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1186,7 +1186,7 @@ class SettingsBridge(
     fun setThemeHue(hue: Int, token: String) = guarded(token) {
         if (hue !in -1..360) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_THEME_HUE, hue).apply()
+            .edit().putInt(PREF_THEME_HUE, hue).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1198,7 +1198,7 @@ class SettingsBridge(
     fun setKeyOpacity(pct: Int, token: String) = guarded(token) {
         if (pct !in 0..100) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_KEY_OPACITY, pct).apply()
+            .edit().putInt(PREF_KEY_OPACITY, pct).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1209,7 +1209,7 @@ class SettingsBridge(
     @JavascriptInterface
     fun setKeyBubble(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putBoolean(PREF_KEY_BUBBLE, on).apply()
+            .edit().putBoolean(PREF_KEY_BUBBLE, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1221,7 +1221,7 @@ class SettingsBridge(
     fun setBubbleLinger(ms: Int, token: String) = guarded(token) {
         if (ms !in BUBBLE_LINGER_STEPS.asList()) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_BUBBLE_LINGER, ms).apply()
+            .edit().putInt(PREF_BUBBLE_LINGER, ms).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1254,9 +1254,9 @@ class SettingsBridge(
         }
         val prefs = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         if (value == 0) {
-            prefs.edit().remove(KB_HEIGHT_PORTRAIT_KEY).apply()
+            prefs.edit().remove(KB_HEIGHT_PORTRAIT_KEY).commit()
         } else {
-            prefs.edit().putInt(KB_HEIGHT_PORTRAIT_KEY, Math.round(value * density)).apply()
+            prefs.edit().putInt(KB_HEIGHT_PORTRAIT_KEY, Math.round(value * density)).commit()
         }
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
@@ -1270,7 +1270,7 @@ class SettingsBridge(
         if (!isValidBgVariant(variant)) return@guarded
         bgImageFile(context, variant).delete()
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().remove("bg_image_" + variant + "_src").apply()
+            .edit().remove("bg_image_" + variant + "_src").commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1306,7 +1306,7 @@ class SettingsBridge(
             return@guarded
         }
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putString("bg_image_" + variant + "_src", "builtin").apply()
+            .edit().putString("bg_image_" + variant + "_src", "builtin").commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1321,7 +1321,7 @@ class SettingsBridge(
     @JavascriptInterface
     fun setAssociation(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putBoolean(PREF_ASSOCIATION, on).apply()
+            .edit().putBoolean(PREF_ASSOCIATION, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1333,7 +1333,7 @@ class SettingsBridge(
     @JavascriptInterface
     fun setDynamicDateTime(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putBoolean(PREF_DYNAMIC_DATETIME, on).apply()
+            .edit().putBoolean(PREF_DYNAMIC_DATETIME, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1613,7 +1613,7 @@ class SettingsBridge(
         if (style == KEY_SOUND_STYLE_CUSTOM && !keySoundFile(context).isFile) return@guarded
         if (style == keySoundStyle(context)) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putString(PREF_KEY_SOUND_STYLE, style).apply()
+            .edit().putString(PREF_KEY_SOUND_STYLE, style).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1627,7 +1627,7 @@ class SettingsBridge(
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
             .putString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_DEFAULT)
             .putString(PREF_KEY_SOUND_NAME, "")
-            .apply()
+            .commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1718,7 +1718,7 @@ class SettingsBridge(
                         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
                             .putString(PREF_KEY_SOUND_STYLE, KEY_SOUND_STYLE_CUSTOM)
                             .putString(PREF_KEY_SOUND_NAME, name)
-                            .apply()
+                            .commit()
                         context.sendBroadcast(
                             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
                         )
@@ -1746,7 +1746,7 @@ class SettingsBridge(
 
     private fun applyKeyFeedbackPref(key: String, on: Boolean) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putBoolean(key, on).apply()
+            .edit().putBoolean(key, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1774,7 +1774,7 @@ class SettingsBridge(
                 if (scrubSpeed != -1) putInt(PREF_FEEL_SCRUB_SPEED, scrubSpeed)
                 if (holdMs != -1) putInt(PREF_FEEL_HOLD_MS, holdMs)
                 if (popupSnap != -1) putInt(PREF_FEEL_POPUP_SNAP, popupSnap)
-            }.apply()
+            }.commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -1803,7 +1803,7 @@ class SettingsBridge(
     @JavascriptInterface
     fun setAutoUpdateCheck(enabled: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences("keyboard_update", Context.MODE_PRIVATE)
-            .edit().putBoolean(STATE_AUTO_CHECK_ENABLED, enabled).apply()
+            .edit().putBoolean(STATE_AUTO_CHECK_ENABLED, enabled).commit()
         pushState()
         if (enabled) maybeAutoCheck()
     }
@@ -2132,7 +2132,7 @@ class SettingsBridge(
         asrPrefs().edit()
             .putBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, stripPeriod)
             .putString(AsrSettings.KEY_HOTWORDS, kept.joinToString("\n"))
-            .apply()
+            .commit()
         // Silently dropping over-long/extra lines looked like the
         // user's input vanishing - name what was kept instead.
         if (kept.size < lines.size) {
@@ -2293,7 +2293,7 @@ class SettingsBridge(
         val entered = sourceUrl.trim()
         // An explicit empty value is the user's opt-out. It remains distinct
         // from an absent preference, which uses the official default source.
-        prefs.edit().putString(KeyboardStore.STATE_SOURCE_URL, entered).apply()
+        prefs.edit().putString(KeyboardStore.STATE_SOURCE_URL, entered).commit()
         pushState()
         startUpdateCheck(entered.ifBlank { DEFAULT_GITHUB_SOURCE })
     }
@@ -2316,7 +2316,7 @@ class SettingsBridge(
                 nowMs = now,
                 lastAttemptMs = last,
             )) return
-        prefs.edit().putLong(STATE_AUTO_CHECK_LAST_ATTEMPT_AT, now).apply()
+        prefs.edit().putLong(STATE_AUTO_CHECK_LAST_ATTEMPT_AT, now).commit()
         pushState()
         startUpdateCheck(if (sourceConfigured) savedSource else DEFAULT_GITHUB_SOURCE)
     }
@@ -2516,7 +2516,7 @@ class SettingsBridge(
         val fragmentPin = url.rawFragment
             ?.takeIf { it.startsWith("sha256=") }
             ?.removePrefix("sha256=")
-        prefs.edit().putString(KeyboardStore.STATE_UPDATE_STATE, "DOWNLOADING").apply()
+        prefs.edit().putString(KeyboardStore.STATE_UPDATE_STATE, "DOWNLOADING").commit()
         pushState()
         val downloader = KeyboardUpdateDownloader(
             HttpUrlConnectionFactory(),
@@ -2532,7 +2532,7 @@ class SettingsBridge(
 
     private fun setState(key: String, value: String) {
         context.getSharedPreferences("keyboard_update", Context.MODE_PRIVATE)
-            .edit().putString(key, value).apply()
+            .edit().putString(key, value).commit()
     }
 
     private fun failUpdate(code: String, detail: String) {
@@ -2544,7 +2544,7 @@ class SettingsBridge(
             .putString(KeyboardStore.STATE_LAST_ERROR_CODE, code)
             .putString(KeyboardStore.STATE_LAST_ERROR_MESSAGE, detail)
             .putString(KeyboardStore.STATE_UPDATE_STATE, "FAILED")
-            .apply()
+            .commit()
         // Worker failures use the same stable code/message protocol as
         // immediate validation failures.  Keep raw detail separate so it can
         // aid diagnosis without making the user-facing sentence language
@@ -2663,7 +2663,7 @@ class CustomKeysStore(private val context: Context) {
     }
 
     fun save(json: String, enabled: Boolean) {
-        prefs.edit().putString(KEY_JSON, json).putBoolean(KEY_ENABLED, enabled).apply()
+        prefs.edit().putString(KEY_JSON, json).putBoolean(KEY_ENABLED, enabled).commit()
     }
 
     private fun JSONArray.iterate(): Sequence<JSONArray> = sequence {

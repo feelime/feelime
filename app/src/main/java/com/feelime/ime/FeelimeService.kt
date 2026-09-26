@@ -297,6 +297,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private var insetWatcherInstalled = false
     // Set while an inset change is pending its settle re-read.
     private var insetChangeConfirmed = false
+        // 【设置落盘纪律（issue #12 系）】用户显式提交语义的 prefs 写入
+        //  一律同步 commit()：IME 进程在收起键盘后会被激进省电系统冻结/
+        //  杀（MIUI 实测），apply() 的后台写盘队列整批丢失——用户已看到
+        //  「已保存」提示、实际没写上盘（键盘高度回旧值的根因）。prefs
+        //  文件小、写入粒度是用户操作，主线程同步写几 ms 无感。例外：
+        //  高频/可丢的内部缓存才允许 apply()。
+
     private val flushHeightPref = Runnable {
         val px = pendingHeightWrite
         if (px > 0) {
@@ -310,7 +317,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     },
                     px,
                 )
-                .apply()
+                .commit()
         }
     }
     private val updateReceiver = object : android.content.BroadcastReceiver() {
@@ -815,7 +822,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         val prefs = getSharedPreferences("feelime_engine", MODE_PRIVATE)
         return object : TextInputCoordinator.ModeStore {
             override fun save(mode: com.feelime.ime.engine.InputMode) {
-                prefs.edit().putString("selected_input_mode", mode.name).apply()
+                prefs.edit().putString("selected_input_mode", mode.name).commit()
             }
 
             override fun load(): com.feelime.ime.engine.InputMode? {
@@ -2370,63 +2377,63 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             val action = when (key) {
                 "association" -> {
                     val on = boolArg() ?: return@guarded
-                    keyboardPrefs.edit().putBoolean(PREF_ASSOCIATION, on).apply()
+                    keyboardPrefs.edit().putBoolean(PREF_ASSOCIATION, on).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "keySound" -> {
                     val on = boolArg() ?: return@guarded
-                    keyboardPrefs.edit().putBoolean(PREF_KEY_SOUND, on).apply()
+                    keyboardPrefs.edit().putBoolean(PREF_KEY_SOUND, on).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "keyHaptic" -> {
                     val on = boolArg() ?: return@guarded
-                    keyboardPrefs.edit().putBoolean(PREF_KEY_HAPTIC, on).apply()
+                    keyboardPrefs.edit().putBoolean(PREF_KEY_HAPTIC, on).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "candidateFont" -> {
                     val size = value.toIntOrNull()
                     if (size == null || size !in 0..2) return@guarded
-                    keyboardPrefs.edit().putInt(PREF_CANDIDATE_FONT, size).apply()
+                    keyboardPrefs.edit().putInt(PREF_CANDIDATE_FONT, size).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "preeditFont" -> {
                     val size = value.toIntOrNull()
                     if (size == null || size !in 0..2) return@guarded
-                    keyboardPrefs.edit().putInt(PREF_PREEDIT_FONT, size).apply()
+                    keyboardPrefs.edit().putInt(PREF_PREEDIT_FONT, size).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "preeditBold" -> {
                     val on = boolArg() ?: return@guarded
-                    keyboardPrefs.edit().putBoolean(PREF_PREEDIT_BOLD, on).apply()
+                    keyboardPrefs.edit().putBoolean(PREF_PREEDIT_BOLD, on).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "keyOpacity" -> {
                     val pct = value.toIntOrNull()
                     if (pct == null || pct !in 0..100) return@guarded
-                    keyboardPrefs.edit().putInt(PREF_KEY_OPACITY, pct).apply()
+                    keyboardPrefs.edit().putInt(PREF_KEY_OPACITY, pct).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "keyBubble" -> {
-                    keyboardPrefs.edit().putBoolean(PREF_KEY_BUBBLE, value == "1" || value == "true").apply()
+                    keyboardPrefs.edit().putBoolean(PREF_KEY_BUBBLE, value == "1" || value == "true").commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "themeMode" -> {
                     // 外观页的三态主题（设置 app 写、键盘 hello 读回应用）；
                     // 键盘侧 pushStores 会把 tile/工具的改动同步回这里。
                     if (value !in listOf("auto", "light", "dark")) return@guarded
-                    keyboardPrefs.edit().putString(PREF_THEME_MODE, value).apply()
+                    keyboardPrefs.edit().putString(PREF_THEME_MODE, value).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "oneHand" -> {
                     val mode = value.toIntOrNull()
                     if (mode == null || mode !in 0..2) return@guarded
-                    keyboardPrefs.edit().putInt(PREF_ONE_HAND, mode).apply()
+                    keyboardPrefs.edit().putInt(PREF_ONE_HAND, mode).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "sideContent" -> {
                     val mode = value.toIntOrNull()
                     if (mode == null || mode !in 0..2) return@guarded
-                    keyboardPrefs.edit().putInt(PREF_SIDE_CONTENT, mode).apply()
+                    keyboardPrefs.edit().putInt(PREF_SIDE_CONTENT, mode).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "toolbarLayout" -> {
@@ -2436,7 +2443,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     val left = parsed.optJSONArray("left") ?: return@guarded
                     val right = parsed.optJSONArray("right") ?: return@guarded
                     if (left.length() > 4 || right.length() > 4) return@guarded
-                    keyboardPrefs.edit().putString(PREF_TOOLBAR_LAYOUT, value).apply()
+                    keyboardPrefs.edit().putString(PREF_TOOLBAR_LAYOUT, value).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "bottomPad" -> {
@@ -2447,23 +2454,23 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     keyboardPrefs.edit().putInt(
                         if (landscape) PREF_BOTTOM_PAD_DP_LANDSCAPE else PREF_BOTTOM_PAD_DP_PORTRAIT,
                         pad,
-                    ).apply()
+                    ).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "holdMs" -> {
                     val hold = value.toIntOrNull()
                     if (hold == null || hold !in FEEL_HOLD_STEPS) return@guarded
-                    keyboardPrefs.edit().putInt(PREF_FEEL_HOLD_MS, hold).apply()
+                    keyboardPrefs.edit().putInt(PREF_FEEL_HOLD_MS, hold).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "flickSwap" -> {
-                    keyboardPrefs.edit().putBoolean(PREF_FLICK_SWAP, value == "1" || value == "true").apply()
+                    keyboardPrefs.edit().putBoolean(PREF_FLICK_SWAP, value == "1" || value == "true").commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "popupSnap" -> {
                     val snap = value.toIntOrNull()
                     if (snap == null || snap !in 0..2) return@guarded
-                    keyboardPrefs.edit().putInt(PREF_FEEL_POPUP_SNAP, snap).apply()
+                    keyboardPrefs.edit().putInt(PREF_FEEL_POPUP_SNAP, snap).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "uiLocale" -> {
@@ -2816,7 +2823,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
          * (F key), and persisted per orientation.
          */
         @JavascriptInterface
-        fun setKeyboardHeight(heightCssPx: Int, token: String) = guarded(token, limited = false) {
+        fun setKeyboardHeight(heightCssPx: Int, token: String) =
+            guarded(token, limited = false) { setKeyboardHeightInternal(heightCssPx, immediate = false) }
+
+        /** 高度卡「保存」按钮的显式提交：立即落盘。debounce 的 300ms
+         *  窗口内收起键盘，IME 进程会被冻结/杀，pending 的 flush 永不
+         *  执行——pref 丢、弹出（re-create）读回旧高度，用户看到的正是
+         *  「提示已保存，收起再弹出高度回旧值」。 */
+        @JavascriptInterface
+        fun setKeyboardHeightNow(heightCssPx: Int, token: String) =
+            guarded(token, limited = false) { setKeyboardHeightInternal(heightCssPx, immediate = true) }
+
+        private fun setKeyboardHeightInternal(heightCssPx: Int, immediate: Boolean) {
             val landscape =
                 resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
             if (heightCssPx == 0) {
@@ -2828,11 +2846,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 }
                 getSharedPreferences("feelime_keyboard", MODE_PRIVATE).edit()
                     .remove(if (landscape) "keyboard_height_landscape" else "keyboard_height_portrait")
-                    .apply()
+                    .commit()
                 keyboardHeightOverride = 0
                 (keyboardView?.parent as? View)?.requestLayout()
                 pushBridgeHello()
-                return@guarded
+                return
             }
             val metrics = resources.displayMetrics
             val physical = (heightCssPx * metrics.density).toInt()
@@ -2861,7 +2879,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             pendingHeightWrite = clamped
             pendingHeightLandscape = landscape
             main.removeCallbacks(flushHeightPref)
-            main.postDelayed(flushHeightPref, HEIGHT_PREF_DEBOUNCE_MS)
+            if (immediate) flushHeightPref.run() else main.postDelayed(flushHeightPref, HEIGHT_PREF_DEBOUNCE_MS)
             android.util.Log.i("FeelimeBridge", "setKeyboardHeight css=$heightCssPx px=$clamped orientation=${if (landscape) "landscape" else "portrait"}")
         }
 
