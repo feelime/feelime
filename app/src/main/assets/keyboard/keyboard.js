@@ -1320,18 +1320,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         ` vr=${ds.vr} warm=${ds.warm} comp=${ds.comp}` +
                         (err ? ` err=${err}` : ''),
                         this.token);
-                    // issue #12 复发自愈：rAF 停摆（合成器挂起=画面冻结）
-                    // 且页面仍有活动（states/touch 在涨）连续两个心跳窗口
-                    // → 呼叫 native 唤醒 WebView。JS 本身是活的（定时器/
-                    // 事件/上屏全通），死的只是渲染——所以自愈入口必须在
-                    // JS 侧检测（native 不知道自己画面冻了）。
-                    const active = (window.__diagStates || 0) > 0 || this._diagTouch > 0;
-                    this._frozenBeats = (!rafAlive && active) ? (this._frozenBeats || 0) + 1 : 0;
-                    if (this._frozenBeats >= 2 &&
-                        typeof Native.webviewThaw === 'function') {
-                        Native.webviewThaw(this.token);
-                        this._frozenBeats = 0;
-                    }
                     this._diagTouch = 0;
                     this._diagCallBlocked = 0;
                     this._diagNoClick = { swipe: 0, pop: 0, long: 0 };
