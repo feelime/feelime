@@ -1783,6 +1783,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("bubbleLinger", readBubbleLinger(this))
             .put("themeMode", readThemeMode(this))
             .put("themePreset", readThemePreset(this))
+            .put("themeHue", readThemeHue(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("associationOn", readAssociation(this))
             .put("dynamicDateTimeOn", readDynamicDateTime(this))

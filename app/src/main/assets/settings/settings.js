@@ -392,7 +392,7 @@ const I18N = {
         "input.feel.bgImageDark": "暗色背景",
         "input.feel.themeMode": "色彩模式",
         "input.feel.themePreset": "键盘色调",
-        "input.feel.themePresetHint": "按键与强调色换成另一套色相；深浅模式各自适配。",
+        "input.feel.themePresetHint": "一个色相驱动整套键盘配色（键帽/面板/强调色）；拖滑条自定义，或点预置快捷档。",
         "preset.classic": "默认绿",
         "preset.ocean": "海蓝",
         "preset.violet": "紫罗兰",
@@ -872,7 +872,7 @@ const I18N = {
         "input.feel.bgImageDark": "Dark background",
         "input.feel.themeMode": "Color mode",
         "input.feel.themePreset": "Keyboard tint",
-        "input.feel.themePresetHint": "Swap keys and accents to another hue; adapts to light and dark.",
+        "input.feel.themePresetHint": "One hue drives the whole keyboard palette; drag the slider or tap a preset.",
         "preset.classic": "Classic green",
         "preset.ocean": "Ocean",
         "preset.violet": "Violet",
@@ -1306,10 +1306,16 @@ function renderFeel(state) {
         const mode = state.themeMode || "auto";
         themeSel.value = ["auto", "light", "dark"].includes(mode) ? mode : "auto";
     }
-    // #31 键盘色调：预置色板（单选 swatch 行）。
+    // #31 键盘色调：预置色板（单选 swatch 行）+ 自定义色相滑条。
+    // 自定义 hue（0-360）优先于预置：有自定义值时滑条亮「已自定义」态
+    // 且预置全不选中；-1（未自定义）时滑条停在各预置对应的 hue。
     const swatches = $("themePresetSwatches");
+    const hueInput = $("themeHue");
+    const hue = Number(state.themeHue);
+    const hasCustomHue = Number.isFinite(hue) && hue >= 0 && hue <= 360;
     if (swatches) {
-        const current = THEME_PRESET_LIST.includes(state.themePreset) ? state.themePreset : "classic";
+        const current = !hasCustomHue && THEME_PRESET_LIST.includes(state.themePreset)
+            ? state.themePreset : "";
         swatches.textContent = "";
         THEME_PRESET_LIST.forEach(id => {
             const dot = document.createElement("button");
@@ -1322,6 +1328,24 @@ function renderFeel(state) {
             dot.addEventListener("click", () => call("setThemePreset", id));
             swatches.append(dot);
         });
+    }
+    if (hueInput) {
+        // 预置→hue 映射与 keyboard.css html[data-preset] 同源。
+        const presetHue = { classic: 160, ocean: 212, violet: 255, amber: 27, sakura: 344, teal: 180 };
+        const shown = hasCustomHue ? Math.round(hue)
+            : presetHue[THEME_PRESET_LIST.includes(state.themePreset) ? state.themePreset : "classic"] || 160;
+        hueInput.value = String(shown);
+        hueInput.style.setProperty("--thumb-hue", String(shown));
+        hueInput.classList.toggle("customized", hasCustomHue);
+        hueInput.oninput = () => {
+            // 拖动只跟 thumb 颜色（本地），松手才落盘+广播生效（hello
+            // 全量重推，拖动实时推会抖）。
+            hueInput.style.setProperty("--thumb-hue", hueInput.value);
+        };
+        hueInput.onchange = () => {
+            const v = Math.round(Number(hueInput.value));
+            if (Number.isFinite(v) && v >= 0 && v <= 360) call("setThemeHue", v);
+        };
     }
     const opacity = $("keyOpacity");
     if (opacity) opacity.value = String(Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100))));

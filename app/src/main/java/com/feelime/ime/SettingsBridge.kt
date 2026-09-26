@@ -232,6 +232,16 @@ fun readThemePreset(context: Context): String {
     return if (saved in THEME_PRESETS) saved else "classic"
 }
 
+/** #31 色相滑条（预置之上的自定义色相）：-1=未自定义（按预置/默认），
+ *  0..360=键盘内联 --kb-hue，全套令牌（键帽/面板/背景/accent）由 CSS
+ *  hsl 派生。设置页松手写入 + 广播，键盘 hello 读回应用。 */
+const val PREF_THEME_HUE = "theme_hue"
+
+fun readThemeHue(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_THEME_HUE, -1)
+        .takeIf { it in -1..360 } ?: -1
+
 /** 背景图片（亮/暗各一组）：设置页压缩到 ≤720px 宽 JPEG 后经桥写入。
  *  variant 只认 light/dark；「无」= 删文件。src 记录来源供设置页回显。 */
 fun isValidBgVariant(variant: String): Boolean = variant == "light" || variant == "dark"
@@ -637,6 +647,7 @@ class SettingsBridge(
             .put("flickSwap", readFlickSwap(context))
             .put("themeMode", readThemeMode(context))
             .put("themePreset", readThemePreset(context))
+            .put("themeHue", readThemeHue(context))
             .put("kbHeightPortrait", readKbHeightPortrait(context))
             .apply {
                 val (min, max) = readKbHeightBounds(context)
@@ -1156,12 +1167,26 @@ class SettingsBridge(
         pushState()
     }
 
-    /** #31 预置色调（白名单外拒绝）。 */
+    /** #31 预置色调（白名单外拒绝）。选预置=放弃自定义色相（滑条归
+     *  位到未自定义），预置本身是 CSS 侧六个固定 hue。 */
     @JavascriptInterface
     fun setThemePreset(preset: String, token: String) = guarded(token) {
         if (preset !in THEME_PRESETS) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putString(PREF_THEME_PRESET, preset).apply()
+            .edit().putString(PREF_THEME_PRESET, preset)
+            .putInt(PREF_THEME_HUE, -1).apply()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #31 色相滑条：hue=-1 恢复未自定义（回预置/默认），0..360 落盘。 */
+    @JavascriptInterface
+    fun setThemeHue(hue: Int, token: String) = guarded(token) {
+        if (hue !in -1..360) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_THEME_HUE, hue).apply()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

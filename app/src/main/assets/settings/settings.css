@@ -757,7 +757,9 @@ details summary {
 }
 .search-flash { animation: search-breathe .62s ease-in-out 3; border-radius: 8px; }
 
-/* #31 键盘色调预置色板：一行圆形 swatch，选中态描边放大。 */
+/* #31 键盘色调：预置色板（圆形 swatch）+ 自定义色相滑条（全谱渐变
+ * 轨道，松手生效——经 pref+广播重推 hello，不做拖动实时预览）。 */
+.preset-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .preset-swatches { display: flex; gap: 10px; align-items: center; flex: none; }
 .preset-swatch {
     width: 26px; height: 26px; border-radius: 50%;
@@ -767,3 +769,27 @@ details summary {
     padding: 0; cursor: pointer;
 }
 .preset-swatch.active { border-color: var(--accent-text, #5cdeb0); transform: scale(1.12); }
+#themeHue {
+    width: 190px; height: 22px; margin: 0;
+    -webkit-appearance: none; appearance: none;
+    border-radius: 11px;
+    /* 全谱色相轨道：与键盘 --kb-hue 同一坐标系（0=红 … 160=经典绿）。 */
+    background: linear-gradient(90deg,
+        hsl(0,62%,48%), hsl(30,62%,48%), hsl(60,62%,48%), hsl(90,62%,48%),
+        hsl(120,62%,48%), hsl(150,62%,48%), hsl(180,62%,48%), hsl(210,62%,48%),
+        hsl(240,62%,48%), hsl(270,62%,48%), hsl(300,62%,48%), hsl(330,62%,48%),
+        hsl(360,62%,48%));
+    outline: none;
+}
+#themeHue::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: hsl(var(--thumb-hue, 160), 62%, 48%);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / .45);
+    cursor: pointer;
+}
+#themeHue.customized::-webkit-slider-thumb {
+    border-color: var(--accent-text, #5cdeb0);
+    box-shadow: 0 0 0 2px var(--accent-text, #5cdeb0), 0 1px 4px rgb(0 0 0 / .45);
+}

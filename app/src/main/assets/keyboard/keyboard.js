@@ -8453,6 +8453,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     delete document.documentElement.dataset.preset;
                 }
             }
+            // #31 色相滑条：自定义 hue（0-360）经 hello 下发，内联
+            // --kb-hue 胜过 data-preset 的属性选择器（全套令牌由 CSS 侧
+            // hsl 派生）；-1/缺省 = 未自定义，清内联回到预置/默认 160。
+            {
+                const hue = Number(payload.themeHue);
+                if (Number.isFinite(hue) && hue >= 0 && hue <= 360) {
+                    document.documentElement.style.setProperty('--kb-hue', String(Math.round(hue)));
+                } else {
+                    document.documentElement.style.removeProperty('--kb-hue');
+                }
+                // hue 变了背景色跟着变：#27 手势条涂色要重推。
+                this.pushChromeColor();
+            }
             // 主题真相源是 native pref（外观页 select / tile 循环都写它）：
             // 与本地不同才覆盖。tile 连点的未决意图在途时不覆盖，只确认
             // 撤签——否则连点后先发的旧快照会把新意图洗掉。

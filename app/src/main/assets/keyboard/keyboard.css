@@ -10,34 +10,39 @@
  * (html.theme-light / html.theme-dark). */
 :root {
     color-scheme: dark;
-    /* 键帽不透明度滑块（外观页）：--key/--special/--pressed 由 rgb 基色
-     * + alpha 合成，JS 只调 --key-alpha（0-1），键帽文字保持实色。 */
-    --key-rgb: 95 95 95;
-    --special-rgb: 65 65 65;
-    --pressed-rgb: 110 110 110;
+    /* #31 色相滑条（oh-my-term 式「一个 hue 驱动全套」）：--kb-hue 是
+     * 唯一的色相源，键帽/面板/背景按低饱和各自带一点色相（中性灰时代
+     * S=0，用户反馈「只换 accent 没区别」），accent 三件套饱和度高。
+     * --kb-hue 的来源优先级：内联 style（自定义滑条值，inline 胜一切
+     * 属性选择器）> html[data-preset]（六预置=六个固定 hue）> 默认 160
+     * （经典绿，校准为与旧版硬编码观感一致）。像素门禁色（文件头注释
+     * 列的两处）不参与派生。 */
+    --kb-hue: 160;
+    /* 键帽不透明度滑块（外观页）：hsla 的 alpha 位由 JS 只调
+     * --key-alpha（0-1），键帽文字保持实色。 */
     --key-alpha: 1;
-    --bg: #202020;
-    --key: rgb(var(--key-rgb) / var(--key-alpha));
-    --special: rgb(var(--special-rgb) / var(--key-alpha));
-    --pressed: rgb(var(--pressed-rgb) / var(--key-alpha));
+    --bg: hsl(var(--kb-hue), 22%, 12%);
+    --key: hsla(var(--kb-hue), 16%, 37%, var(--key-alpha));
+    --special: hsla(var(--kb-hue), 22%, 25%, var(--key-alpha));
+    --pressed: hsla(var(--kb-hue), 16%, 43%, var(--key-alpha));
     --text: #e8e8e8;
     --muted: #b0b0b0;
-    --accent: #23c890;
+    --accent: hsl(var(--kb-hue), 62%, 48%);
     --danger: #ff6b6b;
     --recording: #ff4d4d;
-    --panel: #2a2a2a;
-    --panel-rgb: 42 42 42;
-    --pill: #3d3d3d;
-    --logo-bg: #4d4d4d;
-    --icon: #989898;
-    --card-bg: #2b2b31;
+    --panel: hsl(var(--kb-hue), 22%, 16%);
+    --panel-a: hsla(var(--kb-hue), 22%, 16%, var(--key-alpha));
+    --pill: hsl(var(--kb-hue), 20%, 24%);
+    --logo-bg: hsl(var(--kb-hue), 8%, 30%);
+    --icon: hsl(var(--kb-hue), 5%, 60%);
+    --card-bg: hsl(var(--kb-hue), 9%, 21%);
     --card-text: #e8e8e8;
     --card-sub: #a2a2ac;
     --input-placeholder: #dedede;
     --key-subtext: #dedede;
-    --accent-text: #5cdeb0;
-    --accent-ink: #07180e;
-    --line: #484848;
+    --accent-text: hsl(var(--kb-hue), 60%, 66%);
+    --accent-ink: hsl(var(--kb-hue), 60%, 8%);
+    --line: hsl(var(--kb-hue), 18%, 28%);
     --radius-key: 5px;
     --radius-card: 10px;
     --scrim: #000000b8;
@@ -45,13 +50,10 @@
 
 html.theme-light {
     color-scheme: light;
-    --key-rgb: 252 252 252;
-    --special-rgb: 183 187 196;
-    --pressed-rgb: 236 238 242;
-    --bg: #e2e3e8;
-    --key: rgb(var(--key-rgb) / var(--key-alpha));
-    --special: rgb(var(--special-rgb) / var(--key-alpha));
-    --pressed: rgb(var(--pressed-rgb) / var(--key-alpha));
+    --key: hsla(var(--kb-hue), 38%, 97%, var(--key-alpha));
+    --special: hsla(var(--kb-hue), 42%, 72%, var(--key-alpha));
+    --pressed: hsla(var(--kb-hue), 38%, 92%, var(--key-alpha));
+    --bg: hsl(var(--kb-hue), 32%, 88%);
     --text: #181818;
     /* The old #b0b0b0 sat at ~2.1:1 on the light surfaces -
      * quick-settings text was effectively invisible. #5c616b keeps the
@@ -59,42 +61,36 @@ html.theme-light {
      * sits on (6.1 on --key, 5.7 on --panel, 4.9 on --bg; --special surfaces
      * carry --text, not muted). */
     --muted: #5c616b;
-    --accent: #23c890;
+    --accent: hsl(var(--kb-hue), 62%, 42%);
     --danger: #d93025;
     --recording: #e5484d;
-    --panel: #f4f5f7;
-    --panel-rgb: 244 245 247;
-    --pill: #ffffff;
-    --logo-bg: #fcfcfc;
-    --icon: #787878;
-    --card-bg: #f7f7fa;
+    --panel: hsl(var(--kb-hue), 34%, 95%);
+    --panel-a: hsla(var(--kb-hue), 34%, 95%, var(--key-alpha));
+    --pill: hsl(var(--kb-hue), 45%, 99%);
+    --logo-bg: hsl(var(--kb-hue), 20%, 99%);
+    --icon: hsl(var(--kb-hue), 5%, 47%);
+    --card-bg: hsl(var(--kb-hue), 18%, 97%);
     --card-text: #1c1c24;
     --card-sub: #6a6a78;
     --input-placeholder: #5c616b;
     --key-subtext: #5c616b;
-    --accent-text: #086d49;
-    --line: #d0d3db;
+    --accent-text: hsl(var(--kb-hue), 70%, 26%);
+    --line: hsl(var(--kb-hue), 26%, 82%);
     --scrim: #ffffffb0;
-    --mod-active-bg: #d7f0e4;
+    --mod-active-bg: hsl(var(--kb-hue), 55%, 89%);
 }
 
-/* ===== #31 预置色调（issue #31 v1）：html[data-preset] 覆盖 accent
- * 三件套（--accent 键面/按钮填充、--accent-ink 强调底上的墨色、
- * --accent-text 强调文字）。--accent-text 深浅两主题深浅相反（深色
- * 主题要亮字、浅色要深字），preset 给两套；--accent 作填充色两主题
- * 通用。特异性：html[data-preset] 与 html.theme-light 同为 (0,1,1)，
- * preset 块在后故叠加时胜；theme-light 的 preset 分支再压一次
- * accent-text。classic = 无 data-preset（默认绿）。 */
-html[data-preset="ocean"]  { --accent: #4da3ff; --accent-text: #82bcff; --accent-ink: #06172b; }
-html[data-preset="violet"] { --accent: #a78bfa; --accent-text: #c3b1fd; --accent-ink: #170f2e; }
-html[data-preset="amber"]  { --accent: #ff9f45; --accent-text: #ffb875; --accent-ink: #2b1602; }
-html[data-preset="sakura"] { --accent: #ff8fb1; --accent-text: #ffacc6; --accent-ink: #2b0b17; }
-html[data-preset="teal"]   { --accent: #2ec8c8; --accent-text: #6adcdc; --accent-ink: #04201f; }
-html.theme-light[data-preset="ocean"]  { --accent-text: #0b57a4; }
-html.theme-light[data-preset="violet"] { --accent-text: #5b46a8; }
-html.theme-light[data-preset="amber"]  { --accent-text: #a35a10; }
-html.theme-light[data-preset="sakura"] { --accent-text: #b8406a; }
-html.theme-light[data-preset="teal"]   { --accent-text: #0b6f6d; }
+/* ===== #31 预置色调：六预置=六个固定 --kb-hue（classic=默认绿 160），
+ * 整套令牌由 :root/.theme-light 的 hsl 派生接管——v1 只换 accent 三
+ * 件套被用户实测「只影响少部分按键」。hue 取各预置 v1 主色的色相：
+ * ocean #4da3ff→212、violet #a78bfa→255、amber #ff9f45→27、sakura
+ * #ff8fb1→344、teal #2ec8c8→180。内联 --kb-hue（自定义滑条）胜过这
+ * 里的属性选择器，设置页滑条动过即覆盖预置。 */
+html[data-preset="ocean"]  { --kb-hue: 212; }
+html[data-preset="violet"] { --kb-hue: 255; }
+html[data-preset="amber"]  { --kb-hue: 27; }
+html[data-preset="sakura"] { --kb-hue: 344; }
+html[data-preset="teal"]   { --kb-hue: 180; }
 
 
 html.theme-dark {
@@ -104,32 +100,29 @@ html.theme-dark {
 @media (prefers-color-scheme: light) {
     html:not(.theme-light):not(.theme-dark) {
         color-scheme: light;
-        --key-rgb: 252 252 252;
-        --special-rgb: 183 187 196;
-        --pressed-rgb: 236 238 242;
-        --bg: #e2e3e8;
-        --key: rgb(var(--key-rgb) / var(--key-alpha));
-        --special: rgb(var(--special-rgb) / var(--key-alpha));
-        --pressed: rgb(var(--pressed-rgb) / var(--key-alpha));
+        --key: hsla(var(--kb-hue), 38%, 97%, var(--key-alpha));
+        --special: hsla(var(--kb-hue), 42%, 72%, var(--key-alpha));
+        --pressed: hsla(var(--kb-hue), 38%, 92%, var(--key-alpha));
+        --bg: hsl(var(--kb-hue), 32%, 88%);
         --text: #181818;
         --muted: #5c616b; /* See html.theme-light */
-        --accent: #23c890;
+        --accent: hsl(var(--kb-hue), 62%, 42%);
         --danger: #d93025;
         --recording: #e5484d;
-        --panel: #f4f5f7;
-        --panel-rgb: 244 245 247;
-        --pill: #ffffff;
-        --logo-bg: #fcfcfc;
-        --icon: #787878;
-        --card-bg: #f7f7fa;
+        --panel: hsl(var(--kb-hue), 34%, 95%);
+        --panel-a: hsla(var(--kb-hue), 34%, 95%, var(--key-alpha));
+        --pill: hsl(var(--kb-hue), 45%, 99%);
+        --logo-bg: hsl(var(--kb-hue), 20%, 99%);
+        --icon: hsl(var(--kb-hue), 5%, 47%);
+        --card-bg: hsl(var(--kb-hue), 18%, 97%);
         --card-text: #1c1c24;
         --card-sub: #6a6a78;
         --input-placeholder: #5c616b;
         --key-subtext: #5c616b;
-        --accent-text: #086d49;
-        --line: #d0d3db;
+        --accent-text: hsl(var(--kb-hue), 70%, 26%);
+        --line: hsl(var(--kb-hue), 26%, 82%);
         --scrim: #ffffffb0;
-        --mod-active-bg: #d7f0e4;
+        --mod-active-bg: hsl(var(--kb-hue), 55%, 89%);
     }
 }
 
@@ -1355,7 +1348,7 @@ body.landscape .panel-head .tool { width: 30px; height: 30px; }
 .panel-tabs {
     flex: none;
     display: flex;
-    background: rgb(var(--panel-rgb) / var(--key-alpha));
+    background: var(--panel-a);
     border-radius: 16px;
     padding: 2px;
 }
@@ -1395,7 +1388,7 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
     border-radius: 10px;
     /* 候选列表块与键帽同材质（验收反馈）：背景按「按键不透明度」
      * 合成，壁纸上与键帽一致地透，不再是一块死色。 */
-    background: rgb(var(--panel-rgb) / var(--key-alpha));
+    background: var(--panel-a);
     padding: 4px;
 }
 /* 空态不铺列表块（验收反馈）：提示只占一行，列表整个收起，
