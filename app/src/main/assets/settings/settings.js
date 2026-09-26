@@ -1334,8 +1334,12 @@ function renderFeel(state) {
         const presetHue = { classic: 160, ocean: 212, violet: 255, amber: 27, sakura: 344, teal: 180 };
         const shown = hasCustomHue ? Math.round(hue)
             : presetHue[THEME_PRESET_LIST.includes(state.themePreset) ? state.themePreset : "classic"] || 160;
-        hueInput.value = String(shown);
-        hueInput.style.setProperty("--thumb-hue", String(shown));
+        // 焦点守卫（与 setSelect 同款）：拖动中的异步 state 回推不得覆盖
+        // 本地值——否则旧回包会把滑条拽回旧 hue，松手提交的就是错值。
+        if (document.activeElement !== hueInput) {
+            hueInput.value = String(shown);
+            hueInput.style.setProperty("--thumb-hue", String(shown));
+        }
         hueInput.classList.toggle("customized", hasCustomHue);
         hueInput.oninput = () => {
             // 拖动只跟 thumb 颜色（本地），松手才落盘+广播生效（hello
