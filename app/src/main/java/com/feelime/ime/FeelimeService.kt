@@ -770,6 +770,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                             "cand=${event.state.candidates.size}",
                     )
                 }
+                // #12 复发取证：推送实值与目标实例。composing 是引擎侧
+                // 布尔（对照 JS 心跳 comp= ——同为 false 则 payload 组装
+                // 有鬼；native true 而 JS false 则推送与心跳落在不同
+                // WebView 实例，view id 对账 hello/pageLoad 可见分叉）。
+                Diagnostics.log("engine",
+                    "pushState rev=${event.revision} composing=${event.state.composing} view=${System.identityHashCode(keyboardView)}")
                 evaluate("window.Feelime && window.Feelime.onEngineState && window.Feelime.onEngineState($payload)")
                 // 中文联想（docs/design/association.md §3）：只在 commit 事件
                 // 上计算并推送，键盘保留现有联想直到组合开始。
@@ -874,6 +880,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // （含 200dp 弹层带），hello 到达后才缩回——真机首载闪一下
             // 「更高的键盘」（ace 录屏定罪，frame1-7 比稳态高 ~180px+）。
             // hello 仍按权威值覆盖；query 只救首帧。
+            Diagnostics.log("bridge", "pageLoad at=create view=${System.identityHashCode(this)}")
             loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
         }
         keyboardView = view
@@ -1174,6 +1181,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         assetStore = KeyboardAssetStore(active.dir)
         pageToken = newToken()
         pageReady = false
+        Diagnostics.log("bridge", "pageLoad at=reload view=${System.identityHashCode(keyboardView)}")
         keyboardView?.loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
     }
 
@@ -1804,6 +1812,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 "degraded=${coordinator.engineDegrade != null} warming=${coordinator.engineWarming} " +
                 "pkg=${currentInputEditorInfo?.packageName}",
         )
+        Diagnostics.log("bridge", "helloPushed view=${System.identityHashCode(keyboardView)}")
         evaluate("window.Feelime && window.Feelime.onBridgeHello && window.Feelime.onBridgeHello($payload)")
     }
 
