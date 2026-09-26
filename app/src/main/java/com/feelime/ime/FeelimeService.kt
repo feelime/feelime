@@ -913,14 +913,41 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     // v3 埋点（issue #13）：IME 窗口 attach/detach 到屏幕的时刻——
     // 「窗口在屏但按键无响应」现场需要它与 inputViewShown 的相对时序。
+    private var showGeneration = 0
+
     override fun onWindowShown() {
         super.onWindowShown()
         Diagnostics.log("ui", "windowShown")
+        // issue #12 根因修复（codex 联合评审定稿）：IMS hideWindow() 会直接
+        // dispatchWindowVisibilityChanged(GONE)（只进回调、不改 getter）；
+        // 快速重弹时 ViewRoot 未必派发配对的 VISIBLE——Chromium M133 按回调
+        // 参数维护 mIsWindowVisible，缺了 VISIBLE 就断 BeginFrame：JS/引擎
+        // 全活但 rAF 停、画面冻结（七期日志：弹出后 callback 悬垂 GONE、
+        // getter 一直 VISIBLE、raf 持续 0）。修复：显示后 300ms（观察窗口，
+        // 给正常派发留时间）若「getter 已 VISIBLE 而最后回调仍非 VISIBLE」，
+        // 用公开 API dispatchWindowVisibilityChanged(VISIBLE) 补上缺口——
+        // 不 detach/reattach（避免触摸/绘制资源副作用），仅在状态真正
+        // 脱节时动一次。会话约束：实例+generation 双比对，hide 即失效。
+        val gen = ++showGeneration
+        val expected = keyboardView ?: return
+        main.postDelayed({
+            val cur = keyboardView
+            if (cur !== expected || gen != showGeneration) return@postDelayed
+            if (!cur.isAttachedToWindow || !cur.isShown) return@postDelayed
+            val diag = cur as? DiagWebView ?: return@postDelayed
+            if (cur.windowVisibility == android.view.View.VISIBLE &&
+                diag.lastCallbackWinVis != android.view.View.VISIBLE) {
+                Diagnostics.log("ui",
+                    "visibilityRepair callback=${diag.lastCallbackWinVis} getter=${cur.windowVisibility}")
+                cur.dispatchWindowVisibilityChanged(android.view.View.VISIBLE)
+            }
+        }, 300)
     }
 
     override fun onWindowHidden() {
         super.onWindowHidden()
         Diagnostics.log("ui", "windowHidden")
+        showGeneration += 1 // 在途 repair 任务随之失效（快速 show/hide 归属不乱）
     }
 
     /**
@@ -1162,6 +1189,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         handwritingEngine = null
         background.shutdown()
         cursorQueryExecutor.shutdownNow()
+        android.view.Choreographer.getInstance().removeFrameCallback(choreoTick)
+        main.removeCallbacks(uiSampler)
         keyboardView?.apply {
             removeJavascriptInterface(BRIDGE_NAME)
             destroy()
@@ -3503,8 +3532,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         override fun onDetachedFromWindow() {
             super.onDetachedFromWindow(); lastVisDiag = 0; visDiag("detach")
         }
+        var lastCallbackWinVis = -1
         override fun onWindowVisibilityChanged(visibility: Int) {
-            super.onWindowVisibilityChanged(visibility); lastVisDiag = 0; visDiag("winVis=$visibility")
+            lastCallbackWinVis = visibility
+            super.onWindowVisibilityChanged(visibility); lastVisDiag = 0
+            visDiag("callbackWinVis=$visibility getterWinVis=$windowVisibility")
         }
         override fun onVisibilityChanged(changedView: android.view.View, visibility: Int) {
             super.onVisibilityChanged(changedView, visibility)
