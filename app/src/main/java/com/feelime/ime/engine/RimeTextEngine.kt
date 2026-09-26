@@ -47,6 +47,9 @@ class RimeTextEngine(
     override fun handle(request: EngineRequest, emit: (EngineEvent) -> Unit): DispatchAck {
         when (val command = request.command) {
             is EngineCommand.Key -> synchronized(gate) {
+                // #12 复发取证：每键 librime 耗时曲线（主线程同步调用，
+                // 慢=主线程阻塞=键盘无响应）。超 60ms 才打，正常零噪音。
+                val t0 = android.os.SystemClock.elapsedRealtime()
                 if (session == 0L) {
                     // 诊断埋点（issue #12）：死会话收键 = 收键无候选/
                     // composing 空的直接形态。rimeProcessKey(0,…) 不报错，
@@ -59,6 +62,9 @@ class RimeTextEngine(
                 NativeSmoke.rimeProcessKey(session, command.unicodeScalar, command.modifiers)
                 page = 0
                 emit(stateEvent())
+                val ms = android.os.SystemClock.elapsedRealtime() - t0
+                if (ms > 60) com.feelime.ime.Diagnostics.log(
+                    "engine", "rimeSlow op=Key ms=$ms raw=${lastState.composing.replace(" ", "").length}")
             }
             is EngineCommand.Space -> synchronized(gate) {
                 NativeSmoke.rimeProcessKey(session, SPACE, 0)
@@ -101,6 +107,7 @@ class RimeTextEngine(
                 emit(event(Phase.READY, if (committed != null) lastState.copy(commit = committed) else lastState))
             }
             is EngineCommand.Backspace -> synchronized(gate) {
+                val t0 = android.os.SystemClock.elapsedRealtime()
                 val hadComposing = lastState.composing.isNotEmpty()
                 NativeSmoke.rimeProcessKey(session, BACKSPACE, 0)
                 val committed = commitHarvest()
@@ -114,6 +121,9 @@ class RimeTextEngine(
                 } else {
                     emit(event(Phase.READY, if (committed != null) state.copy(commit = committed) else state))
                 }
+                val ms = android.os.SystemClock.elapsedRealtime() - t0
+                if (ms > 60) com.feelime.ime.Diagnostics.log(
+                    "engine", "rimeSlow op=Backspace ms=$ms raw=${lastState.composing.replace(" ", "").length}")
             }
             is EngineCommand.Choose -> synchronized(gate) {
                 // No hard expectedRevision gate here. The strip keeps

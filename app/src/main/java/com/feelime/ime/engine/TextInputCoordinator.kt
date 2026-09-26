@@ -800,6 +800,9 @@ class TextInputCoordinator(
         }
         val requestStamp = stamp
         var completed = false
+        // #12 复发取证：dispatch 发出→事件在主线程执行的回压时长（含
+        // 主线程排队）。超 120ms 打点；正常打字零噪音。
+        val sentAt = android.os.SystemClock.elapsedRealtime()
         fun complete() {
             if (completed || requestStamp != stamp) return
             completed = true
@@ -807,6 +810,8 @@ class TextInputCoordinator(
         }
         val ack = engine.dispatch(EngineRequest(stamp, command)) { event ->
             mainPoster {
+                val lag = android.os.SystemClock.elapsedRealtime() - sentAt
+                if (lag > 120) diag("dispatchLag cmd=${command::class.simpleName} ms=$lag")
                 onEngineEvent(event, command)
                 complete()
             }
