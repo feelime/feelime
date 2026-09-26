@@ -2220,28 +2220,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
          * 场景（不收起也会发生）走这里唤醒。 */
         @JavascriptInterface
         fun webviewThaw(token: String) = guarded(token, limited = false) {
-            // 两级：先 onResume+invalidate（实测对合成器挂起无效但保留——
-            // 或有 resume 可救的轻场景）；同一冻结会话（15s 窗口）内第 2
-            // 次呼叫=resume 已证明无效，升级 reload——页面重载必然重建
-            // 渲染管线。引擎状态在 native 侧，hello+pushState 重推即恢复
-            // 显示；JS 瞬态丢失可接受（画面冻着时它们本来就不可见）。
-            val now = android.os.SystemClock.elapsedRealtime()
-            if (now - lastThawAt > 15000) thawStrike = 0
-            lastThawAt = now
-            thawStrike += 1
-            if (thawStrike >= 2) {
-                Diagnostics.log("bridge", "webviewThaw escalate=reload strike=$thawStrike")
-                thawStrike = 0
-                keyboardView?.loadUrl(
-                    "$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}") ?: run {
-                    Diagnostics.log("bridge", "webviewThaw reloadSkipped noWebView")
-                }
-            } else {
-                Diagnostics.log("bridge", "webviewThaw resume strike=$thawStrike")
-                runCatching {
-                    keyboardView?.onResume()
-                    keyboardView?.invalidate()
-                }
+            Diagnostics.log("bridge", "webviewThaw rafFrozen")
+            runCatching {
+                keyboardView?.onResume()
+                keyboardView?.invalidate()
             }
         }
         fun keyFeedback(token: String) = guarded(token, limited = false) {
@@ -3640,8 +3622,6 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         const val SETTLE_BASELINE_TIMEOUT_MS = 120L
         const val CALLS_PER_SECOND = 25
         @Volatile private var lastThrottleDiag = 0L
-        @Volatile private var lastThawAt = 0L
-        @Volatile private var thawStrike = 0
         const val HEIGHT_PREF_DEBOUNCE_MS = 300L
 
         /**
