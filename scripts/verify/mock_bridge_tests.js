@@ -7155,6 +7155,28 @@ test('issue12: the settle echo and fresh input do not re-trigger', {since: '3.68
     equal(world.native.of('clearComposing').length, 0, 'nothing clears on the happy path');
 });
 
+test('issue12: a variant replay must not strand the dead-clear latch', {since: '3.68.0'}, () => {
+    // codex R4 P2：清空在途时启动 variant 回放，回放期间的空回声全被
+    // onEngineState 的 variantReplaying 早退吞掉——门闩若只在主体块解除
+    // 会悬垂，之后 17/18 字符的死串不再被清。收尾记账必须在早退之前。
+    // 真实驱动路径：双拼简拼 x'an 展开后点解析变体启动回放。
+    const world = fresh({ mode: 'double-pinyin' });
+    const echo = (rev, raw, cands) => world.engineState({ mode: 'double-pinyin', revision: rev,
+        composing: raw, rawInput: raw, candidates: cands || [], hasNextPage: false });
+    echo(1, 'v'.repeat(16));           // 死串 → 清空 #1，门闩挂起
+    echo(2, "x'an", [{ id: 'c1', text: '西安' }]);
+    world.tap(world.$('composeExpand'));
+    const variant = world.document.querySelector('#expandVariants .expand-variant');
+    assert(variant, 'variant column rendered');
+    world.tap(variant);                // switchToVariant → variantReplaying=true
+    // 回放风暴中的空回声（早退路径）：记账在早退之前，门闩必须解除。
+    echo(3, '', []);
+    echo(4, variant.textContent, [{ id: 'c2', text: '西安' }]); // target 回声结束回放
+    echo(5, 'v'.repeat(17));           // 下一轮死串：必须照常清
+    equal(world.native.of('clearComposing').length, 2,
+        'a variant replay storm still re-arms the dead-clear latch');
+});
+
 test('issue12: double-pinyin auto-commits too', {since: '3.68.0'}, () => {
     const world = fresh({ mode: 'double-pinyin' });
     // 39 字母（未满阈值）不触发。

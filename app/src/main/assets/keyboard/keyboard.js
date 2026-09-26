@@ -8807,6 +8807,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     ? echoed.trim().replace(/ +/g, "'") : echoed.replace(/ /g, '');
                 if (this.variantTarget && raw === this.variantTarget) this.finishVariantReplay();
             }
+            // issue #12 收尾记账先于 variant 早退（codex R4 P2）：回放
+            // 风暴跳过主体的收束判定没问题（回放期间本就不该触发），但
+            // 门闩/指纹的解除不能被跳过——清空在途时启动回放的话，空回
+            // 声全被早退吞掉，死串保护悬垂，之后 17/18 字符的死串不再
+            // 被清。
+            if (!payload.composing) {
+                this._autoCollapseKey = null;
+                this._deadClearPending = false;
+            }
             // setComposition emits Reset and every replayed key. None of
             // those intermediate states owns the candidate pool or anchor.
             // Only the final target echo can replace the visible parse.
@@ -8892,10 +8901,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 用，且「到期重试」并不正确——无回声时无用户事件也无风险，
             // 收束只该由回声驱动。
             if (this.mode === 'pinyin' || this.mode === 'double-pinyin') {
-                if (!payload.composing) {
-                    this._autoCollapseKey = null;
-                    this._deadClearPending = false;
-                } else {
+                if (payload.composing) {
                     const raw = (payload.rawInput || '').replace(/ /g, '');
                     const engineCands = payload.candidates || [];
                     if (raw && raw !== this._autoCollapseKey) {
