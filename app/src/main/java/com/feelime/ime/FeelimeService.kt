@@ -135,6 +135,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     /** 会话开始：翻代清账 + 后台读基线（文本与选区一批读）。 */
     private fun beginBackspaceGestureSession() {
+        var session = 0
         synchronized(backspaceGestureLock) {
             backspaceGestureSession += 1
             backspaceGestureEditorGeneration = inputConnectionGeneration
@@ -142,8 +143,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             backspaceGesturePending = 0
             backspaceGestureQueued = 0
             backspaceGestureStack.clear()
+            // 会话号锁内取（codex 三轮 P1）：锁外读会在生命周期作废与
+            // 下一个 begin 之间拿到错配编号，迟到快照骗过 settle 校验。
+            session = backspaceGestureSession
         }
-        val session = backspaceGestureSession
         // 基线读不回来（进程内 WebView 宿主对同步读不应答、慢宿主）时
         // 延迟删除不能一直被扣着——超时兜底按「无账」结算并冲账，删除
         // 语义永远先于记账语义（真机复测：无兜底时首删可整笔丢失）。
@@ -190,7 +193,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             backspaceGesturePending = 0
             flush = backspaceGestureQueued
             backspaceGestureQueued = 0
-            generation = inputConnectionGeneration
+            generation = backspaceGestureEditorGeneration
         }
         val gen = generation
         if (flush > 0) onMain {
@@ -224,7 +227,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             backspaceGesturePending = 0
             backspaceGestureQueued = 0
             backspaceGestureStack.clear()
-            generation = inputConnectionGeneration
+            generation = backspaceGestureEditorGeneration
         }
         val gen = generation
         if (flush > 0) onMain {
@@ -2464,7 +2467,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 }
                 if (backspaceGestureBaseline == null) backspaceGestureQueued += count
                 else execute = count
-                generation = inputConnectionGeneration
+                // 打会话自己的代际（codex 三轮 P1）：现读 inputConnection-
+                // Generation 会在「桥线程持锁 → 主线程递增代际等锁」的
+                // 交错里把旧删除标成新代际，执行复核照单全收误伤新框。
+                generation = backspaceGestureEditorGeneration
             }
             val gen = generation
             if (execute > 0) onMain {
@@ -2495,7 +2501,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 unit = backspaceGestureStack.removeLast()
                 // 回填记账镜像：再左滑删它时还有账可弹。
                 backspaceGestureBaseline = (backspaceGestureBaseline ?: "") + unit
-                generation = inputConnectionGeneration
+                generation = backspaceGestureEditorGeneration
             }
             val text = unit ?: return false
             val gen = generation

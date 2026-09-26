@@ -929,41 +929,40 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         return stores;
     }
 
-    function pushStores(retry, pending) {
+    function pushStores(changed) {
         // 类型守卫：热更键盘（新 JS）跑在旧原生（无 pushStores）上时，
         // 不许在 hello 路径抛错——能力握手之外的方法一律探测后再调。
         // 载荷内嵌 __rev（本地最后见到的镜像 rev）做 CAS：设置页已推进
         // 镜像（如排序）而键盘还揣着旧 localStorage 时，native 拒绝并返
-        // 回 "-1"。冲突处理（codex 二轮 P2-5）：拉取会把远端值铺进
-        // localStorage，若直接重推，本次用户修改就被远端值顶掉——先
-        // 记住本次要写的键值，拉取后回放（本次交互最后写入者胜）再推。
-        // 二次仍冲突则放弃（console 留痕），下次任何存储变化会再推。
+        // 回 "-1"。
+        // changed = {key: value}：本次实际修改的键值（codex 三轮 P2-2/3）。
+        // 冲突时拉取铺完远端值后【只回放这些键】（localStorage + 运行态
+        // 走 onStoresRestored 同一通道），再全量重推——重放全量旧值会把
+        // 设置页刚写的未触碰键顶回旧值。无 changed（握手同步）冲突时拉平
+        // 即目标状态，直接返回；修改保留在 localStorage，下次推送收敛。
         // 旧原生不认 __rev（白名单外自然忽略），行为不变。
         try {
-            if (typeof Native.pushStores === 'function') {
-                const payload = pending || collectStores();
-                const carry = {};
-                for (const key of STORE_BACKUP_KEYS) {
-                    if (payload[key] !== undefined) carry[key] = payload[key];
-                }
-                carry.__rev = localStorage.getItem('feelime_stores_rev') || '0';
-                const rev = Native.pushStores(JSON.stringify(carry), keyboard.token);
-                if (rev === '-1' && !retry) {
-                    pullStores(keyboard.token);
-                    for (const key of STORE_BACKUP_KEYS) {
-                        if (payload[key] !== undefined) {
-                            try { localStorage.setItem(key, payload[key]); } catch (_) {}
-                        }
-                    }
-                    pushStores(true, payload);
-                    return;
-                }
-                if (rev === '-1' && retry) {
-                    console.warn('pushStores: CAS conflict persists, giving up this round');
-                    return;
-                }
-                if (rev) localStorage.setItem('feelime_stores_rev', String(rev));
+            if (typeof Native.pushStores !== 'function') return;
+            const payload = changed || collectStores();
+            const carry = {};
+            for (const key of STORE_BACKUP_KEYS) {
+                if (payload[key] !== undefined) carry[key] = payload[key];
             }
+            carry.__rev = localStorage.getItem('feelime_stores_rev') || '0';
+            const rev = Native.pushStores(JSON.stringify(carry), keyboard.token);
+            if (rev === '-1') {
+                if (!changed) return;
+                pullStores(keyboard.token);
+                const replay = {};
+                for (const key in changed) {
+                    try { localStorage.setItem(key, changed[key]); } catch (_) {}
+                    replay[key] = changed[key];
+                }
+                keyboard.onStoresRestored(replay);
+                pushStores();
+                return;
+            }
+            if (rev) localStorage.setItem('feelime_stores_rev', String(rev));
         } catch (_) { /* bridge unavailable */ }
     }
 
@@ -6723,7 +6722,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.quickPair.push(name);
                     if (this.quickPair.length > 2) this.quickPair.shift();
                     try { localStorage.setItem('feelime_quick_pair', JSON.stringify(this.quickPair)); } catch (_) {}
-                    pushStores();
+                    pushStores({ feelime_quick_pair: JSON.stringify(this.quickPair) });
                     this.updateToggleLabels();
                     box.querySelectorAll('.pair-row').forEach(el => {
                         const active = this.quickPair.includes(el.dataset.mode);
@@ -6776,7 +6775,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     try {
                         localStorage.setItem('feelime_menu_modes', JSON.stringify(next));
                     } catch (_) {}
-                    pushStores();
+                    pushStores({ feelime_menu_modes: JSON.stringify(next) });
                     tick.classList.toggle('on', next.includes(name));
                     tick.textContent = next.includes(name) ? '✓' : '';
                 });
@@ -6784,7 +6783,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 box.append(row);
                 this.bindListDrag(row, box, '.pair-row', 'mode', order => {
                     try { localStorage.setItem('feelime_mode_order', JSON.stringify(order)); } catch (_) {}
-                    pushStores();
+                    pushStores({ feelime_mode_order: JSON.stringify(order) });
                 });
             });
             panel.append(box);

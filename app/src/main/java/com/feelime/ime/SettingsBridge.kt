@@ -1653,13 +1653,36 @@ class SettingsBridge(
                     } ?: false
                 }.getOrDefault(false)
                 if (ok) {
+                    // 保旧替换（codex 三轮 P2-4，95cc116 已存风险）：Android
+                    // 的 REPLACE_EXISTING 是先删后改名，改名失败旧音效已
+                    // 蒸发——先备份，失败回滚，收尾清备份。
+                    val target = keySoundFile(context)
+                    val backup = java.io.File(dir, "custom.bak")
+                    val hadOld = target.isFile
+                    if (hadOld) {
+                        runCatching {
+                            java.nio.file.Files.copy(
+                                target.toPath(), backup.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            )
+                        }
+                    }
                     val replaced = runCatching {
                         java.nio.file.Files.move(
-                            tmp.toPath(), keySoundFile(context).toPath(),
+                            tmp.toPath(), target.toPath(),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING,
                         )
                         true
                     }.getOrDefault(false)
+                    if (!replaced && hadOld) {
+                        runCatching {
+                            java.nio.file.Files.move(
+                                backup.toPath(), target.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            )
+                        }
+                    }
+                    backup.delete()
                     if (!replaced) reason = "REPLACE_FAILED"
                     if (replaced) {
                         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
