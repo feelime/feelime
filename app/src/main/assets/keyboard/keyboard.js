@@ -951,9 +951,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             carry.__rev = localStorage.getItem('feelime_stores_rev') || '0';
             const rev = Native.pushStores(JSON.stringify(carry), keyboard.token);
             if (rev === '-1') {
-                if (!changed) return;
+                // 拉平（含运行态）。onStoresRestored 是全量覆盖语义（会删
+                // 缺席键，codex 四轮 P2）：回放必须喂「拉取后的全量 + 本
+                // 次修改键」合并结果，不能只喂修改键。
                 pullStores(keyboard.token);
-                const replay = {};
+                if (!changed) return;
+                const replay = collectStores();
                 for (const key in changed) {
                     try { localStorage.setItem(key, changed[key]); } catch (_) {}
                     replay[key] = changed[key];
