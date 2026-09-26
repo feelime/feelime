@@ -7075,21 +7075,39 @@ test('issue12: a prefix favorite must not mask the dead-string clear', {since: '
 });
 
 test('issue12: one collapse per composition fingerprint, in-flight safe', {since: '3.68.0'}, () => {
-    // codex R2 P1：在途保护靠组合指纹——同一 raw 只收束一次，迟到的
-    // 同态回声不重发（原生清空是无条件 Reset，重复的第二次会打到新
-    // 输入上）；raw 推进（新键）立即重评。
+    // codex R2/R3 P1：在途保护——同一 raw 只收束一次；死串清空另设门
+    // 闩，只认「组合结束回声」解除：迟到的高位回声（清空前已处理的
+    // 旧键）不能再触发第二次清空（原生是无条件 Reset，第二次会打到
+    // 清空之后的新输入上）。
     const world = fresh({ mode: 'pinyin' });
-    const echo = (rev, n, cands) => world.engineState({ mode: 'pinyin', revision: rev,
-        composing: 'v'.repeat(n), rawInput: 'v'.repeat(n),
+    const echo = (rev, n, comp, cands) => world.engineState({ mode: 'pinyin', revision: rev,
+        composing: comp !== undefined ? comp : 'v'.repeat(n), rawInput: 'v'.repeat(n),
         candidates: cands || [], hasNextPage: false });
     echo(1, 16);
     echo(2, 16); // 迟到的同态回声（清空请求在途）
-    echo(3, 16); // 再来一次也不重发
+    echo(3, 17, undefined); // 迟到的高位旧回声：门闩挡住
     equal(world.native.of('clearComposing').length, 1,
-        'the same composition clears exactly once');
-    echo(4, 17); // 新键推进死串 → 新指纹 → 再清
+        'a late pre-clear echo never fires a second reset');
+    echo(4, 0, ''); // 组合结束回声：解除门闩
+    echo(5, 18); // 下一轮死串照常清
     equal(world.native.of('clearComposing').length, 2,
-        'a growing dead string re-collapses on its new fingerprint');
+        'the settle echo re-arms the dead-string clear');
+});
+
+test('issue12: new input after a dead clear survives late echoes', {since: '3.68.0'}, () => {
+    // codex R3 P1 点名交错：清空 A 在途 → 迟到旧回声 17 → 新输入低位
+    // 回声 2 → 完成回声。整个序列只允许一次清空。
+    const world = fresh({ mode: 'pinyin' });
+    const seq = [
+        { rev: 1, raw: 'v'.repeat(16), cands: [] },  // 触发清空
+        { rev: 2, raw: 'v'.repeat(17), cands: [] },  // 迟到旧回声
+        { rev: 3, raw: 'ni', cands: [{ id: 'c1', text: '你' }] }, // 新输入
+        { rev: 4, raw: 'v'.repeat(16), cands: [] },  // 又一轮迟到高位
+    ];
+    seq.forEach(e => world.engineState({ mode: 'pinyin', revision: e.rev,
+        composing: e.raw, rawInput: e.raw, candidates: e.cands, hasNextPage: false }));
+    equal(world.native.of('clearComposing').length, 1,
+        'interleaved late echoes fire exactly one clear');
 });
 
 test('issue12: partial selection progress re-collapses without new keys', {since: '3.68.0'}, () => {

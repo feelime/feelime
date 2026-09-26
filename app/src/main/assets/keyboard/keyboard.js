@@ -8884,16 +8884,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 判定只认引擎原生候选（payload.candidates）：展示池混有常用语
             // /联想等注入项，前缀匹配会在引擎候选已空时冒充池首，既遮住
             // 死串分支、又把 fav: 等非引擎 id 送进 chooseCandidate（codex
-            // R1 P1）。在途保护用组合指纹（codex R2 P1）：同一 raw 只收束
-            // 一次——请求在途时迟到的同态回声不重发（原生清空是无条件
-            // Reset，重复的第二次会打到新输入上）；指纹变化（新键/部分
-            // 选词推进）立即重评，收束链随状态推进自然收敛；组合结束清
-            // 指纹，同一死串被打第二次仍会被清。不用时间窗：墙上时钟回
-            // 退会误禁用，且「到期重试」并不正确——无回声时无用户事件
-            // 也无风险，收束只该由回声驱动。
+            // R1 P1）。在途保护用组合指纹（codex R2/R3 P1）：同一 raw 只
+            // 收束一次；指纹变化（新键/部分选词推进）立即重评，收束链随
+            // 状态推进自然收敛（每步消耗组合长度，链有尽头）；组合结束
+            // 清指纹，同一死串被打第二次仍会被清。破坏性的死串清空另有
+            // 在途门闩（见分支内注释）。不用时间窗：墙上时钟回退会误禁
+            // 用，且「到期重试」并不正确——无回声时无用户事件也无风险，
+            // 收束只该由回声驱动。
             if (this.mode === 'pinyin' || this.mode === 'double-pinyin') {
                 if (!payload.composing) {
                     this._autoCollapseKey = null;
+                    this._deadClearPending = false;
                 } else {
                     const raw = (payload.rawInput || '').replace(/ /g, '');
                     const engineCands = payload.candidates || [];
@@ -8903,9 +8904,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             this.call(revision => Native.chooseCandidate(
                                 revision, engineCands[0].id, this.token));
                         } else if (raw.length >= 16 && !engineCands.length) {
-                            this._autoCollapseKey = raw;
-                            this.call(() => Native.clearComposing(this.token));
-                            this.showToast(t("组合过长，已清空"));
+                            // 死串清空是破坏性 Reset（原生无 revision 校验，
+                            // codex R3 P1）：单独设在途门闩——发出后只认
+                            // 「组合结束回声」解除。迟到的高位回声（清空前
+                            // 已处理、尚未送达的旧键）不能再次触发清空，
+                            // 否则第二次 Reset 会打到清空之后的新输入上。
+                            // 选词分支无门闩：chooseCandidate 带 id/revision
+                            // 校验，迟到请求被拒或作用于当步状态，无破坏性。
+                            if (!this._deadClearPending) {
+                                this._deadClearPending = true;
+                                this._autoCollapseKey = raw;
+                                this.call(() => Native.clearComposing(this.token));
+                                this.showToast(t("组合过长，已清空"));
+                            }
                         }
                     }
                 }
