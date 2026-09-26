@@ -3183,6 +3183,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 }
                 if (limited && !throttleAllows()) {
                     rejectedCalls += 1
+                    // #12 复发取证：节流拒绝此前完全静默（只计数），现场
+                    // 无法排除；限频 1s 一条留痕。
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (now - lastThrottleDiag > 1000) {
+                        lastThrottleDiag = now
+                        Diagnostics.log("bridge", "rejected kind=throttle")
+                    }
                     return@onMain
                 }
                 action()
@@ -3589,6 +3596,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
          *  不应答，真机复测实录）。 */
         const val SETTLE_BASELINE_TIMEOUT_MS = 120L
         const val CALLS_PER_SECOND = 25
+        @Volatile private var lastThrottleDiag = 0L
         const val HEIGHT_PREF_DEBOUNCE_MS = 300L
 
         /**

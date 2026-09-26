@@ -30,7 +30,7 @@ object Diagnostics {
     private const val MAX_EVENTS = 400
     private const val MAX_EVENT_CHARS = 220
     /** snapshot() 对心跳行保留的尾部条数（issue #13 v3）。 */
-    private const val KEEP_BEATS = 4
+    private const val KEEP_BEATS = 10 // #12 复发取证：最近 25s 心跳（含 touch/noClick 计数）全保留
 
     private val lock = Any()
     private val events = ArrayDeque<String>()

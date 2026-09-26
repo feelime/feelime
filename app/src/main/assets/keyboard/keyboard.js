@@ -1290,6 +1290,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 前心跳同样跳过。
             this._diagTouch = 0;
             this._diagRafAt = 0;
+            this._diagCallBlocked = 0;
+            this._diagNoClick = { swipe: 0, pop: 0, long: 0 };
             if (window.FeelimeNative && typeof window.setInterval === 'function') {
                 if (typeof requestAnimationFrame === 'function') {
                     const diagRafLoop = () => {
@@ -1304,10 +1306,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 window.setInterval(() => {
                     if (!this.token || typeof Native.diagEvent !== 'function') return;
                     const rafAlive = Date.now() - this._diagRafAt < 2600;
+                    // #12 复发取证：touch=触摸到达数；blocked=call 门闸
+                    // 拒绝；noClick=swipe滑动手势/pop弹层/long长按各吞掉的
+                    // 键数（touch>0 而 0 事件时，这三个计数指出触摸死在哪层）。
                     Native.diagEvent(
-                        `heartbeat raf=${rafAlive ? 1 : 0} touch=${this._diagTouch}`,
+                        `heartbeat raf=${rafAlive ? 1 : 0} touch=${this._diagTouch}` +
+                        ` blocked=${this._diagCallBlocked}` +
+                        ` noClick=${this._diagNoClick.swipe}/${this._diagNoClick.pop}/${this._diagNoClick.long}`,
                         this.token);
                     this._diagTouch = 0;
+                    this._diagCallBlocked = 0;
+                    this._diagNoClick = { swipe: 0, pop: 0, long: 0 };
                 }, 2500);
             }
         }
@@ -1610,7 +1619,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /* ===== bridge helpers ===== */
 
         call(action) {
-            if (!this.ready || !this.token) return;
+            // #12 复发取证：门闸拒绝计数（心跳捎带上报，诊断导出可见）。
+            if (!this.ready || !this.token) { this._diagCallBlocked += 1; return; }
             // 透传桥返回值：#34 回滑恢复靠 backspaceRestoreOne 的同步
             // 回执决定是否推进 delNet（codex 评审 P1-1），无回执=undefined
             // 按成功处理（旧壳热更兼容）。
@@ -3268,7 +3278,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     }
                     this.closePopup(false);
                 }
-                else if (!longFired && !this.swiping && !options.skipClick) button.click();
+                else if (options.skipClick) { /* 空格键专用，非吞键 */ }
+                else if (longFired) this._diagNoClick.long += 1;
+                else if (this.swiping) this._diagNoClick.swipe += 1;
+                else if (this.popup) this._diagNoClick.pop += 1;
+                else button.click();
             }, { passive: false });
             button.addEventListener('touchcancel', () => {
                 this.pressedKeys.delete(button);

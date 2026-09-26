@@ -707,6 +707,7 @@ class TextInputCoordinator(
     }
 
     fun close() {
+        if (warmupQueue.isNotEmpty()) diag("queueDropped n=${warmupQueue.size} at=close")
         warmupQueue.clear()
         invalidateWordUndo()
         closeEngineSession()
@@ -722,6 +723,9 @@ class TextInputCoordinator(
      *  failed mode is the pending session's, during a live replay it is the
      *  mode being replayed. */
     private fun enqueueQueued(item: QueuedInput): DispatchAck {
+        // #12 复发取证：排队不丢键但会延迟到上一命令事件回来；被模式
+        // 重建清空的键在这里留痕（dispatchQueued/queueDropped 成对看）。
+        diag("dispatchQueued cmd=${item::class.simpleName} q=${warmupQueue.size + 1}")
         warmupQueue.addLast(item)
         if (warmupQueue.size > MAX_WARMUP_QUEUE) {
             if (replaying) {
