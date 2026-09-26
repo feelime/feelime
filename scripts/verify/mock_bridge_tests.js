@@ -7009,6 +7009,60 @@ test('handwriting round-5: the empty-pad hint is the three-line bilingual copy',
         'en translations land line by line');
 });
 
+
+// ------------------------------------------------ issue #12 超长组合自动收束
+
+test('issue12: pinyin composition auto-commits the pool head at 40 letters', {since: '3.68.0'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    // 39 字母（带音节空格的 rawInput）：不到阈值，不自动上屏。
+    world.engineState({ mode: 'pinyin', revision: 1,
+        composing: 'a'.repeat(39), rawInput: 'a'.repeat(39),
+        candidates: [{ id: 'c1', text: '啊' }], hasNextPage: false });
+    equal(world.native.of('chooseCandidate').length, 0, 'under the threshold nothing auto-commits');
+    // 40 字母（去空格后）：回声侧自动上屏首候选（等同按空格）。
+    const raw40 = 'a '.repeat(39) + 'a';
+    world.engineState({ mode: 'pinyin', revision: 2, composing: raw40, rawInput: raw40,
+        candidates: [{ id: 'c1', text: '啊' }, { id: 'c2', text: '阿' }], hasNextPage: false });
+    const picks = world.native.of('chooseCandidate');
+    equal(picks.length, 1, 'one auto-commit fires');
+    equal(picks[0].args[1], 'c1', 'it commits the pool head by id');
+});
+
+test('issue12: dead unparseable composition clears at 16 letters', {since: '3.68.0'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.engineState({ mode: 'pinyin', revision: 1,
+        composing: 'v'.repeat(16), rawInput: 'v'.repeat(16),
+        candidates: [], hasNextPage: false });
+    equal(world.native.of('clearComposing').length, 1,
+        'a 16-letter composition with no candidates clears');
+    // 15 字符不触发——正常打字的瞬态不该被误清。
+    const world2 = fresh({ mode: 'pinyin' });
+    world2.engineState({ mode: 'pinyin', revision: 1,
+        composing: 'v'.repeat(15), rawInput: 'v'.repeat(15),
+        candidates: [], hasNextPage: false });
+    equal(world2.native.of('clearComposing').length, 0,
+        'under the dead-string threshold nothing clears');
+});
+
+test('issue12: direct mode never auto-collects', {since: '3.68.0'}, () => {
+    const world = fresh({ mode: 'direct' });
+    world.engineState({ mode: 'direct', revision: 1,
+        composing: 'a'.repeat(60), rawInput: 'a'.repeat(60),
+        candidates: [], hasNextPage: false });
+    equal(world.native.of('chooseCandidate').length + world.native.of('clearComposing').length, 0,
+        'long raw input is normal in direct mode');
+});
+
+test('issue12: double-pinyin auto-commits too', {since: '3.68.0'}, () => {
+    const world = fresh({ mode: 'double-pinyin' });
+    const raw = 'ni '.repeat(19) + 'ni';
+    world.engineState({ mode: 'double-pinyin', revision: 1, composing: raw, rawInput: raw,
+        candidates: [{ id: 'd1', text: '你' }], hasNextPage: false });
+    const picks = world.native.of('chooseCandidate');
+    equal(picks.length, 1, 'double pinyin joins the auto-commit regime');
+    equal(picks[0].args[1], 'd1', 'pool head id rides the choose call');
+});
+
 console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
     (skipped ? `, ${skipped} skipped (era-gated)` : '') +
     ` [keyboard ${KEYBOARD_VERSION}] ==`);

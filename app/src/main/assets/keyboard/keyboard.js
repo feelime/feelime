@@ -178,6 +178,7 @@
         "剪贴板已开启，复制的内容将在这里显示": "Copied text will appear here.",
         "暂无常用语，点右上角「＋添加」": "No saved phrases. Tap Add to create one.",
         "…（内容过长）": "… (text truncated)",
+        "组合过长，已清空": "Composition too long; cleared",
         "删除": "Delete",
         "更多操作": "More actions",
         "编辑常用语": "Edit phrase",
@@ -8871,6 +8872,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.maybeLoadMoreCandidates();
                 } else {
                     this.setExpanded(false);
+                }
+            }
+            // issue #12：组合串无上限累积（连打/乱打）后候选退化甚至死空
+            // ——设备日志实录：51 字母后 input 自主收缩、候选归零，跨收起/
+            // 弹出不清除，用户感知「再按键没有反应」。拼音族在回声侧自动
+            // 收束：有候选=组合到 40 字母上屏首候选（等同按空格，主流
+            // IME 的超长自动组句）；无候选=不可解析死串，攒到 16 字母清空
+            // 组合换回可用性。英文等模式 rawInput 长是正常态，T9/笔画有
+            // 各自的确认边界，都不进收束范围。
+            if ((this.mode === 'pinyin' || this.mode === 'double-pinyin') &&
+                payload.composing) {
+                const rawLen = (payload.rawInput || '').replace(/ /g, '').length;
+                const first = (this.expandCandidates || [])[0];
+                if (rawLen >= 40 && first) {
+                    this.call(revision => Native.chooseCandidate(revision, first.id, this.token));
+                } else if (rawLen >= 16 && !first) {
+                    this.call(() => Native.clearComposing(this.token));
+                    this.showToast(t("组合过长，已清空"));
                 }
             }
         }
