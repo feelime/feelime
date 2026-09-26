@@ -916,6 +916,25 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     override fun onWindowShown() {
         super.onWindowShown()
         Diagnostics.log("ui", "windowShown")
+        // issue #12 根因修复（七期取证定罪）：收起时框架把 WebView 的
+        // windowVisibility 置 GONE，弹出时该状态的恢复派发在本机
+        // （Android 36 / HyperOS）会丢失——日志实锤：windowShown 后再无
+        // winVis=0 回调、raf 持续 0 而 nativeFrames 满帧。Chromium M133
+        // BrowserViewRenderer::IsClientVisible() 见 window-visible=false 即
+        // 断 BeginFrame 帧时钟：JS/桥/引擎全活但不再绘制（白屏/冻结画面），
+        // 输入实际全部生效。修复：弹出后延迟 300ms（给正常派发留时间）
+        // 检测脱节仍存在则 detach/reattach——重新走一遍 attach 会触发
+        // ViewRootImpl 完整的 windowVisibility 派发，帧源随之重连。
+        main.postDelayed({
+            val web = keyboardView ?: return@postDelayed
+            if (web.isAttachedToWindow && web.windowVisibility != android.view.View.VISIBLE) {
+                Diagnostics.log("ui", "webView visibilityRepair winVis=${web.windowVisibility}")
+                val host = web.parent as? android.view.ViewGroup ?: return@postDelayed
+                val lp = web.layoutParams
+                host.removeView(web)
+                host.addView(web, lp)
+            }
+        }, 300)
     }
 
     override fun onWindowHidden() {
