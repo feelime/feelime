@@ -8881,13 +8881,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // IME 的超长自动组句）；无候选=不可解析死串，攒到 16 字母清空
             // 组合换回可用性。英文等模式 rawInput 长是正常态，T9/笔画有
             // 各自的确认边界，都不进收束范围。
+            // 判定只认引擎原生候选（payload.candidates）：展示池混有常用语
+            // /联想等注入项，前缀匹配会在引擎候选已空时冒充池首，既遮住
+            // 死串分支、又把 fav: 等非引擎 id 送进 chooseCandidate（codex
+            // P1）。800ms 节流充当在途保护：收束请求→回声闭环内不重发，
+            // 免得迟到的重复清空打到后续新输入上；失败/部分选词留下的超
+            // 长组合在下一个窗口重试，自然收敛（codex P1）。
             if ((this.mode === 'pinyin' || this.mode === 'double-pinyin') &&
-                payload.composing) {
+                payload.composing &&
+                Date.now() - (this._autoCollapseAt || 0) > 800) {
+                const engineCands = payload.candidates || [];
                 const rawLen = (payload.rawInput || '').replace(/ /g, '').length;
-                const first = (this.expandCandidates || [])[0];
-                if (rawLen >= 40 && first) {
-                    this.call(revision => Native.chooseCandidate(revision, first.id, this.token));
-                } else if (rawLen >= 16 && !first) {
+                if (rawLen >= 40 && engineCands.length) {
+                    this._autoCollapseAt = Date.now();
+                    this.call(revision => Native.chooseCandidate(
+                        revision, engineCands[0].id, this.token));
+                } else if (rawLen >= 16 && !engineCands.length) {
+                    this._autoCollapseAt = Date.now();
                     this.call(() => Native.clearComposing(this.token));
                     this.showToast(t("组合过长，已清空"));
                 }

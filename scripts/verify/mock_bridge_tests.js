@@ -7053,8 +7053,77 @@ test('issue12: direct mode never auto-collects', {since: '3.68.0'}, () => {
         'long raw input is normal in direct mode');
 });
 
+
+test('issue12: a prefix favorite must not mask the dead-string clear', {since: '3.68.0'}, () => {
+    // codex P1：常用语前缀匹配在引擎候选已空时会顶上池首——死串判定
+    // 若看展示池，会把 fav: id 送进 chooseCandidate 或干脆不恢复。
+    const world = fresh({ mode: 'pinyin' });
+    world.favorites([{ id: 'f1', code: 'n', text: '测试短语' }]);
+    world.engineState({ mode: 'pinyin', revision: 1,
+        composing: 'n'.repeat(16), rawInput: 'n'.repeat(16),
+        candidates: [], hasNextPage: false });
+    equal(world.native.of('chooseCandidate').length, 0,
+        'no fav: id ever rides the engine choose channel');
+    equal(world.native.of('clearComposing').length, 1,
+        'the dead engine pool still clears with a favorite masking the bar');
+});
+
+test('issue12: collapse requests are throttled, not one per echo', {since: '3.68.0'}, () => {
+    // codex P1：无在途保护时连续回声会重复发清空，迟到的第二次可能
+    // 打到清空之后的新输入上。800ms 窗口内只发一次。
+    const realNow = Date.now;
+    let now = 10_000;
+    Date.now = () => now;
+    try {
+        const world = fresh({ mode: 'pinyin' });
+        const echo = (rev, n) => world.engineState({ mode: 'pinyin', revision: rev,
+            composing: 'v'.repeat(n), rawInput: 'v'.repeat(n),
+            candidates: [], hasNextPage: false });
+        echo(1, 16);
+        echo(2, 17);
+        equal(world.native.of('clearComposing').length, 1,
+            'echoes inside the collapse window do not re-clear');
+        now += 801;
+        echo(3, 18);
+        equal(world.native.of('clearComposing').length, 2,
+            'a still-dead composition retries in the next window');
+    } finally {
+        Date.now = realNow;
+    }
+});
+
+test('issue12: the settle echo and fresh input do not re-trigger', {since: '3.68.0'}, () => {
+    const realNow = Date.now;
+    let now = 20_000;
+    Date.now = () => now;
+    try {
+        const world = fresh({ mode: 'pinyin' });
+        const raw40 = 'a '.repeat(39) + 'a';
+        world.engineState({ mode: 'pinyin', revision: 1, composing: raw40, rawInput: raw40,
+            candidates: [{ id: 'c1', text: '啊' }], hasNextPage: false });
+        // 上屏后的空组合回声：不触发任何收束。
+        world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
+            candidates: [], hasNextPage: false });
+        // 新组合 39 字母：阈值下不触发。
+        now += 801;
+        world.engineState({ mode: 'pinyin', revision: 3,
+            composing: 'a'.repeat(39), rawInput: 'a'.repeat(39),
+            candidates: [{ id: 'c2', text: '阿' }], hasNextPage: false });
+        equal(world.native.of('chooseCandidate').length, 1,
+            'only the over-threshold echo commits');
+        equal(world.native.of('clearComposing').length, 0, 'nothing clears on the happy path');
+    } finally {
+        Date.now = realNow;
+    }
+});
+
 test('issue12: double-pinyin auto-commits too', {since: '3.68.0'}, () => {
     const world = fresh({ mode: 'double-pinyin' });
+    // 39 字母（未满阈值）不触发。
+    const justUnder = 'ni '.repeat(19) + 'n';
+    world.engineState({ mode: 'double-pinyin', revision: 1, composing: justUnder,
+        rawInput: justUnder, candidates: [{ id: 'd0', text: '你' }], hasNextPage: false });
+    equal(world.native.of('chooseCandidate').length, 0, '39 letters stay composing');
     const raw = 'ni '.repeat(19) + 'ni';
     world.engineState({ mode: 'double-pinyin', revision: 1, composing: raw, rawInput: raw,
         candidates: [{ id: 'd1', text: '你' }], hasNextPage: false });
