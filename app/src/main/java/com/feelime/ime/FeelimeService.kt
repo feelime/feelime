@@ -914,6 +914,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     override fun onWindowShown() {
         super.onWindowShown()
         Diagnostics.log("ui", "windowShown")
+        // issue #12 复发根因（取证五期定罪）：收起→弹出窗口会把 WebView
+        // 的合成器挂起（rAF 停摆=画面冻结），JS 却继续跑——用户看到
+        // 「键盘无响应」但输入实际全部生效（空格照常上屏）。onResume()
+        // 是 Android WebView 恢复渲染的标准出口，幂等无害，每次弹出都调。
+        runCatching { keyboardView?.onResume() }
     }
 
     override fun onWindowHidden() {
@@ -2209,7 +2214,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
          *  自播通道摆脱这两个总开关，音量仍跟系统。注意：#30-2 的系统
          *  键击音走 AudioManager.playSoundEffect 直调，真机实测（验收
          *  2026-09-26）不受「触摸提示音」开关影响，仅音量/静音兜底。 */
+
+        /** issue #12 复发自愈：JS 心跳发现 rAF 停摆且页面仍有活动
+         * （states/touch 在涨）时呼叫——合成器挂起不由 show 路径覆盖的
+         * 场景（不收起也会发生）走这里唤醒。 */
         @JavascriptInterface
+        fun webviewThaw(token: String) = guarded(token, limited = false) {
+            Diagnostics.log("bridge", "webviewThaw rafFrozen")
+            runCatching {
+                keyboardView?.onResume()
+                keyboardView?.invalidate()
+            }
+        }
         fun keyFeedback(token: String) = guarded(token, limited = false) {
             if (readKeyHapticEnabled(this@FeelimeService)) playKeyHaptic()
             if (readKeySoundEnabled(this@FeelimeService)) playKeySound()
