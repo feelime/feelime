@@ -1310,11 +1310,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // 拒绝；noClick=swipe滑动手势/pop弹层/long长按各吞掉的
                     // 键数（touch>0 而 0 事件时，这三个计数指出触摸死在哪层）。
                     const pl = document.getElementById('preeditLine');
+                    const ds = window.Feelime.debugState();
+                    const err = window.__diagErr || '';
                     Native.diagEvent(
                         `heartbeat raf=${rafAlive ? 1 : 0} touch=${this._diagTouch}` +
                         ` blocked=${this._diagCallBlocked}` +
                         ` noClick=${this._diagNoClick.swipe}/${this._diagNoClick.pop}/${this._diagNoClick.long}` +
-                        ` states=${window.__diagStates || 0} preedit=${pl ? pl.textContent.length : -1}`,
+                        ` states=${window.__diagStates || 0} preedit=${pl ? pl.textContent.length : -1}` +
+                        ` vr=${ds.vr} warm=${ds.warm} comp=${ds.comp}` +
+                        (err ? ` err=${err}` : ''),
                         this.token);
                     this._diagTouch = 0;
                     this._diagCallBlocked = 0;
@@ -9136,7 +9140,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // #12 复发取证：native 推送到达 JS 的对账计数（心跳捎带
         // states=N preedit=L，与 native 日志的 stateApplied 行数对照：
         // 相等=JS 收到了（查渲染层）；少=推送丢（查 evaluate 层））。
-        onEngineState: payload => { window.__diagStates = (window.__diagStates || 0) + 1; return keyboard.onEngineState(payload); },
+        onEngineState: payload => {
+            window.__diagStates = (window.__diagStates || 0) + 1;
+            try { return keyboard.onEngineState(payload); }
+            catch (e) { window.__diagErr = String(e && e.message || e).slice(0, 60); throw e; }
+        },
         onAssoc: payload => keyboard.onAssoc(payload),
         onNativeState: payload => keyboard.onNativeState(payload),
         onInkCandidates: payload => keyboard.onInkCandidates(payload),
@@ -9175,6 +9183,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // a closure, so gates cannot reach runtime fields without this.
         debugState: () => ({
             mode: keyboard.mode,
+            // #12 复发取证：渲染短路三嫌疑直接暴露（心跳捎带）。
+            vr: keyboard.variantReplaying ? 1 : 0,
+            warm: keyboard.warming ? 1 : 0,
+            comp: keyboard.composing ? 1: 0,
             holdMs: keyboard.holdMs,
             scrubSpeed: keyboard.scrubSpeed,
             popupSnap: keyboard.popupSnap,
