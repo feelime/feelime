@@ -144,6 +144,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             backspaceGestureStack.clear()
         }
         val session = backspaceGestureSession
+        // 基线读不回来（进程内 WebView 宿主对同步读不应答、慢宿主）时
+        // 延迟删除不能一直被扣着——超时兜底按「无账」结算并冲账，删除
+        // 语义永远先于记账语义（真机复测：无兜底时首删可整笔丢失）。
+        main.postDelayed({
+            settleBackspaceGestureBaseline(session, null, null, timedOut = true)
+        }, SETTLE_BASELINE_TIMEOUT_MS)
         val connection = currentInputConnection ?: return
         cursorQueryExecutor.execute {
             val snapshot = runCatching {
@@ -159,13 +165,21 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     }
 
     /** 基线结算：先按快照补记延迟期的删除（此刻它们尚未执行，快照即
-     *  删除前文本，弹出的正是即将被删的字符），再冲账执行延迟删除。 */
-    private fun settleBackspaceGestureBaseline(session: Int, selection: CharSequence?, before: String?) {
+     *  删除前文本，弹出的正是即将被删的字符），再冲账执行延迟删除。
+     *  timedOut=true 是超时兜底：只冲账、不立账（无快照可依），真实
+     *  快照迟到时账目会因 pending 未消化而不一致——所以超时即整会话
+     *  关账（pending 一并作废，恢复通道空转，删除照常）。 */
+    private fun settleBackspaceGestureBaseline(
+        session: Int,
+        selection: CharSequence?,
+        before: String?,
+        timedOut: Boolean = false,
+    ) {
         var flush = 0
         synchronized(backspaceGestureLock) {
-            // 会话已翻篇（下一个手势/已结束）：迟到基线作废。
-            if (backspaceGestureSession != session) return
-            val noAccount = selection != null || before == null
+            // 会话已翻篇（下一个手势/已结束/已真实结算）：迟到方作废。
+            if (backspaceGestureSession != session || backspaceGestureBaseline != null) return
+            val noAccount = timedOut || selection != null || before == null
             backspaceGestureBaseline = if (noAccount) "" else before
             while (backspaceGesturePending > 0 && !noAccount) {
                 val unit = popBackspaceGestureUnitLocked() ?: break
@@ -232,8 +246,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     // Bridge handshake state (design section 5.3). A fresh random token is
     // minted per page load; every call must carry the live token.
-    private var pageToken = ""
-    private var pageReady = false
+    // @Volatile：#34 手势桥（backspaceN/backspaceRestoreOne）在桥线程
+    // 同步校验 token（回执协议），与主线程的写入跨线程可见（codex 二轮
+    // 真机复测：非 volatile 首调用可能读到 stale false，整条手势静默拒绝）。
+    @Volatile private var pageToken = ""
+    @Volatile private var pageReady = false
     private var rejectedCalls = 0L
     private var servedRevision = ""
     private val callTimes = ArrayDeque<Long>()
@@ -3520,6 +3537,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // 超长会话删到基线尽头后恢复通道自然空转）。
         const val MAX_BACKSPACE_GESTURE_UNITS = 16
         const val BACKSPACE_GESTURE_BASELINE_CHARS = 256
+
+        /** 基线读取超时兜底：超时即无账结算并冲账延迟删除——删除不能
+         *  被慢/悬挂的宿主读扣为人质（进程内 WebView 宿主对同步读可能
+         *  不应答，真机复测实录）。 */
+        const val SETTLE_BASELINE_TIMEOUT_MS = 120L
         const val CALLS_PER_SECOND = 25
         const val HEIGHT_PREF_DEBOUNCE_MS = 300L
 
