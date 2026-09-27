@@ -829,6 +829,26 @@ test('toggle long-press opens the full mode menu (no native switch call)', () =>
     equal(world.native.of('switchInputMethod').length, 0, 'system picker not called');
 });
 
+// #39-5 面板互斥：层切换收掉长按菜单浮层——旧版菜单锚在 IME 键上
+// 不随层走，「功能菜单 + 数字面板」两层同开（用户实录截图）。
+test('switching key layers closes the open mode menu (#39-5)', {since: '3.69.19'}, () => {
+    const world = fresh();
+    const toggle = world.$('modeToggle');
+    world.touchDown(toggle);
+    world.clock.advance(360);
+    world.touchUp(toggle);
+    assert(world.$('modeMenu').classList.contains('open'), 'mode menu open');
+    const key123 = [...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    );
+    world.touchDown(key123);
+    world.clock.advance(360);
+    world.touchUp(key123);
+    assert(!world.$('numPadLayer').hidden, 'nine-pad shown');
+    assert(!world.$('modeMenu').classList.contains('open'),
+        'layer switch dismisses the floating mode menu');
+});
+
 test('bottom row roles: no globe, no toolbar mode button, shorthand labels', () => {
     const world = fresh();
     assert(!world.document.querySelector('[data-role="globe"]'), 'globe removed');
@@ -1125,7 +1145,7 @@ test('emoji sub-view commits and remembers; 123 tab returns', {since: '3.27.0'},
         'emoji view reset after leaving the pad');
 });
 
-test('panel borrows and restores the nine-pad', {since: '3.27.0'}, () => {
+test('panel replaces the nine-pad instead of stacking (#39-5)', {since: '3.69.19'}, () => {
     const world = fresh();
     const key123 = [...world.document.querySelectorAll('.kb-special')].find(
         el => el.textContent === '123',
@@ -1137,7 +1157,10 @@ test('panel borrows and restores the nine-pad', {since: '3.27.0'}, () => {
     assert(!world.$('panelLayer').hidden, 'panel opens from the nine-pad');
     assert(world.$('numPadLayer').hidden, 'pad hidden under the panel');
     world.tap(world.$('panelClose'));
-    assert(!world.$('numPadLayer').hidden, 'pad restored after the panel');
+    // #39-5 互斥：面板顶掉数字/表情视图——关面板直接回字母，不再
+    // 层层套娃（旧契约「恢复九宫格」被用户否决：逐层关闭太累）。
+    assert(!world.$('qwertyLayer').hidden, 'closing the panel lands on letters');
+    assert(world.$('numPadLayer').hidden, 'nine-pad is not stacked underneath');
     assert(world.$('panelLayer').hidden, 'panel closed');
 });
 
@@ -1161,7 +1184,7 @@ test('rotation keeps the pinned 常用 variant; mode switch resets it', {since: 
         '，。、；：？！～（）', 'grid follows the new default');
 });
 
-test('panel editor card preserves the nine-pad return layer', {since: '3.27.0'}, () => {
+test('panel editor card flow lands on letters after close (#39-5)', {since: '3.69.19'}, () => {
     const world = fresh();
     const key123 = [...world.document.querySelectorAll('.kb-special')].find(
         el => el.textContent === '123',
@@ -1176,7 +1199,7 @@ test('panel editor card preserves the nine-pad return layer', {since: '3.27.0'},
     world.tap(world.document.getElementById('phraseCardCancel'));
     assert(!world.$('panelLayer').hidden, 'panel list restored');
     world.tap(world.$('panelClose'));
-    assert(!world.$('numPadLayer').hidden, 'back to the nine-pad, not letters');
+    assert(!world.$('qwertyLayer').hidden, 'back to letters, not the nine-pad (#39-5)');
 });
 
 test('nine-pad enter label follows composition; locale re-renders the pad', {since: '3.27.0'}, () => {

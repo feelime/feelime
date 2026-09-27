@@ -280,7 +280,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.69.19';
+    const KEYBOARD_VERSION = '3.69.20';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -4220,6 +4220,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * the individual hidden flags any more. */
         showKeyLayer(name) {
             this.keyLayer = name;
+            // #39-5 面板互斥：层切换（数字/表情/符号/字母）收掉长按
+            // 模式菜单浮层——它锚在 IME 键上不随层走，留着会叠在新层
+            // 上方（用户实录：功能菜单 + 数字面板两层同开）。
+            this.closeModeMenu();
             // The emoji sub-view belongs to a nine-pad session.
             if (name !== 'numpad') this.emojiView = false;
             this.hideKeyLayers();
@@ -7835,8 +7839,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.panelTab = tab === 'favorites' ? 'favorites' : 'clipboard';
             this.panelOpen = true;
             // Remember the layer to restore on close (panel can open from the
-            // symbol layer too).
-            this.panelReturnLayer = this.keyLayer;
+            // symbol layer too). #39-5 互斥：数字/表情/符号视图被剪贴板
+            // /常用语面板顶掉——关面板回字母层，不再层层套娃（用户实录
+            // ：开表情→开剪贴板→要逐层关两次才回字母）。
+            this.panelReturnLayer = this.keyLayer === 'letters' ? this.keyLayer : 'letters';
             this.closeModeMenu();
             // The control view never coexists with the panel.
             // Borrow, don't switch off - closing the panel
