@@ -101,6 +101,38 @@ object CustomPhraseStore {
         "twitter" to "twitter", "google" to "google", "chrome" to "chrome",
         "firefox" to "firefox", "edge" to "edge",
         "office" to "office", "photoshop" to "photoshop", "bluetooth" to "bluetooth",
+        // 扩容（2026-09-27，#29）：平台/工具/硬件/格式/日常词 141 个，
+        // 已按 custom-phrase-codes.json 真音节表预筛（meta/mouse/openai/
+        // gemini/release/juejin 等能被完整切成拼音音节的词被吞掉，不落表）。
+        "Apple" to "apple", "Microsoft" to "microsoft", "Amazon" to "amazon", "Claude" to "claude", "Copilot" to "copilot",
+        "Notion" to "notion", "Obsidian" to "obsidian", "Typora" to "typora", "VSCode" to "vscode", "GitLab" to "gitlab",
+        "Jenkins" to "jenkins", "Jira" to "jira", "Figma" to "figma", "Canvas" to "canvas", "Steam" to "steam",
+        "Epic" to "epic", "Discord" to "discord", "Slack" to "slack", "Zoom" to "zoom", "Teams" to "teams",
+        "Skype" to "skype", "TikTok" to "tiktok", "Reddit" to "reddit", "LinkedIn" to "linkedin", "Pinterest" to "pinterest",
+        "Instagram" to "instagram", "Snapchat" to "snapchat", "Quora" to "quora", "Medium" to "medium", "ChatGPT" to "chatgpt",
+        "Perplexity" to "perplexity", "HuggingFace" to "huggingface", "keyboard" to "keyboard", "monitor" to "monitor", "laptop" to "laptop",
+        "desktop" to "desktop", "tablet" to "tablet", "charger" to "charger", "cable" to "cable", "adapter" to "adapter",
+        "battery" to "battery", "headset" to "headset", "earbuds" to "earbuds", "AirPods" to "airpods", "Pixel" to "pixel",
+        "Galaxy" to "galaxy", "OnePlus" to "oneplus", "ThinkPad" to "thinkpad", "Surface" to "surface", "Kindle" to "kindle",
+        "router" to "router", "switch" to "switch", "modem" to "modem", "bandwidth" to "bandwidth", "ethernet" to "ethernet",
+        "broadband" to "broadband", "firewall" to "firewall", "SMTP" to "smtp", "IMAP" to "imap", "SSL" to "ssl",
+        "TLS" to "tls", "PDF" to "pdf", "CSV" to "csv", "TSV" to "tsv", "PNG" to "png",
+        "JPEG" to "jpeg", "GIF" to "gif", "SVG" to "svg", "WebP" to "webp", "HEIC" to "heic",
+        "AVI" to "avi", "MKV" to "mkv", "FLAC" to "flac", "AAC" to "aac", "ZIP" to "zip",
+        "RAR" to "rar", "ISO" to "iso", "EXE" to "exe", "MSI" to "msi", "DMG" to "dmg",
+        "PKG" to "pkg", "GCC" to "gcc", "Clang" to "clang", "CMake" to "cmake", "Gradle" to "gradle",
+        "Maven" to "maven", "npm" to "npm", "yarn" to "yarn", "pnpm" to "pnpm", "cargo" to "cargo",
+        "ESLint" to "eslint", "Prettier" to "prettier", "webpack" to "webpack", "Vite" to "vite", "Babel" to "babel",
+        "Jest" to "jest", "Vitest" to "vitest", "JUnit" to "junit", "mock" to "mock", "stub" to "stub",
+        "refactor" to "refactor", "deploy" to "deploy", "build" to "build", "feature" to "feature", "hotfix" to "hotfix",
+        "sprint" to "sprint", "backlog" to "backlog", "standup" to "standup", "password" to "password", "username" to "username",
+        "account" to "account", "profile" to "profile", "feedback" to "feedback", "contact" to "contact", "address" to "address",
+        "message" to "message", "video" to "video", "music" to "music", "movie" to "movie", "photo" to "photo",
+        "camera" to "camera", "weather" to "weather", "calendar" to "calendar", "alarm" to "alarm", "timer" to "timer",
+        "reminder" to "reminder", "notebook" to "notebook", "folder" to "folder", "file" to "file", "screen" to "screen",
+        "brightness" to "brightness", "volume" to "volume", "airplane" to "airplane", "hotspot" to "hotspot", "roaming" to "roaming",
+        "voicemail" to "voicemail", "CSDN" to "csdn", "Gitee" to "gitee", "LeetCode" to "leetcode", "App Store" to "appstore",
+        "iCloud" to "icloud",
     )
 
     data class State(
