@@ -54,6 +54,8 @@ object BaseDictInstaller {
      *  （如万象 Base，码列 ā bà 形态），完整版打不出（键面无调）——
      *  持续提示改用去调 Lite 版。Lite（去调后 a ba）与英文表占比≈0。 */
     private const val KEY_TONED = "toned"
+    /** 基底词条数（#35 T9 内存门的 flypy 联动用，兼诊断）。 */
+    private const val KEY_TAB_LINES = "tab_lines"
     private const val TONE_RATIO_THRESHOLD = 0.02
 
     // ---- #20 音形码表导入（小鹤音形）：独立于基底词库的第二换装通道 ----
@@ -552,8 +554,12 @@ object BaseDictInstaller {
         // #20 联动：音形码表已导入时 flypy 同场在列。
         val flypyInstalled = isFlypyInstalled(context)
         val compileSchemas = BaseDictFiles.baseCompileSchemas(
-            FuzzyPinyin.mask(context), flypyInstalled,
+            FuzzyPinyin.mask(context), flypyInstalled, stats.tabLines,
         )
+        if ("luna_pinyin_t9" !in compileSchemas) {
+            android.util.Log.w("FeelimeBaseDict",
+                "T9 skipped: ${stats.tabLines} entries > ${BaseDictFiles.T9_MAX_ENTRIES}")
+        }
         val assets = context.assets
         val defaultYaml = runCatching {
             BaseDictFiles.defaultYaml(
@@ -588,10 +594,13 @@ object BaseDictInstaller {
             // 基底编的 prism 配本次新 table 会出错位候选（同名文件 ≠
             // 同源产物）。当前组合的变体在清单内（full_check=true 重编），
             // 其余删掉后由 ensureFuzzyVariantIfNeeded 按需补编。
+            // T9 同理：本次跳过（词条超限）时清上一基底的 t9 prism，
+            // isModeReady 据此把 T9 模式判为不可用。
             staging.listFiles()?.forEach { f ->
                 val stem = f.name.removeSuffix(".prism.bin")
-                if (f.name.endsWith(".prism.bin") &&
-                    stem.startsWith("${FuzzyPinyin.SCHEMA_ID}_m") &&
+                val managed = stem.startsWith("${FuzzyPinyin.SCHEMA_ID}_m") ||
+                    stem == "luna_pinyin_t9"
+                if (f.name.endsWith(".prism.bin") && managed &&
                     stem !in compileSchemas
                 ) f.delete()
             }
@@ -653,6 +662,7 @@ object BaseDictInstaller {
             .putLong(KEY_INSTALLED_AT, System.currentTimeMillis())
             .putFloat(KEY_NON_PINYIN_RATIO, nonPinyinRatio ?: -1f)
             .putBoolean(KEY_TONED, toned)
+            .putInt(KEY_TAB_LINES, stats.tabLines)
             .apply()
         return InstallResult(null, changed = true)
     }
@@ -689,13 +699,16 @@ object BaseDictInstaller {
         if (entries.isEmpty()) return clearTxn(context, "BASE_DICT_EMPTY")
 
         val user = File(context.filesDir, "rime-user").apply { mkdirs() }
-        val baseCustom = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-            .getString(KEY_MODE, "builtin") == "custom"
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        val baseCustom = prefs.getString(KEY_MODE, "builtin") == "custom"
         val assets = context.assets
         val defaultYaml = runCatching {
             BaseDictFiles.defaultYaml(
                 assets.open(BaseDictFiles.ASSETS_DEFAULT).bufferedReader().readText(),
-                BaseDictFiles.flypyCompileSchemas(baseCustom),
+                BaseDictFiles.flypyCompileSchemas(
+                    baseCustom,
+                    prefs.getInt(KEY_TAB_LINES, 0),
+                ),
             )
         }.getOrNull() ?: run {
             rollbackFlypy(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
@@ -1233,6 +1246,7 @@ object BaseDictInstaller {
         if (keepFlypy) {
             prefs.remove(KEY_MODE).remove(KEY_NAME).remove(KEY_INSTALLED_AT)
                 .remove(KEY_SOURCE_SHA).remove(KEY_NON_PINYIN_RATIO).remove(KEY_TONED)
+                .remove(KEY_TAB_LINES)
                 .remove(KEY_FUZZY_COMPILING_MASK).remove(KEY_FUZZY_PENDING_MASK)
         } else {
             prefs.clear()

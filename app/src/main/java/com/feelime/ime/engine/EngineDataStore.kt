@@ -46,7 +46,13 @@ object EngineDataStore {
             InputMode.DIRECT -> true
             InputMode.PINYIN -> File(root, "rime/luna_pinyin.schema.yaml").isFile
             InputMode.DOUBLE_PINYIN -> File(root, "rime/${DoublePinyinScheme.schemaId(context)}.schema.yaml").isFile
-            InputMode.T9 -> File(root, "rime/luna_pinyin_t9.schema.yaml").isFile
+            // #35：基底自定义时 T9 就绪看 staging 产物（大词库跳编 T9 后
+            // 模式自动隐藏；shared 的 t9 prism 是按内置 table 编的，
+            // 配自定义 table 会错位候选，不能拿来用）。
+            InputMode.T9 ->
+                if (File(context.filesDir, "rime-user/build/luna_pinyin.table.bin").isFile)
+                    File(context.filesDir, "rime-user/build/luna_pinyin_t9.prism.bin").isFile
+                else File(root, "rime/luna_pinyin_t9.schema.yaml").isFile
             InputMode.STROKE -> File(root, "rime/feelime_stroke.schema.yaml").isFile
             // #20 音形码表：产物不在 engine-data（用户设备端编译），就绪 =
             // staging 里 table 存在（未导入时模式菜单不显示）。

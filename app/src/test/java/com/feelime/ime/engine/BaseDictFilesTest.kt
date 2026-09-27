@@ -204,6 +204,24 @@ class BaseDictFilesTest {
             BaseDictFiles.CORE_SCHEMAS + BaseDictFiles.FLYPY_SCHEMA,
             BaseDictFiles.flypyCompileSchemas(baseCustom = true),
         )
+        // #35 T9 内存门：词条超限剔除 T9（万象 2.7M 实测 RSS 爬到 6.9GB+
+        // 被系统 SIGKILL）；entries 缺省（0/未知）保留 T9（保守全量）。
+        assertEquals(
+            BaseDictFiles.CORE_SCHEMAS.filter { it != "luna_pinyin_t9" } + "luna_pinyin_fuzzy_m19",
+            BaseDictFiles.baseCompileSchemas(
+                fuzzyMask = 19, flypyInstalled = false,
+                entries = BaseDictFiles.T9_MAX_ENTRIES + 1,
+            ),
+        )
+        assertEquals(
+            BaseDictFiles.CORE_SCHEMAS,
+            BaseDictFiles.baseCompileSchemas(fuzzyMask = 0, flypyInstalled = false,
+                entries = BaseDictFiles.T9_MAX_ENTRIES),
+        )
+        assertEquals(
+            BaseDictFiles.CORE_SCHEMAS.filter { it != "luna_pinyin_t9" } + BaseDictFiles.FLYPY_SCHEMA,
+            BaseDictFiles.flypyCompileSchemas(baseCustom = true, baseEntries = 2_700_000),
+        )
         // mask 边界。
         assertEquals(null, BaseDictFiles.fuzzyVariant(0))
         assertEquals(null, BaseDictFiles.fuzzyVariant(32))

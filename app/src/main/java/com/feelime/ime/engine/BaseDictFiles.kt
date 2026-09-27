@@ -88,13 +88,27 @@ object BaseDictFiles {
     fun fuzzyVariant(mask: Int): String? =
         if (mask in 1..31) "${FuzzyPinyin.SCHEMA_ID}_m$mask" else null
 
+    /** T9 进清单的词条上限：T9 的「首末字母保护级联」（design/t9.md §1，
+     *  26 字母 × derive）把每词条拼写数乘 ~8，prism 内存随词条数线性放大
+     *  ——万象 Lite（2.7M 词条）真机实测 T9 段 RSS 一路爬到 6.9GB+ 直到
+     *  系统内存枯竭被 Athena SIGKILL（其余 5 项全程 ≤1.2GB）。超限词典
+     *  跳过 T9（模式自动不可用），内置与中小词库不受影响。 */
+    const val T9_MAX_ENTRIES = 600_000
+
     /** #35 延迟编译版换装清单：核心 6 项 + 当前模糊音组合 1 项（若开）
      *  + flypy 联动（#20：音形码表已导入时同场，见 [flypyCompileSchemas]）。
      *  其余 30 个变体在用户切换模糊音组合时按需补编（FuzzyPinyin
-     *  开关链路的 ensureFuzzyVariant，见 BaseDictInstaller）。 */
-    fun baseCompileSchemas(fuzzyMask: Int, flypyInstalled: Boolean): List<String> {
-        val core = CORE_SCHEMAS + listOfNotNull(fuzzyVariant(fuzzyMask))
-        return if (flypyInstalled) core + FLYPY_SCHEMA else core
+     *  开关链路的 ensureFuzzyVariant，见 BaseDictInstaller）。
+     *  entries 超过 [T9_MAX_ENTRIES] 时剔除 T9（内存保护，见常量注释）。 */
+    fun baseCompileSchemas(
+        fuzzyMask: Int,
+        flypyInstalled: Boolean,
+        entries: Int = 0,
+    ): List<String> {
+        val core = if (entries in 1..T9_MAX_ENTRIES || entries == 0) CORE_SCHEMAS
+            else CORE_SCHEMAS.filter { it != "luna_pinyin_t9" }
+        return core + listOfNotNull(fuzzyVariant(fuzzyMask)) +
+            listOfNotNull(FLYPY_SCHEMA.takeIf { flypyInstalled })
     }
 
     /** 反向联动（#20 音形导入）：基底是用户自定义（产物在 staging）时
@@ -103,8 +117,14 @@ object BaseDictFiles {
      *  ⚠ custom 基底 + flypy 组合的真机行为待验收实测（变体 schema 源
      *  在基底安装成功后已被清理，SchemaUpdate 找不到源时的行为要
      *  眼见为实）。 */
-    fun flypyCompileSchemas(baseCustom: Boolean): List<String> =
-        if (baseCustom) CORE_SCHEMAS + FLYPY_SCHEMA else listOf(FLYPY_SCHEMA)
+    fun flypyCompileSchemas(baseCustom: Boolean, baseEntries: Int = 0): List<String> {
+        if (!baseCustom) return listOf(FLYPY_SCHEMA)
+        // T9 内存门同 baseCompileSchemas：大基底跳过（否则 flypy 导入的
+        // maintenance 会补建 t9 prism，同样的内存炸弹）。
+        val core = if (baseEntries in 1..T9_MAX_ENTRIES || baseEntries == 0) CORE_SCHEMAS
+            else CORE_SCHEMAS.filter { it != "luna_pinyin_t9" }
+        return core + FLYPY_SCHEMA
+    }
 
     /** #35：tables = 落进 [SOURCE_DIR] 的词条表文件名（zip 多表导入；
      *  单文件导入就是 [SOURCE_FILE] 一项）。import_tables 的引用名 =
