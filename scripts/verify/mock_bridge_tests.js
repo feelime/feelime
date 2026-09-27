@@ -1223,6 +1223,45 @@ test('panel head borrows the toolbar right group: same buttons, toggle, fallback
     equal(world.$('panelLayer').hidden, true, 'stand-in closes the panel');
 });
 
+// codex P2 回归：编辑卡接管时归还借走的右组按钮；面板头借来的
+// numpad/emoji 直达按钮点下去要收面板层（不能与 numPadLayer 叠加）。
+test('editor card returns borrowed tools; layer direct from the panel head closes the panel', {since: '3.69.23'}, () => {
+    const world = fresh();
+    world.hello({});
+    // P2-1：面板开（右组被借走）→ ＋添加 进编辑卡 → 按钮归还、工具栏
+    // 复现完整右组、panelOpen 归零（hello audit 不再被早退挡）。
+    world.tap(world.$('favoritesButton'));
+    assert(!world.$('panelLayer').hidden, 'panel open');
+    world.tap(world.$('panelManage'));
+    assert(!world.$('phraseCard').hidden, 'editor card open');
+    assert(!!world.$('clipboardButton').closest('#candidateBar'),
+        'borrowed clip button returned while the card owns the screen');
+    equal(world.$('panelClose').hidden, false, 'stand-in close restored');
+    // 取消 → closePanelEditor → openPanel('favorites') 按栏上现状重新接管。
+    world.tap(world.$('phraseCardCancel'));
+    assert(!world.$('panelLayer').hidden, 'panel list restored after cancel');
+    assert(!!world.$('favoritesButton').closest('.panel-head'),
+        'favorites re-borrowed for the restored panel');
+    world.tap(world.$('favoritesButton'));
+    equal(world.$('panelLayer').hidden, true, 'panel closed');
+
+    // P2-2：右组放进 numpad 直达按钮 → 面板头里点它 → 面板层收、
+    // 数字层单独显示。
+    const kb = world.context.Feelime.debugState();
+    world.context.Feelime.toolbarSet(kb.toolbarLeft, ['numpad']);
+    world.context.Feelime.toolbarAudit();
+    world.tap(world.$('toolNumpad'));
+    assert(!world.$('numPadLayer').hidden, 'numpad shows from the toolbar');
+    world.tap(world.$('toolNumpad')); // toggle 回 letters：面板头里点=开数字层
+    equal(world.$('numPadLayer').hidden, true, 'back to letters');
+    world.tap(world.$('clipboardButton'));
+    assert(!world.$('panelLayer').hidden, 'panel reopens');
+    assert(!!world.$('toolNumpad').closest('.panel-head'), 'numpad tool borrowed into the head');
+    world.tap(world.$('toolNumpad'));
+    equal(world.$('panelLayer').hidden, true, 'layer direct from the head closes the panel');
+    assert(!world.$('numPadLayer').hidden, 'numpad visible alone');
+});
+
 test('panel editor card flow lands on letters after close (#39-5)', {since: '3.69.19'}, () => {
     const world = fresh();
     const key123 = [...world.document.querySelectorAll('.kb-special')].find(

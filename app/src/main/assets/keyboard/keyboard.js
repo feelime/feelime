@@ -4247,6 +4247,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.settingsReturnLayer = name;
                 this.closeSettingsPanel();
             }
+            // codex P2：剪贴板/常用语面板开着时，被接管进面板头的
+            // numpad/emoji 直达按钮同样可点——层切换也要收掉面板层，
+            // 否则 panelLayer 与 numPadLayer 同屏叠加。closePanel 会
+            // showKeyLayer(panelReturnLayer) 再入此处：panelOpen 已
+            // 归零，直接放行，外层继续切到目标层。
+            if (this.panelOpen) this.closePanel();
             // The emoji sub-view belongs to a nine-pad session.
             if (name !== 'numpad') this.emojiView = false;
             this.hideKeyLayers();
@@ -5262,7 +5268,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 之外同步上推 native（P2-3）：备份与设置页都以 native 为准。
             if (level === 1 || level === 2) {
                 try { localStorage.setItem('feelime_onehand_side', String(level)); } catch (_) {}
-                if (this.oneHandSideMemory !== level &&
+                // codex P2：this.call 在 ready/token 未就绪时静默丢调用——
+                // 若先写 memory，这次上推被拦后永不重试（升级用户首个
+                // hello 的记忆永远没落盘）。先验门闸再写 memory，未就绪
+                // 就保持「记忆缺失」，下个 hello 的 applyOneHand 重推。
+                if (this.ready && this.token && this.oneHandSideMemory !== level &&
                         typeof Native.setQuickPref === 'function') {
                     this.oneHandSideMemory = level;
                     this.call(() => Native.setQuickPref(
@@ -8260,6 +8270,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The keyboard STAYS visible under the card -
             // picking a candidate mid-edit is the whole point.
             document.getElementById('candidateBar').hidden = false;
+            // codex P2：编辑卡接管期间归还借走的右组按钮（工具栏复现，
+            // 右组不能空壳）并把 panelOpen 归零——closePanelEditor 尾部
+            // 的 openPanel('favorites') 会按栏上现状重新接管，hello 的
+            // audit 也不再被 panelOpen 早退挡住。
+            (this.panelBorrowedTools || []).forEach(el =>
+                document.getElementById('candidateBar').insertBefore(
+                    el, document.getElementById('settingsPageBar')));
+            this.panelBorrowedTools = [];
+            this.panelOpen = false;
+            document.getElementById('panelClose').hidden = false;
             // The card borrows the key area for letters; remember what the
             // PANEL was restoring - closePanelEditor hands it back before
             // openPanel re-captures, or a nine-pad return layer would be
