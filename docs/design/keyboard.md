@@ -222,10 +222,18 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 
 ### 3.1 结构与入口
 
-- `#panelLayer` 全键盘覆盖（隐藏键盘层），顶部 `[收起] [剪贴板|常用语]`
-  双 tab，列表区 + 空态文案；面板 `max-height` 受键盘区约束并可滚动。
+- `#panelLayer` 全键盘覆盖（隐藏键盘层），顶部 `[剪贴板|常用语]` 双 tab
+  + `清空`/`＋添加` + 右组圆钮，列表区 + 空态文案；面板 `max-height` 受
+  键盘区约束并可滚动。
 - 入口：工具栏剪贴板圆钮、常用语按钮；组合开始时自动关闭面板（引擎事件
   优先）。关闭恢复字母层。
+- **面板头接管工具栏右组（#39-4，3.69.22+）**：打开面板时右组按钮
+  （含收起键）原序挪进 `.panel-head`、同槽位渲染——面板开关图标就是
+  工具栏那颗剪贴板/常用语钮本身，开合前后逐像素零位移；点当前 tab
+  那颗 = 关面板（toggle 挂在按钮 listener 上，不进 `openPanel`——编辑
+  卡取消的程序化恢复也走它）。编辑卡（`openPanelEditor`）接管期间归还
+  按钮并归零 `panelOpen`，取消后 `openPanel('favorites')` 重新接管。
+  clip/fav 不在栏上时回退 `#panelClose` 分身（CSS 双图标随 tab 切换）。
 - 每次打开都重新拉取 `getClipboard` / `getFavorites`（设置页改过数据后
   再打开即新鲜）；native 侧变化经 `onClipboard` / `onFavorites` 推送。
 
