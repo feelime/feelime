@@ -1273,15 +1273,6 @@ window.FeelimeSettings = {
             case "flypyError":
                 setNote("flypyNote", event.message || "");
                 $("flypyBuilding").hidden = true;
-                // #20 导入成功自动勾选音形：长按菜单立即可用——否则
-                // 用户得再去「键盘选择」手动勾，菜单出现断档。
-                if (event.type === "flypyDone" && event.code === "FLYPY_OK") {
-                    const box = document.querySelector('#kbModeList input[data-kb-mode="flypy"]');
-                    if (box && !box.checked) {
-                        box.checked = true;
-                        saveKeyboardSelectionFromUi();
-                    }
-                }
                 break;
             case "dpSchemeError":
                 setNote("dpNote", eventText(event, "error.INVALID_DP_SCHEME"));
@@ -2491,6 +2482,16 @@ $("btnFlypyRevert").addEventListener("click", () => call("clearFlypy"));
  *  状态段（#20）。building 与基底换装共用同一互斥标志。 */
 function renderFlypy(state) {
     const flypy = (state.baseDict || {}).flypy || {};
+    // #20 幂等补勾选（codex P2-6）：导入成功后音形进长按菜单——放在
+    // 渲染层而非 flypyDone 事件里，编译期间退出设置页丢事件的路径
+    // （旧 bridge 销毁）也能在下次渲染补上。
+    if (flypy.installed) {
+        const box = document.querySelector('#kbModeList input[data-kb-mode="flypy"]');
+        if (box && !box.checked) {
+            box.checked = true;
+            saveKeyboardSelectionFromUi();
+        }
+    }
     const current = $("flypyCurrent");
     const when = flypy.installedAt
         ? new Date(flypy.installedAt).toLocaleString() : "";

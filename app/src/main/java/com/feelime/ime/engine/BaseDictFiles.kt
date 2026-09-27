@@ -71,17 +71,21 @@ object BaseDictFiles {
     const val FLYPY_DICT = "flypy.dict.yaml"
     const val FLYPY_TABLE = "flypy.table.bin"
 
-    /** 编译清单联动（#20）：librime 的 SchemaListUpdate 会把 staging 里
-     *  不在 default.yaml schema_list 的产物当 obsolete 清掉——基底换装
-     *  （#23）时若音形码表已导入，flypy 必须同场在列，否则用户码表被
-     *  洗掉。反向见 [flypyCompileSchemas]。 */
+    /** 编译清单联动（#20）：保守双向同场——codex review P3 在 pinned
+     *  1.17.0 源码里未找到 SchemaListUpdate 的 obsolete 清理（上游或有
+     *  版本差异），联动是否「必要」待双向换装实测裁决；但「同场在列」
+     *  的代价只是多列 schema（维护任务按需处理），先把正确性放在
+     *  宽侧。反向见 [flypyCompileSchemas]。 */
     fun baseCompileSchemas(flypyInstalled: Boolean): List<String> =
         if (flypyInstalled) COMPILE_SCHEMAS + FLYPY_SCHEMA else COMPILE_SCHEMAS
 
     /** 反向联动（#20 音形导入）：基底是用户自定义（产物在 staging）时
-     *  37 项必须同场在列，否则基底产物被 obsolete 清理洗回内置；基底是
-     *  内置（产物在 shared，maintenance 不动 shared）时只编 flypy，
-     *  37 项不进清单（省一轮全量重编）。 */
+     *  37 项同场在列（保守：staging 产物的去留不应被本次部署影响）；
+     *  基底是内置（产物在 shared，maintenance 不写 shared）时只编 flypy，
+     *  37 项不进清单（省一轮全量重编）。
+     *  ⚠ custom 基底 + flypy 组合的真机行为待验收实测（变体 schema 源
+     *  在基底安装成功后已被清理，SchemaUpdate 找不到源时的行为要
+     *  眼见为实）。 */
     fun flypyCompileSchemas(baseCustom: Boolean): List<String> =
         if (baseCustom) COMPILE_SCHEMAS + FLYPY_SCHEMA else listOf(FLYPY_SCHEMA)
 

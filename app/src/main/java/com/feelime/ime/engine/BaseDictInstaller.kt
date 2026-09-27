@@ -62,6 +62,11 @@ object BaseDictInstaller {
     private const val KEY_INSTALLING_KIND = "installing_kind"
     private const val KIND_BASE = "base"
     private const val KIND_FLYPY = "flypy"
+    /** 写入事务的进程 pid（codex P1-2）：编译期间重开设置页时
+     *  sweepPending 不能把 worker 正在跑的事务当进程中断回滚——
+     *  「同 pid + isBuilding」= 本进程在编，跳过；否则才是冷启动
+     *  残留（别的 pid 写的，或本 pid 但 worker 已收尾）。 */
+    private const val KEY_INSTALLING_PID = "installing_pid"
     private const val KEY_FLYPY_MODE = "flypy_mode"    // custom | -
     private const val KEY_FLYPY_NAME = "flypy_name"
     private const val KEY_FLYPY_SHA = "flypy_sha"
@@ -258,6 +263,14 @@ object BaseDictInstaller {
     fun sweepPending(context: Context) {
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_INSTALLING, false)) return
+        // codex P1-2：本进程 worker 正在编译（编译期间重开设置页）时，
+        // installing 标记是「活的」不是残留——此刻回滚会删掉正在写的
+        // 编译现场。冷启动残留的 pid 必然不同（或同 pid 但进程重启过、
+        // worker 不在跑——building=false 时仍走回滚，覆盖同 pid 重启的
+        // 理论窗口）。
+        if (prefs.getInt(KEY_INSTALLING_PID, -1) == android.os.Process.myPid() &&
+            isBuilding()
+        ) return
         val kind = prefs.getString(KEY_INSTALLING_KIND, KIND_BASE) ?: KIND_BASE
         android.util.Log.w("FeelimeBaseDict", "sweeping interrupted $kind install")
         // #20：按 kind 分派回滚目标——音形导入中断只回滚音形现场，
@@ -298,6 +311,7 @@ object BaseDictInstaller {
         context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_INSTALLING, true)
             .putString(KEY_INSTALLING_KIND, KIND_BASE)
+            .putInt(KEY_INSTALLING_PID, android.os.Process.myPid())
             .apply()
 
         pushEvent(status("COPYING"))
@@ -307,11 +321,12 @@ object BaseDictInstaller {
         }
         // #35：单文件或 zip 多表（万象 Lite 包）统一解包到 sourceDir。
         // 失败/超限时半截文件不残留（P2-9）：整目录清掉再报错。
-        val staged = stageSource(context, uri, sourceDir)
+        val outcome = stageSource(context, uri, sourceDir)
+        val staged = outcome.staged
         if (staged == null) {
             sourceDir.deleteRecursively()
             clearInstalling(context)
-            return InstallResult("BASE_DICT_READ_FAILED", changed = false)
+            return InstallResult(outcome.errorCode ?: "BASE_DICT_READ_FAILED", changed = false)
         }
         val stats = analyzeSource(staged.files)
         if (staged.files.isEmpty() || stats.tabLines <= 0) {
@@ -464,6 +479,7 @@ object BaseDictInstaller {
         context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_INSTALLING, true)
             .putString(KEY_INSTALLING_KIND, KIND_FLYPY)
+            .putInt(KEY_INSTALLING_PID, android.os.Process.myPid())
             .apply()
 
         pushEvent(status("COPYING"))
@@ -504,8 +520,13 @@ object BaseDictInstaller {
             rollbackFlypy(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
         }
 
-        // maintenance(false)：staging 里既有 compiled schema 的 fingerprint
-        // 未变则跳过（基底 37 项不重编），只有 flypy 真正编译。
+        // maintenance(false)：AVD 实测（2026-09-28）custom 基底下 37 项不
+        // 重编、仅 flypy 编译（全套几十秒）。机制按 1.17.0 源码是部署任务
+        // 的 mtime 修改检测（deployment_tasks.cc 的 last_build_time）而非
+        // 逐 schema fingerprint（codex review P3 核正）——已知边界：系统
+        // 时钟回拨/同秒重导入时 mtime 判定可能失真走「无需部署」，产物
+        // 校验随后判负回滚（重导入场景会丢旧码表，接受：概率极低且码表
+        // 可再导）。
         runCatching { RimeTextEngine.reloadGlobal(context) }
             .onFailure {
                 rollbackFlypy(context)
@@ -586,16 +607,32 @@ object BaseDictInstaller {
             val (entries, dropped) = BaseDictFiles.normalizeFlypyLines(String(bytes, Charsets.UTF_8))
             return FlypySource(sha, entries, dropped)
         }
+        // codex P1-1：解压总量必须与压缩字节同预算——64KB zip 可裹 33MB
+        // 词条，readBytes() 一口气进内存就是 OOM。逐条目块读计费，超限
+        // 整体拒绝；跳过的条目也计费（nextEntry 的自动 drain 不免费）。
+        val buffer = ByteArray(1 shl 16)
         return runCatching {
             val entries = ArrayList<String>()
             var dropped = 0
+            var total = 0L
             java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(bytes)).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
-                    if (entry.isDirectory || "__MACOSX" in entry.name) continue
-                    val base = BaseDictFiles.zipEntryName(entry.name) ?: continue
-                    if (!base.endsWith(".dict.yaml")) continue
-                    val content = zip.readBytes().toString(Charsets.UTF_8)
+                    var keep = false
+                    if (!entry.isDirectory && "__MACOSX" !in entry.name) {
+                        val base = BaseDictFiles.zipEntryName(entry.name)
+                        if (base != null && base.endsWith(".dict.yaml")) keep = true
+                    }
+                    val out = java.io.ByteArrayOutputStream()
+                    while (true) {
+                        val read = zip.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > FLYPY_MAX_SOURCE_BYTES) return@runCatching null
+                        if (keep) out.write(buffer, 0, read)
+                    }
+                    if (!keep) continue
+                    val content = out.toString("UTF-8")
                     if (BaseDictFiles.isPureUmbrella(content)) continue
                     val (part, d) = BaseDictFiles.normalizeFlypyLines(content)
                     entries.addAll(part)
@@ -724,9 +761,11 @@ object BaseDictInstaller {
      *  空 zip（无可解析表）返回非 null 空文件表，由调用方按 EMPTY 报。 */
     private class Staged(val sha: String, val files: List<File>)
 
-    private fun stageSource(context: Context, uri: Uri, sourceDir: File): Staged? {
+    private class StageOutcome(val staged: Staged?, val errorCode: String? = null)
+
+    private fun stageSource(context: Context, uri: Uri, sourceDir: File): StageOutcome {
         val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
-            ?: return null
+            ?: return StageOutcome(null)
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(1 shl 16)
         input.use { stream ->
@@ -739,7 +778,7 @@ object BaseDictInstaller {
                 if (read < 0) break
                 got += read
             }
-            if (got < 4) return null
+            if (got < 4) return StageOutcome(null)
             val isZip = head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte() &&
                 (head[2] == 0x03.toByte() || head[2] == 0x05.toByte() || head[2] == 0x07.toByte())
 
@@ -763,28 +802,42 @@ object BaseDictInstaller {
                         out.write(buffer, 0, read)
                     }
                 }
-                if (overLimit || total == 0L) return null
-                return Staged(joinHex(digest.digest()), listOf(target))
+                if (overLimit || total == 0L) return StageOutcome(null)
+                return StageOutcome(Staged(joinHex(digest.digest()), listOf(target)))
             }
 
             // zip 路径：拍平落盘（落盘名 = entry basename，安全名校验在
-            // [BaseDictFiles.zipEntryName]；撞名保留首个）。解压总量共享
-            // 150MB 上限（zip 炸弹防线）。
+            // [BaseDictFiles.zipEntryName]）。解压总量共享 150MB 上限
+            // （zip 炸弹防线）——跳过的条目也按块 drain 计费（codex P2-3：
+            // 直接 continue 时 nextEntry 的自动 drain 不计费，高压缩率
+            // 垃圾文件可绕开预算长期占用 worker）。撞名不静默丢弃
+            // （codex P2-4：a/x.dict.yaml 与 b/x.dict.yaml 只留首个会造成
+            // 「成功却缺词」）——整包拒绝并报错。
             val entries = LinkedHashMap<String, String>() // 落盘名 -> 原始引用（entry 路径去 .dict.yaml）
             var total = 0L
             var overLimit = false
+            var duplicate: Pair<String, String>? = null
             val zipped = runCatching {
                 ZipInputStream(PushbackInputStream(stream, 4).apply { unread(head, 0, got) })
                     .use { zip ->
-                        while (!overLimit) {
+                        while (!overLimit && duplicate == null) {
                             val entry = zip.nextEntry ?: break
-                            if (entry.isDirectory) continue
-                            val name = entry.name
-                            if ("__MACOSX" in name) continue
-                            val base = BaseDictFiles.zipEntryName(name) ?: continue
-                            if (!base.endsWith(".dict.yaml") || base in entries) continue
-                            val target = File(sourceDir, base)
-                            target.outputStream().use { out ->
+                            var keep = false
+                            var conflict: Pair<String, String>? = null
+                            var base: String? = null
+                            if (!entry.isDirectory && "__MACOSX" !in entry.name) {
+                                val safe = BaseDictFiles.zipEntryName(entry.name)
+                                if (safe != null && safe.endsWith(".dict.yaml")) {
+                                    if (safe in entries) {
+                                        conflict = entries[safe]!! to entry.name
+                                    } else {
+                                        keep = true
+                                        base = safe
+                                    }
+                                }
+                            }
+                            val target = base?.let { File(sourceDir, it) }
+                            target?.outputStream().use { out ->
                                 while (true) {
                                     val read = zip.read(buffer)
                                     if (read < 0) break
@@ -793,14 +846,24 @@ object BaseDictInstaller {
                                         overLimit = true
                                         break
                                     }
-                                    out.write(buffer, 0, read)
+                                    out?.write(buffer, 0, read)
                                 }
                             }
-                            if (!overLimit) entries[base] = name.removeSuffix(".dict.yaml")
+                            val name = base
+                            when {
+                                conflict != null -> duplicate = conflict
+                                keep && name != null && !overLimit ->
+                                    entries[name] = entry.name.removeSuffix(".dict.yaml")
+                            }
                         }
                     }
             }
-            if (zipped.isFailure || overLimit) return null
+            if (zipped.isFailure || overLimit) return StageOutcome(null)
+            if (duplicate != null) {
+                android.util.Log.w("FeelimeBaseDict",
+                    "duplicate table names: ${duplicate!!.first} vs ${duplicate!!.second}")
+                return StageOutcome(null, "BASE_DICT_DUPLICATE")
+            }
 
             // 纯伞表剔除 + 子表引用重写；sha 覆盖最终形态。
             val refMap = HashMap<String, String>()
@@ -825,7 +888,7 @@ object BaseDictInstaller {
                     }
                 }
             }
-            return Staged(joinHex(digest.digest()), kept)
+            return StageOutcome(Staged(joinHex(digest.digest()), kept))
         }
     }
 
@@ -1022,6 +1085,7 @@ object BaseDictInstaller {
             "REVERTED" to "已恢复内置词库",
             "BASE_DICT_READ_FAILED" to "读取文件失败或超过 150MB 上限",
             "BASE_DICT_EMPTY" to "文件里没有词条（需要「词<TAB>码」行）",
+            "BASE_DICT_DUPLICATE" to "包内有同名词表（不同目录下的同名 .dict.yaml），无法确定用哪个，请整理后重试",
             "BASE_DICT_ENGINE_NOT_READY" to "引擎数据还没准备好，稍后再试",
             "BASE_DICT_MAINTENANCE_START_FAILED" to "编译线程启动失败",
             "BASE_DICT_TIMEOUT" to "编译超时（45 分钟）且产物不完整，已回滚",
@@ -1036,6 +1100,7 @@ object BaseDictInstaller {
             "REVERTED" to "Built-in dictionary restored",
             "BASE_DICT_READ_FAILED" to "Read failed or file exceeds the 150MB cap",
             "BASE_DICT_EMPTY" to "No entries found (needs word<TAB>code lines)",
+            "BASE_DICT_DUPLICATE" to "Duplicate table names in the package (same .dict.yaml basename in different folders); reorganize and retry",
             "BASE_DICT_ENGINE_NOT_READY" to "Engine data not ready yet, try later",
             "BASE_DICT_MAINTENANCE_START_FAILED" to "Failed to start the compile thread",
             "BASE_DICT_TIMEOUT" to "Compile timed out (45 min) with incomplete output, rolled back",
