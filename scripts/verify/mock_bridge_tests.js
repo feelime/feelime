@@ -1769,6 +1769,68 @@ test('symbol reorder stays stable under favorite overlays (issue #17, review P1)
     equal(pick.args[1], 'c1', 'space confirms the engine head through the reorder');
 });
 
+test('english word position is consistent across bar, space, expand append and punct (codex P1)', {since: '3.69.18'}, () => {
+    // englishPos=1（固定第 1 位）：英文候选的重排必须对所有消费面一致
+    // ——候选条、空格确认、展开区（增量追加与前缀重排的全量重绘两条
+    // 路径分开钉）、标点两步流确认。历史缺陷：追加/标点读原始池；前缀
+    // 签名读原始引擎序，感知不到重排改写展示前缀（codex R2 探针：追加
+    // 页漏英文、重复中文）。
+    // 场景 A（纯中文追加，走增量 append）：首屏 3 项纯中文，下一页纯
+    // 中文追加——展示前缀不变 → 增量补绘。用「旧 DOM 节点仍挂载」证
+    // 明没走全量重绘（replaceChildren 会换掉全部节点对象）。停在两页：
+    // 第三页起签名窗口 (max(expandRendered,3)) 随渲染数变长，纯追加也
+    // 会触发重绘（codex R3：窗口增长掩盖重排缺陷，场景必须分开钉）。
+    const worldA = fresh({ mode: 'pinyin', englishPos: 1 });
+    worldA.engineState({ mode: 'pinyin', revision: 1, composing: 'ar', rawInput: 'ar',
+        candidates: [
+            { id: 'c1', text: '阿热' }, { id: 'c2', text: '啊热' }, { id: 'c3', text: '阿惹' },
+        ], hasNextPage: true });
+    worldA.$('composeExpand').click();
+    worldA.clock.advance(2);
+    const gridA = () => [...worldA.$('expandGrid').querySelectorAll('.expand-candidate')];
+    equal(gridA().map(b => b.textContent).join(','), '阿热,啊热,阿惹',
+        'page 1 renders in engine order (no english yet)');
+    const page1Nodes = gridA();
+    worldA.engineState({ mode: 'pinyin', revision: 2, composing: 'ar', rawInput: 'ar',
+        candidates: [{ id: 'c4', text: '阿仁' }],
+        hasNextPage: false });
+    equal(gridA().map(b => b.textContent).join(','), '阿热,啊热,阿惹,阿仁',
+        'chinese append keeps order');
+    equal(page1Nodes.every(node => gridA().includes(node)), true,
+        'incremental append preserves the existing DOM nodes (no full repaint)');
+    // 场景 B（3 中文 → 下一页直接追加英文，走全量重绘）：展示前缀被重排
+    // 改写；旧签名算法读原始引擎序（前缀 [c1,c2,c3] 未变）感知不到 →
+    // 走增量 → 漏英文+重复中文。两个 world 分开，窗口不因场景 A 增长。
+    const world = fresh({ mode: 'pinyin', englishPos: 1 });
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ar', rawInput: 'ar',
+        candidates: [
+            { id: 'c1', text: '阿热' }, { id: 'c2', text: '啊热' }, { id: 'c3', text: '阿惹' },
+        ], hasNextPage: true });
+    const bar = () => [...world.$('candidates').querySelectorAll('.candidate')]
+        .map(b => b.textContent);
+    world.$('composeExpand').click();
+    world.clock.advance(2);
+    const gridEl = () => world.$('expandGrid');
+    const gridTexts = () => [...gridEl().querySelectorAll('.expand-candidate')]
+        .map(b => b.textContent);
+    const beforeNodes = [...gridEl().querySelectorAll('.expand-candidate')];
+    world.engineState({ mode: 'pinyin', revision: 2, composing: 'ar', rawInput: 'ar',
+        candidates: [{ id: 'e1', text: 'are' }],
+        hasNextPage: false });
+    equal(gridTexts().join(','), 'are,阿热,啊热,阿惹',
+        'english arrival repaints in the reordered view');
+    const afterNodes = [...gridEl().querySelectorAll('.expand-candidate')];
+    equal(beforeNodes.some(node => afterNodes.includes(node)), false,
+        'prefix-affecting page rebuilds the grid nodes (full repaint path)');
+    equal(bar()[0], 'are', 'candidate bar head is the english word');
+    // 标点两步流确认池头（修复点：enginePunct 曾读原始池，逗号会上「阿热」）。
+    world.tap(world.key('.'));
+    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 'e1',
+        'composing punct confirms the reordered head');
+    equal(world.native.of('key').filter(c => c.args[0] === ',').length, 0,
+        'no ASCII comma enters the engine mid-composition');
+});
+
 test('symbol reorder keeps the expanded grid in sync across pages (issue #17, review P1)', {since: '3.59.0'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.hello();

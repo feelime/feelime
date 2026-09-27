@@ -764,6 +764,51 @@ details summary {
 /* #31 键盘色调：预置色板（圆形 swatch）+ 自定义色相滑条（全谱渐变
  * 轨道，松手生效——经 pref+广播重推 hello，不做拖动实时预览）。 */
 .preset-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+/* 色调/饱和度行上下两行布局（用户验收五轮）：文字全宽在上、滑条+色板
+ * 全宽在下——右侧竖排会把说明文案挤成窄条。 */
+.row.stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.row.stack .row-label { flex: none; }
+.row.stack .preset-wrap { align-items: stretch; }
+.row.stack .preset-wrap input[type="range"],
+.row.stack #themeHue, .row.stack #keyHue { width: 100%; }
+.row.stack .preset-swatches { align-self: flex-start; }
+/* 效果预览（用户验收五轮）：亮/暗两组板并排，每板两行键；--pv-* 由
+ * JS 本地驱动（拖动实时），色公式与 keyboard.css 令牌同源；板底无图=
+ * 纯色（暗 22%/12%、亮 32%/88%），选了背景图时 cover 叠在底色上，
+ * 键帽按 --pv-key-alpha 半透铺在图上（文字始终实色，与真键盘一致）。 */
+.theme-preview-duo { display: flex; gap: 12px; width: 100%; }
+.tp-group { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.tp-tag { font-size: 11px; color: var(--card-sub); }
+.tp-board { display: flex; flex-direction: column; gap: 5px; padding: 8px; border-radius: 8px;
+    background-size: cover; background-position: center; }
+.tp-board-dark { background-color: hsl(var(--pv-hue, 160) calc(22% * var(--pv-sat, 1)) 12%);
+    background-image: var(--pv-bg-img-dark, none); }
+.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(32% * var(--pv-sat, 1)) 88%);
+    background-image: var(--pv-bg-img-light, none); }
+.tp-row { display: flex; gap: 5px; }
+.tp-key { display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 30px; border-radius: 5px; font-size: 14px; font-weight: 500; }
+/* 暗组键帽（/ 不透明度过底图）。 */
+.tp-board-dark .tp-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(16% * var(--pv-key-sat, var(--pv-sat, 1))) 37% / var(--pv-key-alpha, 1));
+    color: #e8e8e8; }
+.tp-board-dark .tp-accent-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) 48% / var(--pv-key-alpha, 1));
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) 95%); }
+.tp-board-dark .tp-special-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) 26% / var(--pv-key-alpha, 1));
+    color: #e8e8e8; }
+/* 亮组键帽：对齐 keyboard.css html.theme-light 公式（键 38%/97%、
+ * accent 62%/42%、special 42%/72%）。 */
+.tp-board-light .tp-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(38% * var(--pv-key-sat, var(--pv-sat, 1))) 97% / var(--pv-key-alpha, 1));
+    color: #181818; }
+.tp-board-light .tp-accent-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) 42% / var(--pv-key-alpha, 1));
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) 95%); }
+.tp-board-light .tp-special-key {
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) 72% / var(--pv-key-alpha, 1));
+    color: #181818; }
 .preset-swatches { display: flex; gap: 10px; align-items: center; flex: none; }
 .preset-swatch {
     width: 26px; height: 26px; border-radius: 50%;
@@ -773,11 +818,12 @@ details summary {
     padding: 0; cursor: pointer;
 }
 .preset-swatch.active { border-color: var(--accent-text, #5cdeb0); transform: scale(1.12); }
-#themeHue {
+/* 色相滑条全谱轨道（键盘/键面同款取色）：与键盘 --kb-hue 同一坐标系
+ * （0=红 … 160=经典绿）。 */
+#themeHue, #keyHue {
     width: 190px; height: 22px; margin: 0;
     -webkit-appearance: none; appearance: none;
     border-radius: 11px;
-    /* 全谱色相轨道：与键盘 --kb-hue 同一坐标系（0=红 … 160=经典绿）。 */
     background: linear-gradient(90deg,
         hsl(0,62%,48%), hsl(30,62%,48%), hsl(60,62%,48%), hsl(90,62%,48%),
         hsl(120,62%,48%), hsl(150,62%,48%), hsl(180,62%,48%), hsl(210,62%,48%),
@@ -785,7 +831,7 @@ details summary {
         hsl(360,62%,48%));
     outline: none;
 }
-#themeHue::-webkit-slider-thumb {
+#themeHue::-webkit-slider-thumb, #keyHue::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
     width: 20px; height: 20px; border-radius: 50%;
     background: hsl(var(--thumb-hue, 160), 62%, 48%);
@@ -793,7 +839,22 @@ details summary {
     box-shadow: 0 1px 4px rgb(0 0 0 / .45);
     cursor: pointer;
 }
-#themeHue.customized::-webkit-slider-thumb {
+#themeHue.customized::-webkit-slider-thumb, #keyHue.customized::-webkit-slider-thumb {
     border-color: var(--accent-text, #5cdeb0);
     box-shadow: 0 0 0 2px var(--accent-text, #5cdeb0), 0 1px 4px rgb(0 0 0 / .45);
+}
+/* 键面色调「跟键盘」档：虚线空心底（区别于实色预置），未自定义(-1)时选中。 */
+.preset-swatch.follow {
+    background: transparent;
+    border: 2px dashed var(--card-sub, #8a8f98);
+    box-shadow: none;
+    color: var(--card-sub, #8a8f98);
+    font-size: 11px; line-height: 1;
+}
+.preset-swatch.follow::after { content: "跟"; }
+html[lang="en"] .preset-swatch.follow::after { content: "F"; }
+.preset-swatch.follow.active {
+    border-style: solid;
+    border-color: var(--accent-text, #5cdeb0);
+    color: var(--accent-text, #5cdeb0);
 }

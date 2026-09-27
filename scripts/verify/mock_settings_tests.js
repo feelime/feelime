@@ -99,6 +99,10 @@ class MockSettingsNative {
     reportPage(...a) { this._rec('reportPage', a); }
     setThemeMode(...a) { this._rec('setThemeMode', a); }
     setThemePreset(...a) { this._rec('setThemePreset', a); }
+    setThemeHue(...a) { this._rec('setThemeHue', a); }
+    setThemeSat(...a) { this._rec('setThemeSat', a); }
+    setKeyHue(...a) { this._rec('setKeyHue', a); }
+    setKeySat(...a) { this._rec('setKeySat', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
@@ -604,13 +608,13 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     const hiddenMap = () => Object.fromEntries(
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
-        home: false, appearance: true, input: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
+        home: false, appearance: true, skin: true, input: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
         backup: true, about: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
-        home: true, appearance: true, input: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
+        home: true, appearance: true, skin: true, input: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
         backup: true, about: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', world.token], 'reportPage(page name) on sub-page');
@@ -1280,7 +1284,7 @@ test('search hit click routes to the exact row via focusSetting', () => {
     const row = world.$('bgImageLight').closest('.row, label.row');
     assert(row.classList.contains('search-flash'), 'the whole row breathes');
     assert(row._scrollIntoView, 'row scrolled into view');
-    assert(!world.$('bgImageLight').closest('.page').hidden, 'appearance page shown');
+    assert(!world.$('bgImageLight').closest('.page').hidden, 'skin page shown (row migrated)');
 });
 
 test('focusSetting anchors rows and whole cards; unknown ids return false', () => {
@@ -1315,8 +1319,10 @@ const fire = (el, type) => {
 };
 
 // 排序真相源（评审 P1 修正）：行序 = feelime_mode_order（键盘长按菜单/
-// 快捷设置拖拽共用），勾选只是集合。上下移保存全序作第 3 参。
-test('keyboard rows render in modeOrder and up-move saves the full order', () => {
+// 快捷设置拖拽共用），勾选只是集合。拖动把手保存全序作第 3 参
+// （验收二轮：箭头按钮已移除，拖动是唯一排序方式；落点按指针 y 直接
+// 映射目标位，不逐格步进）。
+test('keyboard rows render in modeOrder and drag reorder saves the full order', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE, keyboards: {
         menuModes: JSON.stringify(['direct', 'pinyin', 'double-pinyin', 't9', 'stroke']),
@@ -1327,12 +1333,36 @@ test('keyboard rows render in modeOrder and up-move saves the full order', () =>
         .map(b => b.dataset.kbMode);
     equal(ids(), ['t9', 'pinyin', 'direct', 'double-pinyin', 'stroke', 'handwriting', 'french', 'russian', 'japanese'],
         'rows follow modeOrder, unlisted modes appended in catalog order');
-    // 第 2 行（pinyin）上移一格：与 t9 交换，全序落盘作第 3 参。
+    assert(!world.doc.querySelector('.kb-move'), 'arrow buttons are gone (drag is the only reorder)');
+    // 把末行（handwriting，第 6 行）拖到指针越过前 2 行中心的位置：
+    // 落点直接映射（跨多格），全序落盘作第 3 参。
     const rows = [...world.doc.querySelectorAll('#kbModeList .row')];
-    fire(rows[1].querySelectorAll('.kb-move')[0], 'click');
+    const handle = rows[5].querySelector('.kb-drag');
+    assert(handle, 'drag handle rendered');
+    // jsdom 不做 layout：给每行打桩等高 44px 依次排布（y=100 起）。
+    rows.forEach((r, i) => {
+        r.getBoundingClientRect = () => ({ x: 0, y: 100 + i * 44, top: 100 + i * 44, height: 40, width: 300, bottom: 140 + i * 44, left: 0, right: 300 });
+    });
+    // jsdom 无 PointerEvent 构造：直接合成裸事件对象走监听器（settings 的
+    // handler 只读 pointerId/clientY/button/pointerType 字段）。
+    // fake DOM 无 dispatchEvent：直调元素上的 listener（fire 的内联版，
+    // 需要带 pointerId/clientY 的自定义事件对象）。pointerdown 挂在
+    // handle；move/up 监听被 beginKbRowDrag 挂到 host（列表容器）。
+    const mkEv = (y) => ({ pointerId: 7, clientX: 10, clientY: y, pointerType: 'touch', button: 0, preventDefault: () => {}, type: '' });
+    const emit = (el, type, ev) => {
+        const handlers = (el.listeners || []).filter(l => l.type === type);
+        assert(handlers.length > 0, `${type} listener present`);
+        handlers.forEach(l => l.handler(ev));
+    };
+    const host = rows[5].parentElement;
+    // 行5中心 y=340，上拖到 142：落在行1（pinyin，中心 164）之前——
+    // handwriting 跨 4 格直接落到第 2 位。
+    emit(handle, 'pointerdown', mkEv(340));
+    emit(host, 'pointermove', mkEv(142));
+    emit(host, 'pointerup', mkEv(142));
     const call = world.lastCall('saveKeyboardSelection');
-    equal(JSON.parse(call.args[2]), ['pinyin', 't9', 'direct', 'double-pinyin', 'stroke', 'handwriting', 'french', 'russian', 'japanese'],
-        'up-move persists the full row order as the 3rd arg (feelime_mode_order)');
+    equal(JSON.parse(call.args[2]), ['t9', 'handwriting', 'pinyin', 'direct', 'double-pinyin', 'stroke', 'french', 'russian', 'japanese'],
+        'drag persists the full row order as the 3rd arg (feelime_mode_order)');
     // 勾选集仍按行序收集 checked（menuModes 只是集合，序无关紧要）。
     equal(JSON.parse(call.args[0]).slice().sort(), ['direct', 'double-pinyin', 'pinyin', 'stroke', 't9'],
         'checked set follows rows');
@@ -1380,6 +1410,80 @@ test('theme preset swatches render state and post on click', () => {
         'current preset marked active');
     dots.find(d => d.dataset.preset === 'violet').click();
     equal(world.lastCall('setThemePreset').args[0], 'violet', 'click posts the preset id');
+});
+
+// 键面色调同款取色（用户验收五轮）：跟随档 + 六预置；未自定义时跟随
+// 选中，点预置=setKeyHue(预置 hue)，点跟随=setKeyHue(-1) 还原继承。
+test('keycap hue swatches: follow default, presets post hue, follow posts -1', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, keyHue: -1 });
+    const dots = [...world.doc.querySelectorAll('#keyHueSwatches .preset-swatch')];
+    equal(dots.length, 7, 'follow + six presets');
+    const follow = dots[0];
+    equal(follow.className.includes('active'), true, 'follow active when unset');
+    equal(dots.filter(d => d !== follow && d.className.includes('active')).length, 0,
+        'no preset active when unset');
+    // 自定义=某预置 hue 时该预置选中、跟随让位。
+    world.push({ ...BASE_STATE, keyHue: 212 });
+    const dots2 = [...world.doc.querySelectorAll('#keyHueSwatches .preset-swatch')];
+    equal(dots2[0].className.includes('active'), false, 'follow inactive when custom');
+    const oceanIdx = dots2.findIndex(d => d.getAttribute('aria-label') === '海蓝');
+    equal(dots2[oceanIdx].className.includes('active'), true, 'matching preset active');
+    // 点选与还原：预置档下发预置 hue，跟随档双复位（hue+sat 都回 -1）。
+    dots2[oceanIdx].click();
+    equal(world.lastCall('setKeyHue').args[0], 212, 'preset click posts its hue');
+    world.$('keyHueSwatches').querySelectorAll('.preset-swatch')[0].click();
+    equal(world.lastCall('setKeyHue').args[0], -1, 'follow click posts hue -1');
+    equal(world.lastCall('setKeySat').args[0], -1, 'follow click also resets saturation');
+});
+
+// 皮肤页行序（用户验收五轮定稿）：色调两组在前、背景图居中、预览收尾。
+test('skin page row order: tints, saturations, opacity, backgrounds, preview last', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const ids = [...world.doc.querySelectorAll('[data-page="skin"] .row')]
+        .map(r => r.querySelector('select[id], input[id], span[id]')?.id)
+        .filter(Boolean);
+    equal(ids, ['themeHue', 'themeSat', 'keyHue', 'keySat', 'keyOpacity',
+        'bgImageLight', 'bgImageDark', 'themePreview'], 'rows follow the agreed order');
+});
+
+// 皮肤入口（用户验收五轮）：与其他入口同款 .entry 行（label+chevron），
+// 不再是无样式 entry-card。
+test('skin entry is a standard entry row with chevron', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const entry = world.doc.querySelector('button[data-target="skin"]');
+    assert(entry, 'skin entry button exists');
+    assert(entry.className.split(' ').includes('entry'), 'uses the standard .entry class');
+    assert(entry.querySelector('.entry-label small'), 'subtitle present');
+    assert(entry.querySelector('.entry-chevron'), 'chevron present');
+    assert(!world.doc.querySelector('.entry-card'), 'legacy entry-card gone');
+});
+
+// 效果预览（用户验收五轮）：亮/暗双板、每板两行键；不透明度与背景图
+// base64 经 --pv-key-alpha / --pv-bg-img-* 进预览。
+test('preview duo boards render and carry opacity + background image vars', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, keyOpacity: 60,
+        bgImageLightSource: 'builtin', bgImageLight: 'QUJD',
+        bgImageDarkSource: 'none' });
+    const pv = world.$('themePreview');
+    const boards = [...pv.querySelectorAll('.tp-board')];
+    equal(boards.length, 2, 'light and dark boards');
+    boards.forEach(board => {
+        equal(board.querySelectorAll('.tp-row').length, 2, 'two key rows per board');
+        equal(board.querySelectorAll('.tp-key').length, 8, 'eight keycaps per board');
+    });
+    equal(pv.style.getPropertyValue('--pv-key-alpha'), '0.6', 'key opacity feeds the preview');
+    equal(pv.style.getPropertyValue('--pv-bg-img-light'),
+        'url(data:image/jpeg;base64,QUJD)', 'light background image rides into the preview');
+    equal(pv.style.getPropertyValue('--pv-bg-img-dark'), 'none', 'dark board stays imageless');
+    // 不透明度拖动实时更新预览（不落盘，松手才提交）。
+    const slider = world.$('keyOpacity');
+    slider.value = '40';
+    slider.listeners.find(l => l.type === 'input').handler({ target: slider });
+    equal(pv.style.getPropertyValue('--pv-key-alpha'), '0.4', 'opacity drag updates the preview live');
 });
 
 // ---------------------------------------------------------------- runner

@@ -236,11 +236,44 @@ fun readThemePreset(context: Context): String {
  *  0..360=键盘内联 --kb-hue，全套令牌（键帽/面板/背景/accent）由 CSS
  *  hsl 派生。设置页松手写入 + 广播，键盘 hello 读回应用。 */
 const val PREF_THEME_HUE = "theme_hue"
+const val PREF_THEME_SAT = "theme_sat"
 
 fun readThemeHue(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_THEME_HUE, -1)
         .takeIf { it in -1..360 } ?: -1
+
+/** 饱和度缩放（黑白灰滑块，用户验收二轮）：100=全彩默认，0=纯灰度。
+ *  键盘 CSS 侧 --kb-sat = 值/100，乘在各表面的设计饱和度上。 */
+const val PREF_ENGLISH_POS = "english_pos"
+
+/** #29 英文词候选位置：-1=auto（无音节冲突第 1、冲突第 3），1/3/5 固定。
+ *  渲染层重排（rime stabledb 权重不参与组间排序，位置只能键盘侧做）。 */
+fun readEnglishPos(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_ENGLISH_POS, -1)
+        .takeIf { it == -1 || it == 1 || it == 3 || it == 5 } ?: -1
+
+const val PREF_KEY_HUE = "key_hue"
+const val PREF_KEY_SAT = "key_sat"
+
+/** 皮肤双组（用户验收四轮）：键面独立的色调/饱和度，-1=未自定义
+ *  （继承背景组）。饱和度继承也曾用 100 当标记，但那样「灰背景+全彩
+ *  键面」无法表达（codex P1），统一改为 -1 显式标记。 */
+fun readKeyHue(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_KEY_HUE, -1)
+        .takeIf { it in -1..360 } ?: -1
+
+fun readKeySat(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_KEY_SAT, -1)
+        .takeIf { it in -1..100 } ?: -1
+
+fun readThemeSat(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_THEME_SAT, 100)
+        .takeIf { it in 0..100 } ?: 100
 
 /** 背景图片（亮/暗各一组）：设置页压缩到 ≤720px 宽 JPEG 后经桥写入。
  *  variant 只认 light/dark；「无」= 删文件。src 记录来源供设置页回显。 */
@@ -648,6 +681,10 @@ class SettingsBridge(
             .put("themeMode", readThemeMode(context))
             .put("themePreset", readThemePreset(context))
             .put("themeHue", readThemeHue(context))
+            .put("themeSat", readThemeSat(context))
+            .put("englishPos", readEnglishPos(context))
+            .put("keyHue", readKeyHue(context))
+            .put("keySat", readKeySat(context))
             .put("kbHeightPortrait", readKbHeightPortrait(context))
             .apply {
                 val (min, max) = readKbHeightBounds(context)
@@ -1187,6 +1224,54 @@ class SettingsBridge(
         if (hue !in -1..360) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_THEME_HUE, hue).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 英文词候选位置（-1 auto / 1 / 3 / 5）。 */
+    @JavascriptInterface
+    fun setEnglishPos(pos: Int, token: String) = guarded(token) {
+        if (pos !in intArrayOf(-1, 1, 3, 5)) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_ENGLISH_POS, pos).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 皮肤：键面色调（-1=继承背景组）。 */
+    @JavascriptInterface
+    fun setKeyHue(hue: Int, token: String) = guarded(token) {
+        if (hue !in -1..360) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_KEY_HUE, hue).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 皮肤：键面饱和度（-1=继承背景组；0..100=显式浓度，100=全彩）。 */
+    @JavascriptInterface
+    fun setKeySat(sat: Int, token: String) = guarded(token) {
+        if (sat !in -1..100) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_KEY_SAT, sat).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 饱和度滑条（黑白灰）：0..100 落盘，100=全彩默认。 */
+    @JavascriptInterface
+    fun setThemeSat(sat: Int, token: String) = guarded(token) {
+        if (sat !in 0..100) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_THEME_SAT, sat).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

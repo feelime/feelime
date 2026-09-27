@@ -320,11 +320,13 @@ class SetupActivity : AppCompatActivity() {
             // its state after showPage lands anyway.
             if (bridge.onSubPage) {
                 // 逐级返回（issue #17 三级页）：phrases → input、
-                // licenses → about（验收反馈：许可三级页）；其余子页与
-                // 设计 §6.2 一律回 home。
+                // licenses → about（验收反馈：许可三级页）、skin →
+                // appearance（皮肤三级页，codex P2：与页内 ‹ 按钮一致）；
+                // 其余子页与设计 §6.2 一律回 home。
                 val parent = when (bridge.subPageName) {
                     "phrases" -> "input"
                     "licenses" -> "about"
+                    "skin" -> "appearance"
                     else -> "home"
                 }
                 bridge.onSubPage = false

@@ -1843,6 +1843,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("themeMode", readThemeMode(this))
             .put("themePreset", readThemePreset(this))
             .put("themeHue", readThemeHue(this))
+            .put("themeSat", readThemeSat(this))
+            .put("englishPos", readEnglishPos(this))
+            .put("keyHue", readKeyHue(this))
+            .put("keySat", readKeySat(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("associationOn", readAssociation(this))
             .put("dynamicDateTimeOn", readDynamicDateTime(this))
@@ -2317,11 +2321,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     (getSystemService(VIBRATOR_SERVICE) as? Vibrator)
                 }
                 if (vibrator == null || !vibrator.hasVibrator()) return
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
-                } else {
-                    vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 20), -1))
-                }
+                // 波形 one-shot 而非 createPredefined(EFFECT_CLICK)：预定义
+                // 效果在 MIUI 上静默无效（真机实录 2026-09-27，验收反馈
+                // 「震动无效」）——MIUI 对 VibrationEffect 预定义语义的支持
+                // 参差，裸波形（默认振幅、20ms）全 ROM 可用。丢掉新马达
+                // 的 click 曲线精细度，换确定性。
+                vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 20), -1))
             }
         }
 

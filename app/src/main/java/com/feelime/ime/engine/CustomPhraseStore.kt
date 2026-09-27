@@ -36,7 +36,7 @@ object CustomPhraseStore {
      *  english 段）。老 json 无此字段按 v1；load 见版本不匹配按当前规则
      *  重派生一次——否则升级用户的 txt 停在旧规则（英文词直出静默失效，
      *  真机验收 2026-09-26 问题 B），要碰一次开关才恢复。 */
-    private const val DERIVE_VERSION = 2
+    private const val DERIVE_VERSION = 4
 
     /** 预设符号词（issue #17 原始需求：箭头/对错/心星手势/动物/天象/
      * 性别符号；用户可在设置的三级页增删改）。 */
@@ -133,6 +133,88 @@ object CustomPhraseStore {
         "brightness" to "brightness", "volume" to "volume", "airplane" to "airplane", "hotspot" to "hotspot", "roaming" to "roaming",
         "voicemail" to "voicemail", "CSDN" to "csdn", "Gitee" to "gitee", "LeetCode" to "leetcode", "App Store" to "appstore",
         "iCloud" to "icloud",
+    )
+
+    // 高频日常词（#29 扩容二轮 2026-09-27，用户点名 how/are 等要能打）：
+    val DAILY_ENGLISH_WORDS: List<Pair<String, String>> = listOf(
+        "how" to "how", "What" to "what", "When" to "when", "Where" to "where", "Which" to "which", "who" to "who", "Whom" to "whom",
+        "Whose" to "whose", "why" to "why", "Want" to "want", "Need" to "need", "Love" to "love", "Know" to "know", "Think" to "think",
+        "say" to "say", "Tell" to "tell", "ask" to "ask", "Answer" to "answer", "Help" to "help", "Work" to "work", "Play" to "play",
+        "Walk" to "walk", "Jump" to "jump", "Swim" to "swim", "eat" to "eat", "Drink" to "drink", "Sleep" to "sleep", "Read" to "read",
+        "Write" to "write", "Learn" to "learn", "Study" to "study", "Teach" to "teach", "Speak" to "speak", "Listen" to "listen", "Look" to "look",
+        "Watch" to "watch", "Hear" to "hear", "Feel" to "feel", "Touch" to "touch", "Taste" to "taste", "Smell" to "smell", "Come" to "come",
+        "go" to "go", "Leave" to "leave", "Stay" to "stay", "Arrive" to "arrive", "Return" to "return", "Start" to "start", "Stop" to "stop",
+        "Finish" to "finish", "Begin" to "begin", "end" to "end", "Close" to "close", "buy" to "buy", "Sell" to "sell", "pay" to "pay",
+        "Cost" to "cost", "Spend" to "spend", "Give" to "give", "Bring" to "bring", "Send" to "send", "Receive" to "receive", "Find" to "find",
+        "get" to "get", "put" to "put", "Keep" to "keep", "Hold" to "hold", "Carry" to "carry", "Move" to "move", "Turn" to "turn",
+        "fix" to "fix", "Break" to "break", "Create" to "create", "Call" to "call", "Phone" to "phone", "Text" to "text", "Mail" to "mail",
+        "Chat" to "chat", "Talk" to "talk", "Meet" to "meet", "Visit" to "visit", "Travel" to "travel", "Drive" to "drive", "fly" to "fly",
+        "Sail" to "sail", "Good" to "good", "bad" to "bad", "big" to "big", "Small" to "small", "Tall" to "tall", "Short" to "short",
+        "Wide" to "wide", "Narrow" to "narrow", "Fast" to "fast", "Slow" to "slow", "Early" to "early", "new" to "new", "old" to "old",
+        "Young" to "young", "hot" to "hot", "Cold" to "cold", "Warm" to "warm", "Cool" to "cool", "dry" to "dry", "wet" to "wet",
+        "Clean" to "clean", "Dirty" to "dirty", "Easy" to "easy", "Hard" to "hard", "Soft" to "soft", "Light" to "light", "Dark" to "dark",
+        "Thick" to "thick", "Thin" to "thin", "Rich" to "rich", "Poor" to "poor", "Full" to "full", "Empty" to "empty", "High" to "high",
+        "low" to "low", "Near" to "near", "far" to "far", "Safe" to "safe", "Dangerous" to "dangerous", "Happy" to "happy", "sad" to "sad",
+        "Angry" to "angry", "Tired" to "tired", "Hungry" to "hungry", "Thirsty" to "thirsty", "Bored" to "bored", "Busy" to "busy", "Free" to "free",
+        "Ready" to "ready", "Maybe" to "maybe", "Almost" to "almost", "Always" to "always", "Never" to "never", "Often" to "often", "Sometimes" to "sometimes",
+        "Usually" to "usually", "Rarely" to "rarely", "Really" to "really", "Very" to "very", "Quite" to "quite", "too" to "too", "Enough" to "enough",
+        "Again" to "again", "Once" to "once", "Twice" to "twice", "day" to "day", "Week" to "week", "Month" to "month", "Year" to "year",
+        "Hour" to "hour", "Second" to "second", "Morning" to "morning", "Noon" to "noon", "Evening" to "evening", "Night" to "night", "Today" to "today",
+        "Tomorrow" to "tomorrow", "Yesterday" to "yesterday", "now" to "now", "Soon" to "soon", "Later" to "later", "Then" to "then", "Next" to "next",
+        "Last" to "last", "First" to "first", "Third" to "third", "People" to "people", "Person" to "person", "Friend" to "friend", "Family" to "family",
+        "Mother" to "mother", "Father" to "father", "Sister" to "sister", "Brother" to "brother", "son" to "son", "Daughter" to "daughter", "Child" to "child",
+        "Children" to "children", "kid" to "kid", "Baby" to "baby", "Girl" to "girl", "boy" to "boy", "Husband" to "husband", "Wife" to "wife",
+        "Home" to "home", "Room" to "room", "Door" to "door", "Window" to "window", "Table" to "table", "Chair" to "chair", "bed" to "bed",
+        "Kitchen" to "kitchen", "Bathroom" to "bathroom", "Garden" to "garden", "Street" to "street", "Road" to "road", "City" to "city", "Town" to "town",
+        "Country" to "country", "World" to "world", "Place" to "place", "Space" to "space", "Water" to "water", "Coffee" to "coffee", "Milk" to "milk",
+        "Bread" to "bread", "Meat" to "meat", "Fruit" to "fruit", "Sugar" to "sugar", "Salt" to "salt", "Food" to "food", "Lunch" to "lunch",
+        "Dinner" to "dinner", "Breakfast" to "breakfast", "Money" to "money", "Price" to "price", "Dollar" to "dollar", "Number" to "number", "Letter" to "letter",
+        "Word" to "word", "Title" to "title", "Story" to "story", "Book" to "book", "List" to "list", "Show" to "show", "Sport" to "sport",
+        "Ball" to "ball", "Team" to "team", "Player" to "player", "School" to "school", "Class" to "class", "Student" to "student", "Teacher" to "teacher",
+        "Lesson" to "lesson", "Exam" to "exam", "Homework" to "homework", "Question" to "question", "job" to "job", "Company" to "company", "Boss" to "boss",
+        "Project" to "project", "Plan" to "plan", "Idea" to "idea", "News" to "news", "Fact" to "fact", "Truth" to "truth", "Dream" to "dream",
+        "Goal" to "goal", "Life" to "life", "Death" to "death", "Health" to "health", "Body" to "body", "Head" to "head", "Hand" to "hand",
+        "ear" to "ear", "Nose" to "nose", "Mouth" to "mouth", "Foot" to "foot", "leg" to "leg", "arm" to "arm", "Heart" to "heart",
+        "car" to "car", "bus" to "bus", "Train" to "train", "Plane" to "plane", "Ship" to "ship", "Trip" to "trip", "map" to "map",
+        "Spring" to "spring", "Summer" to "summer", "Autumn" to "autumn", "Winter" to "winter", "Rain" to "rain", "Snow" to "snow", "Wind" to "wind",
+        "Moon" to "moon", "Star" to "star", "sky" to "sky", "Tree" to "tree", "Flower" to "flower", "Grass" to "grass", "River" to "river",
+        "Mountain" to "mountain", "Beach" to "beach", "Rainbow" to "rainbow", "Storm" to "storm", "Thunder" to "thunder", "Lightning" to "lightning", "Because" to "because",
+        "Since" to "since", "While" to "while", "During" to "during", "Before" to "before", "After" to "after", "Above" to "above", "Below" to "below",
+        "Under" to "under", "Over" to "over", "Between" to "between", "Through" to "through", "Against" to "against", "Without" to "without", "About" to "about",
+        "Able" to "able", "Available" to "available", "Useful" to "useful", "Helpful" to "helpful", "Important" to "important", "Different" to "different", "Similar" to "similar",
+        "Better" to "better", "Best" to "best", "Worse" to "worse", "Worst" to "worst", "Possible" to "possible", "True" to "true", "False" to "false",
+        "Right" to "right", "Wrong" to "wrong", "Clear" to "clear", "Simple" to "simple", "Quick" to "quick", "Direct" to "direct", "Exact" to "exact",
+        "Black" to "black", "White" to "white", "red" to "red", "Blue" to "blue", "Green" to "green", "Yellow" to "yellow", "Purple" to "purple",
+        "Pink" to "pink", "Brown" to "brown", "Grey" to "grey", "Gray" to "gray", "There" to "there", "Everywhere" to "everywhere", "Anywhere" to "anywhere",
+        "Somewhere" to "somewhere", "Nowhere" to "nowhere", "Everyone" to "everyone", "Everything" to "everything", "Nobody" to "nobody", "Nothing" to "nothing", "Something" to "something",
+        "Anything" to "anything", "Someone" to "someone", "Anybody" to "anybody", "lot" to "lot", "Kind" to "kind", "Type" to "type", "way" to "way",
+        "Method" to "method", "Part" to "part", "bit" to "bit", "Group" to "group", "set" to "set", "Pair" to "pair", "box" to "box",
+        "bag" to "bag", "Please" to "please", "Thank" to "thank", "Welcome" to "welcome", "Congratulations" to "congratulations", "Excuse" to "excuse", "Search" to "search",
+        "Check" to "check", "Choose" to "choose", "Pick" to "pick", "Select" to "select", "English" to "english", "Japanese" to "japanese", "French" to "french",
+        "Russian" to "russian", "German" to "german", "Spanish" to "spanish", "Korean" to "korean", "Phrase" to "phrase", "Sentence" to "sentence", "Paragraph" to "paragraph",
+        "Chapter" to "chapter", "Section" to "section", "Edit" to "edit", "cut" to "cut", "Internet" to "internet", "Online" to "online", "Offline" to "offline",
+        "Website" to "website", "Webpage" to "webpage", "Link" to "link", "Network" to "network", "Power" to "power", "Energy" to "energy", "oil" to "oil",
+        "gas" to "gas", "Fire" to "fire", "ice" to "ice", "war" to "war", "Peace" to "peace", "Doctor" to "doctor", "Nurse" to "nurse",
+        "Driver" to "driver", "Farmer" to "farmer", "Cook" to "cook", "Waiter" to "waiter", "Singer" to "singer", "Dancer" to "dancer", "Artist" to "artist",
+        "Writer" to "writer", "Holiday" to "holiday", "Vacation" to "vacation", "Birthday" to "birthday", "Party" to "party", "Gift" to "gift", "Present" to "present",
+        "Card" to "card", "Picture" to "picture", "Image" to "image", "Painting" to "painting", "Drawing" to "drawing", "Voice" to "voice", "Sound" to "sound",
+        "Noise" to "noise", "Silence" to "silence", "Quiet" to "quiet", "Loud" to "loud", "Problem" to "problem", "Solution" to "solution", "Trouble" to "trouble",
+        "Difficulty" to "difficulty", "Past" to "past", "History" to "history", "Science" to "science", "art" to "art", "Math" to "math", "Physics" to "physics",
+        "Chemistry" to "chemistry", "Biology" to "biology", "law" to "law", "Business" to "business", "Economics" to "economics", "Guitar" to "guitar", "Violin" to "violin",
+        "Drum" to "drum", "Football" to "football", "Basketball" to "basketball", "Tennis" to "tennis", "Swimming" to "swimming", "Golf" to "golf", "Chess" to "chess",
+        "Festival" to "festival", "Christmas" to "christmas",
+    )
+
+    // 音节冲突词（键序=正常拼音，如 are=a+re、time=ti+me）：quality 0 落表排
+    // 在拼音候选之后（低位直出），不顶中文。
+    val COLLIDING_ENGLISH_WORDS: List<Pair<String, String>> = listOf(
+        "are" to "are", "Like" to "like", "Hate" to "hate", "run" to "run", "see" to "see", "Open" to "open", "Take" to "take",
+        "Lose" to "lose", "Make" to "make", "Ride" to "ride", "Long" to "long", "Late" to "late", "Sure" to "sure", "Time" to "time",
+        "Minute" to "minute", "man" to "man", "Woman" to "woman", "House" to "house", "tea" to "tea", "Rice" to "rice", "Orange" to "orange",
+        "Banana" to "banana", "Cake" to "cake", "Name" to "name", "Page" to "page", "Line" to "line", "Song" to "song", "Game" to "game",
+        "Meeting" to "meeting", "eye" to "eye", "Bike" to "bike", "sun" to "sun", "sea" to "sea", "Same" to "same", "Here" to "here",
+        "Piece" to "piece", "Change" to "change", "Chinese" to "chinese", "Share" to "share", "Delete" to "delete", "Police" to "police", "Future" to "future",
+        "Medicine" to "medicine", "Piano" to "piano", "Running" to "running", "Boxing" to "boxing",
     )
 
     data class State(
@@ -262,7 +344,9 @@ object CustomPhraseStore {
         val txt = txtFile(context)
         val deriving = (if (enabled) items else emptyList()) + imported + user
         val codes = codeTable(context)
-        val english = if (englishEnabled) englishLines(codes) else emptyList()
+        val english = if (englishEnabled) {
+            englishLines(codes, frequencyWords = frequencyEnglishWords(context))
+        } else emptyList()
         if (deriving.isEmpty() && english.isEmpty()) {
             txt.delete()
             return
@@ -291,25 +375,40 @@ object CustomPhraseStore {
         txt.writeText(lines.joinToString("\n", postfix = "\n"))
     }
 
-    /** #29-3：内置英文表 -> txt 行，过滤能被完整切成拼音音节的词
-     *  （如 sudo/beta/demo——su+do/be+ta/de+mo 是正常拼音键序，插英文
-     *  候选反而打扰）。码表缺失（资产未就绪）时不过滤全量落表。
-     *  参数化 words 便于单测。 */
+    /** #29-3：内置英文表 -> txt 行，双轨落表（扩容二轮 2026-09-27，用户
+     *  点名 how/are 都要能打）：
+     *  - 主轨（DEFAULT+DAILY，quality 1）：切不开拼音音节的词（github/
+     *    how），键序无拼音语义，直出不打扰。
+     *  - 低位轨（COLLIDING，quality 0）：键序=正常拼音的词（are=a+re、
+     *    time=ti+me）——用户高频英文词也要能打，以最低权重落表排在
+     *    拼音候选之后，不顶中文。
+     *  码表缺失（资产未就绪）时主轨不过滤全量落表。参数化便于单测。 */
     internal fun englishLines(
         codes: JSONObject?,
-        words: List<Pair<String, String>> = DEFAULT_ENGLISH_WORDS,
+        words: List<Pair<String, String>> = DEFAULT_ENGLISH_WORDS + DAILY_ENGLISH_WORDS,
+        lowRankWords: List<Pair<String, String>> = COLLIDING_ENGLISH_WORDS,
+        frequencyWords: List<Pair<String, String>> = emptyList(),
     ): List<String> {
         val syllables = HashSet<String>()
         if (codes != null) {
             val keys = codes.keys()
             while (keys.hasNext()) syllables.add(keys.next())
         }
-        return words.mapNotNull { (text, code) ->
+        val primary = words.mapNotNull { (text, code) ->
             val collides = syllables.isNotEmpty() &&
                 syllableSegmentations(code, syllables).any { seg -> seg.isNotEmpty() }
             if (collides) null else "$text\t$code\t1"
-        }
+        } + frequencyWords.map { (text, code) -> "$text\t$code\t1" }
+        // 权重注（AVD 实测 2026-09-27）：stabledb 词条权重不参与与主词典
+        // 的组间排序——0/1/-99 落表后候选位次相同（are 都在第 4 位）。
+        // 低位轨保留作语义分类（与拼音键序重叠的词），quality 与主轨
+        // 一致；真要压位需双 translator 实例重构（下版本评估）。
+        return primary + lowRankWords.map { (text, code) -> "$text\t$code\t1" }
     }
+
+    /** 测试探针：码能否被音节集完整切分（低位表完整性断言用）。 */
+    internal fun englishLinesRun(code: String, syllables: Set<String>): Boolean =
+        syllableSegmentations(code, syllables).any { it.isNotEmpty() }
 
     /**
      * 全拼码列 -> 各双拼方案的完整键序（#29-5 验收：双拼用户打 fgmn 也要
@@ -389,6 +488,24 @@ object CustomPhraseStore {
             if (combos.size > MAX_AUTO_CODES) combos = combos.take(MAX_AUTO_CODES)
         }
         return combos.filter { it.length <= 48 }
+    }
+
+    /** 高频英文词表（assets/english-words.txt，google-10000 词频）：一行
+     *  `Display\tcode`。不编译成 Kotlin 字面量——9000+ 对的 listOf 会
+     *  生成超 JVM 65KB 方法体限制的巨型 clinit（编译 daemon 崩，
+     *  FileNotFoundException 于 class 输出）。lazy 读 + 缓存。 */
+    @Volatile private var frequencyWordsCache: List<Pair<String, String>>? = null
+    fun frequencyEnglishWords(context: Context): List<Pair<String, String>> {
+        frequencyWordsCache?.let { return it }
+        return runCatching {
+            context.assets.open("english-words.txt").bufferedReader().readLines()
+                .mapNotNull { line ->
+                    val parts = line.split('\t')
+                    if (parts.size == 2 && parts[0].isNotEmpty() && parts[1].isNotEmpty()) {
+                        parts[0] to parts[1]
+                    } else null
+                }.also { frequencyWordsCache = it }
+        }.getOrDefault(emptyList())
     }
 
     /** APK 单字音节表（char-pinyin.json，generate-char-pinyin.py 产出）。 */

@@ -30,6 +30,8 @@ const THEME_PRESET_COLORS = {
     classic: '#23c890', ocean: '#4da3ff', violet: '#a78bfa',
     amber: '#ff9f45', sakura: '#ff8fb1', teal: '#2ec8c8',
 };
+// 预置→hue 映射与 keyboard.css html[data-preset] 同源；键面色板复用同一份。
+const PRESET_HUE = { classic: 160, ocean: 212, violet: 255, amber: 27, sakura: 344, teal: 180 };
 
 const I18N = {
     zh: {
@@ -394,6 +396,27 @@ const I18N = {
         "input.feel.themeMode": "色彩模式",
         "input.feel.themePreset": "键盘色调",
         "input.feel.themePresetHint": "一个色相驱动整套键盘配色（键帽/面板/强调色）；拖滑条自定义，或点预置快捷档。",
+        "input.feel.themeSat": "键盘饱和度",
+        "input.feel.themePreview": "效果预览",
+        "input.feel.themePreviewHint": "色调、饱和度、按键不透明度与背景图在这里实时反映；亮暗各一组。",
+        "preview.light": "亮色",
+        "preview.dark": "暗色",
+        "entry.skin.title": "皮肤",
+        "entry.skin.subtitle": "色调 · 饱和度 · 背景图",
+        "page.skin": "皮肤",
+        "nav.backAppearance": "返回外观",
+        "input.feel.keyHue": "键面色调",
+        "input.feel.keyHueHint": "只调键帽/强调色的色相（背景不动）；点「跟键盘」还原跟随。",
+        "preset.followKey": "跟键盘色",
+        "input.feel.keySat": "键面饱和度",
+        "input.feel.keySatHint": "只调键帽组的色彩浓度；最左=键帽变黑白灰。",
+        "input.english.posLabel": "英文词候选位置",
+        "input.english.posHint": "自动：不打扰拼音的词排第 1 位、与拼音键序重叠的排第 3 位；也可固定。",
+        "input.english.posAuto": "自动",
+        "input.english.pos1": "第 1 位",
+        "input.english.pos3": "第 3 位",
+        "input.english.pos5": "第 5 位",
+        "input.feel.themeSatHint": "拉到最左是黑白灰（明暗模式定黑白基底），往右色彩渐浓。",
         "preset.classic": "默认绿",
         "preset.ocean": "海蓝",
         "preset.violet": "紫罗兰",
@@ -536,6 +559,7 @@ const I18N = {
         "language.en": "English",
         "nav.groups": "Settings sections",
         "nav.back": "Back to home",
+        "nav.backAppearance": "Back to appearance",
         "entry.input.title": "Keyboard & input",
         "entry.input.subtitle": "Double pinyin · Custom keyboard",
         "entry.dict.title": "Lexicon",
@@ -875,6 +899,17 @@ const I18N = {
         "input.feel.themeMode": "Color mode",
         "input.feel.themePreset": "Keyboard tint",
         "input.feel.themePresetHint": "One hue drives the whole keyboard palette; drag the slider or tap a preset.",
+        "input.feel.themeSat": "Keyboard saturation",
+        "input.feel.themeSatHint": "Far left is grayscale (light/dark sets the base); colors deepen to the right.",
+        "input.feel.themePreview": "Preview",
+        "input.feel.themePreviewHint": "Reflects tint, saturation, key opacity and background images live; one board per theme.",
+        "preview.light": "Light",
+        "preview.dark": "Dark",
+        "input.feel.keyHue": "Keycap tint",
+        "input.feel.keyHueHint": "Recolors keycaps/accents only (background stays); tap Follow to inherit again.",
+        "input.feel.keySat": "Keycap saturation",
+        "input.feel.keySatHint": "Color intensity of the keycap group only; far left makes keycaps grayscale.",
+        "preset.followKey": "Follow keyboard",
         "preset.classic": "Classic green",
         "preset.ocean": "Ocean",
         "preset.violet": "Violet",
@@ -893,6 +928,9 @@ const I18N = {
         "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
         "entry.appearance.title": "Appearance",
         "entry.appearance.subtitle": "Color mode · Background · Opacity",
+        "entry.skin.title": "Skin",
+        "entry.skin.subtitle": "Tint · Saturation · Background",
+        "page.skin": "Skin",
         "input.appearance.title": "Appearance",
         "input.appearance.preview": "Preview",
         "input.appearance.previewHint": "On this page the real keyboard pops up at the bottom of the screen (this page yields). Every setting above applies to it live - type here to try.",
@@ -999,7 +1037,7 @@ const I18N = {
     },
 };
 
-const PAGES = ["home", "appearance", "input", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -1254,16 +1292,51 @@ let currentPage = "home";
 
 function showPage(name) {
     if (!PAGES.includes(name)) return;
-    const wasAppearance = currentPage === "appearance";
+    const wasAppearance = currentPage === "appearance" || currentPage === "skin";
     currentPage = name;
     document.querySelectorAll("[data-page]").forEach(node => {
         node.hidden = node.dataset.page !== name;
     });
     if (typeof window.scrollTo === "function") window.scrollTo(0, 0);
     // 外观页预览：真实键盘在屏幕底部弹出、本页窗口被压缩；离开时收起。
-    if (name === "appearance" && !wasAppearance) call("previewKeyboard", true);
-    if (name !== "appearance" && wasAppearance) call("previewKeyboard", false);
+    // 皮肤页（从外观拆出）同样要真实键盘预览：调色时看得见效果——进出
+    // 两个预览页（appearance↔skin）不收键盘（codex P1：隐藏条件要与
+    // 显示条件同一个集合，否则外观→皮肤会把预览键盘收掉）。
+    const isPreviewPage = name === "appearance" || name === "skin";
+    if (isPreviewPage && !wasAppearance) call("previewKeyboard", true);
+    if (!isPreviewPage && wasAppearance) call("previewKeyboard", false);
     call("reportPage", name);
+}
+
+/* --- 皮肤滑条显示态（模块级，跨 render 存活）-------------------------- */
+
+// 四个色调/饱和度滑条的本地显示值 + 键面组跟随态。放模块级是因为
+// renderFeel 每轮重建局部变量：拖动中的异步 state 回推会连预览带滑条
+// 一起拽回旧值（codex R2 复核：焦点守卫只挡 input.value 不够，显示值
+// 本身要在拖动期间保留本地值）。
+let themeHueShown = 160, themeSatShown = 100;
+let keyHueShown = 160, keySatShown = 100;
+let keyHueFollow = true, keySatFollow = true;
+// 预览素材（用户验收五轮）：按键不透明度 + 亮/暗背景图（state 带
+// base64，source=none 时无图）。
+let pvKeyAlpha = 1;
+let pvBgLightImg = "none", pvBgDarkImg = "none";
+
+// 最终色彩预览（用户验收三轮起持续升级）：任一滑条拖动实时反映。键面
+// 组跟随（keyHue/keySat=-1）时用背景组的本地拖动值，脱离跟随后用自己
+// 的；不透明度与背景图同样进预览（亮/暗两板各取各的图）。
+function updateThemePreview() {
+    const pv = $("themePreview");
+    if (!pv) return;
+    pv.style.setProperty("--pv-hue", String(Math.round(themeHueShown)));
+    pv.style.setProperty("--pv-sat", String(themeSatShown / 100));
+    const kh = keyHueFollow ? themeHueShown : keyHueShown;
+    const ks = keySatFollow ? themeSatShown : keySatShown;
+    pv.style.setProperty("--pv-key-hue", String(Math.round(kh)));
+    pv.style.setProperty("--pv-key-sat", String(ks / 100));
+    pv.style.setProperty("--pv-key-alpha", String(pvKeyAlpha));
+    pv.style.setProperty("--pv-bg-img-light", pvBgLightImg);
+    pv.style.setProperty("--pv-bg-img-dark", pvBgDarkImg);
 }
 
 /* --- render ------------------------------------------------------------ */
@@ -1332,29 +1405,136 @@ function renderFeel(state) {
         });
     }
     if (hueInput) {
-        // 预置→hue 映射与 keyboard.css html[data-preset] 同源。
-        const presetHue = { classic: 160, ocean: 212, violet: 255, amber: 27, sakura: 344, teal: 180 };
-        const shown = hasCustomHue ? Math.round(hue)
-            : presetHue[THEME_PRESET_LIST.includes(state.themePreset) ? state.themePreset : "classic"] || 160;
         // 焦点守卫（与 setSelect 同款）：拖动中的异步 state 回推不得覆盖
         // 本地值——否则旧回包会把滑条拽回旧 hue，松手提交的就是错值。
+        // 显示值存模块级（themeHueShown 等）：renderFeel 每轮重建局部
+        // let，跳过赋值也保不住上一轮的拖动值（codex R2 复核）。
         if (document.activeElement !== hueInput) {
-            hueInput.value = String(shown);
-            hueInput.style.setProperty("--thumb-hue", String(shown));
+            themeHueShown = hasCustomHue ? Math.round(hue)
+                : PRESET_HUE[THEME_PRESET_LIST.includes(state.themePreset) ? state.themePreset : "classic"] || 160;
+            hueInput.value = String(themeHueShown);
+            hueInput.style.setProperty("--thumb-hue", String(themeHueShown));
         }
         hueInput.classList.toggle("customized", hasCustomHue);
         hueInput.oninput = () => {
-            // 拖动只跟 thumb 颜色（本地），松手才落盘+广播生效（hello
-            // 全量重推，拖动实时推会抖）。
+            // 拖动只跟 thumb 颜色与预览（本地），松手才落盘+广播生效
+            // （hello 全量重推，拖动实时推会抖）。
             hueInput.style.setProperty("--thumb-hue", hueInput.value);
+            const v = Number(hueInput.value);
+            if (Number.isFinite(v)) { themeHueShown = Math.max(0, Math.min(360, Math.round(v))); updateThemePreview(); }
         };
         hueInput.onchange = () => {
             const v = Math.round(Number(hueInput.value));
             if (Number.isFinite(v) && v >= 0 && v <= 360) call("setThemeHue", v);
         };
     }
+    // 饱和度滑块（黑白灰，用户验收二轮）：0=纯灰度。与 hue 同款焦点
+    // 守卫 + 松手提交。
+    const satInput = $("themeSat");
+    if (satInput) {
+        const sat = Number(state.themeSat);
+        if (document.activeElement !== satInput) {
+            themeSatShown = Number.isFinite(sat) && sat >= 0 && sat <= 100 ? Math.round(sat) : 100;
+            satInput.value = String(themeSatShown);
+        }
+        satInput.oninput = () => {
+            const v = Number(satInput.value);
+            if (Number.isFinite(v)) { themeSatShown = Math.max(0, Math.min(100, Math.round(v))); updateThemePreview(); }
+        };
+        satInput.onchange = () => {
+            const v = Math.round(Number(satInput.value));
+            if (Number.isFinite(v) && v >= 0 && v <= 100) call("setThemeSat", v);
+        };
+    }
+    // 皮肤双组（用户验收四轮+codex 收口）：键面 hue/sat 独立滑条；
+    // -1=跟随背景组（饱和度继承标记同样为 -1，100 是显式全彩）。
+    const keyHueInput = $("keyHue");
+    if (keyHueInput) {
+        const kv = Number(state.keyHue);
+        const hasKeyHue = Number.isFinite(kv) && kv >= 0 && kv <= 360;
+        // 跟随态也受焦点守卫：拖动中（oninput 已置 false）的异步回推
+        // 不得把它翻回跟随，否则预览又跳回背景组取值。
+        if (document.activeElement !== keyHueInput) keyHueFollow = !hasKeyHue;
+        // 焦点守卫覆盖到显示值与预览（模块级变量才有「保留」可言）。
+        if (document.activeElement !== keyHueInput) {
+            keyHueShown = hasKeyHue ? Math.round(kv) : themeHueShown;
+            keyHueInput.value = String(keyHueShown);
+            keyHueInput.style.setProperty("--thumb-hue", String(keyHueShown));
+        }
+        keyHueInput.classList.toggle("customized", hasKeyHue);
+        keyHueInput.oninput = () => {
+            // 拖动键面滑条=脱离跟随（codex R2-P2：跟随态下拖动预览不动）。
+            keyHueFollow = false;
+            keyHueInput.style.setProperty("--thumb-hue", keyHueInput.value);
+            const v = Number(keyHueInput.value);
+            if (Number.isFinite(v)) { keyHueShown = Math.max(0, Math.min(360, Math.round(v))); updateThemePreview(); }
+        };
+        keyHueInput.onchange = () => {
+            const v = Math.round(Number(keyHueInput.value));
+            if (Number.isFinite(v) && v >= 0 && v <= 360) call("setKeyHue", v);
+        };
+        // 键面色调同款取色（用户验收五轮）：预置色板点选=setKeyHue(预置 hue)，
+        // 「跟键盘」档=键面组整体还原跟随（hue+sat 都回 -1）；自定义值
+        // 恰为某预置 hue 时该档选中。
+        const keySwatches = $("keyHueSwatches");
+        if (keySwatches) {
+            keySwatches.textContent = "";
+            const follow = document.createElement("button");
+            follow.type = "button";
+            follow.className = "preset-swatch follow" + (hasKeyHue ? "" : " active");
+            follow.setAttribute("aria-label", t("preset.followKey"));
+            follow.setAttribute("aria-pressed", hasKeyHue ? "false" : "true");
+            follow.addEventListener("click", () => {
+                call("setKeyHue", -1);
+                call("setKeySat", -1);
+            });
+            keySwatches.append(follow);
+            THEME_PRESET_LIST.forEach(id => {
+                const dot = document.createElement("button");
+                dot.type = "button";
+                const active = hasKeyHue && Math.round(kv) === PRESET_HUE[id];
+                dot.className = "preset-swatch" + (active ? " active" : "");
+                dot.style.setProperty("--sw", THEME_PRESET_COLORS[id] || "#23c890");
+                dot.setAttribute("aria-label", t("preset." + id));
+                dot.setAttribute("aria-pressed", active ? "true" : "false");
+                dot.addEventListener("click", () => call("setKeyHue", PRESET_HUE[id]));
+                keySwatches.append(dot);
+            });
+        }
+    }
+    const keySatInput = $("keySat");
+    if (keySatInput) {
+        const ks = Number(state.keySat);
+        const hasKeySat = Number.isFinite(ks) && ks >= 0 && ks <= 100;
+        // 跟随态同受焦点守卫（见 keyHue）。
+        if (document.activeElement !== keySatInput) keySatFollow = !hasKeySat;
+        if (document.activeElement !== keySatInput) {
+            keySatShown = hasKeySat ? Math.round(ks) : themeSatShown;
+            keySatInput.value = String(keySatShown);
+        }
+        keySatInput.oninput = () => {
+            // 拖动键面滑条=脱离跟随（同 keyHue）。
+            keySatFollow = false;
+            const v = Number(keySatInput.value);
+            if (Number.isFinite(v)) { keySatShown = Math.max(0, Math.min(100, Math.round(v))); updateThemePreview(); }
+        };
+        keySatInput.onchange = () => {
+            const v = Math.round(Number(keySatInput.value));
+            if (Number.isFinite(v) && v >= 0 && v <= 100) call("setKeySat", v);
+        };
+    }
+    // 预览素材先行初始化（不透明度 + 亮/暗背景图），再刷预览。
     const opacity = $("keyOpacity");
-    if (opacity) opacity.value = String(Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100))));
+    if (opacity) {
+        const opPct = Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100)));
+        pvKeyAlpha = opPct / 100;
+        opacity.value = String(opPct);
+    }
+    const pvBg = (imgKey, srcKey) => (state[srcKey] && state[srcKey] !== "none" && state[imgKey])
+        ? `url(data:image/jpeg;base64,${state[imgKey]})` : "none";
+    pvBgLightImg = pvBg("bgImageLight", "bgImageLightSource");
+    pvBgDarkImg = pvBg("bgImageDark", "bgImageDarkSource");
+    updateThemePreview();
     const bubble = $("keyBubble");
     if (bubble) bubble.checked = state.keyBubble === true;
     const lingerSel = $("bubbleLinger");
@@ -1876,6 +2056,10 @@ function runSettingsSearch(query) {
     if (!q) { box.hidden = true; box.textContent = ""; return; }
     if (!searchIndex) searchIndex = buildSearchIndex();
     const matched = searchIndex.filter(entry => entry.text.toLowerCase().includes(q));
+    // 标题命中排在说明/关键词命中前面（皮肤页重排后「背景」的首中曾
+    // 变成说明里带「背景」二字的键面色调——用户搜标题词要的是那个设置）。
+    matched.sort((a, b) =>
+        (b.title.toLowerCase().includes(q) ? 1 : 0) - (a.title.toLowerCase().includes(q) ? 1 : 0));
     // 卡兜底条目在同卡有行命中时让位——行级条目就是更准的答案。
     const rowCards = new Set(matched.filter(e => e.rowHit).map(e => e.cardKey));
     const hits = matched.filter(e => e.rowHit || !rowCards.has(e.cardKey)).slice(0, 12);
@@ -1977,36 +2161,21 @@ function renderKeyboards(state) {
     // 谁进菜单。上下移重排全序并即时保存。行是 div 包 label：按钮放在
     // label 外，点按钮不会带翻勾选框。
     const ordered = selectedModeOrder(state) || KEYBOARD_MODES.map(([id]) => id);
-    ordered.forEach((id, index) => {
+    ordered.forEach((id) => {
         const found = KEYBOARD_MODES.find(([modeId]) => modeId === id);
         const label = found ? found[1] : id;
         const row = document.createElement("div");
         row.className = "row switch-row";
         const btns = document.createElement("span");
         btns.className = "kb-order-btns";
-        // 拖动把手（2026-09-27 用户点名「排序改拖动」）：pointer 拖拽实时
-        // 让位，松手落位保存；↑↓ 按钮保留（精确单步 + 无障碍）。
+        // 拖动把手（用户验收二轮拍板：箭头按钮移除，拖动是唯一排序方式）。
         const drag = document.createElement("button");
         drag.type = "button";
         drag.className = "btn small kb-drag";
         drag.textContent = "≡";
         drag.setAttribute("aria-label", t("input.keyboards.drag"));
         drag.addEventListener("pointerdown", (e) => beginKbRowDrag(e, row, drag));
-        const up = document.createElement("button");
-        up.type = "button";
-        up.className = "btn small kb-move";
-        up.textContent = "↑";
-        up.setAttribute("aria-label", t("input.keyboards.moveUp"));
-        up.disabled = index === 0;
-        up.addEventListener("click", () => moveKbRow(row, -1));
-        const down = document.createElement("button");
-        down.type = "button";
-        down.className = "btn small kb-move";
-        down.textContent = "↓";
-        down.setAttribute("aria-label", t("input.keyboards.moveDown"));
-        down.disabled = index === ordered.length - 1;
-        down.addEventListener("click", () => moveKbRow(row, 1));
-        btns.append(drag, up, down);
+        btns.append(drag);
         const lab = document.createElement("label");
         lab.className = "kb-order-label";
         lab.htmlFor = "kbMode_" + id;
@@ -2029,28 +2198,7 @@ function renderKeyboards(state) {
     renderQuickPairSelects(state);
 }
 
-/** 上下移一行并即时保存（#kbModeList 内部重排；保存读 DOM 序）。 */
-function moveKbRow(row, delta) {
-    const host = row.parentElement;
-    if (!host) return;
-    const rows = [...host.children];
-    const at = rows.indexOf(row);
-    const to = at + delta;
-    if (to < 0 || to >= rows.length) return;
-    host.insertBefore(row, delta < 0 ? rows[to] : rows[to].nextSibling);
-    refreshKbMoveDisabled();
-    saveKeyboardSelectionFromUi();
-}
 
-function refreshKbMoveDisabled() {
-    const host = $("kbModeList");
-    if (!host) return;
-    [...host.children].forEach((r, i) => {
-        const [up, down] = r.querySelectorAll(".kb-move");
-        if (up) up.disabled = i === 0;
-        if (down) down.disabled = i === host.children.length - 1;
-    });
-}
 
 /** 拖动重排（≡ 把手）：pointer capture 跟手，拖动行中心越过相邻行中心
  *  即让位（insertBefore 实时换位），松手按 DOM 序保存——与 ↑↓/勾选共
@@ -2060,41 +2208,45 @@ function beginKbRowDrag(e, row, handle) {
     e.preventDefault();
     const host = row.parentElement;
     if (!host) return;
+    const pid = e.pointerId;
     let startY = e.clientY;
     let moved = false;
-    try { handle.setPointerCapture(e.pointerId); } catch (_) { /* 已释放 */ }
+    // capture 与 move/up 监听挂 host（列表容器）而非 handle：让位的
+    // insertBefore 会移除再插回整行，Chromium 在元素移除路径清掉
+    // pending capture，绑在 handle 上的监听第一次换位后就收不到 up——
+    // 拖动挂死且不保存（codex 二轮 P1-2）。host 不随重排移动。
+    try { host.setPointerCapture(pid); } catch (_) { /* 已释放 */ }
     const move = (ev) => {
+        if (ev.pointerId !== pid) return;
         if (!moved && Math.abs(ev.clientY - startY) < 6) return;
         moved = true;
         row.classList.add("dragging");
-        const list = [...host.children];
-        const at = list.indexOf(row);
-        const rect = row.getBoundingClientRect();
-        const center = rect.top + rect.height / 2;
-        if (ev.clientY < center && at > 0) {
-            const prev = list[at - 1];
-            const pr = prev.getBoundingClientRect();
-            if (ev.clientY < pr.top + pr.height / 2) host.insertBefore(row, prev);
-        } else if (ev.clientY > center && at < list.length - 1) {
-            const next = list[at + 1];
-            const nr = next.getBoundingClientRect();
-            if (ev.clientY > nr.top + nr.height / 2) host.insertBefore(row, next.nextSibling);
+        // 指针 y 直接映射目标位（用户验收二轮：逐格让位=只能动一格，
+        // 与箭头无异）。对非拖动兄弟行做落点命中：插到第一个中心超过
+        // 指针的行之前；指针越过全部行则落末尾。拖多远落多远。
+        const siblings = [...host.children].filter(r => r !== row);
+        let anchor = null;
+        for (const sib of siblings) {
+            const rc = sib.getBoundingClientRect();
+            if (ev.clientY < rc.top + rc.height / 2) { anchor = sib; break; }
         }
+        const inPlace = anchor ? row.nextSibling === anchor : host.lastElementChild === row;
+        if (!inPlace) host.insertBefore(row, anchor);
     };
-    const up = (ev) => {
-        try { handle.releasePointerCapture(ev.pointerId); } catch (_) { /* 无捕获 */ }
-        handle.removeEventListener("pointermove", move);
-        handle.removeEventListener("pointerup", up);
-        handle.removeEventListener("pointercancel", up);
+    const finish = (ev) => {
+        if (ev.pointerId !== pid && ev.type !== "lostpointercapture") return;
+        try { host.releasePointerCapture(pid); } catch (_) { /* 无捕获 */ }
+        host.removeEventListener("pointermove", move);
+        host.removeEventListener("pointerup", finish);
+        host.removeEventListener("pointercancel", finish);
+        host.removeEventListener("lostpointercapture", finish);
         row.classList.remove("dragging");
-        if (moved) {
-            refreshKbMoveDisabled();
-            saveKeyboardSelectionFromUi();
-        }
+        if (moved) saveKeyboardSelectionFromUi();
     };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", up);
-    handle.addEventListener("pointercancel", up);
+    host.addEventListener("pointermove", move);
+    host.addEventListener("pointerup", finish);
+    host.addEventListener("pointercancel", finish);
+    host.addEventListener("lostpointercapture", finish);
 }
 
 function renderQuickPairSelects(state) {
@@ -2145,6 +2297,18 @@ function renderCustomPhrases(state) {
         }));
         if (document.activeElement !== $("phrasesOn")) $("phrasesOn").checked = !!phrases.enabled;
         if (document.activeElement !== $("englishWordsOn")) $("englishWordsOn").checked = phrases.englishEnabled !== false;
+        const posSel = $("englishPos");
+        if (posSel) {
+            const pos = [ -1, 1, 3, 5 ].includes(Number(state.englishPos)) ? Number(state.englishPos) : -1;
+            if (document.activeElement !== posSel) posSel.value = String(pos);
+            if (!posSel.dataset.bound) {
+                posSel.dataset.bound = "1";
+                posSel.addEventListener("change", () => {
+                    const v = Number(posSel.value);
+                    if ([ -1, 1, 3, 5 ].includes(v)) call("setEnglishPos", v);
+                });
+            }
+        }
         renderPhraseList();
         const imported = phrases.importedCount || 0;
         const note = $("dictImportNote");
@@ -2544,6 +2708,9 @@ $("themeMode").addEventListener("change", event => call("setThemeMode", event.ta
 let keyOpacityDirty = false;
 $("keyOpacity").addEventListener("input", event => {
     keyOpacityDirty = true;
+    // 拖动实时进预览（用户验收五轮）：不透明度直接影响键帽半透观感。
+    const v = parseInt(event.target.value, 10);
+    if (Number.isFinite(v)) { pvKeyAlpha = Math.max(0, Math.min(1, v / 100)); updateThemePreview(); }
 });
 $("keyOpacity").addEventListener("change", event => {
     if (!keyOpacityDirty) return;

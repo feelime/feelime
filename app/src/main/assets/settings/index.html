@@ -140,47 +140,12 @@
         <option value="dark" data-i18n="themeMode.dark">深色</option>
       </select>
     </div>
-    <!-- #31 键盘色调：预置色板（accent 三件套风格包），点击切换即时生效。 -->
-    <div class="row language-row" id="themePresetRow" data-keywords="色调 颜色 调色板 预置 风格 accent preset color 色相 滑条">
-      <span class="row-label">
-        <span data-i18n="input.feel.themePreset">键盘色调</span>
-        <small data-i18n="input.feel.themePresetHint">一个色相驱动整套键盘配色（键帽/面板/强调色）；拖滑条自定义，或点预置快捷档。</small>
-      </span>
-      <span class="preset-wrap">
-        <input type="range" id="themeHue" min="0" max="360" step="1" value="160"
-               aria-label="自定义色相" />
-        <span class="preset-swatches" id="themePresetSwatches" role="radiogroup" aria-label="键盘色调"></span>
-      </span>
-    </div>
-    <div class="row language-row">
-      <span class="row-label">
-        <span data-i18n="input.feel.bgImageLight">亮色背景</span>
-        <small data-i18n="input.feel.bgImageHint">铺满整个键盘区域（工具条到底部留白），压缩到 720px 宽存储，只在本机生效。</small>
-      </span>
-      <select id="bgImageLight" class="select" aria-label="亮色背景" data-i18n-aria="input.feel.bgImageLight">
-        <option value="none" data-i18n="无">无</option>
-        <option value="builtin" data-i18n="内置">内置</option>
-        <option value="pick" data-i18n="选择图片">选择图片…</option>
-      </select>
-    </div>
-    <div class="row language-row">
-      <span class="row-label">
-        <span data-i18n="input.feel.bgImageDark">暗色背景</span>
-        <small data-i18n="input.feel.bgImageHintDark">亮暗切换时各自使用对应组的图片。</small>
-      </span>
-      <select id="bgImageDark" class="select" aria-label="暗色背景" data-i18n-aria="input.feel.bgImageDark">
-        <option value="none" data-i18n="无">无</option>
-        <option value="builtin" data-i18n="内置">内置</option>
-        <option value="pick" data-i18n="选择图片">选择图片…</option>
-      </select>
-    </div>
-    <div class="row language-row">
-      <span class="row-label">
-        <span data-i18n="input.feel.keyOpacity">按键不透明度</span>
-        <small data-i18n="input.feel.keyOpacityHint">键帽在背景图上的透明程度，文字始终实色。</small>
-      </span>
-      <input type="range" id="keyOpacity" class="slider" min="5" max="100" step="5" aria-label="按键不透明度" data-i18n-aria="input.feel.keyOpacity">
-    </div>
+    <!-- 皮肤（用户验收五轮）：标准 entry 行进三级页（背景/键面独立色调+饱和度）。 -->
+    <button class="entry" type="button" data-target="skin" data-keywords="皮肤 主题 配色 色调 饱和度 skin theme">
+      <span class="entry-label"><span data-i18n="entry.skin.title">皮肤</span>
+      <small data-i18n="entry.skin.subtitle">色调 · 饱和度 · 背景图</small></span>
+      <span class="entry-chevron" aria-hidden="true">›</span>
+    </button>
     <label class="row switch-row" for="keyBubble">
       <span class="row-label">
         <span data-i18n="input.feel.keyBubble">按键气泡</span>
@@ -246,6 +211,107 @@
   </section>
   </main>
 </div>
+
+<div class="page" data-page="skin" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="appearance" data-i18n-aria="nav.backAppearance" aria-label="返回外观">‹</button>
+    <h2 class="page-title" data-i18n="page.skin">皮肤</h2>
+  </header>
+  <main>
+  <section class="card">
+    <!-- #31 键盘色调：预置色板（accent 三件套风格包），点击切换即时生效。 -->
+    <div class="row language-row stack" id="themePresetRow" data-keywords="色调 颜色 调色板 预置 风格 accent preset color 色相 滑条">
+      <span class="row-label">
+        <span data-i18n="input.feel.themePreset">键盘色调</span>
+        <small data-i18n="input.feel.themePresetHint">一个色相驱动整套键盘配色（键帽/面板/强调色）；拖滑条自定义，或点预置快捷档。</small>
+      </span>
+      <span class="preset-wrap">
+        <input type="range" id="themeHue" min="0" max="360" step="1" value="160"
+               aria-label="自定义色相" />
+        <span class="preset-swatches" id="themePresetSwatches" role="radiogroup" aria-label="键盘色调"></span>
+      </span>
+    </div>
+    <div class="row language-row stack" data-keywords="饱和度 黑白 灰 灰度 无彩色 monochrome grayscale saturation">
+      <span class="row-label">
+        <span data-i18n="input.feel.themeSat">键盘饱和度</span>
+        <small data-i18n="input.feel.themeSatHint">拉到最左是黑白灰（明暗模式定黑白基底），往右色彩渐浓。</small>
+      </span>
+      <span class="preset-wrap">
+        <input type="range" id="themeSat" min="0" max="100" step="1" value="100"
+               aria-label="键盘饱和度" />
+      </span>
+    </div>
+    <div class="row language-row stack" data-keywords="键面 色调 key hue">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyHue">键面色调</span>
+        <small data-i18n="input.feel.keyHueHint">只调键帽/强调色的色相（背景不动）；点「跟键盘」还原跟随。</small>
+      </span>
+      <span class="preset-wrap">
+        <input type="range" id="keyHue" min="0" max="360" step="1" value="160" aria-label="键面色调" />
+        <span class="preset-swatches" id="keyHueSwatches" role="radiogroup" aria-label="键面色调"></span>
+      </span>
+    </div>
+    <div class="row language-row stack" data-keywords="键面 饱和度 key saturation">
+      <span class="row-label">
+        <span data-i18n="input.feel.keySat">键面饱和度</span>
+        <small data-i18n="input.feel.keySatHint">只调键帽组的色彩浓度；最左=键帽变黑白灰。</small>
+      </span>
+      <span class="preset-wrap">
+        <input type="range" id="keySat" min="0" max="100" step="1" value="100" aria-label="键面饱和度" />
+      </span>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyOpacity">按键不透明度</span>
+        <small data-i18n="input.feel.keyOpacityHint">键帽在背景图上的透明程度，文字始终实色。</small>
+      </span>
+      <input type="range" id="keyOpacity" class="slider" min="5" max="100" step="5" aria-label="按键不透明度" data-i18n-aria="input.feel.keyOpacity">
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.bgImageLight">亮色背景</span>
+        <small data-i18n="input.feel.bgImageHint">铺满整个键盘区域（工具条到底部留白），压缩到 720px 宽存储，只在本机生效。</small>
+      </span>
+      <select id="bgImageLight" class="select" aria-label="亮色背景" data-i18n-aria="input.feel.bgImageLight">
+        <option value="none" data-i18n="无">无</option>
+        <option value="builtin" data-i18n="内置">内置</option>
+        <option value="pick" data-i18n="选择图片">选择图片…</option>
+      </select>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.bgImageDark">暗色背景</span>
+        <small data-i18n="input.feel.bgImageHintDark">亮暗切换时各自使用对应组的图片。</small>
+      </span>
+      <select id="bgImageDark" class="select" aria-label="暗色背景" data-i18n-aria="input.feel.bgImageDark">
+        <option value="none" data-i18n="无">无</option>
+        <option value="builtin" data-i18n="内置">内置</option>
+        <option value="pick" data-i18n="选择图片">选择图片…</option>
+      </select>
+    </div>
+    <div class="row stack" data-keywords="预览 效果 preview">
+      <span class="row-label">
+        <span data-i18n="input.feel.themePreview">效果预览</span>
+        <small data-i18n="input.feel.themePreviewHint">色调、饱和度、按键不透明度与背景图在这里实时反映；亮暗各一组。</small>
+      </span>
+      <span class="theme-preview-duo" id="themePreview" aria-hidden="true">
+        <span class="tp-group"><span class="tp-tag" data-i18n="preview.light">亮色</span>
+          <span class="tp-board tp-board-light">
+            <span class="tp-row"><span class="tp-key">A</span><span class="tp-key">B</span><span class="tp-key">C</span><span class="tp-key tp-accent-key">彩</span></span>
+            <span class="tp-row"><span class="tp-key tp-special-key">⇧</span><span class="tp-key">D</span><span class="tp-key">E</span><span class="tp-key tp-accent-key">彩</span></span>
+          </span>
+        </span>
+        <span class="tp-group"><span class="tp-tag" data-i18n="preview.dark">暗色</span>
+          <span class="tp-board tp-board-dark">
+            <span class="tp-row"><span class="tp-key">A</span><span class="tp-key">B</span><span class="tp-key">C</span><span class="tp-key tp-accent-key">彩</span></span>
+            <span class="tp-row"><span class="tp-key tp-special-key">⇧</span><span class="tp-key">D</span><span class="tp-key">E</span><span class="tp-key tp-accent-key">彩</span></span>
+          </span>
+        </span>
+      </span>
+    </div>
+  </section>
+  </main>
+</div>
 <div class="page" data-page="input" hidden>
   <header class="page-head">
     <button class="page-back" type="button" data-back data-i18n-aria="nav.back" aria-label="返回首页">‹</button>
@@ -300,6 +366,15 @@
         <span class="row-label"><span data-i18n="input.english.enable">英文词直出</span><small data-i18n="input.english.hint">拼音组合里直接敲 github、ios、android 这类英文词出候选，不用切英文模式；全拼和双拼通用。</small></span>
         <input type="checkbox" id="englishWordsOn" data-keywords="英文 english 英文词 直出 github" class="toggle">
       </label>
+      <div class="row" data-keywords="英文 候选 位置 排名 english position">
+        <span class="row-label"><span data-i18n="input.english.posLabel">英文词候选位置</span><small data-i18n="input.english.posHint">自动：不打扰拼音的词排第 1 位、与拼音键序重叠的排第 3 位；也可固定。</small></span>
+        <select id="englishPos" class="select" aria-label="英文词候选位置">
+          <option value="-1" data-i18n="input.english.posAuto">自动</option>
+          <option value="1" data-i18n="input.english.pos1">第 1 位</option>
+          <option value="3" data-i18n="input.english.pos3">第 3 位</option>
+          <option value="5" data-i18n="input.english.pos5">第 5 位</option>
+        </select>
+      </div>
       <label class="row switch-row no-rule" for="phrasesOn">
         <span class="row-label"><span data-i18n="input.phrases.enable">附加符号/emoji 候选</span><small data-i18n="input.phrases.hint">打 shang 出 ↑、dui 出 ✓ 这类符号词，排在候选第 3 位附近；全拼和双拼通用。</small></span>
         <input type="checkbox" id="phrasesOn" class="toggle">

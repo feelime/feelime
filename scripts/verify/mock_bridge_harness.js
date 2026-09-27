@@ -569,6 +569,12 @@ const OVERFLOW_X_IDS = ['symCats', 'candidates'];
 
 // Parses the real index.html into fake elements (structure-level assertions
 // come along for free: symbol layer starts hidden, voice overlay exists...).
+// HTML void 标签（无闭合形式）：不进栈。settings/index.html 的 input/
+// checkbox 多为 HTML5 无斜杠写法，若当普通元素 push 会漏栈，后续页会
+// 错误嵌进前页（皮肤页排序断言首次暴露）。
+const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img',
+    'input', 'link', 'meta', 'source', 'track', 'wbr']);
+
 function loadDocument(html) {
     const doc = new FakeDocument();
     const stack = [doc.documentElement, doc.body];
@@ -604,7 +610,7 @@ function loadDocument(html) {
                 }
             }
             stack[stack.length - 1].append(el);
-            if (!selfClose && !['meta', 'link'].includes(tag)) stack.push(el);
+            if (!selfClose && !VOID_TAGS.has(tag)) stack.push(el);
         } else if (text && text.trim() && stack.length > 1) {
             const top = stack[stack.length - 1];
             if (top.children.length === 0 && top.textContent === '') {

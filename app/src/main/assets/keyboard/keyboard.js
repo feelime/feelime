@@ -280,7 +280,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.69.14';
+    const KEYBOARD_VERSION = '3.69.18';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -1041,6 +1041,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         xi xia xian xiang xiao xie xin xing xiong xiu xu xuan xue xun
         ya yai yan yang yao ye yi yin ying yo yong you yu yuan yue yun
         za zai zan zang zao ze zei zen zeng zha zhai zhan zhang zhao zhe zhei zhen zheng zhi zhong zhou zhu zhua zhuai zhuan zhuang zhui zhun zhuo zi zong zou zu zuan zui zun zuo`.trim().split(/\s+/);
+    const FULL_PINYIN_SYLLABLES_SET = new Set(FULL_PINYIN_SYLLABLES);
 
 // BEGIN GENERATED T9_SYLLABLE_INDEX
     // 由 scripts/generate-t9-syllables.py 生成：数字串 → 音节
@@ -2059,7 +2060,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         enginePunct(ascii) {
             const fullwidth = ascii === ',' ? '，' : '。';
             if (this.composing) {
-                const candidate = (this.expandCandidates || []).find(item =>
+                // 标点确认走重排后的池头：与空格/点击同一排序（codex P1：
+                // 候选条看英文、逗号却确认中文）。
+                const candidate = this.englishOrderedPool(this.expandCandidates || []).find(item =>
                     !String(item.id).startsWith('alt:'));
                 if (candidate) {
                     this.pendingPunct = { text: fullwidth, raw: this.lastRawInput, at: Date.now() };
@@ -3059,7 +3062,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // on whatever page the bar/grid preloading dragged the cursor
                 // to (nihao + preload -> space committed a page-3 word).
                 // Choosing the pool head by id decouples it from paging.
-                const candidate = (this.expandCandidates || []).find(item =>
+                const ordered = this.englishOrderedPool(this.expandCandidates || []);
+                const candidate = ordered.find(item =>
                     !String(item.id).startsWith('alt:'));
                 if (this.composing && candidate) {
                     this.choosePoolCandidate(candidate);
@@ -6461,6 +6465,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 tile.append(state);
             }
             tile.addEventListener('click', () => def.tap());
+            // 长按直达设置行（用户验收三轮）：def.hold = 设置页行锚 id，
+            // 与 tile 点击深链共用 openSetupPage→focusSetting 通道。
+            if (def.hold) {
+                let holdTimer = null;
+                const holdMs = Number(this.holdMs) > 0 ? Number(this.holdMs) : 450;
+                tile.addEventListener('touchstart', () => {
+                    holdTimer = setTimeout(() => {
+                        holdTimer = null;
+                        this.closeSettingsPanel();
+                        this.call(() => Native.openSetupPage(def.hold, this.token));
+                    }, holdMs);
+                }, { passive: true });
+                const cancel = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+                tile.addEventListener('touchmove', cancel, { passive: true });
+                tile.addEventListener('touchend', cancel);
+                tile.addEventListener('touchcancel', cancel);
+            }
             return tile;
         }
 
@@ -6526,7 +6547,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const customRows = this.customKeys();
             return [
                     {
-                        icon: ICONS.theme, label: t("色彩模式"),
+                        icon: ICONS.theme, label: t("色彩模式"), hold: 'themeMode',
                         state: () => themeText[themeTheme()] || themeText.auto,
                         tap: () => {
                             this.cycleThemeNative();
@@ -6534,7 +6555,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.assoc, label: t("中文联想"),
+                        icon: ICONS.assoc, label: t("中文联想"), hold: 'associationOn',
                         on: () => this.qRead('association', this.associationOn),
                         state: () => (this.qRead('association', this.associationOn) ? t("开") : t("关")),
                         tap: () => {
@@ -6546,7 +6567,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.sound, label: t("按键声音"),
+                        icon: ICONS.sound, label: t("按键声音"), hold: 'keySound',
                         on: () => this.qRead('keySound', this.keySound),
                         state: () => (this.qRead('keySound', this.keySound) ? t("开") : t("关")),
                         tap: () => {
@@ -6557,7 +6578,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.vibrate, label: t("按键振动"),
+                        icon: ICONS.vibrate, label: t("按键振动"), hold: 'keyHaptic',
                         on: () => this.qRead('keyHaptic', this.keyHaptic),
                         state: () => (this.qRead('keyHaptic', this.keyHaptic) ? t("开") : t("关")),
                         tap: () => {
@@ -6568,7 +6589,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.height, label: t("键盘高度"), state: () => t("调节"),
+                        icon: ICONS.height, label: t("键盘高度"), hold: 'kbHeight', state: () => t("调节"),
                         tap: () => this.enterHeightEdit(),
                     },
                     {
@@ -6586,7 +6607,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('menuModesRow', this.token)); },
                     },
                     {
-                        icon: ICONS.font, label: t("候选字号"),
+                        icon: ICONS.font, label: t("候选字号"), hold: 'candidateFont',
                         state: () => fontText[this.qRead('candidateFont', this.candidateFont)] || fontText[0],
                         tap: () => {
                             if (typeof Native.setQuickPref !== 'function') return;
@@ -6599,7 +6620,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     {
                         // 单手模式（issue #15）：关 → 左手 → 右手循环；
                         // tile 状态行常显当前模式（qRead 回读，含未决意图）。
-                        icon: ICONS.onehand, label: t("单手模式"),
+                        icon: ICONS.onehand, label: t("单手模式"), hold: 'oneHand',
                         state: () => oneHandText[this.qRead('oneHand', this.oneHand)] || oneHandText[0],
                         on: () => (this.qRead('oneHand', this.oneHand) || 0) !== 0,
                         tap: () => {
@@ -6611,7 +6632,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.pad, label: t("底部留白"),
+                        icon: ICONS.pad, label: t("底部留白"), hold: 'bottomPadPortrait',
                         state: () => {
                             const pad = this.qRead('bottomPad', this.bottomPad);
                             return pad ? pad + 'dp' : t("关");
@@ -6625,7 +6646,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.timer, label: t("长按时长"),
+                        icon: ICONS.timer, label: t("长按时长"), hold: 'holdMs',
                         state: () => (Number(this.qRead('holdMs', this.holdMs)) || 350) + 'ms',
                         tap: () => {
                             if (typeof Native.setQuickPref !== 'function') return;
@@ -6635,7 +6656,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.snap, label: t("滑动选字"),
+                        icon: ICONS.snap, label: t("滑动选字"), hold: 'scrubSpeed',
                         state: () => snapText[this.qRead('popupSnap', this.popupSnap)] || snapText[1],
                         tap: () => {
                             if (typeof Native.setQuickPref !== 'function') return;
@@ -6645,7 +6666,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.keyboard, label: t("定制键盘"),
+                        icon: ICONS.keyboard, label: t("定制键盘"), hold: 'customTitle',
                         state: () => (customRows
                             ? t("已定制 {0} 个键", customRows.reduce((sum, row) => sum + (row || []).length, 0))
                             : t("未定制")),
@@ -7077,18 +7098,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     engine = [...rest, ...sentences];
                 }
             }
-            // 池前缀 id 签名变了 → 展开区增量水位线与新顺序错位（会漏项/
-            // 重复），标记让 accumulateCandidates 全量重绘。签名必须覆盖
-            // 「已渲染」的整段前缀（取 max(expandRendered, 3)）——句子压后
-            // 发生在池中部时只看前 3 项发现不了（codex 评审 P1 复现：翻页
-            // 后「二」漏绘、「才丿」重复）；纯追加不动已有顺序时不触发，
-            // 保留拖动预载的增量渲染。
-            const prefixSig = engine.slice(0, Math.max(this.expandRendered, 3))
-                .map(candidate => candidate.id).join('|');
-            if (prefixSig !== this.symbolicPrefixSig) {
-                this.symbolicPrefixSig = prefixSig;
-                this.symbolicPrefixChanged = true;
-            }
+            // 池前缀 id 签名 → 见池组装后的计算（须按最终展示序）。
             const raw = (this.lastRawInput || '').replace(/ /g, '').toLowerCase();
             const engineTexts = new Set(engine.map(candidate => candidate.text));
             // 动态日期时间候选（dyn:）：引擎不会给出这些文本，但拼音码
@@ -7152,6 +7162,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     prevIndex = at;
                 });
             this.expandCandidates = pool;
+            // 池前缀 id 签名变了 → 展开区增量水位线与新顺序错位（会漏项/
+            // 重复），标记让 accumulateCandidates 全量重绘。签名必须覆盖
+            // 「已渲染」的整段前缀（取 max(expandRendered, 3)）——句子压后
+            // 发生在池中部时只看前 3 项发现不了（codex 评审 P1 复现：翻页
+            // 后「二」漏绘、「才丿」重复）；纯追加不动已有顺序时不触发，
+            // 保留拖动预载的增量渲染。签名按最终展示序（英文位置重排后）
+            // 计算：重排改写展示前缀时同样必须触发全量重绘（codex R2-P1
+            // 复现：追加页带来英文，候选条第 1 位是英文、展开区却漏英文
+            // 重复中文——旧签名读原始引擎序，感知不到重排变化）。
+            const ordered = this.englishOrderedPool(pool);
+            const prefixSig = ordered.slice(0, Math.max(this.expandRendered, 3))
+                .map(candidate => candidate.id).join('|');
+            if (prefixSig !== this.symbolicPrefixSig) {
+                this.symbolicPrefixSig = prefixSig;
+                this.symbolicPrefixChanged = true;
+            }
         }
 
         /** Single pick funnel for pool entries: engine ids ride the engine
@@ -7393,7 +7419,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * incremental for the same tab. */
         appendExpandedCandidates() {
             const strip = document.getElementById('expandGrid');
-            const visible = this.expandCandidates.filter(candidate =>
+            // 与首屏渲染（renderExpanded）同视角：追加页也按英文位置
+            // 重排后的池算，否则候选条第 1 位是英文、展开区追加页却按
+            // 原始顺序冒出中文（codex P1：展示与确认必须共用同一排序）。
+            const ordered = this.englishOrderedPool(this.expandCandidates || []);
+            const visible = ordered.filter(candidate =>
                 this.expandTab !== 'single' || [...candidate.text].length === 1);
             visible.forEach((candidate, index) => {
                 if (index < this.expandRendered) return;
@@ -7468,6 +7498,54 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // A rejected fetch (stale token/stamp) emits no engine event and
             // would leave loadingMore stuck true - rearm after a beat.
             setTimeout(() => { this.loadingMore = false; }, 900);
+        }
+
+        /** #29 英文词候选位置（用户验收三轮）：auto=-1（无音节冲突第 1、
+         *  有冲突第 3），或固定 1/3/5。渲染层重排——rime 侧 stabledb 词条
+         *  权重不参与与主词典的组间排序（实测 0/1/-99 同位），位置控制
+         *  只能在这层做；空格确认与点击都按重排后的池头（空格本来就走
+         *  choosePoolCandidate 解耦分页，共用同一视图即一致）。 */
+        englishOrderedPool(pool) {
+            const pos = Number(this.englishPos);
+            if (!Array.isArray(pool) || !pool.length || pos === 0) return pool;
+            // 只在中文输入模式重排：法语/俄语的 accent 变体池头是 ASCII
+            // 形态（ete），混进来会顶掉引擎头（mock 法语用例实录）。
+            if (!['pinyin', 'double-pinyin', 't9', 'stroke'].includes(this.mode)) return pool;
+            const isEnglish = t => typeof t === 'string' && t.length >= 2 &&
+                t.length <= 20 && /^[A-Za-z][A-Za-z0-9]*$/.test(t);
+            const english = [];
+            const rest = [];
+            pool.forEach(item => {
+                (isEnglish(item && item.text) ? english : rest).push(item);
+            });
+            if (!english.length || !rest.length) return pool;
+            // 目标位：auto 按冲突与否；固定档直接用。
+            let target;
+            if (pos > 0) target = pos;
+            else target = english.some(item => this.englishCollides(item.text)) ? 3 : 1;
+            const out = rest.slice();
+            english.forEach((item, i) => {
+                const at = Math.min(out.length, Math.max(0, target - 1 + i));
+                out.splice(at, 0, item);
+            });
+            return out;
+        }
+
+        /** 英文词是否与拼音键序冲突（能被完整切成音节）。DP + 缓存。 */
+        englishCollides(word) {
+            const w = String(word || '').toLowerCase();
+            if (!this._collideCache) this._collideCache = new Map();
+            if (this._collideCache.has(w)) return this._collideCache.get(w);
+            const n = w.length;
+            const ok = new Array(n + 1).fill(false);
+            ok[n] = true;
+            for (let i = n - 1; i >= 0; i--) {
+                for (let j = i + 1; j <= Math.min(n, i + 7); j++) {
+                    if (ok[j] && FULL_PINYIN_SYLLABLES_SET.has(w.slice(i, j))) { ok[i] = true; break; }
+                }
+            }
+            this._collideCache.set(w, ok[0]);
+            return ok[0];
         }
 
         renderCandidates(state) {
@@ -7550,7 +7628,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // the expanded grid scrolls) - native paging must not cap it at
             // one page, and swiping the bar reveals the rest. The first pool
             // entry keeps the highlighted pill.
-            (this.expandCandidates || []).forEach((candidate, index) => {
+            this.englishOrderedPool(this.expandCandidates || []).forEach((candidate, index) => {
                 const button = document.createElement('button');
                 button.className = index === 0 ? 'candidate first' : 'candidate';
                 button.textContent = candidate.text;
@@ -8549,6 +8627,30 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     document.documentElement.style.setProperty('--kb-hue', String(Math.round(hue)));
                 } else {
                     document.documentElement.style.removeProperty('--kb-hue');
+                }
+                // 饱和度（黑白灰滑块，用户验收二轮）：100=全彩默认。
+                this.englishPos = [ -1, 1, 3, 5 ].includes(Number(payload.englishPos))
+                    ? Number(payload.englishPos) : -1;
+                // 皮肤双组（用户验收四轮）：键面组独立，-1=继承背景
+                // （饱和度继承标记同样为 -1：100 是显式全彩，灰背景+
+                // 全彩键面要能表达，codex P1）。
+                const kh = Number(payload.keyHue);
+                if (Number.isFinite(kh) && kh >= 0 && kh <= 360) {
+                    document.documentElement.style.setProperty('--key-hue', String(Math.round(kh)));
+                } else {
+                    document.documentElement.style.removeProperty('--key-hue');
+                }
+                const ks = Number(payload.keySat);
+                if (Number.isFinite(ks) && ks >= 0 && ks <= 100) {
+                    document.documentElement.style.setProperty('--key-sat', String(ks / 100));
+                } else {
+                    document.documentElement.style.removeProperty('--key-sat');
+                }
+                const sat = Number(payload.themeSat);
+                if (Number.isFinite(sat) && sat >= 0 && sat <= 100) {
+                    document.documentElement.style.setProperty('--kb-sat', String(sat / 100));
+                } else {
+                    document.documentElement.style.removeProperty('--kb-sat');
                 }
                 // hue 变了背景色跟着变：#27 手势条涂色要重推。
                 this.pushChromeColor();
