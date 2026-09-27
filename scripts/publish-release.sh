@@ -44,12 +44,14 @@ DIST="$PROJECT_DIR/app/build/outputs/release-dist"
 mkdir -p "$DIST"
 
 # ---- 单个产物的三重校验；任何一项失败即退出（不发任何文件）----
+# 注意取值方式：管道里的 head/grep 提前退出会让上游工具吃 SIGPIPE，被
+# pipefail 当成构建失败杀死脚本（aapt2 dump 输出上百行必踩）——先全量
+# 捕获进变量，再本地解析。
 verify_apk() {
-    local apk="$1" expect_ver="$2" name ver sig
-    name="$("$AAPT2" dump badging "$apk" 2>/dev/null | head -1 \
-        | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
-    ver="$("$AAPT2" dump badging "$apk" 2>/dev/null | head -1 \
-        | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+    local apk="$1" expect_ver="$2" badging certs name ver sig
+    badging="$("$AAPT2" dump badging "$apk" 2>/dev/null)"
+    name="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<<"$badging" | head -1)"
+    ver="$(sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p" <<<"$badging" | head -1)"
     if [[ "$name" != "com.feelime.ime" ]]; then
         echo "REJECT $apk: applicationId='$name' != com.feelime.ime (dev/debug leak)" >&2
         exit 1
@@ -58,8 +60,8 @@ verify_apk() {
         echo "REJECT $apk: versionName='$ver' != $expect_ver (stale artifact)" >&2
         exit 1
     fi
-    sig="$("$APKSIGNER" verify --print-certs "$apk" 2>/dev/null \
-        | grep -m1 'Signer.*certificate DN' || true)"
+    certs="$("$APKSIGNER" verify --print-certs "$apk" 2>/dev/null)"
+    sig="$(grep 'Signer.*certificate DN' <<<"$certs" | head -1)"
     if [[ "$sig" != *"CN=Feelime Release"* ]]; then
         echo "REJECT $apk: not release-signed ($sig)" >&2
         exit 1
