@@ -304,8 +304,8 @@ android {
         applicationId = "com.feelime.ime"
         minSdk = 26
         targetSdk = 36
-        versionCode = 53
-        versionName = "1.2.0"
+        versionCode = 54
+        versionName = "1.2.1"
 
         ndk {
             abiFilters += "arm64-v8a"
