@@ -1222,9 +1222,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 单手侧记忆（P2-3 native 化）：0=native 未记忆。
             this.oneHandSideMemory = 0;
             this.sideContent = 0;
-            // #39-4：面板开期间接管进 .panel-head 的右组按钮（closePanel
-            // 依此归还 candidateBar）。
-            this.panelBorrowedTools = [];
             // 背景图亮/暗两组：各自独立，空串 = 该组无图（纯色背景）。
             this.bgImageLight = '';
             this.bgImageDark = '';
@@ -1406,18 +1403,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 });
             });
             // Clipboard/favorites moved into the quick panel rows.
-            // #39-4 toggle：面板开着时这两颗已被接管进面板头——点
-            // 当前 tab 那颗 = 关面板（#33「点图标开、再点图标关」），
-            // 点另一颗 = 切 tab。判定挂 listener 不进 openPanel：
-            // 程序化恢复（编辑卡取消回列表）也走 openPanel，不能被吞。
+            // 面板打开时工具栏整条隐藏，这两颗只在面板关闭态可点
+            // （#39-4 定稿：面板头不再携带工具栏图标，切换交给 tab）。
             const clipBtn = document.getElementById('clipboardButton');
-            if (clipBtn) clipBtn.addEventListener('click', () =>
-                this.panelOpen && this.panelTab === 'clipboard'
-                    ? this.closePanel() : this.openPanel('clipboard'));
+            if (clipBtn) clipBtn.addEventListener('click', () => this.openPanel('clipboard'));
             const favBtn = document.getElementById('favoritesButton');
-            if (favBtn) favBtn.addEventListener('click', () =>
-                this.panelOpen && this.panelTab === 'favorites'
-                    ? this.closePanel() : this.openPanel('favorites'));
+            if (favBtn) favBtn.addEventListener('click', () => this.openPanel('favorites'));
             document.getElementById('panelClose').addEventListener('click', () => this.closePanel());
             document.getElementById('panelClear').addEventListener('click', () => {
                 if (this.panelTab !== 'clipboard') return;
@@ -4247,9 +4238,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.settingsReturnLayer = name;
                 this.closeSettingsPanel();
             }
-            // codex P2：剪贴板/常用语面板开着时，被接管进面板头的
-            // numpad/emoji 直达按钮同样可点——层切换也要收掉面板层，
-            // 否则 panelLayer 与 numPadLayer 同屏叠加。closePanel 会
+            // codex P2：剪贴板/常用语面板开着时若有层切换入口（防御：
+            // 面板开时工具栏整条隐藏，常规入口已不可点），层切换要收掉
+            // 面板层，否则 panelLayer 与新键层同屏叠加。closePanel 会
             // showKeyLayer(panelReturnLayer) 再入此处：panelOpen 已
             // 归零，直接放行，外层继续切到目标层。
             if (this.panelOpen) this.closePanel();
@@ -7912,28 +7903,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The panel REPLACES the toolbar row instead of adding
             // another line to the keyboard - its own head carries the tabs.
             document.getElementById('candidateBar').hidden = true;
-            // #39-4 图标零位移：面板头直接接管工具栏右组按钮（同序同槽
-            // 位）——面板开关图标就是工具栏里那颗剪贴板/常用语钮本身，
-            // 不再另设 panelClose 分身（旧版两颗钮 x 差一个右组宽度，
-            // 开面板图标横跳，用户实录「图标位移」）。右组没有 clip/fav
-            // （用户移下栏）时回退 panelClose。
-            const head = document.querySelector('.panel-head');
-            const hideBtn = document.getElementById('hide');
-            // 切 tab（面板已开）时按钮已在 head 里——prevBorrowed 兜住，
-            // 否则收集为空会丢归还记录（closePanel 还不了栏）。
-            const prevBorrowed = this.panelBorrowedTools || [];
-            const borrowed = (this.toolbarRight || [])
-                .map(id => document.getElementById(TOOL_CATALOG[id]))
-                .filter(el => el && !el.hidden)
-                .filter(el => el.closest('#candidateBar') || prevBorrowed.includes(el));
-            this.panelBorrowedTools = borrowed;
-            borrowed.forEach(el => head.append(el));
-            // #33-2：收起键盘键跟着面板头走、恒在最右——旧版整条工具栏
-            // （含收起）被藏掉、最右变成「清空」，肌肉记忆点进去清空了
-            // 剪贴板（真机丢数据实录）。清空/＋添加让位到收起左边。
-            head?.append(hideBtn);
-            document.getElementById('panelClose').hidden =
-                borrowed.some(el => el.id === 'clipboardButton' || el.id === 'favoritesButton');
+            // #39-4 定稿（用户验收 2026-09-27）：面板头不携带工具栏图标
+            // ——tab 本身就是剪贴板/常用语的切换器，右侧只留一个 X
+            // （panelClose）回主键盘。曾试过「接管右组按钮原位渲染」，
+            // 会把语音输入等无关图标一并带进面板头，否决。
             this.hideKeyLayers();
             document.getElementById('panelLayer').hidden = false;
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
@@ -7941,8 +7914,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             document.getElementById('panelClear').hidden = this.panelTab !== 'clipboard';
             document.getElementById('panelManage').hidden = this.panelTab !== 'favorites';
-            // #33 toggle 图标：面板头关闭钮显示当前面板的工具图标（CSS 驱动）。
-            document.getElementById('panelLayer').dataset.tab = this.panelTab;
             this.renderPanel();
             if (this.panelTab === 'clipboard') Native.getClipboard(this.token);
             else Native.getFavorites(this.token);
@@ -7955,19 +7926,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.panelOpen = false;
             document.getElementById('panelLayer').hidden = true;
             document.getElementById('candidateBar').hidden = false;
-            // #33-2 收尾：收起键还栏（原位在 settingsPageBar 之前），
-            // 再对账一次把右组工具重新锚到它左边。用 audit 而非裸
-            // apply：组合中收起面板时 prune 不认 composing，会把
-            // updateComposing 刚藏掉的工具又点亮。
-            // #39-4 收尾：接管进面板头的右组按钮一并还栏，audit 重排
-            // 回数组序（panelClose 分身同时复亮，clip/fav 不在栏时用）。
-            const hideBtn = document.getElementById('hide');
-            const bar = document.getElementById('candidateBar');
-            (this.panelBorrowedTools || []).forEach(el =>
-                bar.insertBefore(el, document.getElementById('settingsPageBar')));
-            this.panelBorrowedTools = [];
-            bar.insertBefore(hideBtn, document.getElementById('settingsPageBar'));
-            document.getElementById('panelClose').hidden = false;
+            // 收尾对账：面板期间任何路径动过工具栏都在这里归位。用
+            // audit 而非裸 apply：组合中收起面板时 prune 不认
+            // composing，会把 updateComposing 刚藏掉的工具又点亮。
             this.auditToolbarTools();
             this.showKeyLayer(this.panelReturnLayer || 'letters');
             // The panel only borrowed the bar from the ctrl
@@ -8270,16 +8231,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The keyboard STAYS visible under the card -
             // picking a candidate mid-edit is the whole point.
             document.getElementById('candidateBar').hidden = false;
-            // codex P2：编辑卡接管期间归还借走的右组按钮（工具栏复现，
-            // 右组不能空壳）并把 panelOpen 归零——closePanelEditor 尾部
-            // 的 openPanel('favorites') 会按栏上现状重新接管，hello 的
-            // audit 也不再被 panelOpen 早退挡住。
-            (this.panelBorrowedTools || []).forEach(el =>
-                document.getElementById('candidateBar').insertBefore(
-                    el, document.getElementById('settingsPageBar')));
-            this.panelBorrowedTools = [];
+            // codex P2：编辑卡接管期间面板已隐藏，panelOpen 同步归零
+            // ——hello 的 toolbar audit 不被 panelOpen 早退挡住，
+            // closePanelEditor 尾部的 openPanel('favorites') 正常重开。
             this.panelOpen = false;
-            document.getElementById('panelClose').hidden = false;
             // The card borrows the key area for letters; remember what the
             // PANEL was restoring - closePanelEditor hands it back before
             // openPanel re-captures, or a nine-pad return layer would be

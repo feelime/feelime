@@ -1184,81 +1184,57 @@ test('rotation keeps the pinned 常用 variant; mode switch resets it', {since: 
         '，。、；：？！～（）', 'grid follows the new default');
 });
 
-// #39-4 图标零位移：面板头接管工具栏右组按钮（同序同槽），开关图标
-// 就是工具栏那颗剪贴板/常用语钮；clip/fav 不在栏上时回退 panelClose
-// 分身；面板开着点当前 tab 那颗 = 关面板。
-test('panel head borrows the toolbar right group: same buttons, toggle, fallback (#39-4)', {since: '3.69.22'}, () => {
+// #39-4 定稿（用户验收 2026-09-27 二轮）：面板头不携带任何工具栏图标
+// ——tab 是唯一切换器，右侧只有一颗 ×（panelClose）回主键盘。
+test('panel head carries no toolbar icons; a single X closes (#39-4)', {since: '3.69.24'}, () => {
     const world = fresh();
     world.hello({});
-    const head = () => world.document.querySelector('.panel-head');
     world.tap(world.$('clipboardButton'));
     assert(!world.$('panelLayer').hidden, 'panel open');
-    // 接管：右组按钮原序进 head（默认组 = clip,fav,mic），panelClose 分身隐藏。
-    const borrowedIds = [...head().children].map(el => el.id).filter(Boolean);
-    equal(borrowedIds.slice(-4).join(','), 'clipboardButton,favoritesButton,mic,hide',
-        `right group keeps its order in the head: ${borrowedIds}`);
-    equal(world.$('panelClose').hidden, true, 'stand-in close hidden while borrowed');
-    // 切 tab：fav 在 head 里再点 = 切到常用语（不关面板）。
-    world.tap(world.$('favoritesButton'));
-    assert(!world.$('panelLayer').hidden, 'tab switch keeps the panel');
-    equal(world.document.getElementById('panelClear').hidden, true,
-        'clear hidden on the favorites tab');
-    // toggle：再点 fav（当前 tab）= 关面板，按钮归还 candidateBar。
-    world.tap(world.$('favoritesButton'));
-    equal(world.$('panelLayer').hidden, true, 'tapping the current-tab icon closes');
-    equal(!!world.$('favoritesButton').closest('#candidateBar'), true,
-        'borrowed tools return to the bar');
-    equal(world.$('panelClose').hidden, false, 'stand-in close back');
-
-    // 回退：clip/fav 都不在栏上 → 面板头无开关可接管 → panelClose 顶上。
-    const kb = world.context.Feelime.debugState();
-    world.context.Feelime.toolbarSet(kb.toolbarLeft, kb.toolbarRight.filter(
-        x => x !== 'clipboard' && x !== 'favorites'));
-    world.context.Feelime.toolbarAudit();
-    // 从面板 tab 按钮（data-panel-tab）打开（右组没入口了）。
+    const head = () => world.document.querySelector('.panel-head');
+    const ids = [...head().children].map(el => el.id).filter(Boolean);
+    equal(ids.join(','), 'panelClear,panelManage,panelClose',
+        `head = clear/manage + X only (no toolbar icons, no hide): ${ids}`);
+    // 工具栏整条隐藏：右组（含语音输入）一颗都进不了面板头。
+    equal(world.$('candidateBar').hidden, true, 'toolbar hidden while the panel owns the row');
+    // tab 切换走 head 内的 tab 按钮。
     world.tap(world.document.querySelector('[data-panel-tab="favorites"]'));
-    assert(!world.$('panelLayer').hidden, 'fallback panel opens');
-    equal(world.$('panelClose').hidden, false, 'stand-in close shows without clip/fav');
+    equal(world.$('panelManage').hidden, false, 'favorites tab shows +添加');
+    // × 关面板，工具栏回来。
     world.tap(world.$('panelClose'));
-    equal(world.$('panelLayer').hidden, true, 'stand-in closes the panel');
+    equal(world.$('panelLayer').hidden, true, 'X closes the panel');
+    equal(world.$('candidateBar').hidden, false, 'toolbar returns');
+    // 工具栏 clip/fav 照常可开面板（面板关时才可点）。
+    world.tap(world.$('favoritesButton'));
+    assert(!world.$('panelLayer').hidden, 'favorites tool reopens the panel');
+    world.tap(world.$('panelClose'));
 });
 
-// codex P2 回归：编辑卡接管时归还借走的右组按钮；面板头借来的
-// numpad/emoji 直达按钮点下去要收面板层（不能与 numPadLayer 叠加）。
-test('editor card returns borrowed tools; layer direct from the panel head closes the panel', {since: '3.69.23'}, () => {
+// codex P2 回归（#39-4 二轮后语义）：编辑卡接管期间 panelOpen 归零
+// （hello 的 toolbar audit 不被早退挡）；面板开着若有层切换入口，
+// 层切换收掉面板层（防御位，常规入口已随工具栏隐藏不可达）。
+test('editor card zeroes panelOpen; a layer switch still closes an open panel', {since: '3.69.24'}, () => {
     const world = fresh();
     world.hello({});
-    // P2-1：面板开（右组被借走）→ ＋添加 进编辑卡 → 按钮归还、工具栏
-    // 复现完整右组、panelOpen 归零（hello audit 不再被早退挡）。
+    // 面板开 → ＋添加 进编辑卡：面板隐藏、工具栏复现。
     world.tap(world.$('favoritesButton'));
     assert(!world.$('panelLayer').hidden, 'panel open');
     world.tap(world.$('panelManage'));
     assert(!world.$('phraseCard').hidden, 'editor card open');
-    assert(!!world.$('clipboardButton').closest('#candidateBar'),
-        'borrowed clip button returned while the card owns the screen');
-    equal(world.$('panelClose').hidden, false, 'stand-in close restored');
-    // 取消 → closePanelEditor → openPanel('favorites') 按栏上现状重新接管。
+    equal(world.$('candidateBar').hidden, false, 'toolbar back while the card owns the screen');
+    // 取消 → closePanelEditor → openPanel('favorites') 恢复面板。
     world.tap(world.$('phraseCardCancel'));
     assert(!world.$('panelLayer').hidden, 'panel list restored after cancel');
-    assert(!!world.$('favoritesButton').closest('.panel-head'),
-        'favorites re-borrowed for the restored panel');
-    world.tap(world.$('favoritesButton'));
-    equal(world.$('panelLayer').hidden, true, 'panel closed');
+    world.tap(world.$('panelClose'));
 
-    // P2-2：右组放进 numpad 直达按钮 → 面板头里点它 → 面板层收、
-    // 数字层单独显示。
+    // 防御：面板开着时若有层切换入口，面板层必须让位。
+    world.tap(world.$('clipboardButton'));
+    assert(!world.$('panelLayer').hidden, 'panel open again');
     const kb = world.context.Feelime.debugState();
     world.context.Feelime.toolbarSet(kb.toolbarLeft, ['numpad']);
     world.context.Feelime.toolbarAudit();
     world.tap(world.$('toolNumpad'));
-    assert(!world.$('numPadLayer').hidden, 'numpad shows from the toolbar');
-    world.tap(world.$('toolNumpad')); // toggle 回 letters：面板头里点=开数字层
-    equal(world.$('numPadLayer').hidden, true, 'back to letters');
-    world.tap(world.$('clipboardButton'));
-    assert(!world.$('panelLayer').hidden, 'panel reopens');
-    assert(!!world.$('toolNumpad').closest('.panel-head'), 'numpad tool borrowed into the head');
-    world.tap(world.$('toolNumpad'));
-    equal(world.$('panelLayer').hidden, true, 'layer direct from the head closes the panel');
+    equal(world.$('panelLayer').hidden, true, 'layer switch closes the open panel');
     assert(!world.$('numPadLayer').hidden, 'numpad visible alone');
 });
 

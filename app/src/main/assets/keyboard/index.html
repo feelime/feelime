@@ -324,14 +324,12 @@
             </div>
             <button id="panelClear" class="panel-action" aria-label="清空剪贴板" data-i18n-aria-label="清空剪贴板" data-i18n="清空">清空</button>
             <button id="panelManage" class="panel-action" aria-label="添加常用语" data-i18n-aria-label="添加常用语" hidden data-i18n="＋添加">＋添加</button>
-            <!-- #33：× 改为当前面板自己的工具图标（与工具栏同图标），
-                 点图标关闭面板——点图标开、再点图标关。 -->
+            <!-- #39-4 定稿：面板头右侧唯一的关闭钮，× 图标回主键盘
+                 （tab 已是剪贴板/常用语切换器，不再复用工具栏图标）。 -->
             <button id="panelClose" class="tool" aria-label="关闭面板" data-i18n-aria-label="关闭面板">
-                <svg class="ic-clip" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
-                    <path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/>
-                </svg>
-                <svg class="ic-fav" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
-                    <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18"/>
                 </svg>
             </button>
         </div>

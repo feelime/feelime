@@ -1358,9 +1358,9 @@ body.landscape .num-grid { gap: 3px; }
 }
 .panel-head .tool:active { background: var(--pressed); }
 body.landscape .panel-head .tool { width: 30px; height: 30px; }
-/* #39-4 图标零位移：接管进来的右组按钮要与工具栏逐像素同位——gap 跟随
- * candidateBar 的实际值（body[data-one-hand] 恒命中把 bar 收到 5px）。
- * display:flex 会盖掉 UA 的 [hidden]，分身按钮隐藏后必须显式退出布局。 */
+/* #39-4：面板开时工具栏整条隐藏，面板头无接管按钮——gap 仍与
+ * candidateBar 的实际值（body[data-one-hand] 恒命中 5px）保持一致，
+ * 头行与候选条密度统一。display:flex 盖掉 UA [hidden] 的坑一并钉住。 */
 body[data-one-hand] .panel-head { gap: 5px; }
 .panel-head .tool[hidden] { display: none; }
 /* The clipboard/favorites tabs live in one pale capsule (the
@@ -1398,11 +1398,6 @@ body[data-one-hand] .panel-head { gap: 5px; }
 body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
 .panel-tabs { margin: 0; }
 .panel-action { color: var(--text); height: 30px; margin-left: auto; }
-/* #33 toggle 图标：× 换成当前面板自己的工具图标（与工具栏同图标
- * 同尺寸），面板开着时点它关闭——点图标开、再点图标关。 */
-#panelClose .ic-fav { display: none; }
-#panelLayer[data-tab="favorites"] #panelClose .ic-clip { display: none; }
-#panelLayer[data-tab="favorites"] #panelClose .ic-fav { display: block; }
 #panelList {
     flex: 1;
     min-height: 0;

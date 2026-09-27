@@ -227,13 +227,13 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   键盘区约束并可滚动。
 - 入口：工具栏剪贴板圆钮、常用语按钮；组合开始时自动关闭面板（引擎事件
   优先）。关闭恢复字母层。
-- **面板头接管工具栏右组（#39-4，3.69.22+）**：打开面板时右组按钮
-  （含收起键）原序挪进 `.panel-head`、同槽位渲染——面板开关图标就是
-  工具栏那颗剪贴板/常用语钮本身，开合前后逐像素零位移；点当前 tab
-  那颗 = 关面板（toggle 挂在按钮 listener 上，不进 `openPanel`——编辑
-  卡取消的程序化恢复也走它）。编辑卡（`openPanelEditor`）接管期间归还
-  按钮并归零 `panelOpen`，取消后 `openPanel('favorites')` 重新接管。
-  clip/fav 不在栏上时回退 `#panelClose` 分身（CSS 双图标随 tab 切换）。
+- **面板头形态（#39-4 定稿，3.69.24）**：面板打开时工具栏整条隐藏，
+  面板头只含 `[剪贴板|常用语]` tab、`清空`/`＋添加` 与右侧唯一的 ×
+  （`#panelClose`，回主键盘）——**不携带任何工具栏图标**（tab 即切换
+  器；曾试「接管右组按钮原位渲染」会把语音输入等无关图标带进面板头，
+  用户否决）。编辑卡（`openPanelEditor`）接管期间 `panelOpen` 归零
+  （toolbar audit 不被早退挡），取消后 `openPanel('favorites')` 重开。
+  `showKeyLayer` 的 `panelOpen` 让位保留作防御位。
 - 每次打开都重新拉取 `getClipboard` / `getFavorites`（设置页改过数据后
   再打开即新鲜）；native 侧变化经 `onClipboard` / `onFavorites` 推送。
 
