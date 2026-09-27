@@ -203,6 +203,13 @@ DevTools 合成 TouchEvent 切到符号层（`<123>`）时会触发 qemu **静�
   （`v<versionName>`）；发布产物从该 tag 构建，装机冒烟通过才算发布
   完成（冒烟入口见 docs/testing/verification.md §3；release 包冒烟走
   verification.md §4a 的系统级断言——release 没有测试字段与 DevTools）。
+- **GitHub release 产物走 publish-release.sh**（issue #40 事故后固化，
+  2026-09-27）：`scripts/publish-release.sh v<ver> [--upload]` 只构建
+  assembleDirectRelease 并逐产物硬校验——applicationId 精确等于
+  `com.feelime.ime`（debug 构建 1.0.19 起带 `.dev` 后缀，**绝不复用
+  direct/debug 产物发版**）、versionName 精确等于 tag、签名者
+  CN=Feelime Release；任何一项失败拒绝输出/上传。补传历史 tag：git
+  worktree add 钉在该 tag 后跑同脚本。
 - **Play closed testing 发布**（1.0.2 起 established）：`./gradlew
   :app:bundlePlayRelease` → 产物在 `app/build/outputs/bundle/playRelease/`。
   上传前校验三件套：manifest 版本（bundletool dump）、签名证书
