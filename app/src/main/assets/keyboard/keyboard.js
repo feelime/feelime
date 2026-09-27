@@ -280,7 +280,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.69.26';
+    const KEYBOARD_VERSION = '3.69.27';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -413,6 +413,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // APK 的 hello 不带 stroke 就绪字段，缺失必须当不可用——沿用
         // !== false 的宽松判定会把缺键当可用，出现可点却无效的入口。
         'stroke': { label: '笔', title: '笔画 Stroke', layout: 't9', engine: true, strictReady: true },
+        // 音形（issue #20，首版小鹤音形）：qwerty 键面（码即字母），
+        // 码表用户导入、设备端编译独立 flypy table/prism。strictReady：
+        // 未导入（hello 缺字段或产物未落地）时菜单不出入口。
+        'flypy': { label: '形', title: '音形 Shape', layout: 'qwerty', engine: true, strictReady: true },
         // 手写（issue #28，design/handwriting.md §1）：独立识别引擎
         // （recognizeInk 笔迹 → onInkCandidates 候选），不接按键引擎
         // （engine:false——退格/空格/回车由原生 Direct 承载）。

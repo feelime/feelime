@@ -1858,7 +1858,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put(
                 "engineDataReady",
                 JSONObject().apply {
-                    listOf("pinyin", "double-pinyin", "t9", "stroke", "handwriting", "japanese", "french", "russian").forEach { mode ->
+                    // #20 flypy 是 strictReady：未导入码表时 hello 仍带
+                    // 字段（false），菜单不出入口；导入完成的换装广播会
+                    // 重推 hello 使其变可用。
+                    listOf("pinyin", "double-pinyin", "t9", "stroke", "flypy", "handwriting", "japanese", "french", "russian").forEach { mode ->
                         put(mode, engineDataReady(mode))
                     }
                 },

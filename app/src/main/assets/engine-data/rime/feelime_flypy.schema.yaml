@@ -1,0 +1,72 @@
+# Rime schema: feelime_flypy — 音形码（issue #20，首版小鹤音形）
+# 码表由用户导入（授权未明不内置分发），设备端编译出独立
+# flypy.table/prism，与 luna_pinyin 基底词库互不影响。
+# - 组件集对齐 feelime_stroke 先例（仓库裁剪版 librime 无 lua/octagram，
+#   processors/segmentors 与 luna_pinyin 同款；标点走最小内联映射）
+# - 四码顶字：librime speller 原生 auto_select + auto_select_pattern +
+#   max_code_length（第 5 码自动顶字截断）
+# - enable_completion: 打 1-3 码出重码候选（音形的短码体验）；无句子
+#   （音形是形码语义，组句交给用户手动选词）
+# - preedit 即键入码列（字母原样，无 xlit）
+__build_info:
+  rime_version: 1.17.0
+schema:
+  schema_id: feelime_flypy
+  name: 音形码
+  version: "1.0"
+  author:
+    - feelime（码表由用户导入，如小鹤音形方案词库）
+  description: |
+    音形输入：两码音 + 两码形，四码唯一顶字上屏。
+
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [ 中文, 西文 ]
+
+engine:
+  processors:
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - ascii_segmentor
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - table_translator
+
+speller:
+  alphabet: abcdefghijklmnopqrstuvwxyz
+  delimiter: " "
+  # 四码顶字（librime 1.7+ 原生能力）：preedit 匹配 auto_select_pattern
+  # 且唯一候选时自动上屏；第 5 码触发 max_code_length 顶字截断。
+  auto_select: true
+  auto_select_pattern: ^\w{4}$
+  max_code_length: 4
+
+menu:
+  page_size: 5
+
+translator:
+  dictionary: flypy
+  enable_completion: true
+  enable_sentence: false
+  enable_user_dict: false
+  comment_format:
+    - "xform/~//"
+
+# 标点内联（对齐 feelime_stroke：部署目录没有 default.yaml，
+# import_preset 静默落空——设备实测 ',' 会落进 express_editor 出乱字。
+# 最小映射，luna 的巨型符号表不搬）。
+punctuator:
+  half_shape:
+    ",": {commit: "，"}
+    ".": {commit: "。"}

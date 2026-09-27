@@ -66,7 +66,29 @@ object BaseDictFiles {
                 "luna_pinyin_t9",
             )
 
-    fun umbrellaYaml(sourceSha: String, lineCount: Int): String = buildString {
+    /** 音形码表的 schema id（issue #20）。 */
+    const val FLYPY_SCHEMA = "feelime_flypy"
+    const val FLYPY_DICT = "flypy.dict.yaml"
+    const val FLYPY_TABLE = "flypy.table.bin"
+
+    /** 编译清单联动（#20）：librime 的 SchemaListUpdate 会把 staging 里
+     *  不在 default.yaml schema_list 的产物当 obsolete 清掉——基底换装
+     *  （#23）时若音形码表已导入，flypy 必须同场在列，否则用户码表被
+     *  洗掉。反向见 [flypyCompileSchemas]。 */
+    fun baseCompileSchemas(flypyInstalled: Boolean): List<String> =
+        if (flypyInstalled) COMPILE_SCHEMAS + FLYPY_SCHEMA else COMPILE_SCHEMAS
+
+    /** 反向联动（#20 音形导入）：基底是用户自定义（产物在 staging）时
+     *  37 项必须同场在列，否则基底产物被 obsolete 清理洗回内置；基底是
+     *  内置（产物在 shared，maintenance 不动 shared）时只编 flypy，
+     *  37 项不进清单（省一轮全量重编）。 */
+    fun flypyCompileSchemas(baseCustom: Boolean): List<String> =
+        if (baseCustom) COMPILE_SCHEMAS + FLYPY_SCHEMA else listOf(FLYPY_SCHEMA)
+
+    /** #35：tables = 落进 [SOURCE_DIR] 的词条表文件名（zip 多表导入；
+     *  单文件导入就是 [SOURCE_FILE] 一项）。import_tables 的引用名 =
+     *  文件名去掉 .dict.yaml（librime 惯例）。 */
+    fun umbrellaYaml(sourceSha: String, tables: List<String>, lineCount: Int): String = buildString {
         append("# Rime dictionary\n# encoding: utf-8\n")
         append("# issue #23: user-imported base dictionary (device-compiled).\n")
         append("# name MUST stay luna_pinyin - every schema references it.\n")
@@ -75,16 +97,79 @@ object BaseDictFiles {
         append("version: \"user-$sourceSha\"\n")
         append("sort: by_weight\n")
         append("import_tables:\n")
-        append("  - $SOURCE_DIR/${SOURCE_FILE.removeSuffix(".dict.yaml")}\n")
+        tables.forEach { append("  - $SOURCE_DIR/${it.removeSuffix(".dict.yaml")}\n") }
         append("...\n")
         // lineCount 记进注释，便于诊断（用户源多少词条）。
         append("# source entries: $lineCount\n")
     }
 
+    // ---- #35：zip 多表导入的纯逻辑（JVM 可单测；IO 胶水在 Installer）----
+
+    /** zip entry 名 → 落盘文件名（拍平到目录根）。规则：取最后一段
+     *  路径成分（目录结构不保留——import_tables 引用全部重写为
+     *  `rime-dict-source/<name>`），且必须匹配安全名集（字母数字开头，
+     *  仅字母/数字/./_/-），否则返回 null 跳过——entry 名会进 yaml 的
+     *  import_tables，放行任意串等于往 yaml 里注入。 */
+    fun zipEntryName(entryName: String): String? {
+        val base = entryName.substringAfterLast('/')
+        fun ascii(c: Char) = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9'
+        if (base.isEmpty() || !ascii(base[0])) return null
+        if (!base.all { ascii(it) || it == '.' || it == '_' || it == '-' }) return null
+        return base
+    }
+
+    /** #35 带调码表检测：码列出现声调字符（含 m̀ 类组合附标）即视为
+     *  带调形态。上游完整版（如万象 Base）的码列是 ā bà 形态，Lite
+     *  去调后是 a ba——本检测用于「导入的疑似完整版，打不出来」的
+     *  专属提示。注意不含 ü：无调 ü 是合法拼式（lü），会误报。 */
+    private val TONE_MARKS = (
+        "āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜńňǹḿ" +
+            // 组合附标（U+0300..U+0304，如 "m" + U+0300 = m̀）：与预组合字符等价，一并计入。
+            "\u0300\u0301\u0302\u0303\u0304"
+        ).toSet()
+
+    fun codeHasTone(code: String): Boolean = code.any { it in TONE_MARKS }
+
+    /** yaml 头区（首个 `...` 行之前）是否有顶格 `import_tables:`——
+     *  伞表特征（万象 Lite 包的 wanxiang_lite.dict.yaml：头区引用
+     *  dicts/ 相对路径、全文零词条）。头区由调用方流式截取（有上限），
+     *  这里只做纯字符串判定。 */
+    fun hasImportTables(header: String): Boolean =
+        header.lineSequence().any { it.startsWith("import_tables:") }
+
+    /** 子表自带的 import_tables 引用（如 `dicts/zi.lite`）重写为拍平后的
+     *  `rime-dict-source/zi.lite`——引用按 zip 内原始 entry 路径（去
+     *  .dict.yaml）匹配，命中才改，未命中（引用包外资源）原样保留。
+     *  逐行喂数（大表流式处理，不整读内存）；块状态机在实例内。 */
+    class ImportRefRewriter(private val refMap: Map<String, String>) {
+        private var inImports = false
+
+        fun apply(line: String): String {
+            val trimmed = line.trimStart()
+            if (trimmed.startsWith("import_tables:")) {
+                inImports = true
+                return line
+            }
+            if (inImports && trimmed.startsWith("- ")) {
+                val token = trimmed.removePrefix("- ").trim().trim('"', '\'')
+                    .substringBefore('#').trim()
+                val target = refMap[token] ?: refMap[token + ".dict.yaml"]
+                if (target != null) return line.replaceFirst(token, target)
+                return line
+            }
+            // 顶格非注释 key 或 `...` 结束 import_tables 块。
+            if (line.isNotEmpty() && !line[0].isWhitespace() &&
+                !line.startsWith("#") && trimmed != "..."
+            ) inImports = false
+            return line
+        }
+    }
+
     /** 以 frost 完整 default.yaml 为底，把 schema_list 段替换为本次要重编
-     *  的 37 项。其余段（menu/navigator/selector/key_binder/…）原样保留
-     *  ——schema 编译链 include 它们。 */
-    fun defaultYaml(frostTemplate: String): String {
+     *  的清单（缺省 37 项；#20 音形联动时由调用方传入组合结果）。其余段
+     *  （menu/navigator/selector/key_binder/…）原样保留——schema 编译链
+     *  include 它们。 */
+    fun defaultYaml(frostTemplate: String, schemas: List<String> = COMPILE_SCHEMAS): String {
         val start = frostTemplate.indexOf("\nschema_list:")
         require(start >= 0) { "template lacks schema_list" }
         val afterHeader = start + 1 // keep the leading \n
@@ -98,10 +183,62 @@ object BaseDictFiles {
         val ours = buildString {
             append("schema_list:\n")
             append("# issue #23 device-side rebuild list - deleted after maintenance.\n")
-            COMPILE_SCHEMAS.forEach { append("  - schema: $it\n") }
+            schemas.forEach { append("  - schema: $it\n") }
         }
         return frostTemplate.substring(0, afterHeader) + ours +
             frostTemplate.substring(end)
+    }
+
+    /** #20 音形码表归一：用户源（rime .dict.yaml 或 词<TAB>码 纯文本）
+     *  → 规范词条行列表（词\t码\t权重；权重缺省 1）。跳过 yaml 头区
+     *  （--- 到 ...）、注释、无 TAB 行；码列非纯字母或超 4 码的行剔除
+     *  （音形键面打不出，schema 的 auto_select 也只认 4 码）。返回
+     *  (行列表, 剔除数) 便于诊断。 */
+    fun normalizeFlypyLines(content: String): Pair<List<String>, Int> {
+        val out = ArrayList<String>()
+        var dropped = 0
+        var inHeader = false
+        var headerDone = false
+        for (raw in content.lineSequence()) {
+            val line = raw.trimEnd()
+            if (!headerDone) {
+                if (line == "---") {
+                    inHeader = true
+                    continue
+                }
+                if (line == "...") {
+                    headerDone = true
+                    continue
+                }
+                // 头区外先遇词条行（纯文本源没有 ---/... 包裹）也直接收。
+                if (inHeader) continue
+            }
+            if (line.isEmpty() || line.startsWith("#") || !line.contains('\t')) continue
+            val parts = line.split('\t')
+            val word = parts.getOrNull(0)?.trim().orEmpty()
+            val code = parts.getOrNull(1)?.trim().orEmpty()
+            if (word.isEmpty() || code.isEmpty() ||
+                code.length > 4 || !code.all { it in 'a'..'z' || it in 'A'..'Z' }
+            ) {
+                dropped++
+                continue
+            }
+            val weight = parts.getOrNull(2)?.trim()?.takeIf { it.isNotEmpty() } ?: "1"
+            out.add("$word\t${code.lowercase()}\t$weight")
+        }
+        return out to dropped
+    }
+
+    /** #20 音形词典源（user 根落位形态）：yaml 头 + 归一词条行。 */
+    fun flypyDictYaml(entries: List<String>, sourceSha: String): String = buildString {
+        append("# Rime dictionary\n# encoding: utf-8\n")
+        append("# issue #20: user-imported shape-code table (device-compiled).\n")
+        append("---\n")
+        append("name: flypy\n")
+        append("version: \"user-$sourceSha\"\n")
+        append("sort: by_weight\n")
+        append("...\n")
+        entries.forEach { append(it).append('\n') }
     }
 
     /** 变体 schema：algebra 段整段重写 + schema_id 与 translator/prism

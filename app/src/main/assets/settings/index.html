@@ -615,7 +615,7 @@
       <div class="row language-row no-rule">
         <span class="row-label">
           <span id="dictBaseCurrent">内置 rime-frost（白霜拼音）</span>
-          <small data-i18n="dict.base.hint">换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。</small>
+          <small data-i18n="dict.base.hint">换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典；万象拼音请选去声调的 Lite 版 zip 整包），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。</small>
         </span>
       </div>
       <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -627,6 +627,28 @@
       <!-- #37 形码/音形码表特征提示：换装通道只支持拼音系码表，检测到
            大部分编码切不成拼音音节时持续警示。 -->
       <p class="hint" id="dictBaseNonPinyin" hidden data-i18n="dict.base.nonPinyin">抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。</p>
+      <!-- #35 带调码表提示：导入的疑似完整版（如万象拼音 Base，码列带
+           声调 ā bà），键盘打不出声调字符，需改用去声调的 Lite 版。 -->
+      <p class="hint" id="dictBaseToned" hidden data-i18n="dict.base.toned">此词库的编码带声调（疑似完整版，如万象拼音 Base）：键盘打不出声调符号，很多字将无法命中，请改用去声调的 Lite 版（或换回内置词库）。</p>
+    </section>
+
+    <!-- 音形码表（issue #20，首版小鹤音形）：用户导入形码方案码表，
+         设备端编译独立 flypy table/prism（不动拼音基底）；导入后模式
+         菜单出现「音形」模式。 -->
+    <section class="card" id="sec-dict-flypy" aria-labelledby="flypyTitle">
+      <div class="section-heading"><h2 id="flypyTitle" data-i18n="flypy.title">音形码表</h2><span class="eyebrow" data-i18n="flypy.badge">音形</span></div>
+      <div class="row language-row no-rule">
+        <span class="row-label">
+          <span id="flypyCurrent">未导入</span>
+          <small data-i18n="flypy.hint">导入形码方案码表（如小鹤音形的 rime 词表 .dict.yaml，或 TAB 分隔的「词、码」纯文本）：两码音 + 两码形，四码唯一顶字上屏。在本机编译为独立的音形模式，不影响拼音词库；可随时移除。</small>
+        </span>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="btnFlypyPick" type="button" data-i18n="flypy.pick">导入音形码表</button>
+        <button class="btn ghost-btn" id="btnFlypyRevert" type="button" hidden data-i18n="flypy.revert">移除码表</button>
+        <span class="save-note" id="flypyNote" role="status" aria-live="polite"></span>
+      </div>
+      <p class="hint" id="flypyBuilding" hidden></p>
     </section>
 
     <section class="card" id="sec-dict-import" aria-labelledby="dictImportTitle">

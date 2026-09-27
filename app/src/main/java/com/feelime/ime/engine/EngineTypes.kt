@@ -7,6 +7,9 @@ enum class InputMode(val wireName: String) {
     DOUBLE_PINYIN("double-pinyin"),
     T9("t9"),
     STROKE("stroke"),
+    // 音形码（issue #20，首版小鹤音形）：26 键四码顶字，码表由用户
+    // 导入（设备端编译独立 flypy table/prism），未导入时模式菜单隐藏。
+    FLYPY("flypy"),
     JAPANESE("japanese"),
     FRENCH("french"),
     RUSSIAN("russian"),

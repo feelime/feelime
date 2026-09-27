@@ -443,6 +443,8 @@ class SettingsBridge(
         fun openKeySoundDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a base dictionary (.dict.yaml). */
         fun openBaseDictDocument() = Unit
+        /** Launch ACTION_OPEN_DOCUMENT for a shape-code table (#20). */
+        fun openFlypyDocument() = Unit
         /** Launch ACTION_CREATE_DOCUMENT for the userdata backup (userdata.md §1). */
         fun createBackupDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a userdata backup file. */
@@ -1709,6 +1711,36 @@ class SettingsBridge(
             onFinished = { pushState() },
         )
         pushState()
+    }
+
+    /** #20 音形码表导入：同基底换装通道形态（SAF 由宿主起，编译在
+     *  BaseDictInstaller 单线程跑，与基底导入互斥）。 */
+    @JavascriptInterface
+    fun openFlypyDocument(token: String) = guarded(token) {
+        host.openFlypyDocument()
+    }
+
+    /** Called by SetupActivity after the flypy SAF picker returns. */
+    fun installFlypy(uri: android.net.Uri, displayName: String) = synchronized(lifecycleLock) {
+        if (closed) return
+        if (com.feelime.ime.engine.BaseDictInstaller.isBuilding()) return
+        com.feelime.ime.engine.BaseDictInstaller.installFlypyAsync(
+            context, uri, displayName,
+            pushEvent = { payload -> pushEvent(payload) },
+            onFinished = { pushState() },
+        )
+        pushState()
+    }
+
+    /** #20 移除音形码表（删设备端编译产物 + 留档）。 */
+    @JavascriptInterface
+    fun clearFlypy(token: String) = guarded(token) {
+        if (com.feelime.ime.engine.BaseDictInstaller.isBuilding()) return@guarded
+        com.feelime.ime.engine.BaseDictInstaller.revertFlypyAsync(
+            context,
+            pushEvent = { payload -> pushEvent(payload) },
+            onFinished = { pushState() },
+        )
     }
 
     /** 恢复内置 frost 词库（删设备端编译产物 + 留档源）。 */

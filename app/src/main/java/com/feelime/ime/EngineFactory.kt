@@ -33,6 +33,11 @@ object EngineFactory {
         // 笔画五键（issue #18）：GB2312 裁剪词典 + 单通配派生行，资产
         // 缺失时由引擎数据就绪判定挡在模式菜单。
         InputMode.STROKE -> RimeTextEngine(context, "feelime_stroke")
+        // 音形码（issue #20）：用户导入码表的设备端编译产物；就绪判定
+        // （EngineDataStore.isModeReady）以产物存在为准，未导入不会走到这。
+        InputMode.FLYPY -> RimeTextEngine(
+            context, com.feelime.ime.engine.BaseDictFiles.FLYPY_SCHEMA,
+        )
         InputMode.FRENCH -> HunspellTextEngine(context, "fr", "bonjour")
         InputMode.RUSSIAN -> HunspellTextEngine(context, "ru_RU", "ёлка")
         InputMode.JAPANESE -> MozcTextEngine(context)

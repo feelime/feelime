@@ -40,6 +40,11 @@ object EngineDataStore {
             InputMode.DOUBLE_PINYIN -> File(root, "rime/${DoublePinyinScheme.schemaId(context)}.schema.yaml").isFile
             InputMode.T9 -> File(root, "rime/luna_pinyin_t9.schema.yaml").isFile
             InputMode.STROKE -> File(root, "rime/feelime_stroke.schema.yaml").isFile
+            // #20 音形码表：产物不在 engine-data（用户设备端编译），就绪 =
+            // staging 里 table 存在（未导入时模式菜单不显示）。
+            InputMode.FLYPY -> File(
+                context.filesDir, "rime-user/build/${BaseDictFiles.FLYPY_TABLE}",
+            ).isFile
             InputMode.FRENCH -> File(root, "hunspell/fr.aff").isFile
             InputMode.RUSSIAN -> File(root, "hunspell/ru_RU.aff").isFile
             InputMode.JAPANESE -> File(root, "mozc/mozc.data").isFile

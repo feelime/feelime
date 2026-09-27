@@ -149,6 +149,22 @@ class SetupActivity : AppCompatActivity() {
         }
     }
 
+    /** ACTION_OPEN_DOCUMENT for the shape-code table (issue #20). Same
+     *  display-name semantics as the base-dict picker. */
+    private val flypyOpenLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val name = runCatching {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+                }
+            }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/') ?: "flypy.dict.yaml"
+            bridge.installFlypy(uri, name)
+        }
+    }
+
     /** ACTION_CREATE_DOCUMENT for the userdata backup export
      * (docs/design/userdata.md §1). The bridge writes through the granted
      * stream immediately; no persisted grant. */
@@ -463,8 +479,27 @@ class SetupActivity : AppCompatActivity() {
                         "application/octet-stream",
                         "application/yaml",
                         "application/x-yaml",
+                        // #35：万象 Lite 是多文件包（umbrella + dicts/*.lite），
+                        // zip 整包导入。
+                        "application/zip",
+                        "application/x-zip-compressed",
                     ))
                 }.onFailure { Log.w(TAG, "base-dict picker launch dropped", it) }
+            }
+        }
+
+        override fun openFlypyDocument() {
+            if (!canTouchWebView()) return
+            runOnUiThread {
+                if (!canTouchWebView()) return@runOnUiThread
+                runCatching {
+                    flypyOpenLauncher.launch(arrayOf(
+                        "text/*",
+                        "application/octet-stream",
+                        "application/yaml",
+                        "application/x-yaml",
+                    ))
+                }.onFailure { Log.w(TAG, "flypy picker launch dropped", it) }
             }
         }
 
