@@ -3650,6 +3650,39 @@ test('one-hand toggle goes direct: off → last-used side → off, no cycling (#
     equal(layout(), 'off', 'layout clears from the tile path');
 });
 
+// P2-3：侧记忆 native 化。设置页选侧时键盘 WebView 可能没创建，
+// localStorage 永远不更新——hello 下发的 native 侧必须压过本地旧值；
+// tile 激活某侧时也要把最新侧上推 native（备份/设置页以 native 为准）。
+test('one-hand side memory comes from native and pushes back up (#38 P2-3)', {since: '3.69.21'}, () => {
+    const world = fresh();
+    // localStorage 里是陈旧的右手，native 记忆是左手：直达必须开左手。
+    world.storage.set('feelime_onehand_side', '2');
+    world.hello({ oneHandSide: 1, oneHand: 0 });
+    world.tap(world.$('toolOneHand'));
+    const pref = () => world.native.of('setQuickPref').filter(x => x.args[0] === 'oneHand').slice(-1)[0];
+    equal(pref().args[1], '1', 'native side (left) beats the stale localStorage copy');
+    // 记忆命中侧时不重复上推（hello 快照已含该值，幂等）。
+    equal(world.native.of('setQuickPref').some(x => x.args[0] === 'oneHandSide'), false,
+        'no redundant push when the memory already matches');
+
+    // 无 native 记忆（旧 APK hello）+ localStorage 回落开侧 → 上推 native，
+    // 备份与设置页从此能看到最新侧。
+    const world2 = fresh();
+    world2.storage.set('feelime_onehand_side', '2');
+    world2.hello({ oneHand: 0 });
+    world2.tap(world2.$('toolOneHand'));
+    const push = world2.native.of('setQuickPref').filter(x => x.args[0] === 'oneHandSide');
+    equal(push.length, 1, 'activating from the localStorage fallback pushes the side up');
+    equal(push[0].args[1], '2', 'the pushed side is the activated one');
+    // 后续无侧字段的 hello 不把记忆洗掉：确认→关→再开仍直达该侧。
+    world2.hello({ oneHand: 2 });
+    world2.tap(world2.$('toolOneHand')); // off
+    world2.hello({ oneHand: 0 });
+    world2.tap(world2.$('toolOneHand')); // on again
+    const last = world2.native.of('setQuickPref').filter(x => x.args[0] === 'oneHand').slice(-1)[0];
+    equal(last.args[1], '2', 'side memory survives a field-less hello');
+});
+
 test('theme tile writes theme_mode pref; in-flight intent survives stale hello', {since: '3.45.1'}, () => {
     const world = fresh();
     world.hello({ themeMode: 'auto' });

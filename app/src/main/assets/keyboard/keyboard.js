@@ -1219,6 +1219,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 单手压缩比例（2026-09-18 用户反馈：大屏单手仍够不着）：
             // 0=默认让位（CSS --side-pad-w 64px），15/25/35=让位占屏宽百分比。
             this.oneHandPad = 0;
+            // 单手侧记忆（P2-3 native 化）：0=native 未记忆。
+            this.oneHandSideMemory = 0;
             this.sideContent = 0;
             // 背景图亮/暗两组：各自独立，空串 = 该组无图（纯色背景）。
             this.bgImageLight = '';
@@ -5235,9 +5237,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         applyOneHand() {
             const level = Number(this.oneHand) || 0;
             // 记忆用过的侧（#38 直达切换）：开关键不再三档循环，单击
-            // =开（用上次的侧）/关；设过左手/右手就固定用那只。
+            // =开（用上次的侧）/关；设过左手/右手就固定用那只。localStorage
+            // 之外同步上推 native（P2-3）：备份与设置页都以 native 为准。
             if (level === 1 || level === 2) {
                 try { localStorage.setItem('feelime_onehand_side', String(level)); } catch (_) {}
+                if (this.oneHandSideMemory !== level &&
+                        typeof Native.setQuickPref === 'function') {
+                    this.oneHandSideMemory = level;
+                    this.call(() => Native.setQuickPref(
+                        'oneHandSide', String(level), this.token));
+                }
             }
             document.body.dataset.oneHand =
                 level === 1 ? 'left' : level === 2 ? 'right' : 'off';
@@ -6519,8 +6528,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const pending = this.quickPending[key];
             return pending === undefined ? actual : pending;
         }
-        /** 单手直达切换（#38）记忆的侧：1=左 2=右；无记忆默认右手。 */
+        /** 单手直达切换（#38）记忆的侧：1=左 2=右；无记忆默认右手。
+         *  native 记忆（hello 下发）优先——设置页选侧时键盘 WebView 可能
+         *  根本没创建，localStorage 永远不更新（codex P2-3）。 */
         oneHandSide() {
+            if (this.oneHandSideMemory === 1 || this.oneHandSideMemory === 2) {
+                return this.oneHandSideMemory;
+            }
             const v = Number(localStorage.getItem('feelime_onehand_side'));
             return v === 1 || v === 2 ? v : 2;
         }
@@ -8617,6 +8631,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 单手压缩比例：白名单档（0=默认 64px），旧 APK 不带字段不覆盖。
             if (Number(payload.oneHandPad) in { 0: 1, 15: 1, 25: 1, 35: 1 }) {
                 this.oneHandPad = Number(payload.oneHandPad);
+            }
+            // 单手侧记忆（#38 codex P2-3）：native 是真相源（设置页选侧/
+            // tile 上推都写它），0=未记忆回落 localStorage，再回落右手。
+            if (Number(payload.oneHandSide) in { 1: 1, 2: 1 }) {
+                this.oneHandSideMemory = Number(payload.oneHandSide);
             }
             // 2 是废除的「自定义侧边图」档，按空白处理（防旧 pref 直漏）。
             const side = Number(payload.sideContent);

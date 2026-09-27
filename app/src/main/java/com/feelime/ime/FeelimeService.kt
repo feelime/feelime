@@ -1832,6 +1832,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("preeditBold", readPreeditBold(this))
             .put("oneHand", readOneHand(this))
             .put("oneHandPad", readOneHandPad(this))
+            .put("oneHandSide", readOneHandSide(this))
             .put("sideContent", readSideContent(this))
             .put("bgImageLight", readBgImageBase64(this, "light"))
             .put("bgImageDark", readBgImageBase64(this, "dark"))
@@ -2461,7 +2462,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 "oneHand" -> {
                     val mode = value.toIntOrNull()
                     if (mode == null || mode !in 0..2) return@guarded
-                    keyboardPrefs.edit().putInt(PREF_ONE_HAND, mode).commit()
+                    keyboardPrefs.edit().putInt(PREF_ONE_HAND, mode)
+                        .apply { if (mode in 1..2) putInt(PREF_ONE_HAND_SIDE, mode) }
+                        .commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                // 键盘 tile 上推的侧记忆（P2-3）：applyOneHand 激活某侧时
+                // 同步 native，设置页与备份都能看到最新侧。
+                "oneHandSide" -> {
+                    val side = value.toIntOrNull()
+                    if (side == null || side !in 1..2) return@guarded
+                    keyboardPrefs.edit().putInt(PREF_ONE_HAND_SIDE, side).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "sideContent" -> {
@@ -2993,8 +3004,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         @JavascriptInterface
         fun customKeys(token: String): String {
             if (token != pageToken) return ""
-            val store = com.feelime.ime.CustomKeysStore(applicationContext)
-            return if (store.enabled()) store.json() else "disabled"
+            return com.feelime.ime.CustomKeysStore(applicationContext).syncAnswer()
         }
 
         @JavascriptInterface

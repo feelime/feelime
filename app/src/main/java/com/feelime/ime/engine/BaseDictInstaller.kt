@@ -48,6 +48,11 @@ object BaseDictInstaller {
     private const val NON_PINYIN_THRESHOLD = 0.5f
     private const val NON_PINYIN_SAMPLE = 4000
 
+    /** #37 门闸（codex P2-4）：阈值约定严格小于——恰好 0.5 的拼音系
+     *  码表不算形码（`in 0f..THRESHOLD` 是闭区间，会误报）。 */
+    fun nonPinyinHint(mode: String, built: Boolean, ratio: Float): Double? =
+        if (mode == "custom" && built && ratio >= 0f && ratio < NON_PINYIN_THRESHOLD) ratio.toDouble() else null
+
     private const val MAX_SOURCE_BYTES = 150L * 1024 * 1024
     private const val MAINTENANCE_TIMEOUT_MS = 15 * 60 * 1000L
     private const val PROGRESS_EVERY_MS = 2000L
@@ -135,9 +140,7 @@ object BaseDictInstaller {
             .putOpt("installedAt", prefs.getLong(KEY_INSTALLED_AT, 0L))
             // #37：形码/音形特征（可切码占比低于阈值）持续提示，直到换回
             // 内置或导入拼音系码表。
-            .putOpt("nonPinyin",
-                if (mode == "custom" && built && ratio in 0f..NON_PINYIN_THRESHOLD) ratio.toDouble()
-                else JSONObject.NULL)
+            .putOpt("nonPinyin", nonPinyinHint(mode, built, ratio) ?: JSONObject.NULL)
         val stage = stageSnapshot
         if (isBuilding() && stage != null) {
             json.put("stage", stage)

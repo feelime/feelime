@@ -117,6 +117,17 @@ fun readOneHand(context: Context): Int =
 /** 单手压缩比例：让位宽度占屏宽的百分比；0=默认让位（64px）。
  *  2026-09-18 用户反馈：大屏单手模式 64px 让位后键区仍太宽。 */
 const val PREF_ONE_HAND_PAD = "one_hand_pad"
+
+/** 单手侧记忆（#38 codex P2-3）：直达切换「单击=开」用哪只手。与
+ *  [PREF_ONE_HAND] 分开存——那是三态模式（0=关），关掉就归 0，侧
+ *  记忆要跨开关存活。设置页与键盘 tile 双写，键盘 hello 读回。 */
+const val PREF_ONE_HAND_SIDE = "one_hand_side"
+
+fun readOneHandSide(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_ONE_HAND_SIDE, 0)
+        .takeIf { it in 1..2 }
+        ?: 0
 val ONE_HAND_PAD_CHOICES = setOf(0, 15, 25, 35)
 
 fun readOneHandPad(context: Context): Int =
@@ -667,6 +678,7 @@ class SettingsBridge(
             .put("preeditBold", readPreeditBold(context))
             .put("oneHand", readOneHand(context))
             .put("oneHandPad", readOneHandPad(context))
+            .put("oneHandSide", readOneHandSide(context))
             .put("sideContent", readSideContent(context))
             .put("bgImageLight", readBgImageBase64(context, "light"))
             .put("bgImageDark", readBgImageBase64(context, "dark"))
@@ -1151,7 +1163,12 @@ class SettingsBridge(
             return@guarded
         }
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_ONE_HAND, mode).commit()
+            .edit().putInt(PREF_ONE_HAND, mode)
+            // 选定某侧时同步侧记忆（P2-3）：设置页选左手/右手后，键盘
+            // tile 的「单击=开」必须用新选的侧，不能还是 localStorage
+            // 里的旧值（键盘 WebView 没活过就永远不更新）。
+            .apply { if (mode in 1..2) putInt(PREF_ONE_HAND_SIDE, mode) }
+            .commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -2773,13 +2790,17 @@ internal object UpdateCheckThrottle {
 
 /** design §15: native single source of truth for the custom keyboard
  * table (the IME WebView mirrors it through its bridge). */
-class CustomKeysStore(private val context: Context) {
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+class CustomKeysStore internal constructor(private val prefs: SharedPreferences) {
+    constructor(context: Context) : this(context.applicationContext
+        .getSharedPreferences(PREFS, Context.MODE_PRIVATE))
 
     fun json(): String = prefs.getString(KEY_JSON, "") ?: ""
 
-    fun enabled(): Boolean = prefs.getBoolean(KEY_ENABLED, false)
+    /** 未写过 pref 的存储必须视为启用（codex 评审 P1）：§15 之前版本的
+     *  定制键表只存在于键盘 localStorage，首次 hello 时靠 customKeys()
+     *  返回空串走上推迁移；默认若是 false 会答 "disabled"，键盘先删掉
+     *  本地表、迁移永远不发生。显式关闭（setEnabled(false)）才答 disabled。 */
+    fun enabled(): Boolean = prefs.getBoolean(KEY_ENABLED, true)
 
     fun summary(): String = summary(null)
 
@@ -2803,6 +2824,10 @@ class CustomKeysStore(private val context: Context) {
     fun setEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_ENABLED, enabled).commit()
     }
+
+    /** 键盘桥 customKeys() 的应答串：空串=未设置（触发键盘 localStorage
+     *  表上推迁移），"disabled"=显式关闭（键盘删镜像），其余=json 本体。 */
+    fun syncAnswer(): String = if (enabled()) json() else "disabled"
 
     private fun JSONArray.iterate(): Sequence<JSONArray> = sequence {
         for (index in 0 until length()) yield(optJSONArray(index) ?: JSONArray())

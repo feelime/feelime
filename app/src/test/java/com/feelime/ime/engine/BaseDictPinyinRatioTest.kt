@@ -2,6 +2,7 @@ package com.feelime.ime.engine
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -101,5 +102,21 @@ class BaseDictPinyinRatioTest {
         // zhongguo = zhong+guo：完整切分不该被段长上限误杀。
         val f = dict("中国\tzhongguo\t1")
         assertEquals(1.0, BaseDictInstaller.pinyinCodeRatio(f, syllables, 100), 1e-9)
+    }
+
+    @Test
+    fun nonPinyinHintThresholdIsStrictlyBelow() {
+        // codex P2-4：阈值约定严格小于。恰好 0.5 的拼音系码表（占比
+        // 踩线）不算形码；未检测(-1)/builtin/未建成不下发提示。
+        assertEquals(0.4999, BaseDictInstaller.nonPinyinHint("custom", true, 0.4999f)!!, 1e-3)
+        assertEquals(0.49, BaseDictInstaller.nonPinyinHint("custom", true, 0.49f)!!, 1e-3)
+        assertNull("exactly at the threshold is NOT a shape-code table",
+            BaseDictInstaller.nonPinyinHint("custom", true, 0.5f))
+        assertNull(BaseDictInstaller.nonPinyinHint("custom", true, 0.51f))
+        assertNull("probe not run stays silent",
+            BaseDictInstaller.nonPinyinHint("custom", true, -1f))
+        assertNull(BaseDictInstaller.nonPinyinHint("builtin", true, 0.1f))
+        assertNull("built product missing stays silent",
+            BaseDictInstaller.nonPinyinHint("custom", false, 0.1f))
     }
 }
