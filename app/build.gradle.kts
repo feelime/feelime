@@ -58,6 +58,23 @@ val checkEngineArtifacts = tasks.register("checkEngineArtifacts") {
         if (!thirdParty.isFile) {
             throw GradleException("missing third_party/manifest.json")
         }
+        // Pinned build-recipe scripts (GPL source chain): the recorded
+        // scriptSha256 must match the live script, or the manifest is
+        // claiming an audited pipeline the tree no longer contains (codex
+        // review P2: both drifted silently after the rime-frost switch).
+        val recipes = (groovy.json.JsonSlurper().parse(thirdParty) as Map<*, *>)["buildRecipes"] as Map<*, *>
+        for ((_, raw) in recipes) {
+            val recipe = raw as Map<*, *>
+            val script = rootProject.file(recipe["script"] as String)
+            if (!script.isFile) {
+                failures += "missing build recipe script ${recipe["script"]}"
+                continue
+            }
+            if (sha256(script) != recipe["scriptSha256"] as String) {
+                failures += "build recipe script hash mismatch for ${recipe["script"]} " +
+                    "(update third_party/manifest.json scriptSha256 after intentional changes)"
+            }
+        }
         val outputs = (groovy.json.JsonSlurper().parse(thirdParty) as Map<*, *>)["outputs"] as List<Map<*, *>>
         var bound = 0
         for (entry in outputs) {

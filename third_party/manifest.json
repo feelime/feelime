@@ -3,12 +3,12 @@
     "cmake-native": {
       "command": "FEELIME_M0_INPUTS=<verified-inputs> FEELIME_M0_NDK=<verified-r29> FEELIME_M0_WORK=<new-empty-dir> scripts/research/build-cmake-native-engines.sh",
       "script": "scripts/research/build-cmake-native-engines.sh",
-      "scriptSha256": "152452fb27e9e2637a0d1a7d56f78e4f1491d3c8a4dc869cb0200fbd89392483"
+      "scriptSha256": "f084c88c3314963a8eee60368030f8e368eb37b6a2aa1c784d0eabd26ac7a056"
     },
     "mozc-android": {
       "command": "FEELIME_M0_INPUTS=<verified-inputs> FEELIME_M0_NDK=<verified-r29> FEELIME_M0_NDK_ARCHIVE=<verified-r29-archive> FEELIME_M0_BAZELISK=<verified-bazelisk> FEELIME_M0_REPOSITORY_CACHE_SEED=<verified-cache> FEELIME_M0_REPOSITORY_CACHE_MANIFEST=<verified-cache-manifest> FEELIME_M0_WORK=<new-empty-dir> scripts/research/build-mozc-android.sh",
       "script": "scripts/research/build-mozc-android.sh",
-      "scriptSha256": "ee52305a630acf3219f0471cbdaf688958aaf0a031f15f5d899d5dc4558af719"
+      "scriptSha256": "9f740964c020466f6fd7669d22dbb4bfa7268bef5e5a84bcbaa3317225a38f40"
     }
   },
   "builder": "user-controlled-x86_64-builder",
@@ -257,18 +257,6 @@
       "bytes": 19352244,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.table.bin",
       "sha256": "0024406390e10067c72087b751fdd26bd02a79804170c53f5c6982a8f3b8a595",
-      "sources": [
-        "rime-essay",
-        "rime-frost",
-        "rime-luna-pinyin"
-      ]
-    },
-    {
-      "apkPath": "assets/engine-data/rime/luna_pinyin.table.txt",
-      "buildRecipe": "cmake-native",
-      "bytes": 17965512,
-      "path": "app/src/main/assets/engine-data/rime/luna_pinyin.table.txt",
-      "sha256": "4ed14c3cc779a4e7922601a87771dd9100fefc82c79bae13d6962a74480839f7",
       "sources": [
         "rime-essay",
         "rime-frost",
