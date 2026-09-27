@@ -3597,6 +3597,36 @@ test('quick tiles: toggles write setQuickPref, hello echo re-reads state', {sinc
     assert(calls.every(tok => tok === world.tokenValue), 'every write carries the page token');
 });
 
+// #38 单手直达切换：开关键不再「关→左→右」三档循环——单击 = 开
+// （上次用的侧，无记忆默认右手）/关；侧的选择留在设置行。
+test('one-hand toggle goes direct: off → last-used side → off, no cycling (#38)', {since: '3.69.19'}, () => {
+    const world = fresh();
+    world.hello({});
+    const lastPref = () => {
+        const c = world.native.of('setQuickPref').filter(x => x.args[0] === 'oneHand').slice(-1)[0];
+        return c ? `${c.args[0]}=${c.args[1]}` : 'none';
+    };
+    const layout = () => world.document.body.dataset.oneHand;
+    // 无记忆：首点直达右手（默认），不再先落左手。
+    world.tap(world.$('toolOneHand'));
+    equal(lastPref(), 'oneHand=2', 'first tap opens straight to the default side (right)');
+    equal(layout(), 'right', 'layout applies');
+    // 再点 = 关。
+    world.tap(world.$('toolOneHand'));
+    equal(lastPref(), 'oneHand=0', 'second tap closes');
+    equal(layout(), 'off', 'layout clears');
+    // 用过左手后记忆左手：关了再开直达左手（不再经过别的档）。
+    world.hello({ oneHand: 1 });
+    world.hello({ oneHand: 0 });
+    world.tap(world.$('setupButton'));
+    world.tap(world.tile('单手模式'));
+    equal(lastPref(), 'oneHand=1', 'reopens to the last-used side (left)');
+    equal(layout(), 'left', 'left layout applies');
+    world.tap(world.tile('单手模式'));
+    equal(lastPref(), 'oneHand=0', 'tile path closes too');
+    equal(layout(), 'off', 'layout clears from the tile path');
+});
+
 test('theme tile writes theme_mode pref; in-flight intent survives stale hello', {since: '3.45.1'}, () => {
     const world = fresh();
     world.hello({ themeMode: 'auto' });

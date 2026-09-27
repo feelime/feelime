@@ -280,7 +280,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.69.18';
+    const KEYBOARD_VERSION = '3.69.19';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -5230,6 +5230,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // 落地。位置纯 CSS（含安全区对齐），无需 JS 定位。
         applyOneHand() {
             const level = Number(this.oneHand) || 0;
+            // 记忆用过的侧（#38 直达切换）：开关键不再三档循环，单击
+            // =开（用上次的侧）/关；设过左手/右手就固定用那只。
+            if (level === 1 || level === 2) {
+                try { localStorage.setItem('feelime_onehand_side', String(level)); } catch (_) {}
+            }
             document.body.dataset.oneHand =
                 level === 1 ? 'left' : level === 2 ? 'right' : 'off';
             const content = Number(this.sideContent) || 0;
@@ -5552,7 +5557,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!this.associationOn) this.assocWords = [];
                 setNative('association', this.associationOn ? '1' : '0');
             } else if (key === 'onehand') {
-                this.oneHand = this.qStep('oneHand', [0, 1, 2], this.oneHand);
+                // #38 直达切换：不再三档循环——开着就关，关着就开到
+                // 上次用的侧（无记忆默认右手）。
+                this.oneHand = this.qRead('oneHand', this.oneHand) === 0
+                    ? this.oneHandSide() : 0;
+                this.quickPending['oneHand'] = this.oneHand;
                 this.applyOneHand();
                 setNative('oneHand', this.oneHand);
             }
@@ -6506,6 +6515,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const pending = this.quickPending[key];
             return pending === undefined ? actual : pending;
         }
+        /** 单手直达切换（#38）记忆的侧：1=左 2=右；无记忆默认右手。 */
+        oneHandSide() {
+            const v = Number(localStorage.getItem('feelime_onehand_side'));
+            return v === 1 || v === 2 ? v : 2;
+        }
         qFlip(key, current) {
             const pending = this.quickPending[key];
             const next = pending === undefined ? !current : !pending;
@@ -6618,14 +6632,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        // 单手模式（issue #15）：关 → 左手 → 右手循环；
-                        // tile 状态行常显当前模式（qRead 回读，含未决意图）。
+                        // 单手模式（issue #15 起，#38 改直达）：单击 = 开
+                        // （上次用的侧，无记忆右手）/关，不再三档循环；
+                        // 侧在长按设置行或设置 App 里选。tile 状态行常显
+                        // 当前模式（qRead 回读，含未决意图）。
                         icon: ICONS.onehand, label: t("单手模式"), hold: 'oneHand',
                         state: () => oneHandText[this.qRead('oneHand', this.oneHand)] || oneHandText[0],
                         on: () => (this.qRead('oneHand', this.oneHand) || 0) !== 0,
                         tap: () => {
                             if (typeof Native.setQuickPref !== 'function') return;
-                            this.oneHand = this.qStep('oneHand', [0, 1, 2], this.oneHand);
+                            this.oneHand = this.qRead('oneHand', this.oneHand) === 0
+                                ? this.oneHandSide() : 0;
+                            this.quickPending['oneHand'] = this.oneHand;
                             this.applyOneHand();
                             quickPref('oneHand', this.oneHand);
                             rehome();
