@@ -10,15 +10,27 @@
 #      一律拒绝）、versionName 精确等于 tag、签名者非 debug 证书
 #   3. thin→cp→full→cp 顺序坑固化（同路径输出互相覆盖，memory 1.0.14）
 #
-# 用法: scripts/publish-release.sh v<version> [--upload]
-#   v<version>   版本 tag（如 v1.2.1），必须与 app versionName 一致
-#   --upload     校验全过后 gh release upload（默认只构建+校验不传）
+# 用法: scripts/publish-release.sh v<version> [--upload] [--notes-file <file>]
+#   v<version>      版本 tag（如 v1.2.2），必须与 app versionName 一致
+#   --upload        校验全过后发布 GitHub release（release 不存在会自动
+#                   create；上传后自动核验资产 state/digest/包名）
+#   --notes-file F  create 时用的发布说明文件（缺省 --generate-notes，
+#                   发布说明可事后 gh release edit 补）
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAG="${1:-}"
 UPLOAD=0
-[[ "${2:-}" == "--upload" ]] && UPLOAD=1
+NOTES_FILE=""
+shift || true
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --upload) UPLOAD=1 ;;
+        --notes-file) NOTES_FILE="${2:-}"; shift ;;
+        *) echo "unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
 if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "usage: $0 v<version> [--upload]   (e.g. $0 v1.2.1)" >&2
     exit 2
@@ -86,12 +98,46 @@ echo "== sha256 =="
 ( cd "$DIST" && sha256sum "feelime-v${VER}-thin.apk" "feelime-v${VER}-full.apk" )
 
 if [[ "$UPLOAD" == 1 ]]; then
+    # gh release upload 只能往已存在的 release 里传——release 还没建就
+    # 先 create（tag 已 push 时 create 不会重复打 tag）。--notes-file
+    # 可选，缺省 --generate-notes（发布说明可事后 gh release edit 补）。
+    if ! gh release view "$TAG" >/dev/null 2>&1; then
+        echo "== create release $TAG =="
+        if [[ -n "$NOTES_FILE" ]]; then
+            gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
+        else
+            gh release create "$TAG" --title "$TAG" --generate-notes
+        fi
+    fi
     echo "== upload $TAG =="
     gh release upload "$TAG" \
         "$DIST/feelime-v${VER}-thin.apk" \
         "$DIST/feelime-v${VER}-full.apk" \
         --clobber
-    echo "uploaded: $(gh release view "$TAG" --json assets -q '.assets[].name' | tr '\n' ' ')"
+    # ---- 发布后核验（不依赖人记得）：资产 state + 远端 digest 与本地
+    # sha256 逐一比对 + 下载 thin 包复核包名（.dev 泄漏的最后防线）。
+    echo "== post-upload verify =="
+    RID="$(gh api "repos/{owner}/{repo}/releases/tags/$TAG" -q .id)"
+    for i in $(seq 1 40); do
+        STATES="$(gh api "repos/{owner}/{repo}/releases/$RID/assets" \
+            -q '[.[] | select(.name | startswith("feelime-v"))] | map(.state) | join(",")')"
+        [[ "$STATES" == "uploaded,uploaded" ]] && break
+        sleep 15
+    done
+    echo "asset states: $STATES"
+    [[ "$STATES" == "uploaded,uploaded" ]] || { echo "REJECT: assets not uploaded" >&2; exit 1; }
+    for f in thin full; do
+        LOCAL_SHA="$(sha256sum "$DIST/feelime-v${VER}-${f}.apk" | cut -d' ' -f1)"
+        REMOTE="$(gh api "repos/{owner}/{repo}/releases/$RID/assets" \
+            -q ".[] | select(.name == \"feelime-v${VER}-${f}.apk\") | .digest")"
+        echo "  ${f}: local=$LOCAL_SHA remote=$REMOTE"
+        [[ "$REMOTE" == "sha256:$LOCAL_SHA" ]] || { echo "REJECT: ${f} digest mismatch" >&2; exit 1; }
+    done
+    TMPD="$(mktemp -d)"
+    gh release download "$TAG" --pattern "feelime-v${VER}-thin.apk" --clobber -D "$TMPD" >/dev/null
+    verify_apk "$TMPD/feelime-v${VER}-thin.apk" "$VER"
+    rm -rf "$TMPD"
+    echo "VERIFIED: $TAG assets are correct (package, version, digest, signature)"
 else
     echo "dry-run only (pass --upload to publish): $DIST/feelime-v${VER}-{thin,full}.apk"
 fi

@@ -4,6 +4,8 @@
  */
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const { KeyboardWorld, KEYBOARD_VERSION } = require('./mock_bridge_harness');
 
 let passed = 0;
@@ -7423,4 +7425,19 @@ console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
 if (failed) {
     console.log('failures:', failures.join(' | '));
     process.exit(1);
-}
+}// 版本双处一致性（发版纪律，1.2.2 曾漂移 5 个版本）：keyboard.js 的
+// KEYBOARD_VERSION 常量（握手上报给 native，设置页显示用它）必须与
+// assets/keyboard/VERSION 文件（built-in 副本刷新判断用它）一致——
+// 两处漏一处 = 设备副本刷新了但版本显示滞后的隐性漂移。
+test('KEYBOARD_VERSION constant matches the VERSION file (dual-bump discipline)', () => {
+    const kbSrc = process.env.FEELIME_KEYBOARD_SRC
+        ? path.resolve(process.env.FEELIME_KEYBOARD_SRC)
+        : path.resolve(__dirname, '../../app/src/main/assets/keyboard');
+    const js = fs.readFileSync(path.join(kbSrc, 'keyboard.js'), 'utf8');
+    const m = js.match(/const KEYBOARD_VERSION = '([^']+)'/);
+    assert(m, 'KEYBOARD_VERSION constant found');
+    equal(m[1], KEYBOARD_VERSION,
+        `KEYBOARD_VERSION constant (${m[1]}) must match the VERSION file (${KEYBOARD_VERSION}) - bump both or neither`);
+});
+
+
