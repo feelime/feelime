@@ -104,6 +104,8 @@ class MockSettingsNative {
     setKeyHue(...a) { this._rec('setKeyHue', a); }
     setKeySat(...a) { this._rec('setKeySat', a); }
     setOneHandMode(...a) { this._rec('setOneHandMode', a); }
+    setPreeditBold(...a) { this._rec('setPreeditBold', a); }
+    setCustomEnabled(...a) { this._rec('setCustomEnabled', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
@@ -1425,6 +1427,22 @@ test('one-hand side select reaches the bridge', () => {
     sel.value = '2';
     sel.listeners.find(l => l.type === 'change').handler({ target: sel });
     equal(world.lastCall('setOneHandMode').args[0], 2, 'right selection posts setOneHandMode(2)');
+});
+
+// #39-1/#39-2：两个「桥端缺失/无监听」的开关回归防护——开关拨动必须
+// 到达桥（缺失时静默失败，任何 state 回推都把勾选洗回默认）。
+test('issue-39 toggles reach the bridge: preedit bold and custom-keyboard enable', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const bold = world.$('preeditBold');
+    bold.checked = true;
+    bold.listeners.find(l => l.type === 'change').handler({ target: bold });
+    equal(world.lastCall('setPreeditBold').args[0], true, 'bold toggle posts setPreeditBold(true)');
+    const custom = world.$('customEnabled');
+    custom.checked = false;
+    custom.listeners.find(l => l.type === 'change').handler({ target: custom });
+    equal(world.lastCall('setCustomEnabled').args[0], false,
+        'custom-enable toggle posts setCustomEnabled immediately (not only via save)');
 });
 
 // 键面色调同款取色（用户验收五轮）：跟随档 + 六预置；未自定义时跟随

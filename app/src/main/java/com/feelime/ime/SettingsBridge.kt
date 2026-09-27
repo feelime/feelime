@@ -1109,6 +1109,30 @@ class SettingsBridge(
         pushState()
     }
 
+    /** 拼音加粗（issue #39-1）：设置页一直在调但桥端缺失——开关从未
+     *  落盘，任何 state 回推（改其他设置触发）都把它洗回默认关，表现
+     *  为「打开后自动关闭/打开无效」。 */
+    @JavascriptInterface
+    fun setPreeditBold(bold: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_PREEDIT_BOLD, bold).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 定制键盘只切启用位（issue #39-2）：开关此前只随「保存定制」提交，
+     *  拨了不点保存=从未落盘，重进被回读洗回「开」。 */
+    @JavascriptInterface
+    fun setCustomEnabled(enabled: Boolean, token: String) = guarded(token) {
+        customKeysStore.setEnabled(enabled)
+        pushState()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+    }
+
 
 
     /** 单手模式：0=关 1=左手 2=右手（#38 直达切换后侧的唯一正式入口；
@@ -2755,7 +2779,7 @@ class CustomKeysStore(private val context: Context) {
 
     fun json(): String = prefs.getString(KEY_JSON, "") ?: ""
 
-    fun enabled(): Boolean = prefs.getBoolean(KEY_ENABLED, true)
+    fun enabled(): Boolean = prefs.getBoolean(KEY_ENABLED, false)
 
     fun summary(): String = summary(null)
 
@@ -2772,6 +2796,12 @@ class CustomKeysStore(private val context: Context) {
 
     fun save(json: String, enabled: Boolean) {
         prefs.edit().putString(KEY_JSON, json).putBoolean(KEY_ENABLED, enabled).commit()
+    }
+
+    /** 只切开关不动 json（issue #39-2）：设置页的启用开关拨动即生效，
+     *  不再要求顺手点「保存定制」。 */
+    fun setEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ENABLED, enabled).commit()
     }
 
     private fun JSONArray.iterate(): Sequence<JSONArray> = sequence {

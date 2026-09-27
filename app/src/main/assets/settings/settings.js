@@ -2837,6 +2837,9 @@ $("btnSaveCustom").addEventListener("click", () => {
     call("saveCustom", $("customJson").value || "{}", $("customEnabled").checked);
     setNote("customNote", t("note.customSaved"));
 });
+// 启用开关拨动即生效（#39-2）：此前只随「保存定制」提交，拨了不点
+// 保存=从未落盘，重进被回读洗回「开」。
+$("customEnabled").addEventListener("change", event => call("setCustomEnabled", event.target.checked));
 
 $("btnCustomTemplate").addEventListener("click", () => {
     // 全功能示例（验收 2026-09-24：模板要覆盖每个特性）——三行各自一类：
