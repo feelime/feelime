@@ -95,6 +95,8 @@
         "横屏已达屏幕上限": "Maximum landscape height",
         "拖动为预览，松手应用": "Drag to preview; release to apply",
         "键盘高度已保存": "Keyboard height saved",
+        "键盘高度保存失败，请重试": "Failed to save keyboard height, try again",
+        "键盘高度保存未确认，请重试": "Height save not confirmed, try again",
         "恢复默认": "Reset",
         "已恢复默认高度": "Default height restored",
         "输入法快捷切换": "Quick switch",
@@ -278,7 +280,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.69.11';
+    const KEYBOARD_VERSION = '3.69.14';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -1121,6 +1123,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // old behaviour - every layer stays inside the IME view).
             this.floatBand = 0;
             this.kbHeight = 0;
+            // hello 握手标志（见 onBridgeHello 头注释）：到达前禁止一切
+            // 按 stored 回推高度的路径，防默认值 debounce 回写覆盖用户
+            // 保存的高度（真机实录：保存 300→收起→弹出回 272）。
+            this.helloSeen = false;
             this.rowHeight = 44;
             this.heightEditSaved = null;
             // Custom-symbol editor state. customEditRow is the
@@ -2304,14 +2310,32 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // stored 旧值和拖动值每帧打架（用户看到的「抖来抖去」）。
             const card = document.getElementById('heightCard');
             if (card && card.classList.contains('open')) return;
+            // hello 未达（页面加载竞态/重唤极早期）：stored 读到 0 会按
+            // 默认值回推并写回 pref（见 onBridgeHello 的 helloSeen 注释）。
+            if (!this.helloSeen) return;
             const stored = this.storedKbHeight();
             const base = stored > 0 ? stored : (this.heightDefaultCss || 272);
             if (this.landscape || this.mode !== 'handwriting') {
-                if (this.kbHeight !== base) this.applyKbHeight(base);
+                if (this.kbHeight !== base) this.applyKbHeightLocal(base);
                 return;
             }
+            // 抬升判定不能只比 JS 曾请求过的值（codex 二轮 P2-6）：收起
+            // 期间设置页把 native 高度改低于手写下限时，kbHeight 旧值仍
+            // 等于 desired → 永不发桥 → 面板可写高度不足。以「JS 认知与
+            // native 权威值取大」为基准，任一低于下限就重推。
             const desired = Math.max(base, this.inkChromeHeight() + 96);
-            if (this.kbHeight !== desired) this.applyKbHeight(desired);
+            const authoritative = Math.max(this.kbHeight, base);
+            if (authoritative !== desired) this.applyKbHeight(desired);
+        }
+
+        /** 「按权威值对齐本地布局」专用：不发高度桥、不写 pref。
+         *  stored 路径的回推是 native→hello→JS→native 的回声——native 的
+         *  view 高度本来就是它自己按 pref 量的，JS 再教一遍除了制造
+         *  debounce 回写覆盖（滑杆值被冲掉的 round-8 同族）没有任何收益。
+         *  用户显式编辑（applyKbHeight）与手写下限抬升仍走发桥版本。 */
+        applyKbHeightLocal(content) {
+            this.kbHeight = Math.round(Number(content) || 0);
+            this.applyHeight();
         }
 
         /** 书写区手势：一笔一采样（首触点起笔，move 追点，end 收笔）。
@@ -5874,6 +5898,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.mode === 'handwriting') this.inkSyncViewport();
         }
 
+        /** native 落盘回执（setKeyboardHeightNow 的 commit 结果）：提示
+         *  只在确认写上盘后出现；失败明确告知（codex 终审 P2）。 */
+        onHeightSaved(ok) {
+            if (this._heightSavedTimer) {
+                clearTimeout(this._heightSavedTimer);
+                this._heightSavedTimer = null;
+            }
+            this.showToast(ok ? t("键盘高度已保存") : t("键盘高度保存失败，请重试"));
+        }
+
         /** 书写区几何对账：pad 的 CSS 盒变了（旋转/总高变化/重唤）才重建
          * 画布分辨率。收起期间改过布局再唤起时，renderHandwriting 不重跑
          * （模式没变），这里是唯一按新几何重放笔迹的通道。 */
@@ -6094,7 +6128,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 持久化走 native（applyKbHeight → setKeyboardHeight →
                 // pref，debounce 落盘）；重置=0 走 native 的清键语义。
                 this.applyKbHeight(this.heightResetPending ? 0 : content, true);
-                this.showToast(t("键盘高度已保存"));
+                // 「已保存」只在 native commit 回执后出现（onHeightSaved）。
+                // 兜底按能力分流（codex 二轮 P2-5）：新壳（height-ack-v1）
+                // 超时如实提示未确认、不谎报成功；旧壳无回执能力，800ms
+                // 后按旧语义提示成功（请求确实已发出）。
+                if (this._heightSavedTimer) clearTimeout(this._heightSavedTimer);
+                const hasAck = Array.isArray(this.nativeCaps) &&
+                    this.nativeCaps.includes("height-ack-v1");
+                this._heightSavedTimer = setTimeout(() => {
+                    this._heightSavedTimer = null;
+                    this.showToast(hasAck
+                        ? t("键盘高度保存未确认，请重试")
+                        : t("键盘高度已保存"));
+                }, hasAck ? 3000 : 800);
                 this.exitHeightEdit();
             });
         }
@@ -8419,6 +8465,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (payload.nativeApiVersion < MIN_NATIVE_API) return;
             const provided = payload.capabilities || [];
             if (!REQUIRED_CAPABILITIES.every(cap => provided.includes(cap))) return;
+            // 高度回写覆盖（真机实录 2026-09-27 ace）：弹出早期 hello 未达
+            // 时，applyModeHeight 拿不到 native 存值、按默认 272 回推
+            // setKeyboardHeight 桥，debounce 把默认值写回 pref——用户刚保存
+            // 的高度被无声覆盖（「保存→收起→弹出回旧值」的真凶之一）。
+            // hello 到达前一切「按 stored 回推高度」的路径一律不执行。
+            this.helloSeen = true;
+            // 高度保存回执能力（codex 二轮 P2-5）：新壳才有 onHeightSaved
+            // 回执——保存提示的兜底策略按能力分流（见保存按钮 handler）。
+            this.nativeCaps = provided;
             const localeChanged = (payload.uiLocale === 'zh' || payload.uiLocale === 'en') &&
                 payload.uiLocale !== uiLocale;
             if (localeChanged) {
@@ -9191,6 +9246,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             keyboard.applyModeHeight();
             keyboard.applyHeight();
         },
+        onHeightSaved: ok => keyboard.onHeightSaved(ok),
         // Read-only automation probe (device gates): the keyboard instance is
         // a closure, so gates cannot reach runtime fields without this.
         debugState: () => ({

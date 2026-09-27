@@ -201,17 +201,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
     }
 
-    /** 从基线尾部弹一个删除单位（按 code point，代理对不劈半）。
+    /** 从基线尾部弹一个删除单位。单位=grapheme cluster（国旗/肤色/ZWJ
+     *  组合/代理对整组，见 [BackGestureLedger]）——与宿主退格的整组删除
+     *  同口径，否则恢复错字（codex 终审 P1，真机国旗实录）。
      *  基线未结算或已弹空返回 null。调用方须持 backspaceGestureLock。 */
     private fun popBackspaceGestureUnitLocked(): String? {
         val base = backspaceGestureBaseline ?: return null
-        if (base.isEmpty()) return null
-        val tail = if (base.length >= 2 &&
-            Character.isLowSurrogate(base.last()) &&
-            Character.isHighSurrogate(base[base.length - 2])
-        ) 2 else 1
-        backspaceGestureBaseline = base.substring(0, base.length - tail)
-        return base.substring(base.length - tail)
+        val (rest, unit) = BackGestureLedger.splitTailUnit(base) ?: return null
+        backspaceGestureBaseline = rest
+        return unit
     }
 
     /** 会话结束/作废：恢复缓冲清空（spec：恢复只在会话内有效，不做跨
@@ -296,7 +294,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private var navInsetFallback = -1
     private var insetWatcherInstalled = false
     // Set while an inset change is pending its settle re-read.
-    private var insetChangeConfirmed = false
+    private var insetSettleTask: Runnable? = null
         // 【设置落盘纪律（issue #12 系）】用户显式提交语义的 prefs 写入
         //  一律同步 commit()：IME 进程在收起键盘后会被激进省电系统冻结/
         //  杀（MIUI 实测），apply() 的后台写盘队列整批丢失——用户已看到
@@ -304,21 +302,30 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         //  文件小、写入粒度是用户操作，主线程同步写几 ms 无感。例外：
         //  高频/可丢的内部缓存才允许 apply()。
 
-    private val flushHeightPref = Runnable {
+    private val flushHeightPref = Runnable { flushHeightPrefCommit(notify = false) }
+
+    /** 落盘并返回 commit 结果（主线程调用）。[notify]=保存按钮的显式提
+     * 交路径：结果回执 JS（onHeightSaved），「已保存」提示从此只在确认
+     *  写上盘后出现（codex 终审 P2——此前无条件提示，commit 失败也显示
+     *  成功）。 */
+    private fun flushHeightPrefCommit(notify: Boolean): Boolean {
         val px = pendingHeightWrite
-        if (px > 0) {
-            pendingHeightWrite = 0
-            getSharedPreferences("feelime_keyboard", MODE_PRIVATE).edit()
-                .putInt(
-                    if (pendingHeightLandscape) {
-                        "keyboard_height_landscape"
-                    } else {
-                        "keyboard_height_portrait"
-                    },
-                    px,
-                )
-                .commit()
+        if (px <= 0) return true
+        pendingHeightWrite = 0
+        val ok = getSharedPreferences("feelime_keyboard", MODE_PRIVATE).edit()
+            .putInt(
+                if (pendingHeightLandscape) {
+                    "keyboard_height_landscape"
+                } else {
+                    "keyboard_height_portrait"
+                },
+                px,
+            )
+            .commit()
+        if (notify) {
+            evaluate("window.Feelime && window.Feelime.onHeightSaved && window.Feelime.onHeightSaved($ok)")
         }
+        return ok
     }
     private val updateReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
@@ -692,8 +699,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         com.feelime.ime.engine.EngineDataStore.ensureAsync(applicationContext) {
             main.post { pushBridgeHello() }
         }
-        android.view.Choreographer.getInstance().postFrameCallback(choreoTick)
-        main.post(uiSampler)
+        armUiProbes()
         coordinator = TextInputCoordinator(
             editor = object : com.feelime.ime.engine.EditorPort by editorPort {
                 override fun commitText(text: String) {
@@ -922,9 +928,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     // 「窗口在屏但按键无响应」现场需要它与 inputViewShown 的相对时序。
     private var showGeneration = 0
 
+    // visibilityRepair 累计修复数与最近原因（codex 终审 P2）：诊断关闭时
+    // Diagnostics.log 丢弃、lastCallbackWinVis 又被补派发覆盖，无此计数
+    // 就分不清「从未异常」和「异常已被修复」。经 noteLiveState 进导出头。
+    private var visibilityRepairs = 0
+
     override fun onWindowShown() {
         super.onWindowShown()
         Diagnostics.log("ui", "windowShown")
+        armUiProbes()
         // issue #12 根因修复（codex 联合评审定稿）：IMS hideWindow() 会直接
         // dispatchWindowVisibilityChanged(GONE)（只进回调、不改 getter）；
         // 快速重弹时 ViewRoot 未必派发配对的 VISIBLE——Chromium M133 按回调
@@ -944,8 +956,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             val diag = cur as? DiagWebView ?: return@postDelayed
             if (cur.windowVisibility == android.view.View.VISIBLE &&
                 diag.lastCallbackWinVis != android.view.View.VISIBLE) {
+                visibilityRepairs += 1
                 Diagnostics.log("ui",
-                    "visibilityRepair callback=${diag.lastCallbackWinVis} getter=${cur.windowVisibility}")
+                    "visibilityRepair n=$visibilityRepairs callback=${diag.lastCallbackWinVis} getter=${cur.windowVisibility}")
                 cur.dispatchWindowVisibilityChanged(android.view.View.VISIBLE)
             }
         }, 300)
@@ -1763,7 +1776,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("orientation", if (landscape) "landscape" else "portrait")
             // Content stays above the system navigation/gesture area in
             // either orientation; the native view carries the extra space.
-            .put("safeBottom", (navBottomInset() / resources.displayMetrics.density).toInt())
+            .put("safeBottom", (safeBottomSnapshot() / resources.displayMetrics.density).toInt())
  // The transparent popup band above the keyboard.
             .put("floatBand", (floatBandPx() / resources.displayMetrics.density).toInt())
             .put("heightDefault", (minOf(dp(272), if (landscape) realHeightPixels() / 2
@@ -1848,6 +1861,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         Diagnostics.noteLiveState(
             "mode=${coordinator.currentMode.wireName} " +
                 "degraded=${coordinator.engineDegrade != null} warming=${coordinator.engineWarming} " +
+                "visRepairs=$visibilityRepairs " +
                 "pkg=${currentInputEditorInfo?.packageName}",
         )
         Diagnostics.log("bridge", "helloPushed view=${System.identityHashCode(keyboardView)}")
@@ -1946,16 +1960,22 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     // delta——JS raf=0 而 nativeFrames>0 = 原生还在产帧、Chromium 帧源被
     // 断（IsClientVisible 假阴性实锤）；两边都 0 = 窗口整体不可见（正常
     // 隐藏）。几何快照捎带在同一节拍里。
+    // codex 终审 P1 收口：探针只在诊断开启时续订——doFrame/run 见
+    // isRecording=false 即自熄（隐藏 IME 不再被每帧唤醒）；每次键盘
+    // 弹出重臂一次（诊断中途开启后下一次弹出即恢复采样）。
     private var choreoFrames = 0L
     private var choreoLast = 0L
     private val choreoTick = object : android.view.Choreographer.FrameCallback {
         override fun doFrame(timeNanos: Long) {
             choreoFrames += 1
-            android.view.Choreographer.getInstance().postFrameCallback(this)
+            if (Diagnostics.isRecording()) {
+                android.view.Choreographer.getInstance().postFrameCallback(this)
+            }
         }
     }
     private val uiSampler = object : Runnable {
         override fun run() {
+            if (!Diagnostics.isRecording()) return
             val delta = choreoFrames - choreoLast
             choreoLast = choreoFrames
             val web = keyboardView
@@ -1966,6 +1986,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             Diagnostics.log("ui", "nativeFrames=$delta$geom")
             main.postDelayed(this, 2500)
         }
+    }
+
+    /** 诊断开启时（重）臂帧探针；关闭态调用无副作用（循环自行熄灭）。 */
+    private fun armUiProbes() {
+        if (!Diagnostics.isRecording()) return
+        android.view.Choreographer.getInstance().removeFrameCallback(choreoTick)
+        android.view.Choreographer.getInstance().postFrameCallback(choreoTick)
+        main.removeCallbacks(uiSampler)
+        main.post(uiSampler)
     }
 
     private fun renderVoiceText(session: VoiceSession) {
@@ -2844,9 +2873,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     main.removeCallbacks(flushHeightPref)
                     pendingHeightWrite = 0
                 }
-                getSharedPreferences("feelime_keyboard", MODE_PRIVATE).edit()
+                val resetOk = getSharedPreferences("feelime_keyboard", MODE_PRIVATE).edit()
                     .remove(if (landscape) "keyboard_height_landscape" else "keyboard_height_portrait")
                     .commit()
+                if (immediate) {
+                    evaluate("window.Feelime && window.Feelime.onHeightSaved && window.Feelime.onHeightSaved($resetOk)")
+                }
                 keyboardHeightOverride = 0
                 (keyboardView?.parent as? View)?.requestLayout()
                 pushBridgeHello()
@@ -2879,7 +2911,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             pendingHeightWrite = clamped
             pendingHeightLandscape = landscape
             main.removeCallbacks(flushHeightPref)
-            if (immediate) flushHeightPref.run() else main.postDelayed(flushHeightPref, HEIGHT_PREF_DEBOUNCE_MS)
+            if (immediate) flushHeightPrefCommit(notify = true)
+            else main.postDelayed(flushHeightPref, HEIGHT_PREF_DEBOUNCE_MS)
             android.util.Log.i("FeelimeBridge", "setKeyboardHeight css=$heightCssPx px=$clamped orientation=${if (landscape) "landscape" else "portrait"}")
         }
 
@@ -3381,6 +3414,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
      * decor insets already consumed by InputMethodService; layout callbacks
      * recheck overlap after the window has moved or changed orientation. */
     @Suppress("DEPRECATION")
+    /** 测量/推送路径的安全区快照：动画中不读实时位置（真机实录
+     *  2026-09-27 ace：调高时 ColorOS 的 inset 动画期间 getLocationOnScreen
+     *  返回瞬时值 → overlap=0 → onMeasure 把安全区扣掉、窗口瞬间矮
+     *  24px（用户看到「下沉压把手」），动画后采纳链修正再浮回。安全区
+     *  尺寸本质是系统属性，不是 view 瞬时位置的函数：measure/hello 一律
+     *  用已采纳快照，实时读数只留给 onBottomInsetChanged 的 settle 采
+     *  样（动画结束后它读到稳定值，与快照一致即无事发生）。 */
+    private fun safeBottomSnapshot(): Int =
+        if (lastSafeBottom >= 0) lastSafeBottom else navBottomInset()
+
     private fun navBottomInset(): Int {
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             val metrics = getSystemService(android.view.WindowManager::class.java).currentWindowMetrics
@@ -3415,8 +3458,19 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 // the shown-state measure never grows the view by - hello
                 // then budgets safe rows the view doesn't have (device gate:
                 // a pad flip moved --safe-bottom 0→11px and shrank rows
-                // 46→43). Report the last value observed while visible.
-                return lastShownSafeBottom.coerceIn(0, reserved)
+                // 46→43). Report the last value observed while visible; on a
+                // cold process (or before the first show) that history is 0,
+                // and pushing 0 makes the keyboard's first frames draw rows
+                // over the gesture handles until the settle pass corrects it
+                // (真机实录：弹出先下沉压把手、300ms 后上移). The view is
+                // bottom-anchored, so once laid out the measured overlap
+                // equals the full reserve anyway - falling back to the
+                // system-reported reserve costs nothing and removes the dip.
+                return if (lastShownSafeBottom > 0) {
+                    lastShownSafeBottom.coerceIn(0, reserved)
+                } else {
+                    reserved
+                }
             }
         }
         val insets = window?.window?.decorView?.rootWindowInsets
@@ -3499,19 +3553,25 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     }
 
     private fun onBottomInsetChanged() {
-        val effective = navBottomInset()
-        if (effective == lastSafeBottom) return
-        // Re-read once after the window settles: a mid-animation read can
-        // transiently disagree, and adopting it re-budges the JS rows.
-        if (!insetChangeConfirmed) {
-            insetChangeConfirmed = true
-            keyboardView?.postDelayed({ insetChangeConfirmed = false; onBottomInsetChanged() }, 300)
-            return
+        if (navBottomInset() == lastSafeBottom) return
+        // 变化后 300ms 采【实测值】采纳（debounce：持续变化只重置计时）。
+        // 原实现的「标志位+递归」是空转死循环：延迟任务先清标志再递归，
+        // 递归永远走等待分支，lastSafeBottom 永不更新——真机全靠 300ms
+        // 窗口内撞上第二次回调才偶然修好（codex 定罪过的遗留缺陷，冷启动
+        // MIUI 只派一次 insets 时稳定炸：进程被杀重建后 lastShownSafeBottom
+        // 归零、首帧量高不含手势区、确认链空转=安全区带永久丢失，真机
+        // 2026-09-26 实录）。采纳动作不变：重排 + hello 重推权威 safeBottom。
+        insetSettleTask?.let { keyboardView?.removeCallbacks(it) }
+        val task = Runnable {
+            insetSettleTask = null
+            val settled = navBottomInset()
+            if (settled == lastSafeBottom) return@Runnable
+            lastSafeBottom = settled
+            (keyboardView?.parent as? View)?.requestLayout()
+            pushBridgeHello()
         }
-        insetChangeConfirmed = false
-        lastSafeBottom = effective
-        (keyboardView?.parent as? View)?.requestLayout()
-        pushBridgeHello()
+        insetSettleTask = task
+        keyboardView?.postDelayed(task, 300)
     }
 
     // ---- v3 触摸诊断（issue #13「键盘弹出后所有按键点不了」） ----------
@@ -3607,12 +3667,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 // §3): the user's bottom blank strip adds on top of the
                 // clamped content height in every branch.
                 landscape && screenH > 0 ->
-                    minOf(base, realHeightPixels() / 2) + navBottomInset() + bottomPadPx()
+                    minOf(base, realHeightPixels() / 2) + safeBottomSnapshot() + bottomPadPx()
                 // round-8: 竖屏同样按真屏 45%（screenH 是 app-space，会把
                 // 上限压到 340css——与 setKeyboardHeight 的钳制口径不一致，
                 // 调高了也会在这里被量回去）。见 setKeyboardHeight 注释。
-                screenH > 0 -> minOf(base, (realHeightPixels() * 45) / 100) + navBottomInset() + bottomPadPx()
-                else -> base + navBottomInset() + bottomPadPx()
+                screenH > 0 -> minOf(base, (realHeightPixels() * 45) / 100) + safeBottomSnapshot() + bottomPadPx()
+                else -> base + safeBottomSnapshot() + bottomPadPx()
             }
  // The view carries the transparent popup band on
             // top; onComputeInsets keeps the app sized to the keyboard

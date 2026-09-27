@@ -19,6 +19,10 @@ object BridgeContract {
         // per pixel/step.
         "cursor-delta-v1",
         "ime-control-v1",
+        // 高度保存的落盘回执（onHeightSaved）：新壳据此禁用 JS 侧的
+        // 「800ms 假成功兜底」，超时如实提示（codex 二轮 P2-5）。不进
+        // 键盘的 REQUIRED——旧键盘缺它只是保留旧行为。
+        "height-ack-v1",
         "keyboard-update-status-v1",
         "clipboard-v1",
         "favorites-v2",
