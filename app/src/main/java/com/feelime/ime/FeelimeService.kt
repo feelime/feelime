@@ -619,6 +619,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // P1-5：上次基底词库编译若被进程中断（installing 标记残留），
         // 在任何引擎初始化之前回滚到内置——半截产物不能进运行时。
         com.feelime.ime.engine.BaseDictInstaller.sweepPending(this)
+        // P2-F 后半（codex 二轮）：service 未运行时用户切模糊音，换频道的
+        // 广播无人收——启动时补判目标变体是否缺失（custom 基底 + prism
+        // 在 = no-op，秒回）。
+        com.feelime.ime.engine.BaseDictInstaller.ensureFuzzyVariantIfNeeded(this)
         UiLanguage.preferences(this)
             .registerOnSharedPreferenceChangeListener(uiLanguageListener)
         engine = AsrEngine(applicationContext, this)

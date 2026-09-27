@@ -73,6 +73,13 @@ object BaseDictInstaller {
     private const val KEY_FLYPY_AT = "flypy_installed_at"
     /** 音形码表量级 ~1MB（码+词 6 万条），20MB 上限足够宽。 */
     private const val FLYPY_MAX_SOURCE_BYTES = 20L * 1024 * 1024
+
+    /** 模糊音补编的双职标记（codex 二轮 P1-1/P2-4/P2-6）：忙时排队
+     *  补偿的 pending mask；编译前置的事务位（进程中断后 sweepPending
+     *  据此删半成品 prism——librime 原地写入，被杀时文件可能存在但不
+     *  完整，「isFile 即有效」不成立）。 */
+    private const val KEY_FUZZY_PENDING_MASK = "fuzzy_pending_mask"
+    private const val KEY_FUZZY_COMPILING_MASK = "fuzzy_compiling_mask"
     private const val FLYPY_TIMEOUT_MS = 10 * 60 * 1000L
 
     /** #20 编译产物（staging）。compiled schema yaml 是 DictCompiler 输出，
@@ -147,6 +154,9 @@ object BaseDictInstaller {
             if (result.changed) {
                 app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             }
+            // 导入期间用户切模糊音排的队在此补偿（P2-6；新基底的清单
+            // 只带安装起点的组合，切到别的组合时由此补编）。
+            compensatePendingFuzzy(app)
             pushEvent(
                 JSONObject()
                     .put("type", if (result.code == null) "dictBaseDone" else "dictBaseError")
@@ -158,6 +168,18 @@ object BaseDictInstaller {
     }
 
     fun isBuilding(): Boolean = building.get()
+
+    /** 忙时排队的补编补偿（P2-6）：任务收尾（building 已清零）统一触发。
+     *  目标变体若本次安装清单已编出（prism 在），ifNeeded 自行 no-op。 */
+    private fun compensatePendingFuzzy(app: Context) {
+        val pending = app.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+            .getInt(KEY_FUZZY_PENDING_MASK, 0)
+        if (pending != 0) {
+            app.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
+                .remove(KEY_FUZZY_PENDING_MASK).apply()
+            ensureFuzzyVariantIfNeeded(app)
+        }
+    }
 
     /** #20 音形码表导入（与基底换装共用 worker/building，互斥）。 */
     fun installFlypyAsync(
@@ -182,6 +204,7 @@ object BaseDictInstaller {
             if (result.changed) {
                 app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             }
+            compensatePendingFuzzy(app)
             pushEvent(
                 JSONObject()
                     .put("type", if (result.code == null) "flypyDone" else "flypyError")
@@ -213,7 +236,9 @@ object BaseDictInstaller {
      *  输入按严格全拼降级（fuzzySchemaId 找不到变体回落 null，现状
      *  语义），编完发换装广播让 IME 会话重建用上新变体。
      *  前置条件由调用方判（基底 custom；prism 确实缺失）。 */
-    /** receiver 入口：按需判定（基底 custom 且目标变体 prism 缺失）再触发。 */
+    /** receiver 入口：按需判定（基底 custom 且目标变体 prism 缺失）再触发。
+     *  忙时（导入/另一补编在跑）记 pending mask 由导入收尾补偿（codex
+     *  二轮 P2-6：忙时直接丢弃会让目标变体一直缺失）。 */
     fun ensureFuzzyVariantIfNeeded(context: Context) {
         val mask = FuzzyPinyin.mask(context)
         val variant = BaseDictFiles.fuzzyVariant(mask) ?: return
@@ -225,39 +250,50 @@ object BaseDictInstaller {
     }
 
     fun ensureFuzzyVariantAsync(context: Context, mask: Int) {
-        if (isBuilding()) return
         if (mask !in BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX) return
         val app = context.applicationContext
+        // codex 二轮 P1-1：补编与导入共用 building——期间 customPhrases 等
+        // receiver 的 isBuilding 守卫必须同样拦住主线程 reloadGlobal（否则
+        // finalize join 编译线程 = ANR）。抢不到即排队，由当前任务的收尾
+        // （installBlocking 提交段 / 本函数结尾）统一补偿。
+        if (!building.compareAndSet(false, true)) {
+            context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
+                .putInt(KEY_FUZZY_PENDING_MASK, mask).apply()
+            android.util.Log.i("FeelimeBaseDict", "busy -> fuzzy m$mask queued")
+            return
+        }
         worker.execute {
             val code = runCatching { compileFuzzyVariant(app, mask) }
                 .getOrElse { "BASE_DICT_INTERNAL" as String? }
+            building.set(false)
             if (code != null) {
                 android.util.Log.w("FeelimeBaseDict", "fuzzy variant m$mask compile: $code")
-                return@execute
+            } else {
+                android.util.Log.i("FeelimeBaseDict", "fuzzy variant m$mask compiled")
             }
-            android.util.Log.i("FeelimeBaseDict", "fuzzy variant m$mask compiled")
-            // 不设 building（低频后台路径，与导入互斥即可——worker 单线程
-            // 天然串行）；完成后换装广播让全拼会话用上新 prism。
+            // 失败也发（codex 二轮 P2-5）：reloadGlobal 已使旧会话失效，
+            // 失败收尾同样要重建会话（回严格全拼），否则输入不恢复。
             app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
+            // 补偿排队中的补编（串行 worker 上不存在重入）。
+            compensatePendingFuzzy(app)
         }
     }
 
-    /** 编一个模糊音变体；null=成功。失败不回滚 staging（编译现场文件
-     *  清掉即可，未产出的 prism 缺失 = 输入回落严格全拼，无一致性
-     *  风险——不存在「半截变体」：prism 要么完整要么没有）。 */
+    /** 编一个模糊音变体；null=成功。事务位（KEY_FUZZY_COMPILING_MASK）
+     *  先于 prism 落盘写、成功后清——中断残留由 sweepPending 删半成品。
+     *  现场（源/umbrella/default/变体 schema）在 finally 统一清理（codex
+     *  二轮 P2-5：失败出口不能残留半截现场影响下次补编）。 */
     private fun compileFuzzyVariant(context: Context, mask: Int): String? {
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         if (prefs.getString(KEY_MODE, "builtin") != "custom") return "NOT_CUSTOM_BASE"
         val variant = BaseDictFiles.fuzzyVariant(mask) ?: return "BAD_MASK"
-        val staging = File(context.filesDir, "rime-user/build")
-        val prism = File(staging, "$variant.prism.bin")
-        if (prism.isFile) return null // 已有，无需补编
-
-        // 现场恢复：留档源 → rime-dict-source/ + umbrella + 变体 schema +
-        // default（schema_list 只列该变体——maintenance 不动 shared 的
-        // luna table，单列是否触发 staging 其它产物的清理属 codex P3
-        // 待实测项，AVD 实测 41 产物全量未被删）。
         val user = File(context.filesDir, "rime-user")
+        val staging = File(user, "build")
+        val prism = File(staging, "$variant.prism.bin")
+        if (prism.isFile && prefs.getInt(KEY_FUZZY_COMPILING_MASK, 0) == 0) {
+            return null // 已有且非中断残留，无需补编
+        }
+
         val archive = File(context.filesDir, "rime-user-dict")
         if (!archive.isDirectory) return "NO_ARCHIVE"
         val template = engineTemplate(context) ?: return "ENGINE_NOT_READY"
@@ -268,41 +304,64 @@ object BaseDictInstaller {
             )
         }.getOrNull() ?: return "NO_TEMPLATE"
         val sha = prefs.getString(KEY_SOURCE_SHA, "user") ?: "user"
-        runCatching {
-            val sourceDir = File(user, BaseDictFiles.SOURCE_DIR).apply {
-                deleteRecursively(); mkdirs()
-            }
-            archive.listFiles()?.forEach {
-                it.copyTo(File(sourceDir, it.name), overwrite = true)
-            }
-            File(user, BaseDictFiles.UMBRELLA_FILE).writeText(
-                BaseDictFiles.umbrellaYaml(sha.take(12), stagedTableNames(sourceDir), stagedLineHint(prefs)),
-            )
-            val schemaText = BaseDictFiles.variantSchema(template, mask)
-            File(user, "$variant.schema.yaml").writeText(schemaText)
-            File(staging, "$variant.schema.yaml").writeText(schemaText)
-            File(user, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
-            File(staging, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
-        }.getOrElse { return "STAGE_FAILED" }
+        // 事务位：此后进程中断 → sweepPending 删该 prism（librime 原地
+        // 写入，「文件存在」不等于完整）。
+        prefs.edit().putInt(KEY_FUZZY_COMPILING_MASK, mask).apply()
+        var result: String? = "STAGE_FAILED"
+        try {
+            runCatching {
+                val sourceDir = File(user, BaseDictFiles.SOURCE_DIR).apply {
+                    deleteRecursively(); mkdirs()
+                }
+                archive.listFiles()?.forEach {
+                    it.copyTo(File(sourceDir, it.name), overwrite = true)
+                }
+                File(user, BaseDictFiles.UMBRELLA_FILE).writeText(
+                    BaseDictFiles.umbrellaYaml(
+                        sha.take(12), stagedTableNames(sourceDir), stagedLineHint(prefs),
+                    ),
+                )
+                val schemaText = BaseDictFiles.variantSchema(template, mask)
+                File(user, "$variant.schema.yaml").writeText(schemaText)
+                File(staging, "$variant.schema.yaml").writeText(schemaText)
+                File(user, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
+                File(staging, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
+            }.getOrElse { return finallyCleanup(user, staging, prefs, "STAGE_FAILED") }
 
-        runCatching { RimeTextEngine.reloadGlobal(context) }.getOrElse { return "RELOAD_FAILED" }
-        if (!NativeSmoke.rimeStartMaintenance(false)) return "MAINTENANCE_FAILED"
-        pollMaintenance({ })  // 无 UI 推送
-        NativeSmoke.rimeJoinMaintenance()
-        if (!prism.isFile) {
-            // 清现场再报
-            File(user, BaseDictFiles.SOURCE_DIR).deleteRecursively()
-            File(user, BaseDictFiles.UMBRELLA_FILE).delete()
-            File(user, BaseDictFiles.DEFAULT_FILE).delete()
-            File(staging, BaseDictFiles.DEFAULT_FILE).delete()
-            return "PRISM_MISSING"
+            runCatching { RimeTextEngine.reloadGlobal(context) }
+                .getOrElse { return finallyCleanup(user, staging, prefs, "RELOAD_FAILED") }
+            if (!NativeSmoke.rimeStartMaintenance(false)) {
+                return finallyCleanup(user, staging, prefs, "MAINTENANCE_FAILED")
+            }
+            pollMaintenance({ })
+            NativeSmoke.rimeJoinMaintenance()
+            result = if (prism.isFile) null else "PRISM_MISSING"
+            return result
+        } finally {
+            finallyCleanup(user, staging, prefs, result ?: "")
         }
-        // 成功：清编译源（变体 compiled schema 留 staging 供运行时读）。
+    }
+
+    /** 补编收尾清场：编译源（user 根）+ default 双落位 + 事务位；成功时
+     *  变体 compiled schema 与 prism 留 staging（运行时要读）。返回 code
+     *  透传（finally 里 return 的 Kotlin 惯用法：正常路径先算好 result）。 */
+    private fun finallyCleanup(
+        user: File,
+        staging: File,
+        prefs: android.content.SharedPreferences,
+        code: String,
+    ): String {
         File(user, BaseDictFiles.SOURCE_DIR).deleteRecursively()
         File(user, BaseDictFiles.UMBRELLA_FILE).delete()
         File(user, BaseDictFiles.DEFAULT_FILE).delete()
         File(staging, BaseDictFiles.DEFAULT_FILE).delete()
-        return null
+        // 成功/确认无产物（PRISM_MISSING = prism 根本没写出）清事务位；
+        // 中途失败保留事务位——半成品/无产物都视为不可用，下次补编
+        // 重走（开头 isFile && compiling==0 判定拦截误用）。
+        if (code == "" || code == "PRISM_MISSING") {
+            prefs.edit().remove(KEY_FUZZY_COMPILING_MASK).apply()
+        }
+        return code
     }
 
     /** 留档目录里的表文件名（补编现场恢复用）。 */
@@ -509,6 +568,17 @@ object BaseDictInstaller {
             File(staging, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
             // symbols 只需 user 根（编译链的源解析）。
             File(user, BaseDictFiles.SYMBOLS_FILE).writeText(symbolsYaml)
+            // codex 二轮 P1-B：清掉不在本次清单里的旧变体 prism——上一
+            // 基底编的 prism 配本次新 table 会出错位候选（同名文件 ≠
+            // 同源产物）。当前组合的变体在清单内（full_check=true 重编），
+            // 其余删掉后由 ensureFuzzyVariantIfNeeded 按需补编。
+            staging.listFiles()?.forEach { f ->
+                val stem = f.name.removeSuffix(".prism.bin")
+                if (f.name.endsWith(".prism.bin") &&
+                    stem.startsWith("${FuzzyPinyin.SCHEMA_ID}_m") &&
+                    stem !in compileSchemas
+                ) f.delete()
+            }
         }.onFailure {
             rollback(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
         }
@@ -558,6 +628,9 @@ object BaseDictInstaller {
         cleanupCompileSources(user, keepSource = true)
         context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_INSTALLING, false)
+            // P1-B 收尾：残留的补编事务位/排队位一并作废（半成品要么
+            // 被重编要么已删）。
+            .remove(KEY_FUZZY_COMPILING_MASK).remove(KEY_FUZZY_PENDING_MASK)
             .putString(KEY_MODE, "custom")
             .putString(KEY_NAME, displayName)
             .putString(KEY_SOURCE_SHA, sha)
@@ -1144,6 +1217,7 @@ object BaseDictInstaller {
         if (keepFlypy) {
             prefs.remove(KEY_MODE).remove(KEY_NAME).remove(KEY_INSTALLED_AT)
                 .remove(KEY_SOURCE_SHA).remove(KEY_NON_PINYIN_RATIO).remove(KEY_TONED)
+                .remove(KEY_FUZZY_COMPILING_MASK).remove(KEY_FUZZY_PENDING_MASK)
         } else {
             prefs.clear()
         }

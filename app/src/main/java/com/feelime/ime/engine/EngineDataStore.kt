@@ -85,9 +85,14 @@ object EngineDataStore {
             context.filesDir, "rime-user/build/${FuzzyPinyin.SCHEMA_ID}_m$mask.prism.bin",
         )
         val sharedVariant = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}_m$mask.prism.bin")
-        val variant = userVariant.takeIf { it.isFile } ?: sharedVariant
+        // codex 二轮 P2-C：基底是用户自定义（staging 有自编 table）时只认
+        // 自编变体——shared 变体是按内置 table 编的，跨基底配对出错位候选。
+        // 缺口返回 null 走严格全拼，补编由 ensureFuzzyVariantIfNeeded 负责。
+        val customBase = File(context.filesDir, "rime-user/build/luna_pinyin.table.bin").isFile
+        val variant = userVariant.takeIf { it.isFile }
+            ?: sharedVariant.takeIf { it.isFile && !customBase }
         val active = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}.prism.bin")
-        if (!variant.isFile) return null
+        if (variant == null) return null
         // active 不在 MANIFEST 里，长度相等的内容损坏无法被启动校验发现：
         // 以内容一致为准，不一致就一律从已校验的变体重新物化
         // （codex round-1 P2-5）。
