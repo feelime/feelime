@@ -1846,6 +1846,29 @@ test('symbol reorder stays stable under favorite overlays (issue #17, review P1)
     equal(pick.args[1], 'c1', 'space confirms the engine head through the reorder');
 });
 
+// auto 档（englishPos=-1）的冲突判定用统一规则「池里有没有中文候选」
+// （用户实录：双拼 ui=shi 有中文候选，英文 ui 却按全拼音节表判「无冲突」
+// 占了第一位）。双拼各方案映射不同，音节表预判永远追不平——引擎真值
+// 天然适配全拼/双拼/模糊音/自造词。
+test('english auto position yields to any chinese candidate (double-pinyin ui)', {since: '3.69.25'}, () => {
+    const world = fresh({ mode: 'double-pinyin', englishPos: -1 });
+    world.engineState({ mode: 'double-pinyin', revision: 1, composing: 'ui', rawInput: 'ui',
+        candidates: [
+            { id: 'e1', text: 'ui' }, { id: 'c1', text: '是' }, { id: 'c2', text: '时' },
+        ], hasNextPage: false });
+    const bar = () => [...world.$('candidates').querySelectorAll('.candidate')]
+        .map(b => b.textContent);
+    equal(bar().join(','), '是,时,ui',
+        'english ui moves to slot 3 when the engine serves chinese for the key sequence');
+    // 池里没有中文候选（引擎无匹配）：英文自然第一，不经重排。
+    const world2 = fresh({ mode: 'double-pinyin', englishPos: -1 });
+    world2.engineState({ mode: 'double-pinyin', revision: 1, composing: 'zzq', rawInput: 'zzq',
+        candidates: [{ id: 'e1', text: 'zzq' }], hasNextPage: false });
+    equal([...world2.$('candidates').querySelectorAll('.candidate')]
+        .map(b => b.textContent).join(','), 'zzq',
+        'english-only pool keeps the word first');
+});
+
 test('english word position is consistent across bar, space, expand append and punct (codex P1)', {since: '3.69.18'}, () => {
     // englishPos=1（固定第 1 位）：英文候选的重排必须对所有消费面一致
     // ——候选条、空格确认、展开区（增量追加与前缀重排的全量重绘两条

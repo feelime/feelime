@@ -7558,11 +7558,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             setTimeout(() => { this.loadingMore = false; }, 900);
         }
 
-        /** #29 英文词候选位置（用户验收三轮）：auto=-1（无音节冲突第 1、
-         *  有冲突第 3），或固定 1/3/5。渲染层重排——rime 侧 stabledb 词条
-         *  权重不参与与主词典的组间排序（实测 0/1/-99 同位），位置控制
-         *  只能在这层做；空格确认与点击都按重排后的池头（空格本来就走
-         *  choosePoolCandidate 解耦分页，共用同一视图即一致）。 */
+        /** #29 英文词候选位置（用户验收三轮）：auto=-1（引擎有中文候选
+         *  第 3、没有则自然第 1），或固定 1/3/5。渲染层重排——rime 侧
+         *  stabledb 词条权重不参与与主词典的组间排序（实测 0/1/-99 同位），
+         *  位置控制只能在这层做；空格确认与点击都按重排后的池头（空格
+         *  本来就走 choosePoolCandidate 解耦分页，共用同一视图即一致）。
+         *  auto 的冲突判定用统一规则「池里有没有中文候选」——不看键序
+         *  能否切成全拼音节（双拼 ui=shi 在全拼音节表下误判无冲突，
+         *  英文占了第一位；各双拼方案映射不同，音节表预判永远追不平，
+         *  引擎真值天然适配全拼/双拼/模糊音/自造词）。 */
         englishOrderedPool(pool) {
             const pos = Number(this.englishPos);
             if (!Array.isArray(pool) || !pool.length || pos === 0) return pool;
@@ -7577,33 +7581,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 (isEnglish(item && item.text) ? english : rest).push(item);
             });
             if (!english.length || !rest.length) return pool;
-            // 目标位：auto 按冲突与否；固定档直接用。
-            let target;
-            if (pos > 0) target = pos;
-            else target = english.some(item => this.englishCollides(item.text)) ? 3 : 1;
+            // 目标位：固定档直接用；auto 到这里 rest 必非空（无中文候选
+            // 的池在上面原样返回，英文自然第一）= 有候选抢位 → 第 3。
+            const target = pos > 0 ? pos : 3;
             const out = rest.slice();
             english.forEach((item, i) => {
                 const at = Math.min(out.length, Math.max(0, target - 1 + i));
                 out.splice(at, 0, item);
             });
             return out;
-        }
-
-        /** 英文词是否与拼音键序冲突（能被完整切成音节）。DP + 缓存。 */
-        englishCollides(word) {
-            const w = String(word || '').toLowerCase();
-            if (!this._collideCache) this._collideCache = new Map();
-            if (this._collideCache.has(w)) return this._collideCache.get(w);
-            const n = w.length;
-            const ok = new Array(n + 1).fill(false);
-            ok[n] = true;
-            for (let i = n - 1; i >= 0; i--) {
-                for (let j = i + 1; j <= Math.min(n, i + 7); j++) {
-                    if (ok[j] && FULL_PINYIN_SYLLABLES_SET.has(w.slice(i, j))) { ok[i] = true; break; }
-                }
-            }
-            this._collideCache.set(w, ok[0]);
-            return ok[0];
         }
 
         renderCandidates(state) {
