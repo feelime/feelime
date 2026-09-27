@@ -296,6 +296,10 @@ h3 { margin: 0; font-size: 14px; font-weight: 650; }
  * 行容器是 div，按钮在 label 外，点按钮不翻勾选框。 */
 .kb-order-btns { display: flex; gap: 4px; flex: none; }
 .kb-move { min-width: 32px; padding: 3px 6px; line-height: 1; }
+.kb-drag { min-width: 32px; padding: 3px 6px; line-height: 1; cursor: grab; touch-action: none; }
+.kb-drag:active { cursor: grabbing; }
+.kb-order-label { flex: 1; }
+.switch-row.dragging { opacity: .85; outline: 2px solid var(--accent, #4a90d9); outline-offset: -2px; }
 .kb-order-label { display: flex; align-items: center; gap: 10px; flex: 1; min-height: 48px; cursor: pointer; }
 /* 行后紧跟按钮（如候选符号词卡的「管理词条」）时，行底线会紧贴按钮
  * 像一条黏住的分隔线——该行显式去线。 */

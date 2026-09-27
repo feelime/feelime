@@ -182,6 +182,7 @@ const I18N = {
         "input.keyboards.badge": "菜单",
         "input.keyboards.enable": "长按菜单里列出哪些键盘",
         "input.keyboards.hint": "勾选的键盘出现在长按切换键的菜单里，行序即菜单顺序（箭头调整）；不勾的还可以在菜单里临时勾回来。改动即时生效。",
+        "input.keyboards.drag": "拖动排序",
         "input.keyboards.moveUp": "上移",
         "input.keyboards.moveDown": "下移",
         "input.english.enable": "英文词直出",
@@ -664,6 +665,7 @@ const I18N = {
         "input.keyboards.badge": "Menu",
         "input.keyboards.enable": "Keyboards listed in the long-press menu",
         "input.keyboards.hint": "Checked keyboards appear in the mode-key long-press menu; row order is the menu order (arrow buttons). Unchecked ones can be re-enabled from that menu. Applies immediately.",
+        "input.keyboards.drag": "Drag to reorder",
         "input.keyboards.moveUp": "Move up",
         "input.keyboards.moveDown": "Move down",
         "input.keyboards.pairA": "Quick switch · first",
@@ -1982,6 +1984,14 @@ function renderKeyboards(state) {
         row.className = "row switch-row";
         const btns = document.createElement("span");
         btns.className = "kb-order-btns";
+        // 拖动把手（2026-09-27 用户点名「排序改拖动」）：pointer 拖拽实时
+        // 让位，松手落位保存；↑↓ 按钮保留（精确单步 + 无障碍）。
+        const drag = document.createElement("button");
+        drag.type = "button";
+        drag.className = "btn small kb-drag";
+        drag.textContent = "≡";
+        drag.setAttribute("aria-label", t("input.keyboards.drag"));
+        drag.addEventListener("pointerdown", (e) => beginKbRowDrag(e, row, drag));
         const up = document.createElement("button");
         up.type = "button";
         up.className = "btn small kb-move";
@@ -1996,7 +2006,7 @@ function renderKeyboards(state) {
         down.setAttribute("aria-label", t("input.keyboards.moveDown"));
         down.disabled = index === ordered.length - 1;
         down.addEventListener("click", () => moveKbRow(row, 1));
-        btns.append(up, down);
+        btns.append(drag, up, down);
         const lab = document.createElement("label");
         lab.className = "kb-order-label";
         lab.htmlFor = "kbMode_" + id;
@@ -2028,12 +2038,63 @@ function moveKbRow(row, delta) {
     const to = at + delta;
     if (to < 0 || to >= rows.length) return;
     host.insertBefore(row, delta < 0 ? rows[to] : rows[to].nextSibling);
+    refreshKbMoveDisabled();
+    saveKeyboardSelectionFromUi();
+}
+
+function refreshKbMoveDisabled() {
+    const host = $("kbModeList");
+    if (!host) return;
     [...host.children].forEach((r, i) => {
         const [up, down] = r.querySelectorAll(".kb-move");
         if (up) up.disabled = i === 0;
         if (down) down.disabled = i === host.children.length - 1;
     });
-    saveKeyboardSelectionFromUi();
+}
+
+/** 拖动重排（≡ 把手）：pointer capture 跟手，拖动行中心越过相邻行中心
+ *  即让位（insertBefore 实时换位），松手按 DOM 序保存——与 ↑↓/勾选共
+ *  用 saveKeyboardSelectionFromUi，落同一份 feelime_mode_order。 */
+function beginKbRowDrag(e, row, handle) {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    e.preventDefault();
+    const host = row.parentElement;
+    if (!host) return;
+    let startY = e.clientY;
+    let moved = false;
+    try { handle.setPointerCapture(e.pointerId); } catch (_) { /* 已释放 */ }
+    const move = (ev) => {
+        if (!moved && Math.abs(ev.clientY - startY) < 6) return;
+        moved = true;
+        row.classList.add("dragging");
+        const list = [...host.children];
+        const at = list.indexOf(row);
+        const rect = row.getBoundingClientRect();
+        const center = rect.top + rect.height / 2;
+        if (ev.clientY < center && at > 0) {
+            const prev = list[at - 1];
+            const pr = prev.getBoundingClientRect();
+            if (ev.clientY < pr.top + pr.height / 2) host.insertBefore(row, prev);
+        } else if (ev.clientY > center && at < list.length - 1) {
+            const next = list[at + 1];
+            const nr = next.getBoundingClientRect();
+            if (ev.clientY > nr.top + nr.height / 2) host.insertBefore(row, next.nextSibling);
+        }
+    };
+    const up = (ev) => {
+        try { handle.releasePointerCapture(ev.pointerId); } catch (_) { /* 无捕获 */ }
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", up);
+        handle.removeEventListener("pointercancel", up);
+        row.classList.remove("dragging");
+        if (moved) {
+            refreshKbMoveDisabled();
+            saveKeyboardSelectionFromUi();
+        }
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
 }
 
 function renderQuickPairSelects(state) {
