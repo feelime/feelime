@@ -141,8 +141,11 @@ bash scripts/verify/run-all.sh    # 全量门禁（--list/--resume/--from/--prof
 
 `app/src/main/assets/engine-data/`（rime/hunspell/mozc/assoc 数据，约 66MB）随仓库
 分发，构建时 `checkEngineArtifacts` 按 `third_party/manifest.json` 与
-`MANIFEST.json` 的 SHA-256 逐文件核对。再生成走 pinned 管线（输入全部是
-上游开源归档，哈希钉死）：
+`MANIFEST.json` 的 SHA-256 逐文件核对。只放**运行时消费**的文件——词库源
+`luna_pinyin.table.txt`（18MB 文本，运行时只加载 .bin）住在
+`scripts/data/`，host 生成脚本（char-pinyin / t9-syllables / t9-schema）
+从那里读；它进 APK 曾白占 17MB（2026-09 定罪），别再搬回去。再生成走
+pinned 管线（输入全部是上游开源归档，哈希钉死）：
 
 ```bash
 ./scripts/research/fetch-native-engine-inputs.sh ~/tmp/feelime-native-inputs

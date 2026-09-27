@@ -84,10 +84,6 @@
       "bytes": 19352244,
       "sha256": "0024406390e10067c72087b751fdd26bd02a79804170c53f5c6982a8f3b8a595"
     },
-    "rime/luna_pinyin.table.txt": {
-      "bytes": 17965512,
-      "sha256": "4ed14c3cc779a4e7922601a87771dd9100fefc82c79bae13d6962a74480839f7"
-    },
     "rime/luna_pinyin_fuzzy.prism.txt": {
       "bytes": 30995,
       "sha256": "13f7e9b04e122bf6c5a3c9a0d77642af827d002f79fa09176290558efdd48e30"

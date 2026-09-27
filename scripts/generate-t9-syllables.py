@@ -15,7 +15,7 @@ import pathlib
 import re
 import sys
 
-TABLE = pathlib.Path("app/src/main/assets/engine-data/rime/luna_pinyin.table.txt")
+TABLE = pathlib.Path("scripts/data/luna_pinyin.table.txt")
 KEYBOARD = pathlib.Path("app/src/main/assets/keyboard/keyboard.js")
 
 XLIT = str.maketrans("abcdefghijklmnopqrstuvwxyz", "22233344455566677778889999")

@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TABLE = ROOT / 'app/src/main/assets/engine-data/rime/luna_pinyin.table.txt'
+TABLE = ROOT / 'scripts/data/luna_pinyin.table.txt'
 OUT = ROOT / 'app/src/main/assets/char-pinyin.json'
 # 词条上限只防异常输入；单字在 rime 词表里天然有限。
 MAX_CHARS = 65536

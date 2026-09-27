@@ -64,7 +64,7 @@ def protect_rules() -> list:
 def syllabary() -> list:
     """luna_pinyin.table.txt 头部的 `# - <syllable>` 音节表。"""
     import re
-    table = pathlib.Path("app/src/main/assets/engine-data/rime/luna_pinyin.table.txt")
+    table = pathlib.Path("scripts/data/luna_pinyin.table.txt")
     out = []
     for line in table.read_text(encoding="utf-8").splitlines():
         m = re.match(r"# - ([a-z]+)\s*$", line)
