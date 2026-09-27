@@ -36,7 +36,10 @@ object CustomPhraseStore {
      *  english 段）。老 json 无此字段按 v1；load 见版本不匹配按当前规则
      *  重派生一次——否则升级用户的 txt 停在旧规则（英文词直出静默失效，
      *  真机验收 2026-09-26 问题 B），要碰一次开关才恢复。 */
-    private const val DERIVE_VERSION = 4
+    // 5（2026-09-27）：内置英文源词面统一小写（english-words.txt 去
+    // capitalize + DAILY/COLLIDING 字面量小写化）。txt 是生成缓存不随
+    // APK 重装刷新——升 DERIVE_VERSION 让 load 触发重派生 + 引擎重载。
+    private const val DERIVE_VERSION = 5
 
     /** 预设符号词（issue #17 原始需求：箭头/对错/心星手势/动物/天象/
      * 性别符号；用户可在设置的三级页增删改）。 */
