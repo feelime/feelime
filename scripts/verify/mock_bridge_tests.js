@@ -1184,6 +1184,45 @@ test('rotation keeps the pinned 常用 variant; mode switch resets it', {since: 
         '，。、；：？！～（）', 'grid follows the new default');
 });
 
+// #39-4 图标零位移：面板头接管工具栏右组按钮（同序同槽），开关图标
+// 就是工具栏那颗剪贴板/常用语钮；clip/fav 不在栏上时回退 panelClose
+// 分身；面板开着点当前 tab 那颗 = 关面板。
+test('panel head borrows the toolbar right group: same buttons, toggle, fallback (#39-4)', {since: '3.69.22'}, () => {
+    const world = fresh();
+    world.hello({});
+    const head = () => world.document.querySelector('.panel-head');
+    world.tap(world.$('clipboardButton'));
+    assert(!world.$('panelLayer').hidden, 'panel open');
+    // 接管：右组按钮原序进 head（默认组 = clip,fav,mic），panelClose 分身隐藏。
+    const borrowedIds = [...head().children].map(el => el.id).filter(Boolean);
+    equal(borrowedIds.slice(-4).join(','), 'clipboardButton,favoritesButton,mic,hide',
+        `right group keeps its order in the head: ${borrowedIds}`);
+    equal(world.$('panelClose').hidden, true, 'stand-in close hidden while borrowed');
+    // 切 tab：fav 在 head 里再点 = 切到常用语（不关面板）。
+    world.tap(world.$('favoritesButton'));
+    assert(!world.$('panelLayer').hidden, 'tab switch keeps the panel');
+    equal(world.document.getElementById('panelClear').hidden, true,
+        'clear hidden on the favorites tab');
+    // toggle：再点 fav（当前 tab）= 关面板，按钮归还 candidateBar。
+    world.tap(world.$('favoritesButton'));
+    equal(world.$('panelLayer').hidden, true, 'tapping the current-tab icon closes');
+    equal(!!world.$('favoritesButton').closest('#candidateBar'), true,
+        'borrowed tools return to the bar');
+    equal(world.$('panelClose').hidden, false, 'stand-in close back');
+
+    // 回退：clip/fav 都不在栏上 → 面板头无开关可接管 → panelClose 顶上。
+    const kb = world.context.Feelime.debugState();
+    world.context.Feelime.toolbarSet(kb.toolbarLeft, kb.toolbarRight.filter(
+        x => x !== 'clipboard' && x !== 'favorites'));
+    world.context.Feelime.toolbarAudit();
+    // 从面板 tab 按钮（data-panel-tab）打开（右组没入口了）。
+    world.tap(world.document.querySelector('[data-panel-tab="favorites"]'));
+    assert(!world.$('panelLayer').hidden, 'fallback panel opens');
+    equal(world.$('panelClose').hidden, false, 'stand-in close shows without clip/fav');
+    world.tap(world.$('panelClose'));
+    equal(world.$('panelLayer').hidden, true, 'stand-in closes the panel');
+});
+
 test('panel editor card flow lands on letters after close (#39-5)', {since: '3.69.19'}, () => {
     const world = fresh();
     const key123 = [...world.document.querySelectorAll('.kb-special')].find(

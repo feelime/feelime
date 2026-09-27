@@ -1358,6 +1358,11 @@ body.landscape .num-grid { gap: 3px; }
 }
 .panel-head .tool:active { background: var(--pressed); }
 body.landscape .panel-head .tool { width: 30px; height: 30px; }
+/* #39-4 图标零位移：接管进来的右组按钮要与工具栏逐像素同位——gap 跟随
+ * candidateBar 的实际值（body[data-one-hand] 恒命中把 bar 收到 5px）。
+ * display:flex 会盖掉 UA 的 [hidden]，分身按钮隐藏后必须显式退出布局。 */
+body[data-one-hand] .panel-head { gap: 5px; }
+.panel-head .tool[hidden] { display: none; }
 /* The clipboard/favorites tabs live in one pale capsule (the
  * expanded area's tab container); the ACTIVE tab is the white pill. The
  * inactive tabs are transparent with muted text so the selection reads

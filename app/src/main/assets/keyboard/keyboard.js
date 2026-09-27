@@ -1222,6 +1222,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 单手侧记忆（P2-3 native 化）：0=native 未记忆。
             this.oneHandSideMemory = 0;
             this.sideContent = 0;
+            // #39-4：面板开期间接管进 .panel-head 的右组按钮（closePanel
+            // 依此归还 candidateBar）。
+            this.panelBorrowedTools = [];
             // 背景图亮/暗两组：各自独立，空串 = 该组无图（纯色背景）。
             this.bgImageLight = '';
             this.bgImageDark = '';
@@ -1403,10 +1406,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 });
             });
             // Clipboard/favorites moved into the quick panel rows.
+            // #39-4 toggle：面板开着时这两颗已被接管进面板头——点
+            // 当前 tab 那颗 = 关面板（#33「点图标开、再点图标关」），
+            // 点另一颗 = 切 tab。判定挂 listener 不进 openPanel：
+            // 程序化恢复（编辑卡取消回列表）也走 openPanel，不能被吞。
             const clipBtn = document.getElementById('clipboardButton');
-            if (clipBtn) clipBtn.addEventListener('click', () => this.openPanel('clipboard'));
+            if (clipBtn) clipBtn.addEventListener('click', () =>
+                this.panelOpen && this.panelTab === 'clipboard'
+                    ? this.closePanel() : this.openPanel('clipboard'));
             const favBtn = document.getElementById('favoritesButton');
-            if (favBtn) favBtn.addEventListener('click', () => this.openPanel('favorites'));
+            if (favBtn) favBtn.addEventListener('click', () =>
+                this.panelOpen && this.panelTab === 'favorites'
+                    ? this.closePanel() : this.openPanel('favorites'));
             document.getElementById('panelClose').addEventListener('click', () => this.closePanel());
             document.getElementById('panelClear').addEventListener('click', () => {
                 if (this.panelTab !== 'clipboard') return;
@@ -4226,6 +4237,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 模式菜单浮层——它锚在 IME 键上不随层走，留着会叠在新层
             // 上方（用户实录：功能菜单 + 数字面板两层同开）。
             this.closeModeMenu();
+            // #39-5 互斥补全（用户实录图2/图3）：快捷设置面板只替换
+            // 键区，但工具栏 emoji/123 按钮与面板内 tile 深链（快捷切换
+            // 直达数字/表情）仍能触发层切换——切层时面板必须让位，否则
+            // 新键层渲染在面板上/下叠加。openPanel 路径已在自身收面板，
+            // 这里补齐所有 showKeyLayer 路径。
+            const settingsPanel = document.getElementById('settingsPanel');
+            if (settingsPanel && settingsPanel.classList.contains('open')) {
+                this.settingsReturnLayer = name;
+                this.closeSettingsPanel();
+            }
             // The emoji sub-view belongs to a nine-pad session.
             if (name !== 'numpad') this.emojiView = false;
             this.hideKeyLayers();
@@ -7850,7 +7871,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         openPanel(tab) {
             if (!this.ready) return;
-            this.panelTab = tab === 'favorites' ? 'favorites' : 'clipboard';
+            const want = tab === 'favorites' ? 'favorites' : 'clipboard';
+            this.panelTab = want;
             this.panelOpen = true;
             // Remember the layer to restore on close (panel can open from the
             // symbol layer too). #39-5 互斥：数字/表情/符号视图被剪贴板
@@ -7880,11 +7902,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The panel REPLACES the toolbar row instead of adding
             // another line to the keyboard - its own head carries the tabs.
             document.getElementById('candidateBar').hidden = true;
+            // #39-4 图标零位移：面板头直接接管工具栏右组按钮（同序同槽
+            // 位）——面板开关图标就是工具栏里那颗剪贴板/常用语钮本身，
+            // 不再另设 panelClose 分身（旧版两颗钮 x 差一个右组宽度，
+            // 开面板图标横跳，用户实录「图标位移」）。右组没有 clip/fav
+            // （用户移下栏）时回退 panelClose。
+            const head = document.querySelector('.panel-head');
+            const hideBtn = document.getElementById('hide');
+            // 切 tab（面板已开）时按钮已在 head 里——prevBorrowed 兜住，
+            // 否则收集为空会丢归还记录（closePanel 还不了栏）。
+            const prevBorrowed = this.panelBorrowedTools || [];
+            const borrowed = (this.toolbarRight || [])
+                .map(id => document.getElementById(TOOL_CATALOG[id]))
+                .filter(el => el && !el.hidden)
+                .filter(el => el.closest('#candidateBar') || prevBorrowed.includes(el));
+            this.panelBorrowedTools = borrowed;
+            borrowed.forEach(el => head.append(el));
             // #33-2：收起键盘键跟着面板头走、恒在最右——旧版整条工具栏
             // （含收起）被藏掉、最右变成「清空」，肌肉记忆点进去清空了
             // 剪贴板（真机丢数据实录）。清空/＋添加让位到收起左边。
-            const hideBtn = document.getElementById('hide');
-            document.querySelector('.panel-head')?.append(hideBtn);
+            head?.append(hideBtn);
+            document.getElementById('panelClose').hidden =
+                borrowed.some(el => el.id === 'clipboardButton' || el.id === 'favoritesButton');
             this.hideKeyLayers();
             document.getElementById('panelLayer').hidden = false;
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
@@ -7910,9 +7949,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 再对账一次把右组工具重新锚到它左边。用 audit 而非裸
             // apply：组合中收起面板时 prune 不认 composing，会把
             // updateComposing 刚藏掉的工具又点亮。
+            // #39-4 收尾：接管进面板头的右组按钮一并还栏，audit 重排
+            // 回数组序（panelClose 分身同时复亮，clip/fav 不在栏时用）。
             const hideBtn = document.getElementById('hide');
-            document.getElementById('candidateBar').insertBefore(
-                hideBtn, document.getElementById('settingsPageBar'));
+            const bar = document.getElementById('candidateBar');
+            (this.panelBorrowedTools || []).forEach(el =>
+                bar.insertBefore(el, document.getElementById('settingsPageBar')));
+            this.panelBorrowedTools = [];
+            bar.insertBefore(hideBtn, document.getElementById('settingsPageBar'));
+            document.getElementById('panelClose').hidden = false;
             this.auditToolbarTools();
             this.showKeyLayer(this.panelReturnLayer || 'letters');
             // The panel only borrowed the bar from the ctrl
