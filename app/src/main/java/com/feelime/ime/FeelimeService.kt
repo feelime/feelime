@@ -372,6 +372,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private val fuzzyPinyinReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             if (intent?.action != ACTION_FUZZY_PINYIN_CHANGED) return
+            // #35 延迟编译：custom 基底下切到未编译的模糊音组合时补编该
+            // 变体（builtin 基底用 shared 预编译全量恒不缺）。期间输入按
+            // 严格全拼降级，编完的换装广播重建会话用上新 prism。
+            runCatching {
+                com.feelime.ime.engine.BaseDictInstaller.ensureFuzzyVariantIfNeeded(applicationContext)
+            }
             onMain {
                 if (coordinator.currentMode == com.feelime.ime.engine.InputMode.PINYIN) {
                     coordinator.recreateEngineSession { }

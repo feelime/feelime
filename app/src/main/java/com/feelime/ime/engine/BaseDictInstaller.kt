@@ -100,15 +100,19 @@ object BaseDictInstaller {
     private const val MAINTENANCE_TIMEOUT_MS = 45 * 60 * 1000L
     private const val PROGRESS_EVERY_MS = 2000L
 
-    /** 编译期校验的产物清单（staging= user/build 下；缺任一即失败回滚）。 */
-    private val REQUIRED_PRODUCTS = listOf("luna_pinyin.table.bin", "luna_pinyin.prism.bin") +
-        (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX)
-            .map { "${FuzzyPinyin.SCHEMA_ID}_m$it.prism.bin" } +
-        listOf(
-            "ziranma_double_pinyin.prism.bin", "double_pinyin_flypy.prism.bin",
-            "double_pinyin_sogou.prism.bin", "double_pinyin_ziguang.prism.bin",
-            "luna_pinyin_t9.prism.bin",
-        )
+    /** 编译期校验的产物清单（staging= user/build 下；缺任一即失败回滚）。
+     *  #35 延迟编译：随编译清单推导（luna 产 table+prism，其余 schema 只
+     *  产 prism；模糊音变体只在进入本次清单时校验）。 */
+    private fun requiredProducts(schemas: List<String>): List<String> =
+        schemas.flatMap { schema ->
+            if (schema == "luna_pinyin") {
+                listOf("luna_pinyin.table.bin", "luna_pinyin.prism.bin")
+            } else if (schema == BaseDictFiles.FLYPY_SCHEMA) {
+                listOf(BaseDictFiles.FLYPY_TABLE, "flypy.prism.bin")
+            } else {
+                listOf("$schema.prism.bin")
+            }
+        }
 
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "feelime-base-dict") }
     private val building = AtomicBoolean(false)
@@ -203,6 +207,110 @@ object BaseDictInstaller {
             onFinished()
         }
     }
+
+    /** #35 延迟编译的补编入口：模糊音组合切换且目标变体 prism 缺失时，
+     *  从留档源恢复编译现场，单独编这一个变体（真机 ~1.5min）。期间
+     *  输入按严格全拼降级（fuzzySchemaId 找不到变体回落 null，现状
+     *  语义），编完发换装广播让 IME 会话重建用上新变体。
+     *  前置条件由调用方判（基底 custom；prism 确实缺失）。 */
+    /** receiver 入口：按需判定（基底 custom 且目标变体 prism 缺失）再触发。 */
+    fun ensureFuzzyVariantIfNeeded(context: Context) {
+        val mask = FuzzyPinyin.mask(context)
+        val variant = BaseDictFiles.fuzzyVariant(mask) ?: return
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        if (prefs.getString(KEY_MODE, "builtin") != "custom") return
+        if (File(context.filesDir, "rime-user/build/$variant.prism.bin").isFile) return
+        android.util.Log.i("FeelimeBaseDict", "fuzzy variant $variant missing -> compile")
+        ensureFuzzyVariantAsync(context, mask)
+    }
+
+    fun ensureFuzzyVariantAsync(context: Context, mask: Int) {
+        if (isBuilding()) return
+        if (mask !in BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX) return
+        val app = context.applicationContext
+        worker.execute {
+            val code = runCatching { compileFuzzyVariant(app, mask) }
+                .getOrElse { "BASE_DICT_INTERNAL" as String? }
+            if (code != null) {
+                android.util.Log.w("FeelimeBaseDict", "fuzzy variant m$mask compile: $code")
+                return@execute
+            }
+            android.util.Log.i("FeelimeBaseDict", "fuzzy variant m$mask compiled")
+            // 不设 building（低频后台路径，与导入互斥即可——worker 单线程
+            // 天然串行）；完成后换装广播让全拼会话用上新 prism。
+            app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
+        }
+    }
+
+    /** 编一个模糊音变体；null=成功。失败不回滚 staging（编译现场文件
+     *  清掉即可，未产出的 prism 缺失 = 输入回落严格全拼，无一致性
+     *  风险——不存在「半截变体」：prism 要么完整要么没有）。 */
+    private fun compileFuzzyVariant(context: Context, mask: Int): String? {
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        if (prefs.getString(KEY_MODE, "builtin") != "custom") return "NOT_CUSTOM_BASE"
+        val variant = BaseDictFiles.fuzzyVariant(mask) ?: return "BAD_MASK"
+        val staging = File(context.filesDir, "rime-user/build")
+        val prism = File(staging, "$variant.prism.bin")
+        if (prism.isFile) return null // 已有，无需补编
+
+        // 现场恢复：留档源 → rime-dict-source/ + umbrella + 变体 schema +
+        // default（schema_list 只列该变体——maintenance 不动 shared 的
+        // luna table，单列是否触发 staging 其它产物的清理属 codex P3
+        // 待实测项，AVD 实测 41 产物全量未被删）。
+        val user = File(context.filesDir, "rime-user")
+        val archive = File(context.filesDir, "rime-user-dict")
+        if (!archive.isDirectory) return "NO_ARCHIVE"
+        val template = engineTemplate(context) ?: return "ENGINE_NOT_READY"
+        val defaultYaml = runCatching {
+            BaseDictFiles.defaultYaml(
+                context.assets.open(BaseDictFiles.ASSETS_DEFAULT).bufferedReader().readText(),
+                listOf(variant),
+            )
+        }.getOrNull() ?: return "NO_TEMPLATE"
+        val sha = prefs.getString(KEY_SOURCE_SHA, "user") ?: "user"
+        runCatching {
+            val sourceDir = File(user, BaseDictFiles.SOURCE_DIR).apply {
+                deleteRecursively(); mkdirs()
+            }
+            archive.listFiles()?.forEach {
+                it.copyTo(File(sourceDir, it.name), overwrite = true)
+            }
+            File(user, BaseDictFiles.UMBRELLA_FILE).writeText(
+                BaseDictFiles.umbrellaYaml(sha.take(12), stagedTableNames(sourceDir), stagedLineHint(prefs)),
+            )
+            val schemaText = BaseDictFiles.variantSchema(template, mask)
+            File(user, "$variant.schema.yaml").writeText(schemaText)
+            File(staging, "$variant.schema.yaml").writeText(schemaText)
+            File(user, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
+            File(staging, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
+        }.getOrElse { return "STAGE_FAILED" }
+
+        runCatching { RimeTextEngine.reloadGlobal(context) }.getOrElse { return "RELOAD_FAILED" }
+        if (!NativeSmoke.rimeStartMaintenance(false)) return "MAINTENANCE_FAILED"
+        pollMaintenance({ })  // 无 UI 推送
+        NativeSmoke.rimeJoinMaintenance()
+        if (!prism.isFile) {
+            // 清现场再报
+            File(user, BaseDictFiles.SOURCE_DIR).deleteRecursively()
+            File(user, BaseDictFiles.UMBRELLA_FILE).delete()
+            File(user, BaseDictFiles.DEFAULT_FILE).delete()
+            File(staging, BaseDictFiles.DEFAULT_FILE).delete()
+            return "PRISM_MISSING"
+        }
+        // 成功：清编译源（变体 compiled schema 留 staging 供运行时读）。
+        File(user, BaseDictFiles.SOURCE_DIR).deleteRecursively()
+        File(user, BaseDictFiles.UMBRELLA_FILE).delete()
+        File(user, BaseDictFiles.DEFAULT_FILE).delete()
+        File(staging, BaseDictFiles.DEFAULT_FILE).delete()
+        return null
+    }
+
+    /** 留档目录里的表文件名（补编现场恢复用）。 */
+    private fun stagedTableNames(sourceDir: File): List<String> =
+        sourceDir.listFiles()?.map { it.name }?.sorted() ?: emptyList()
+
+    /** umbrella 的行数注释位（补编路径拿不到精确值，留诊断提示）。 */
+    private fun stagedLineHint(@Suppress("UNUSED_PARAMETER") prefs: android.content.SharedPreferences): Int = 0
 
     fun isFlypyInstalled(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
@@ -365,14 +473,17 @@ object BaseDictInstaller {
         }
         // 完整 default.yaml / symbols.yaml 模板（frost 原版，assets/rime-compile）：
         // schema 编译链 include default:menu/key_binder/… 与 symbols:punctuator。
-        // #20 联动：音形码表已导入时 flypy 同场在列，否则被 obsolete
-        // 清理洗掉（编译清单见 BaseDictFiles.baseCompileSchemas）。
+        // #35 延迟编译：核心 6 项 + 当前模糊音 1 变体（见 baseCompileSchemas）；
+        // #20 联动：音形码表已导入时 flypy 同场在列。
         val flypyInstalled = isFlypyInstalled(context)
+        val compileSchemas = BaseDictFiles.baseCompileSchemas(
+            FuzzyPinyin.mask(context), flypyInstalled,
+        )
         val assets = context.assets
         val defaultYaml = runCatching {
             BaseDictFiles.defaultYaml(
                 assets.open(BaseDictFiles.ASSETS_DEFAULT).bufferedReader().readText(),
-                BaseDictFiles.baseCompileSchemas(flypyInstalled),
+                compileSchemas,
             )
         }.getOrNull() ?: run {
             rollback(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
@@ -430,12 +541,9 @@ object BaseDictInstaller {
         // 超 45min 也该等它编完），成败由产物完整性判定。
         NativeSmoke.rimeJoinMaintenance()
 
-        // 产物校验。#20 联动：flypy 在编译清单里时其产物一并校验。
+        // 产物校验（按本次编译清单推导；#35 延迟编译后只验进过清单的）。
         val build = File(user, "build")
-        val expected = REQUIRED_PRODUCTS + if (flypyInstalled) {
-            listOf(BaseDictFiles.FLYPY_TABLE, "flypy.prism.bin")
-        } else emptyList()
-        val missing = expected.filterNot { File(build, it).isFile }
+        val missing = requiredProducts(compileSchemas).filterNot { File(build, it).isFile }
         if (missing.isNotEmpty()) {
             android.util.Log.w("FeelimeBaseDict", "missing products: $missing")
             rollback(context)

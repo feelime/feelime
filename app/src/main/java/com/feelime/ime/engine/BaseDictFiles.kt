@@ -71,23 +71,40 @@ object BaseDictFiles {
     const val FLYPY_DICT = "flypy.dict.yaml"
     const val FLYPY_TABLE = "flypy.table.bin"
 
-    /** 编译清单联动（#20）：保守双向同场——codex review P3 在 pinned
-     *  1.17.0 源码里未找到 SchemaListUpdate 的 obsolete 清理（上游或有
-     *  版本差异），联动是否「必要」待双向换装实测裁决；但「同场在列」
-     *  的代价只是多列 schema（维护任务按需处理），先把正确性放在
-     *  宽侧。反向见 [flypyCompileSchemas]。 */
-    fun baseCompileSchemas(flypyInstalled: Boolean): List<String> =
-        if (flypyInstalled) COMPILE_SCHEMAS + FLYPY_SCHEMA else COMPILE_SCHEMAS
+    /** 不依赖模糊音组合的核心清单（#35 延迟编译）：主表/主 prism/
+     *  双拼四方案/T9——模糊音 31 变体按需补编（见 [fuzzyVariant]）。
+     *  实测背景：万象 Lite（2.73M 词条）全量 37 schema 真机（8Gen2）
+     *  60min+ 未完成、模拟器 70min+ 进程被杀；31 个变体占 84% 任务量，
+     *  而用户任一时刻只用一个模糊音组合。 */
+    val CORE_SCHEMAS: List<String> =
+        listOf("luna_pinyin") +
+            listOf(
+                "ziranma_double_pinyin", "double_pinyin_flypy",
+                "double_pinyin_sogou", "double_pinyin_ziguang",
+                "luna_pinyin_t9",
+            )
+
+    /** 模糊音变体 schema id（mask≠0 时进编译清单）。 */
+    fun fuzzyVariant(mask: Int): String? =
+        if (mask in 1..31) "${FuzzyPinyin.SCHEMA_ID}_m$mask" else null
+
+    /** #35 延迟编译版换装清单：核心 6 项 + 当前模糊音组合 1 项（若开）
+     *  + flypy 联动（#20：音形码表已导入时同场，见 [flypyCompileSchemas]）。
+     *  其余 30 个变体在用户切换模糊音组合时按需补编（FuzzyPinyin
+     *  开关链路的 ensureFuzzyVariant，见 BaseDictInstaller）。 */
+    fun baseCompileSchemas(fuzzyMask: Int, flypyInstalled: Boolean): List<String> {
+        val core = CORE_SCHEMAS + listOfNotNull(fuzzyVariant(fuzzyMask))
+        return if (flypyInstalled) core + FLYPY_SCHEMA else core
+    }
 
     /** 反向联动（#20 音形导入）：基底是用户自定义（产物在 staging）时
-     *  37 项同场在列（保守：staging 产物的去留不应被本次部署影响）；
-     *  基底是内置（产物在 shared，maintenance 不写 shared）时只编 flypy，
-     *  37 项不进清单（省一轮全量重编）。
+     *  核心清单同场在列（保守：staging 产物的去留不应被本次部署影响）；
+     *  基底是内置（产物在 shared，maintenance 不写 shared）时只编 flypy。
      *  ⚠ custom 基底 + flypy 组合的真机行为待验收实测（变体 schema 源
      *  在基底安装成功后已被清理，SchemaUpdate 找不到源时的行为要
      *  眼见为实）。 */
     fun flypyCompileSchemas(baseCustom: Boolean): List<String> =
-        if (baseCustom) COMPILE_SCHEMAS + FLYPY_SCHEMA else listOf(FLYPY_SCHEMA)
+        if (baseCustom) CORE_SCHEMAS + FLYPY_SCHEMA else listOf(FLYPY_SCHEMA)
 
     /** #35：tables = 落进 [SOURCE_DIR] 的词条表文件名（zip 多表导入；
      *  单文件导入就是 [SOURCE_FILE] 一项）。import_tables 的引用名 =

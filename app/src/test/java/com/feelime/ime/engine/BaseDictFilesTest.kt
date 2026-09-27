@@ -175,23 +175,39 @@ class BaseDictFilesTest {
         assertTrue(yaml.contains("的\tde\t1"))
     }
 
-    /** #20：编译清单联动——双向都防 obsolete 清理洗掉对方产物。 */
+    /** #20/#35：清单联动 + 延迟编译——换装只带核心 6 项 + 当前模糊音
+     *  1 变体（万象 2.7M 词条全量 37 项真机 60min+ 的实测修正）。 */
     @Test
-    fun compileSchemaListsAreLinked() {
+    fun compileSchemaListsAreLinkedAndLazy() {
         assertEquals(37, BaseDictFiles.COMPILE_SCHEMAS.size)
-        assertEquals(37, BaseDictFiles.baseCompileSchemas(flypyInstalled = false).size)
+        assertEquals(6, BaseDictFiles.CORE_SCHEMAS.size)
+        // 模糊音关：核心 6 项。
         assertEquals(
-            BaseDictFiles.COMPILE_SCHEMAS + BaseDictFiles.FLYPY_SCHEMA,
-            BaseDictFiles.baseCompileSchemas(flypyInstalled = true),
+            BaseDictFiles.CORE_SCHEMAS,
+            BaseDictFiles.baseCompileSchemas(fuzzyMask = 0, flypyInstalled = false),
+        )
+        // 模糊音开 m19：核心 + 1 变体。
+        assertEquals(
+            BaseDictFiles.CORE_SCHEMAS + "luna_pinyin_fuzzy_m19",
+            BaseDictFiles.baseCompileSchemas(fuzzyMask = 19, flypyInstalled = false),
+        )
+        // + flypy 联动。
+        assertEquals(
+            BaseDictFiles.CORE_SCHEMAS + "luna_pinyin_fuzzy_m19" + BaseDictFiles.FLYPY_SCHEMA,
+            BaseDictFiles.baseCompileSchemas(fuzzyMask = 19, flypyInstalled = true),
         )
         assertEquals(
             listOf(BaseDictFiles.FLYPY_SCHEMA),
             BaseDictFiles.flypyCompileSchemas(baseCustom = false),
         )
         assertEquals(
-            BaseDictFiles.COMPILE_SCHEMAS + BaseDictFiles.FLYPY_SCHEMA,
+            BaseDictFiles.CORE_SCHEMAS + BaseDictFiles.FLYPY_SCHEMA,
             BaseDictFiles.flypyCompileSchemas(baseCustom = true),
         )
+        // mask 边界。
+        assertEquals(null, BaseDictFiles.fuzzyVariant(0))
+        assertEquals(null, BaseDictFiles.fuzzyVariant(32))
+        assertEquals("luna_pinyin_fuzzy_m31", BaseDictFiles.fuzzyVariant(31))
     }
 
     @Test
