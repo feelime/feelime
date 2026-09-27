@@ -142,6 +142,9 @@ object BaseDictInstaller {
         stageSnapshot = "COPYING"
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
+            // 编译保活（ace 实录：灭屏数分钟 ColorOS 静默清进程）。收尾的
+            // stop 在补偿排队之后——排进来的补编任务会自己再 start。
+            CompileGuardService.start(app)
             var result = runCatching { installBlocking(app, uri, displayName, pushEvent) }
                 .getOrElse {
                     rollback(app)
@@ -160,6 +163,7 @@ object BaseDictInstaller {
             // 由这次无条件补判兜住——prism 已在就 no-op。
             compensatePendingFuzzy(app)
             if (result.code == null) ensureFuzzyVariantIfNeeded(app)
+            CompileGuardService.stop(app)
             pushEvent(
                 JSONObject()
                     .put("type", if (result.code == null) "dictBaseDone" else "dictBaseError")
@@ -197,6 +201,7 @@ object BaseDictInstaller {
         stageSnapshot = "COPYING"
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
+            CompileGuardService.start(app)
             var result = runCatching { installFlypyBlocking(app, uri, displayName, pushEvent) }
                 .getOrElse {
                     runCatching { revertFlypy(app) }
@@ -208,6 +213,7 @@ object BaseDictInstaller {
                 app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             }
             compensatePendingFuzzy(app)
+            CompileGuardService.stop(app)
             pushEvent(
                 JSONObject()
                     .put("type", if (result.code == null) "flypyDone" else "flypyError")
@@ -266,6 +272,7 @@ object BaseDictInstaller {
             return
         }
         worker.execute {
+            CompileGuardService.start(app)
             val code = runCatching { compileFuzzyVariant(app, mask) }
                 .getOrElse { "BASE_DICT_INTERNAL" as String? }
             building.set(false)
@@ -279,6 +286,7 @@ object BaseDictInstaller {
             app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             // 补偿排队中的补编（串行 worker 上不存在重入）。
             compensatePendingFuzzy(app)
+            CompileGuardService.stop(app)
         }
     }
 
