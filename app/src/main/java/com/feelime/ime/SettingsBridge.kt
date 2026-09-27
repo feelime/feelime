@@ -1111,6 +1111,29 @@ class SettingsBridge(
 
 
 
+    /** 单手模式：0=关 1=左手 2=右手（#38 直达切换后侧的唯一正式入口；
+     *  此前设置页一直在调这个方法但桥端缺失，选择静默失效——键盘上
+     *  只能靠三档循环碰运气，循环取消后缺口成回退，补齐）。 */
+    @JavascriptInterface
+    fun setOneHandMode(mode: Int, token: String) = guarded(token) {
+        if (mode !in 0..2) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "oneHandError")
+                    .put("code", "BAD_ONE_HAND_MODE")
+                    .put("message", t(context, "单手模式取值无效", "Invalid one-hand mode")),
+            )
+            pushState()
+            return@guarded
+        }
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_ONE_HAND, mode).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
     /** 单手压缩比例：0=默认让位 15/25/35=让位占屏宽百分比。 */
     @JavascriptInterface
     fun setOneHandPad(pct: Int, token: String) = guarded(token) {

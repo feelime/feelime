@@ -103,6 +103,7 @@ class MockSettingsNative {
     setThemeSat(...a) { this._rec('setThemeSat', a); }
     setKeyHue(...a) { this._rec('setKeyHue', a); }
     setKeySat(...a) { this._rec('setKeySat', a); }
+    setOneHandMode(...a) { this._rec('setOneHandMode', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
@@ -1410,6 +1411,20 @@ test('theme preset swatches render state and post on click', () => {
         'current preset marked active');
     dots.find(d => d.dataset.preset === 'violet').click();
     equal(world.lastCall('setThemePreset').args[0], 'violet', 'click posts the preset id');
+});
+
+// 单手模式 select → 桥（codex R1 P1 回归防护）：#38 直达切换后设置页
+// 是选侧唯一正式入口，桥方法缺失会让选择静默失效。
+test('one-hand side select reaches the bridge', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const sel = world.$('oneHand');
+    sel.value = '1';
+    sel.listeners.find(l => l.type === 'change').handler({ target: sel });
+    equal(world.lastCall('setOneHandMode').args[0], 1, 'left selection posts setOneHandMode(1)');
+    sel.value = '2';
+    sel.listeners.find(l => l.type === 'change').handler({ target: sel });
+    equal(world.lastCall('setOneHandMode').args[0], 2, 'right selection posts setOneHandMode(2)');
 });
 
 // 键面色调同款取色（用户验收五轮）：跟随档 + 六预置；未自定义时跟随

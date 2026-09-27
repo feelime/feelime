@@ -624,6 +624,9 @@
         <span class="save-note" id="dictBaseNote" role="status" aria-live="polite"></span>
       </div>
       <p class="hint" id="dictBaseBuilding" hidden></p>
+      <!-- #37 形码/音形码表特征提示：换装通道只支持拼音系码表，检测到
+           大部分编码切不成拼音音节时持续警示。 -->
+      <p class="hint" id="dictBaseNonPinyin" hidden data-i18n="dict.base.nonPinyin">抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。</p>
     </section>
 
     <section class="card" id="sec-dict-import" aria-labelledby="dictImportTitle">

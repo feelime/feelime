@@ -107,6 +107,7 @@ const I18N = {
         "dict.base.revert": "恢复内置词库",
         "dict.base.builtin": "内置 rime-frost（白霜拼音）",
         "dict.base.custom": "自定义：{0}",
+        "dict.base.nonPinyin": "抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。",
         "dict.base.stageCopy": "正在读取词库文件…",
         "dict.base.stageCompile": "正在编译词库（期间中文输入暂不可用），可离开此页，完成后自动换装",
         "dict.base.elapsed": "已编译 {0} 秒",
@@ -609,6 +610,7 @@ const I18N = {
         "dict.base.revert": "Restore built-in",
         "dict.base.builtin": "Built-in rime-frost",
         "dict.base.custom": "Custom: {0}",
+        "dict.base.nonPinyin": "A large share of codes in this dictionary are not pinyin syllable sequences (shape-code layout): characters may not be reachable by typing their pronunciation. Dedicated shape-code schema support may come later.",
         "dict.base.stageCopy": "Reading the dictionary file…",
         "dict.base.stageCompile": "Compiling (Chinese input pauses meanwhile) - you can leave this page; the keyboard swaps over when done",
         "dict.base.elapsed": "{0}s elapsed",
@@ -2434,6 +2436,9 @@ function renderDictBase(state) {
     current.textContent = base.mode === "custom" && base.name
         ? `${t("dict.base.custom", [base.name])} · ${when}`
         : t("dict.base.builtin");
+    // #37：形码/音形特征持续警示（换回内置或导入拼音系码表即消失）。
+    const warn = $("dictBaseNonPinyin");
+    if (warn) warn.hidden = !(typeof base.nonPinyin === "number");
     $("btnBaseDictRevert").hidden = base.mode !== "custom" || base.building;
     $("btnBaseDictPick").disabled = !!base.building;
     $("dictBaseBuilding").hidden = !base.building;

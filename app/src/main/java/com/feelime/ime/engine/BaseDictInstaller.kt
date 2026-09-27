@@ -42,6 +42,11 @@ object BaseDictInstaller {
     private const val KEY_INSTALLED_AT = "installed_at"
     private const val KEY_SOURCE_SHA = "source_sha"
     private const val KEY_INSTALLING = "installing"
+    // #37：码表域检测结果（-1=未检测）。切得开拼音音节的码列占比低于
+    // 阈值 → 形码/音形码表特征，全拼方案（拼音 prism）下大量码无法命中。
+    private const val KEY_NON_PINYIN_RATIO = "non_pinyin_ratio"
+    private const val NON_PINYIN_THRESHOLD = 0.5f
+    private const val NON_PINYIN_SAMPLE = 4000
 
     private const val MAX_SOURCE_BYTES = 150L * 1024 * 1024
     private const val MAINTENANCE_TIMEOUT_MS = 15 * 60 * 1000L
@@ -122,11 +127,17 @@ object BaseDictInstaller {
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         val mode = prefs.getString(KEY_MODE, "builtin") ?: "builtin"
         val built = File(context.filesDir, "rime-user/build/luna_pinyin.table.bin").isFile
+        val ratio = prefs.getFloat(KEY_NON_PINYIN_RATIO, -1f)
         val json = JSONObject()
             .put("mode", if (mode == "custom" && built) "custom" else "builtin")
             .put("building", isBuilding())
             .putOpt("name", prefs.getString(KEY_NAME, null) ?: JSONObject.NULL)
             .putOpt("installedAt", prefs.getLong(KEY_INSTALLED_AT, 0L))
+            // #37：形码/音形特征（可切码占比低于阈值）持续提示，直到换回
+            // 内置或导入拼音系码表。
+            .putOpt("nonPinyin",
+                if (mode == "custom" && built && ratio in 0f..NON_PINYIN_THRESHOLD) ratio.toDouble()
+                else JSONObject.NULL)
         val stage = stageSnapshot
         if (isBuilding() && stage != null) {
             json.put("stage", stage)
@@ -195,6 +206,18 @@ object BaseDictInstaller {
             clearInstalling(context)
             return InstallResult("BASE_DICT_EMPTY", changed = false)
         }
+        // #37 码表域检测：编译照常（导入域只承诺 yaml 可解析可编译），
+        // 抽样提示「较多编码不是拼音音节组合」（启发式，非兼容性判定，
+        // codex R1 实测换装重编 prism 后形码串也可命中）。音节表加载
+        // 失败/检测异常 → 不落盘不提示，绝不阻断导入。
+        val syllables = syllableSet(context)
+        val nonPinyinRatio: Float? =
+            if (syllables.isEmpty()) null
+            else runCatching {
+                pinyinCodeRatio(stagedFile, syllables, NON_PINYIN_SAMPLE, lines).toFloat()
+            }.getOrNull()
+        android.util.Log.i("FeelimeBaseDict",
+            "code-domain probe: segmentable=${nonPinyinRatio ?: "n/a"}")
 
         // 编译现场：umbrella + 31 变体 schema + default.yaml，双落位
         // （librime resolver 语义，真机首验 2 秒空转定罪）：
@@ -292,6 +315,7 @@ object BaseDictInstaller {
             .putString(KEY_NAME, displayName)
             .putString(KEY_SOURCE_SHA, sha)
             .putLong(KEY_INSTALLED_AT, System.currentTimeMillis())
+            .putFloat(KEY_NON_PINYIN_RATIO, nonPinyinRatio ?: -1f)
             .apply()
         return InstallResult(null, changed = true)
     }
@@ -317,6 +341,76 @@ object BaseDictInstaller {
             Thread.sleep(500)
         }
         return timedOut
+    }
+
+    /** #37：抽样码列统计「能完全切成拼音音节序列」的占比（0..1）。
+     *  与 CustomPhraseStore 的切分口径一致（音节集 = 拼式表的键）；
+     *  参数化纯函数便于单测。非小写字母码（符号形码）必然切不开，
+     *  直接计入不可切。全文件按步长均匀采样（codex R1 P2：只取前缀
+     *  时，「头部全拼+尾部形码」的表会整体漏检）；注释/分隔行跳过。
+     *  注意这只是启发式提示信号：换装会按导入码表重编 prism（本机
+     *  librime 实测 naxy/kkfj 可命中），不构成「无法输入」的判定。 */
+    internal fun pinyinCodeRatio(
+        file: File,
+        syllables: Set<String>,
+        sampleLimit: Int,
+        totalLines: Int = 0,
+    ): Double {
+        // 步长让样本均匀铺满全表；词表小于样本上限时逐行全采。
+        val step = if (totalLines > sampleLimit) (totalLines + sampleLimit - 1) / sampleLimit else 1
+        var seen = 0
+        var sampled = 0
+        var segmentable = 0
+        file.bufferedReader(Charsets.UTF_8).useLines { seq ->
+            for (line in seq) {
+                if (sampled >= sampleLimit) break
+                val trimmed = line.trimStart()
+                if (trimmed.startsWith("#") || trimmed == "..." ||
+                    trimmed == "---" || !line.contains('\t')
+                ) continue
+                // dict.yaml 词条行：词\t码\t[权重]——码在第 2 列。
+                val code = line.split('\t').getOrNull(1)?.trim() ?: continue
+                seen++
+                if ((seen - 1) % step != 0) continue
+                if (code.isEmpty()) continue
+                sampled++
+                // 词组码列带空格分段（"ni hao"），逐段独立判可切。
+                if (code.split(' ').all { seg ->
+                        seg.isNotEmpty() && seg.all { it in 'a'..'z' } &&
+                            fullySegmentable(seg, syllables)
+                    }
+                ) segmentable++
+            }
+        }
+        return if (sampled == 0) 1.0 else segmentable.toDouble() / sampled
+    }
+
+    /** 码串能否完整切成音节序列（可达性 DP，等价回溯切分器「存在切分」）。 */
+    private fun fullySegmentable(code: String, syllables: Set<String>): Boolean {
+        val ok = BooleanArray(code.length + 1)
+        ok[0] = true
+        for (i in code.indices) {
+            if (!ok[i]) continue
+            for (len in 1..minOf(6, code.length - i)) {
+                if (ok[i + len]) continue
+                if (code.substring(i, i + len) in syllables) ok[i + len] = true
+            }
+        }
+        return ok[code.length]
+    }
+
+    /** 合法拼音音节集合：APK 拼式表（音节→各方案键序）的键空间。
+     *  加载失败返回空集（调用方跳过检测，不误报）。 */
+    private fun syllableSet(context: Context): Set<String> {
+        val out = HashSet<String>()
+        runCatching {
+            context.assets.open("custom-phrase-codes.json").bufferedReader().use { r ->
+                val codes = JSONObject(r.readText())
+                val keys = codes.keys()
+                while (keys.hasNext()) out.add(keys.next())
+            }
+        }
+        return out
     }
 
     /** SAF 流暂存到 target；返回 (sha256, TAB 词条行数)；读取失败/超限/无
