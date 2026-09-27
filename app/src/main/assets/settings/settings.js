@@ -1273,6 +1273,15 @@ window.FeelimeSettings = {
             case "flypyError":
                 setNote("flypyNote", event.message || "");
                 $("flypyBuilding").hidden = true;
+                // #20 导入成功自动勾选音形：长按菜单立即可用——否则
+                // 用户得再去「键盘选择」手动勾，菜单出现断档。
+                if (event.type === "flypyDone" && event.code === "FLYPY_OK") {
+                    const box = document.querySelector('#kbModeList input[data-kb-mode="flypy"]');
+                    if (box && !box.checked) {
+                        box.checked = true;
+                        saveKeyboardSelectionFromUi();
+                    }
+                }
                 break;
             case "dpSchemeError":
                 setNote("dpNote", eventText(event, "error.INVALID_DP_SCHEME"));

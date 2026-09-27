@@ -137,6 +137,15 @@ object BaseDictFiles {
     fun hasImportTables(header: String): Boolean =
         header.lineSequence().any { it.startsWith("import_tables:") }
 
+    /** content 级纯伞判定（#20 zip 源：表小全内存安全；#35 的多表大包
+     *  走流式 hasImportTables + 全文扫，见 Installer）。头区截取上限
+     *  200 行，防无 `...` 结束符的畸形文件。 */
+    fun isPureUmbrella(content: String): Boolean {
+        val header = content.lineSequence().takeWhile { it.trimEnd() != "..." }.take(200)
+        if (!header.any { it.startsWith("import_tables:") }) return false
+        return content.lineSequence().none { !it.startsWith("#") && it.contains('\t') }
+    }
+
     /** 子表自带的 import_tables 引用（如 `dicts/zi.lite`）重写为拍平后的
      *  `rime-dict-source/zi.lite`——引用按 zip 内原始 entry 路径（去
      *  .dict.yaml）匹配，命中才改，未命中（引用包外资源）原样保留。

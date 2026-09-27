@@ -498,6 +498,11 @@ class SetupActivity : AppCompatActivity() {
                         "application/octet-stream",
                         "application/yaml",
                         "application/x-yaml",
+                        // #20：rime-flypy 形态是「伞 + flypy/ 分表」目录，
+                        // 用户打包 zip 导入（条目在 picker 里禁用就是 mime
+                        // 没放行，AVD 实测）。
+                        "application/zip",
+                        "application/x-zip-compressed",
                     ))
                 }.onFailure { Log.w(TAG, "flypy picker launch dropped", it) }
             }

@@ -71,9 +71,10 @@ object BaseDictInstaller {
     private const val FLYPY_TIMEOUT_MS = 10 * 60 * 1000L
 
     /** #20 编译产物（staging）。compiled schema yaml 是 DictCompiler 输出，
-     *  运行时 schema 组件要读，回滚时与 bin 一起删。 */
+     *  运行时 schema 组件要读，回滚时与 bin 一起删；reverse.bin 是
+     *  table_translator 的反查表（AVD 实测会产出，一并清理）。 */
     private val FLYPY_PRODUCTS = listOf(
-        BaseDictFiles.FLYPY_TABLE, "flypy.prism.bin",
+        BaseDictFiles.FLYPY_TABLE, "flypy.prism.bin", "flypy.reverse.bin",
         "${BaseDictFiles.FLYPY_SCHEMA}.schema.yaml",
     )
 
@@ -87,7 +88,11 @@ object BaseDictInstaller {
         mode == "custom" && built && toned
 
     private const val MAX_SOURCE_BYTES = 150L * 1024 * 1024
-    private const val MAINTENANCE_TIMEOUT_MS = 15 * 60 * 1000L
+    /** 提醒阈值（#35 万象实测修正）：2.7M 词条的全套 36 个 prism 在
+     *  慢机上要 1 小时量级。超时不再判负回滚——只是把进度文案切到
+     *  DRAINING 并记日志，join 等编译自然结束后按产物完整性定成败
+     *  （慢设备 drain 完、产物齐 = 成功；真缺产物才回滚）。 */
+    private const val MAINTENANCE_TIMEOUT_MS = 45 * 60 * 1000L
     private const val PROGRESS_EVERY_MS = 2000L
 
     /** 编译期校验的产物清单（staging= user/build 下；缺任一即失败回滚）。 */
@@ -171,8 +176,8 @@ object BaseDictInstaller {
             pushEvent(
                 JSONObject()
                     .put("type", if (result.code == null) "flypyDone" else "flypyError")
-                    .put("code", result.code ?: "OK")
-                    .put("message", messageFor(app, result.code)),
+                    .put("code", result.code ?: "FLYPY_OK")
+                    .put("message", messageFor(app, result.code ?: "FLYPY_OK")),
             )
             onFinished()
         }
@@ -283,6 +288,9 @@ object BaseDictInstaller {
         // 中断残留（正常入口是 FeelimeService.onCreate，这里兜「只开过
         // 设置页、IME 服务从未创建」的路径）。
         sweepPending(context)
+        // 装新 APK 后直接进设置页（IME service 未起）时部署从未跑过
+        // （ensureAsync 只挂在 service onCreate）——先同步部署再 init。
+        EngineDataStore.ensureSync(context)
         runCatching { RimeTextEngine.ensureGlobalInit(context) }
             .onFailure { return InstallResult("BASE_DICT_ENGINE_NOT_READY", changed = false) }
 
@@ -403,12 +411,9 @@ object BaseDictInstaller {
         pushEvent(status("COMPILING"))
         val timeout = pollMaintenance(pushEvent)
         // join 必须等到部署线程真正收尾才能动产物（线程还在写文件时
-        // 回滚会撕裂）。超时只改变结果判定，不做有风险的强杀。
+        // 回滚会撕裂）。超时不自动判负（#35 万象实测：2.7M 词条慢机
+        // 超 45min 也该等它编完），成败由产物完整性判定。
         NativeSmoke.rimeJoinMaintenance()
-        if (timeout) {
-            rollback(context)
-            return InstallResult("BASE_DICT_TIMEOUT", changed = true)
-        }
 
         // 产物校验。#20 联动：flypy 在编译清单里时其产物一并校验。
         val build = File(user, "build")
@@ -419,7 +424,10 @@ object BaseDictInstaller {
         if (missing.isNotEmpty()) {
             android.util.Log.w("FeelimeBaseDict", "missing products: $missing")
             rollback(context)
-            return InstallResult("BASE_DICT_INCOMPLETE", changed = true)
+            return InstallResult(
+                if (timeout) "BASE_DICT_TIMEOUT" else "BASE_DICT_INCOMPLETE",
+                changed = true,
+            )
         }
 
         // 清理编译期源 + 留档用户源 + 提交状态。换装广播由 installAsync 在
@@ -449,6 +457,7 @@ object BaseDictInstaller {
         pushEvent: (JSONObject) -> Unit,
     ): InstallResult {
         sweepPending(context)
+        EngineDataStore.ensureSync(context)
         runCatching { RimeTextEngine.ensureGlobalInit(context) }
             .onFailure { return InstallResult("BASE_DICT_ENGINE_NOT_READY", changed = false) }
 
@@ -458,12 +467,12 @@ object BaseDictInstaller {
             .apply()
 
         pushEvent(status("COPYING"))
-        val content = readAllCapped(context, uri, FLYPY_MAX_SOURCE_BYTES)
+        val source = stageFlypySource(context, uri)
             ?: return clearTxn(context, "BASE_DICT_READ_FAILED")
-        val sha = joinHex(MessageDigest.getInstance("SHA-256").digest(content.toByteArray(Charsets.UTF_8)))
-        val (entries, dropped) = BaseDictFiles.normalizeFlypyLines(content)
+        val sha = source.sha
+        val entries = source.entries
         android.util.Log.i("FeelimeBaseDict",
-            "flypy table: ${entries.size} entries, $dropped dropped")
+            "flypy table: ${entries.size} entries, ${source.dropped} dropped")
         if (entries.isEmpty()) return clearTxn(context, "BASE_DICT_EMPTY")
 
         val user = File(context.filesDir, "rime-user").apply { mkdirs() }
@@ -509,18 +518,16 @@ object BaseDictInstaller {
         pushEvent(status("COMPILING"))
         val timeout = pollMaintenance(pushEvent, FLYPY_TIMEOUT_MS)
         NativeSmoke.rimeJoinMaintenance()
-        if (timeout) {
-            rollbackFlypy(context)
-            return InstallResult("BASE_DICT_TIMEOUT", changed = true)
-        }
-
         val build = File(user, "build")
         val missing = listOf(BaseDictFiles.FLYPY_TABLE, "flypy.prism.bin")
             .filterNot { File(build, it).isFile }
         if (missing.isNotEmpty()) {
             android.util.Log.w("FeelimeBaseDict", "flypy missing products: $missing")
             rollbackFlypy(context)
-            return InstallResult("BASE_DICT_INCOMPLETE", changed = true)
+            return InstallResult(
+                if (timeout) "BASE_DICT_TIMEOUT" else "BASE_DICT_INCOMPLETE",
+                changed = true,
+            )
         }
 
         // 清理编译现场 + 留档 + 提交（compiled flypy schema 留在 staging，
@@ -544,7 +551,7 @@ object BaseDictInstaller {
 
     /** SAF 读全量（带容量上限）；超限/失败返回 null。字节流攒齐后一次
      *  解码——分块 String 解码会在多字节字符边界撕裂出 U+FFFD。 */
-    private fun readAllCapped(context: Context, uri: Uri, maxBytes: Long): String? {
+    private fun readAllCapped(context: Context, uri: Uri, maxBytes: Long): ByteArray? {
         val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
             ?: return null
         return runCatching {
@@ -557,8 +564,45 @@ object BaseDictInstaller {
                     if (out.size() + read > maxBytes) return@use null
                     out.write(buffer, 0, read)
                 }
-                if (out.size() == 0) null else out.toString("UTF-8")
+                if (out.size() == 0) null else out.toByteArray()
             }
+        }.getOrNull()
+    }
+
+    /** #20 读源：单文件（rime .dict.yaml 或 词<TAB>码 纯文本）或 zip
+     *  整包（rime-flypy 形态：伞 + flypy/ 分表）——分表词条归并进单一
+     *  码表，纯伞表跳过，坏码行由 [BaseDictFiles.normalizeFlypyLines]
+     *  剔除（分号快符表随之滤掉——音形 alphabet 只有 a-z）。sha 对源
+     *  字节计算（zip 即 zip 本身）。null = 读取失败/超限。 */
+    private class FlypySource(val sha: String, val entries: List<String>, val dropped: Int)
+
+    private fun stageFlypySource(context: Context, uri: Uri): FlypySource? {
+        val bytes = readAllCapped(context, uri, FLYPY_MAX_SOURCE_BYTES) ?: return null
+        val sha = joinHex(MessageDigest.getInstance("SHA-256").digest(bytes))
+        if (bytes.size < 4 ||
+            bytes[0] != 'P'.code.toByte() || bytes[1] != 'K'.code.toByte() ||
+            (bytes[2] != 0x03.toByte() && bytes[2] != 0x05.toByte() && bytes[2] != 0x07.toByte())
+        ) {
+            val (entries, dropped) = BaseDictFiles.normalizeFlypyLines(String(bytes, Charsets.UTF_8))
+            return FlypySource(sha, entries, dropped)
+        }
+        return runCatching {
+            val entries = ArrayList<String>()
+            var dropped = 0
+            java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(bytes)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (entry.isDirectory || "__MACOSX" in entry.name) continue
+                    val base = BaseDictFiles.zipEntryName(entry.name) ?: continue
+                    if (!base.endsWith(".dict.yaml")) continue
+                    val content = zip.readBytes().toString(Charsets.UTF_8)
+                    if (BaseDictFiles.isPureUmbrella(content)) continue
+                    val (part, d) = BaseDictFiles.normalizeFlypyLines(content)
+                    entries.addAll(part)
+                    dropped += d
+                }
+            }
+            FlypySource(sha, entries, dropped)
         }.getOrNull()
     }
 
@@ -980,10 +1024,11 @@ object BaseDictInstaller {
             "BASE_DICT_EMPTY" to "文件里没有词条（需要「词<TAB>码」行）",
             "BASE_DICT_ENGINE_NOT_READY" to "引擎数据还没准备好，稍后再试",
             "BASE_DICT_MAINTENANCE_START_FAILED" to "编译线程启动失败",
-            "BASE_DICT_TIMEOUT" to "编译超时（15 分钟），已回滚",
+            "BASE_DICT_TIMEOUT" to "编译超时（45 分钟）且产物不完整，已回滚",
             "BASE_DICT_INCOMPLETE" to "编译产物不完整，已回滚",
             "BASE_DICT_INTERNAL" to "导入过程出错，已回滚",
             "BASE_DICT_REVERT_FAILED" to "恢复内置失败，请重试或重启应用",
+            "FLYPY_OK" to "音形码表导入完成",
             "FLYPY_REVERTED" to "已移除音形码表",
         )
         val en = mapOf(
@@ -993,10 +1038,11 @@ object BaseDictInstaller {
             "BASE_DICT_EMPTY" to "No entries found (needs word<TAB>code lines)",
             "BASE_DICT_ENGINE_NOT_READY" to "Engine data not ready yet, try later",
             "BASE_DICT_MAINTENANCE_START_FAILED" to "Failed to start the compile thread",
-            "BASE_DICT_TIMEOUT" to "Compile timed out (15 min), rolled back",
+            "BASE_DICT_TIMEOUT" to "Compile timed out (45 min) with incomplete output, rolled back",
             "BASE_DICT_INCOMPLETE" to "Incomplete build output, rolled back",
             "BASE_DICT_INTERNAL" to "Import failed, rolled back",
             "BASE_DICT_REVERT_FAILED" to "Restore failed, retry or restart the app",
+            "FLYPY_OK" to "Shape-code table imported",
             "FLYPY_REVERTED" to "Shape-code table removed",
         )
         return com.feelime.ime.t(context, zh[key] ?: key, en[key] ?: key)

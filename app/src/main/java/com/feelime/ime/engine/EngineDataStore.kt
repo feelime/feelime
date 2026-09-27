@@ -29,6 +29,14 @@ object EngineDataStore {
         }.apply { isDaemon = true }.start()
     }
 
+    /** 同步部署（词库导入入口用）：ensureAsync 只挂在 IME service 的
+     *  onCreate——装新 APK 后直接进设置页（service 未起）时部署从未
+     *  跑过，verifyGroup 恒 null，导入必报 ENGINE_NOT_READY。已在
+     *  worker 线程，阻塞拷贝可接受。 */
+    fun ensureSync(context: Context) {
+        runCatching { ensure(context.applicationContext) }
+    }
+
     fun mismatched(): Boolean = mismatch
 
     /** Fast pointer check used for the HTML mode menu (no hashing). */
