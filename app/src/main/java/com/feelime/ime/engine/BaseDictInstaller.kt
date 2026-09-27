@@ -154,9 +154,12 @@ object BaseDictInstaller {
             if (result.changed) {
                 app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             }
-            // 导入期间用户切模糊音排的队在此补偿（P2-6；新基底的清单
-            // 只带安装起点的组合，切到别的组合时由此补编）。
+            // 导入期间用户切模糊音的补偿（P2-6）：走了排队路径的由
+            // compensatePendingFuzzy 处理；没走成排队的（基底导入期
+            // mode 尚未提交、receiver 早退，切到的组合不在安装清单）
+            // 由这次无条件补判兜住——prism 已在就 no-op。
             compensatePendingFuzzy(app)
+            if (result.code == null) ensureFuzzyVariantIfNeeded(app)
             pushEvent(
                 JSONObject()
                     .put("type", if (result.code == null) "dictBaseDone" else "dictBaseError")
@@ -355,6 +358,11 @@ object BaseDictInstaller {
         File(user, BaseDictFiles.UMBRELLA_FILE).delete()
         File(user, BaseDictFiles.DEFAULT_FILE).delete()
         File(staging, BaseDictFiles.DEFAULT_FILE).delete()
+        // 变体 schema 源（maintenance 的源解析用）也清——实测漏删会在
+        // user 根累积 luna_pinyin_fuzzy_m*.schema.yaml。
+        (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
+            File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").delete()
+        }
         // 成功/确认无产物（PRISM_MISSING = prism 根本没写出）清事务位；
         // 中途失败保留事务位——半成品/无产物都视为不可用，下次补编
         // 重走（开头 isFile && compiling==0 判定拦截误用）。
