@@ -34,7 +34,9 @@ object Diagnostics {
 
     private val lock = Any()
     private val events = ArrayDeque<String>()
-    private var recording = false
+    // @Volatile：#12 帧探针（choreoTick/uiSampler）每帧/每拍读取此标志，
+    // 关诊断时自熄不再续订帧回调（省电，codex 终审 P1）。
+    @Volatile private var recording = false
     private var startedAt = 0L
     private var seq = 0L
 
@@ -42,6 +44,9 @@ object Diagnostics {
     @Volatile
     var liveState: String = ""
         private set
+
+    /** 探针自熄判读：诊断关闭后帧回调/采样循环不再续订。 */
+    fun isRecording(): Boolean = recording
 
     fun enabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

@@ -33,7 +33,7 @@ object DoublePinyinScheme {
     fun set(context: Context, value: String): Boolean {
         if (value !in schemaIds) return false
         context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-            .edit().putString(PREF_KEY, value).apply()
+            .edit().putString(PREF_KEY, value).commit()
         return true
     }
 }

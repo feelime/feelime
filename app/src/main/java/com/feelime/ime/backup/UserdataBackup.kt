@@ -461,6 +461,8 @@ class AndroidPrefs(private val context: android.content.Context) : PrefsAccess {
             is Set<*> -> editor.putStringSet(key, value.map { it.toString() }.toSet())
             else -> editor.putString(key, value.toString())
         }
-        editor.apply()
+        // 同步落盘（codex 终审 P0-2）：恢复是用户显式操作，进程中途被杀
+        // 不能丢已写键；恢复自带暂存目录幂等重放。键量级几十，开销可忽略。
+        editor.commit()
     }
 }

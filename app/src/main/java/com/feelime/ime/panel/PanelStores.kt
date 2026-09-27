@@ -134,7 +134,7 @@ class ClipboardStore(private val context: Context) {
                 items, text, nextId(), System.currentTimeMillis(),
                 TEXT_BUDGET_BYTES, MAX_ITEMS,
             ) ?: return
-            prefs.edit().putString(KEY, PanelCodec.serialize(next)).apply()
+            prefs.edit().putString(KEY, PanelCodec.serialize(next)).commit()
         }
         // New content landed (listener or focus re-capture): let the
         // service push so an open clipboard panel hot-refreshes instead
@@ -166,7 +166,7 @@ class ClipboardStore(private val context: Context) {
         val removed = synchronized(prefs) {
             val items = PanelCodec.parse(prefs.getString(KEY, "").orEmpty())
             val next = PanelStoreOps.remove(items, id)
-            prefs.edit().putString(KEY, PanelCodec.serialize(next)).apply()
+            prefs.edit().putString(KEY, PanelCodec.serialize(next)).commit()
             items.firstOrNull { it.id == id }
         }
         // Removing the entry that IS the current system clip would be undone
@@ -292,7 +292,7 @@ class FavoritesStore(context: Context) {
             val next = inserted.map {
                 if (it.id == inserted[0].id) it.copy(code = resolvedCode, rank = resolvedRank) else it
             }
-            prefs.edit().putString(KEY, PanelCodec.serialize(next)).apply()
+            prefs.edit().putString(KEY, PanelCodec.serialize(next)).commit()
         }
         fireChanged()
         return true
@@ -301,7 +301,7 @@ class FavoritesStore(context: Context) {
     fun remove(id: String) {
         synchronized(prefs) {
             val next = PanelStoreOps.remove(items(), id)
-            prefs.edit().putString(KEY, PanelCodec.serialize(next)).apply()
+            prefs.edit().putString(KEY, PanelCodec.serialize(next)).commit()
         }
         fireChanged()
     }
@@ -314,7 +314,7 @@ class FavoritesStore(context: Context) {
         synchronized(prefs) {
             val next = PanelStoreOps.update(items(), id, trimmed, inputCode(trimmed, code), rank.coerceIn(1, 99))
                 ?: return false
-            prefs.edit().putString(KEY, PanelCodec.serialize(next)).apply()
+            prefs.edit().putString(KEY, PanelCodec.serialize(next)).commit()
         }
         fireChanged()
         return true
@@ -324,7 +324,7 @@ class FavoritesStore(context: Context) {
     fun move(id: String, to: Int) {
         synchronized(prefs) {
             val next = PanelStoreOps.move(items(), id, to)
-            prefs.edit().putString(KEY, PanelCodec.serialize(next)).apply()
+            prefs.edit().putString(KEY, PanelCodec.serialize(next)).commit()
         }
         fireChanged()
     }

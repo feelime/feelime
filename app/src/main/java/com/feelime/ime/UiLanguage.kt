@@ -58,7 +58,7 @@ object UiLanguage {
      */
     fun setChoice(context: Context, raw: String): Boolean {
         val choice = normalizeChoice(raw) ?: return false
-        preferences(context).edit().putString(KEY_CHOICE, choice).apply()
+        preferences(context).edit().putString(KEY_CHOICE, choice).commit()
         return true
     }
 

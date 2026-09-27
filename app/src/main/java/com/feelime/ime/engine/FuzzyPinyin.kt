@@ -42,7 +42,7 @@ object FuzzyPinyin {
     fun set(context: Context, mask: Int) {
         val safe = if (mask in 0..MASK_MAX) mask else 0
         context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-            .edit().putInt(PREF_KEY, safe).apply()
+            .edit().putInt(PREF_KEY, safe).commit()
     }
 
     fun on(context: Context): Boolean = mask(context) != 0

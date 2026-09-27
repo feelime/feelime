@@ -368,7 +368,7 @@ class ModelStore(
     )
 
     fun setModelBackend(backend: ModelBackend) {
-        backendPreferences.edit().putString(KEY_MODEL_BACKEND, backend.value).apply()
+        backendPreferences.edit().putString(KEY_MODEL_BACKEND, backend.value).commit()
     }
 
     fun modelDownloadSource(): ModelDownloadSourceConfig {
@@ -406,7 +406,7 @@ class ModelStore(
             .putString(KEY_MODEL_DOWNLOAD_SOURCE, source.value)
             .putString(KEY_MODEL_DOWNLOAD_CUSTOM, normalized)
             .putString(KEY_MODEL_DOWNLOAD_ARCHIVE, normalizedArchive)
-            .apply()
+            .commit()
         return true
     }
 
