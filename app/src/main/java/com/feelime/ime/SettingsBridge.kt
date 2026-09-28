@@ -153,6 +153,13 @@ fun readToolbarLayout(context: Context): String =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getString(PREF_TOOLBAR_LAYOUT, "") ?: ""
 
+/** #36 双拼 14 键布局（仅双拼模式生效）："26"（默认）|"14"。 */
+const val PREF_DP_LAYOUT = "dp_layout"
+
+fun readDpLayout(context: Context): String =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_DP_LAYOUT, "26") ?: "26"
+
 /** 键帽不透明度（0-100，默认 100）：背景图开启时键帽可半透。 */
 const val PREF_KEY_OPACITY = "key_opacity"
 /** 按键气泡（issue #30-1，默认关）：按下时放大预览所按字符。 */

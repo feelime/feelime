@@ -1859,6 +1859,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("keyHue", readKeyHue(this))
             .put("keySat", readKeySat(this))
             .put("toolbarLayout", readToolbarLayout(this))
+            .put("dpLayout", readDpLayout(this))
             .put("associationOn", readAssociation(this))
             .put("dynamicDateTimeOn", readDynamicDateTime(this))
             // 按键反馈开关（issue #5 问题 2）也进 hello：快捷设置方块的
@@ -2505,6 +2506,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     val right = parsed.optJSONArray("right") ?: return@guarded
                     if (left.length() > 4 || right.length() > 4) return@guarded
                     keyboardPrefs.edit().putString(PREF_TOOLBAR_LAYOUT, value).commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "dpLayout" -> {
+                    // #36 双拼 14 键布局（"26"|"14"，仅双拼模式生效）。
+                    if (value !in listOf("26", "14")) return@guarded
+                    keyboardPrefs.edit().putString(PREF_DP_LAYOUT, value).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "bottomPad" -> {
