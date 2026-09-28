@@ -1386,6 +1386,31 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.querySelector('[data-action="letters"]').addEventListener('click', () => this.showLetters());
             this.renderSymbolCats();
             document.getElementById('setupButton').addEventListener('click', () => this.toggleSettingsPanel());
+            // #39-6（手写容易退出，诊断定罪）：工具栏就在书写区正上方，
+            // 书写划上去的笔迹若落笔抬笔都在按钮上（如齿轮），会合成
+            // click 直达 openSetup——设置页顶掉键盘，用户看到的就是
+            // 「写着写着退出」。候选条整行加「静止按压」判定：touchend
+            // 时移动超阈值的触摸 preventDefault 掉 click 合成，书写划
+            // 过/滑动翻候选页不再误触按钮；正常点按（<24px）不受影响。
+            {
+                const bar = document.getElementById('candidateBar');
+                let barTouchStart = null;
+                bar.addEventListener('touchstart', event => {
+                    const t = event.changedTouches[0];
+                    if (t) barTouchStart = { x: t.clientX, y: t.clientY };
+                }, { capture: true, passive: true });
+                bar.addEventListener('touchcancel', () => { barTouchStart = null; },
+                    { capture: true, passive: true });
+                bar.addEventListener('touchend', event => {
+                    const start = barTouchStart;
+                    barTouchStart = null;
+                    if (!start) return;
+                    const t = event.changedTouches[0];
+                    if (t && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 24) {
+                        event.preventDefault();
+                    }
+                }, { capture: true });
+            }
             // 完整设置入口（#33-1 后语义）：齿轮是工具栏目录里的可选
             // 工具（用户自选常驻），快开面板菜单里也有一份同名入口。
             const fullSetup = document.getElementById('fullSetupButton');

@@ -4645,6 +4645,28 @@ test('toolbar gains the control + IME-switch tools; globe opens the picker', () 
     equal(world.native.of('keyEvent').length, 0, 'no keyEvent for the picker');
 });
 
+// #39-6（手写容易退出，诊断定罪）：书写划到工具栏的笔迹（落笔抬笔都
+// 在按钮上但发生了移动）不得合成 click——齿轮的 openSetup 会拉起设置
+// 页顶掉键盘。静止点按不受影响。齿轮（setup 工具）默认收在编辑仓库，
+// hello 带 toolbarLayout 才上栏（复现用户配置）。
+test('toolbar buttons ignore writing swipes but honor still taps', {since: '3.71.1'}, () => {
+    const world = fresh({ toolbarLayout: '{"left":["ctrl","ime"],"right":["setup","clipboard","favorites","mic"]}' });
+    const gear = world.$('fullSetupButton');
+    assert(gear.closest('#candidateBar'), 'gear rides the toolbar via layout');
+    gear.hidden = false;
+    // 书写划过：touchstart 落在齿轮、移动 40px 后在远处抬起——click 被吞。
+    world.touchDown(gear, 20, 20);
+    world.move(gear, 40, 60);
+    world.touchUp(gear, 40, 60);
+    world.clock.advance(2);
+    equal(world.native.of('openSetup').length, 0, 'a moved touch never opens setup');
+    // 静止点按：openSetup 照常（原功能不破）。
+    world.touchDown(gear, 20, 20);
+    world.touchUp(gear);
+    world.clock.advance(2);
+    equal(world.native.of('openSetup').length, 1, 'a still tap still opens setup');
+});
+
 test('ctrl view swaps the toolbar; the keyboard stays untouched', () => {
     const world = fresh();
     world.tap(world.$('ctrlTool'));
