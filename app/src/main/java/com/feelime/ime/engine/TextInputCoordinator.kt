@@ -30,6 +30,11 @@ class TextInputCoordinator(
     /** 诊断事件出口（Diagnostics 环形缓冲）。本类保持 JVM 无 android 依赖，
      *  由 service 注入；关闭诊断时 sink 内部直接丢弃。行内绝无文本内容。 */
     val diagnosticSink: ((String) -> Unit)? = null,
+    /** 自家 app 的编辑框（设置页 textarea 等，#39 反馈）：拼音系组合也
+     *  镜像进编辑器。普通 app 维持「preedit 只在键盘 UI」的设计（原始
+     *  字母不落编辑器）；自家 JSON 框里组合不可见=按键像失灵（T9 打字
+     *  完全无回显），镜像恢复所见即所得，选词 commitText 正常替换。 */
+    private val ownAppEditor: () -> Boolean = { false },
 ) {
     /** process-death-safe persistence of the user's selected mode. */
     interface ModeStore {
@@ -1244,7 +1249,10 @@ class TextInputCoordinator(
                     // raw letters must not land before a word is chosen.
                     // Alphabetical spellcheck modes (French/Russian) and the
                     // editors' own composing spans keep the classic span.
-                    if (!isPinyinFamily(mode)) {
+                    // Own-app editors (settings textareas) mirror the span:
+                    // invisible composition there reads as a dead keyboard.
+                    val mirrorComposing = !isPinyinFamily(mode) || ownAppEditor()
+                    if (mirrorComposing) {
                         expectReplacement(event.state.composing.length)
                         editor.setComposing(event.state.composing)
                     }
@@ -1256,7 +1264,7 @@ class TextInputCoordinator(
                     // that span first so the final character is not orphaned
                     // into the editor as a literal prefix.
                     if (composingActive) {
-                        if (!isPinyinFamily(mode)) expectReplacement(0)
+                        if (!isPinyinFamily(mode) || ownAppEditor()) expectReplacement(0)
                         editor.setComposing("")
                         editor.finishComposing()
                     }

@@ -619,6 +619,28 @@ class TextInputCoordinatorTest {
     }
 
     @Test
+    fun ownAppEditorMirrorsPinyinComposing() {
+        // #39 反馈：设置页 JSON textarea 里拼音/T9 组合零回显=按键像
+        // 失灵。ownAppEditor 谓词放开镜像（与法/俄同路径），普通 app
+        // 的「preedit 只在键盘 UI」设计保持不变（上一个测试覆盖）。
+        editor = RecordingEditor()
+        events = mutableListOf()
+        fake = FakeEngine()
+        val c = TextInputCoordinator(
+            editor = editor,
+            listener = { events.add(it) },
+            engineFactory = { fake },
+            ownAppEditor = { true },
+        )
+        c.onEditorStarted(sensitive = false)
+        c.selectMode(InputMode.PINYIN)
+        c.key('n'.code)
+        c.key('i'.code)
+        assertTrue(editor.operations.contains("setComposing:ni"))
+        assertTrue(editor.operations.none { it.startsWith("commitText") })
+    }
+
+    @Test
     fun g2B05WarmupFailureReplaysQueueIntoDirectFallback() {
         editor = RecordingEditor()
         events = mutableListOf()

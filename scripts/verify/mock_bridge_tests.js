@@ -2888,7 +2888,7 @@ test('setup button opens the quick settings panel; full settings entry calls ope
         JSON.stringify(modernTiles ? [
             '色彩模式', '中文联想', '按键声音', '按键振动',
             '键盘高度', '双拼14键', '快捷切换', '长按菜单', '候选字号', '单手模式',
-            '底部留白', '长按时长', '滑动选字', '定制键盘',
+            '底部留白', '长按时长', '滑动选字',
             '编辑工具栏', '完整设置',
         ] : [
             '色彩模式', '中文联想', '按键声音', '按键振动',
@@ -4088,9 +4088,9 @@ test('quick tiles: the three route-out tiles anchor their own setting row', {sin
     world.tap(world.tile('快捷切换'));
     equal(world.native.of('openSetupPage').slice(-1)[0].args[0], 'quickPairA',
         'pair tile anchors the quick-pair row');
-    world.tap(world.tile('定制键盘'));
-    equal(world.native.of('openSetupPage').slice(-1)[0].args[0], 'customTitle',
-        'custom tile anchors the custom card');
+    world.tap(world.tile('长按菜单'));
+    equal(world.native.of('openSetupPage').slice(-1)[0].args[0], 'menuModesRow',
+        'menu tile anchors the menu-modes row');
     assert(!world.$('settingsPanel').classList.contains('open'), 'panel closes on route-out');
 });
 
