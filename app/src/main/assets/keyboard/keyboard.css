@@ -653,6 +653,15 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 .kb-row { display: flex; gap: 5px; margin-bottom: 5px; }
 .kb-row:last-child { margin-bottom: 0; }
 .kb-row.kb-indent { padding: 0 4.9%; }
+/* #36 双拼 14 键：合并对 = 一个宽键帽内两颗半区标准键无缝拼接。
+ * 缝隙只剩对与对之间（26 键行内缝减半），半区仍各自独立按压反馈。
+ * pair 占两键宽（flex:2），行内与单键（flex:1）混合分配。 */
+.merge-pair { flex: 2; min-width: 0; display: flex; }
+.merge-pair .kb-key { flex: 1; min-width: 0; border-radius: 0; }
+.merge-pair .kb-key:first-child { border-radius: var(--radius-key) 0 0 var(--radius-key); }
+.merge-pair .kb-key:last-child { border-radius: 0 var(--radius-key) var(--radius-key) 0; }
+/* 半区中央的分隔线：极淡的一条，提示这是一颗宽键帽的两个字母。 */
+.merge-pair .kb-key:first-child { border-right: 1px solid var(--pressed); }
 /* Key height is the tunable variable (default 44). */
 .kb-key, .sym-tab {
     flex: 1;

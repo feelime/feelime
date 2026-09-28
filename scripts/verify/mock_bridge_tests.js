@@ -2712,6 +2712,67 @@ test('dp scheme switch: sep key and variant tables follow the hello', {since: '3
     equal(sepLabel(), '分词', 'unknown scheme falls back to ziranma');
 });
 
+// ------------------------------------------------ #36 双拼 14 键布局
+// 讯飞式：26 字母合并到 14 宽键帽（半区仍是标准单字母键），仅双拼模式
+// 生效；键帽小字 = 当前方案的韵母/声母（DP_KEYMAP 随 schema 生成）。
+test('dp14 layout: merged pairs render, halves stay single-letter keys (issue #36)', {since: '3.72.0'}, () => {
+    const w = fresh({ mode: 'double-pinyin' });
+    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 0,
+        'default (26) double pinyin has no merged pairs');
+    w.hello({ mode: 'double-pinyin', dpLayout: '14' });
+    const pairs = [...w.document.querySelectorAll('#qwertyLayer .merge-pair')];
+    equal(pairs.length, 12, '12 merged pairs across three rows (5+4+3)');
+    equal(pairs.every(p => p.children.length === 2), true, 'each pair holds two half keys');
+    // L、M 是普通单键（14 = 12 对 + 2 单键）。
+    equal(w.document.querySelector('#qwertyLayer [data-key="l"]').closest('.merge-pair'), null,
+        'L stays a plain key');
+    equal(w.document.querySelector('#qwertyLayer [data-key="m"]').closest('.merge-pair'), null,
+        'M stays a plain key');
+    const letters = [...w.document.querySelectorAll('#qwertyLayer [data-key]')]
+        .map(b => b.dataset.key).filter(k => /^[a-z]$/.test(k)).sort().join('');
+    equal(letters, 'abcdefghijklmnopqrstuvwxyz', 'all 26 letters present');
+    // 韵母小字（默认 ziranma）：q=iu、u=sh；e/a 单韵母自显留空。
+    // （选择器分两跳：mock 引擎的后代组合只支持两段。）
+    const alt = k => {
+        const key = w.document.querySelector(`#qwertyLayer [data-key="${k}"]`);
+        return key.querySelector('.kb-alt').textContent;
+    };
+    equal(alt('q'), 'iu', 'ziranma q carries iu');
+    equal(alt('u'), 'sh', 'u is the sh initial home');
+    equal(alt('e'), '', 'single-letter final stays empty');
+    // 半区点击 = 单字母键（key 通道进引擎组合，与 26 键完全一致）。
+    w.native.reset();
+    w.tap(w.document.querySelector('#qwertyLayer [data-key="q"]'));
+    equal(w.native.of('key').slice(-1)[0].args[0], 'q', 'half-key tap sends the single letter');
+    // 方案切换：小字跟随 flypy（w=ei、k=ing/uai）。
+    w.hello({ mode: 'double-pinyin', dpLayout: '14', dpScheme: 'flypy' });
+    equal(alt('w'), 'ei', 'flypy w carries ei');
+    equal(alt('k'), 'ing/uai', 'flypy k carries ing/uai');
+    // 其他模式不受 dpLayout 影响（pinyin 仍是 26 键）。
+    w.hello({ mode: 'pinyin', dpLayout: '14' });
+    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 0,
+        'full pinyin ignores the 14-key preference');
+    // 回到双拼恢复 14 键。
+    w.hello({ mode: 'double-pinyin', dpLayout: '14' });
+    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 12,
+        'returning to double pinyin restores the merged pairs');
+});
+
+test('dp14 layout: quick tile flips the preference through the bridge (issue #36)', {since: '3.72.0'}, () => {
+    const w = fresh({ mode: 'double-pinyin' });
+    w.tap(w.$('setupButton'));
+    const tile = w.tile('双拼14键');
+    assert(tile, 'dp14 tile rendered on the quick settings home');
+    w.tap(tile);
+    const saved = w.native.of('setQuickPref').filter(c => c.args[0] === 'dpLayout');
+    equal(saved.length, 1, 'tile tap writes dpLayout once');
+    equal(saved[0].args[1], '14', 'first tap selects the 14-key layout');
+    // tile 本地态即时翻转（hello 重推后由 native 真相源对齐）。
+    w.tap(w.tile('双拼14键'));
+    equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'dpLayout').slice(-1)[0].args[1],
+        '26', 'second tap returns to 26');
+});
+
 test('dp scheme switch: single-key expansion uses the active scheme table', {since: '3.29.0'}, () => {
     // Sogou carries ing on ';', so first-key x expands with x+; (xing);
     // 自然码 has no ';' final. The expansion must follow the hello's scheme.
@@ -2822,11 +2883,11 @@ test('setup button opens the quick settings panel; full settings entry calls ope
     // 3.43.0 adds 单手模式 — pages stay strictly 2×4 (8 tiles each).
     // 3.60.0（验收 2026-09-24）：低频的「界面语言/双拼方案」tile 撤下
     // （设置页可调），「长按菜单」上移紧跟快捷切换同屏。
-    const modernTiles = verAtLeast(KEYBOARD_VERSION, '3.60.0');
+    const modernTiles = verAtLeast(KEYBOARD_VERSION, '3.72.0');
     equal(JSON.stringify(world.tileNames()),
         JSON.stringify(modernTiles ? [
             '色彩模式', '中文联想', '按键声音', '按键振动',
-            '键盘高度', '快捷切换', '长按菜单', '候选字号', '单手模式',
+            '键盘高度', '双拼14键', '快捷切换', '长按菜单', '候选字号', '单手模式',
             '底部留白', '长按时长', '滑动选字', '定制键盘',
             '编辑工具栏', '完整设置',
         ] : [

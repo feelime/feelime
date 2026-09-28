@@ -137,6 +137,10 @@
         "扩选": "Shift+arrows",
         "光标到行首": "Line start",
         "光标到行尾": "Line end",
+        // #36 双拼 14 键布局。
+        "双拼14键": "Dp 14-key",
+        "14键": "14",
+        "26键": "26",
         "光标左移": "Move cursor left",
         "光标右移": "Move cursor right",
         "光标上移": "Move cursor up",
@@ -477,12 +481,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 z: '@', x: '_', c: '#', v: '&', b: '?', n: '!', m: '…', '.': ',',
             },
         },
+        // #36 讯飞式 14 键双拼（仅双拼模式可选，dpLayout pref）：26 字母
+        // 两两合并到 14 个宽键帽，'|' 分组（L、M 单键）。合并对内两颗
+        // 半区仍是标准 kb-key（data-key=单字母），长按弹层/分词/引擎
+        // 全链路零改动——减少误触的来源是键帽变宽、行内缝隙减半。键帽
+        // 小字显示当前双拼方案的韵母/声母（DP_KEYMAP，随 schema 生成）。
+        dp14: {
+            rows: [
+                'qw|er|ty|ui|op',
+                { keys: 'as|df|gh|jk|l', indent: true },
+                { keys: 'zx|cv|bn|m', shift: true, backspace: true },
+            ],
+        },
         // French uses standard QWERTY (no AZERTY); accent candidates
         // follow the design section 6.2 fixture exactly.
         // French long-press set: a gains ä and o gains ö -
         // the collection was incomplete, not just the candidate flow.
-        'qwerty-fr': {
-            rows: [
+        'qwerty-fr': {            rows: [
                 'qwertyuiop',
                 { keys: 'asdfghjkl', indent: true },
                 { keys: 'zxcvbnm', shift: true, backspace: true },
@@ -1097,6 +1112,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // BEGIN GENERATED SCHEMA_MAP
     // schema-sha256: ziranma=ac60c13a00eae405 flypy=7850588e9495b50d sogou=e278729922814390 ziguang=6a139f79776718dd
     const DP_INITIAL_FINALS = {"ziranma":{"a":"ahijklno","b":"acdfghijklmnouxyz","c":"abefghijkloprsuvz","d":"abcefghijklmopqrsuvwxyz","e":"efginrz","f":"abcfghjosuz","g":"abdefghjkloprsuvwyz","h":"abdefghjkloprsuvwyz","i":"abdefghijkloprsuvwy","j":"cdimnpqrstuvwxy","k":"abdefghjkloprsuvwyz","l":"abcdeghijklmnopqrstuvwxyz","m":"abcefghijklmnoquxyz","n":"abcdefghijklmnopqrstuvwxyz","o":"abefghjkloruz","p":"abcfghijklmnouwxyz","q":"cdimnpqrstuvwxy","r":"befghijkoprsuvw","s":"abefghijkloprsuvz","t":"abceghijklmoprsuvxyz","u":"abdefghijklopruvwyz","v":"abdefghijkloprsuvwyz","w":"afghjlosuz","x":"cdimnpqrstuvwxy","y":"abehijklnoprstuvy","z":"abefghijkloprsuvz"},"flypy":{"a":"acdhijno","b":"abcdfghijklmnopuw","c":"acdefghijorsuvwyz","d":"acdefghijkmnopqrsuvwxyz","e":"efghinrw","f":"afghjnosuwz","g":"acdefghjklorsuvwxyz","h":"acdefghjklorsuvwxyz","i":"acdefghijklorsuvxyz","j":"biklmnpqrstuvxy","k":"acdefghjklorsuvwxyz","l":"abcdeghijklmnopqrstuvwxyz","m":"abcdefghijkmnopquwz","n":"abcdefghijklmnopqrstuvwxyz","o":"ouz","p":"abcdfghijkmnopuwxz","q":"biklmnpqrstuvxy","r":"cefghijorsuvxyz","s":"acdefghijorsuvwyz","t":"acdeghijkmnoprsuvwyz","u":"acdefghijkloruvwxyz","v":"acdefghijklorsuvwxyz","w":"adfghjosuw","x":"biklmnpqrstuvxy","y":"abcdehijkorstuvyz","z":"acdefghijorsuvwyz"},"sogou":{"a":"ahjkl","b":";acdfghijklmnouxz","c":"abefghijkloprsuvz","d":";abcefghijklmopqrsuvwxz","e":"efgrz","f":"abcfghjosuz","g":"abdefghjkloprsuvwyz","h":"abdefghjkloprsuvwyz","i":"abdefghijkloprsuvwy","j":";cdimnpqrstuwxy","k":"abdefghjkloprsuvwyz","l":";abcdeghijklmnopqrstuwxyz","m":";abcefghijklmnoquxz","n":";abcdefghijklmnopqrstuwxyz","o":"abefghjkloruz","p":";abcfghijklmnouwxz","q":";cdimnpqrstuwxy","r":"befghijkoprsuvw","s":"abefghijkloprsuvz","t":";abceghijklmoprsuvxz","u":"abdefghijklopruvwyz","v":"abdefghijkloprsuvwyz","w":"afghjlosuz","x":";cdimnpqrstuwxy","y":";abehijklnoprstuy","z":"abefghijkloprsuvz"},"ziguang":{"a":"aeghilmnopqrstuwxyz","b":";abdfgikopqrstuwy","c":"aehiklmnopqrstuwz","d":";abdefhijklmnopqrstuwxz","f":"abhkorstuwz","g":"aeghklmnopqrstuwxyz","h":"aeghklmnopqrstuwxyz","i":"aegiklmnopqrstuwxyz","j":";bdfghijlmnuvxy","k":"aeghklmnopqrstuwxyz","l":";abdefghijklmnopqrstuvxyz","m":";abdefijkopqrstuwyz","n":";abdefghijklmnopqrstuvwxyz","o":"aejkopqrstwz","p":";abdfikopqrstuwxyz","q":";bdfghijlmnuvxy","r":"ehilmnoqrstuwxz","s":"aehiklmnopqrstuwz","t":";abdefhiklmnopqrstuz","u":"aeghiklmnopqrstuwxyz","w":"ahkoprstuw","x":";bdfghijlmnuvxy","y":";aehilmnopqrsuvyz","z":"aehiklmnopqrstuwz"}};
+    const DP_KEYMAP = {"ziranma":{"q":"iu","w":"ua/ia","e":null,"r":"uan/er","t":"ue/ve","y":"ing/uai","u":"sh","i":"ch","o":"uo","p":"un","a":null,"s":"ong/iong","d":"iang/uang","f":"en","g":"eng","h":"ang","j":"an","k":"ao","l":"ai","z":"ei","x":"ie","c":"iao","v":"zh/ui ü","b":"ou","n":"in","m":"ian"},"flypy":{"q":"iu","w":"ei","e":null,"r":"uan/er","t":"ue/ve","y":"un","u":"sh","i":"ch","o":"uo","p":"ie","a":null,"s":"ong/iong","d":"ai","f":"en","g":"eng","h":"ang","j":"an","k":"ing/uai","l":"iang/uang","z":"ou","x":"ua/ia","c":"ao","v":"zh/ui ü","b":"in","n":"iao","m":"ian"},"sogou":{"q":"iu","w":"ua/ia","e":null,"r":"uan/er","t":"ue/ve","y":"uai","u":"sh","i":"ch","o":"uo","p":"un","a":null,"s":"ong/iong","d":"iang/uang","f":"en","g":"eng","h":"ang","j":"an","k":"ao","l":"ai","z":"ei","x":"ie","c":"iao","v":"zh/ui","b":"ou","n":"in","m":"ian"},"ziguang":{"q":"ao","w":"en","e":null,"r":"an","t":"eng","y":"uai/in","u":"zh","i":"sh","o":"uo","p":"ai","a":"ch","s":"ang","d":"ie","f":"ian","g":"iang/uang","h":"ong/iong","j":"iu/er","k":"ei","l":"uan","z":"ou","x":"ua/ia","v":null,"b":"iao","n":"ui üe","m":"un"}};
     // END GENERATED SCHEMA_MAP
 
     class FeelimeKeyboard {
@@ -1123,6 +1139,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.keyLayer = 'letters';
             // #39-10 编辑面板的扩选 toggle（开 = 方向键/行首行尾带 SHIFT）。
             this.editSelecting = false;
+            // #36 双拼 14 键布局（hello 推送，"26"|"14"，仅双拼模式生效）。
+            this.dpLayout = '26';
+            this.lettersLayout = null;
             // The nine-pad's emoji sub-view (toggled by the smiley key).
             this.emojiView = false;
             // The 常用 pin lives per MODE; this is the mode it was reset
@@ -1887,7 +1906,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.renderSymbols();
                 }
             }
-            this.renderLetters(config.layout);
+            // #36：双拼模式的 14 键布局（dpLayout pref）——只在双拼模式
+            // 生效，其他 qwerty 模式不受影响。
+            this.renderLetters(config.layout === 'qwerty'
+                && this.mode === 'double-pinyin' && this.dpLayout === '14'
+                ? 'dp14' : config.layout);
             // 手写是唯一改键盘总高的模式：进出/旋转都把总高切回当前
             // 模式的值（进入=面板高度，离开=该方向已存高度）。
             this.applyModeHeight();
@@ -1915,6 +1938,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.t9SymBar = false;
             if (!this.composing) this.setToolbarYield(this.assocWords.length > 0);
             const layout = LAYOUTS[layoutName] || LAYOUTS.qwerty;
+            // keyAltHint 需要知道当前键面（dp14 显示韵母小字而非符号）。
+            this.lettersLayout = layoutName;
             // E: the folded landscape layout is REVERTED - user
             // report: the mixed bottom rows broke muscle memory and the
             // symbol layer lost its last row. Landscape now renders the same
@@ -1942,7 +1967,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             : this.specialKey('sep', t("分词"), () => this.call(() => Native.key("'", this.token)), 'kb-wide-1_4 kb-mod sep'))
                         : this.specialKey('shift', ICONS.shift, () => this.toggleShift(), 'kb-wide-1_4 kb-mod shift', 'lock'));
                 }
-                [...config.keys].forEach(key => row.append(this.letterKey(key)));
+                // '|' 分组（dp14）：含 '|' 的键串按组切，两字母组渲染为
+                // merge-pair 宽键帽内的两颗半区标准键。普通布局（qwerty
+                // 等）不含 '|'，走原逐键路径——两字母整行也不会被误判。
+                if (String(config.keys).includes('|')) {
+                    String(config.keys).split('|').forEach(group => {
+                        // 单字母组（L、M）：普通键，不进 pair。
+                        if (group.length === 1) {
+                            row.append(this.letterKey(group));
+                            return;
+                        }
+                        const pair = document.createElement('div');
+                        pair.className = 'merge-pair';
+                        [...group].forEach(key => pair.append(this.letterKey(key)));
+                        row.append(pair);
+                    });
+                } else {
+                    [...config.keys].forEach(key => row.append(this.letterKey(key)));
+                }
                 if (config.backspace) row.append(this.specialKey('backspace', ICONS.backspace, () => this.call(() => Native.backspace(this.token)), 'kb-wide-1_4 kb-special', 'repeat'));
                 layer.append(row);
             });
@@ -3834,6 +3876,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** 键面角标显示：hintsOnly 布局（t9）也要画出字母组，但走的是
          * 展示语义，与 altCandidates 的可上屏备选分开。 */
         keyAltHint(key) {
+            // #36 dp14 键面小字 = 当前双拼方案该键承载的韵母/声母
+            //（DP_KEYMAP 随 schema 生成，方案切换 hello 重渲染即换）。
+            if (this.lettersLayout === 'dp14' && this.mode === 'double-pinyin') {
+                const table = DP_KEYMAP[dpScheme] || DP_KEYMAP.ziranma;
+                return table[key] || '';
+            }
             if (this.chineseSymMode() && CN_ALTS[key]) return CN_ALTS[key];
             const layout = LAYOUTS[(MODES[this.mode] || MODES.direct).layout] || LAYOUTS.qwerty;
             const value = layout.alts[key];
@@ -6864,6 +6912,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         tap: () => this.enterHeightEdit(),
                     },
                     {
+                        // #36 双拼 14 键：宽键帽合并布局（仅双拼模式生效；
+                        // 其他模式下设置也无害，切回双拼即见）。
+                        icon: ICONS.dp, label: t("双拼14键"),
+                        on: () => this.dpLayout === '14',
+                        state: () => (this.dpLayout === '14' ? t("14键") : t("26键")),
+                        tap: () => {
+                            if (typeof Native.setQuickPref !== 'function') return;
+                            this.dpLayout = this.dpLayout === '14' ? '26' : '14';
+                            quickPref('dpLayout', this.dpLayout);
+                            rehome();
+                        },
+                    },
+                    {
                         icon: ICONS.swap, label: t("快捷切换"),
                         state: () => this.quickPair.map(m => modeLabel(m)).join(' · '),
                         // 验收 2026-09-24 二改：tile 直达完整设置的「对应设置
@@ -9115,14 +9176,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const schemeChanged = nextScheme !== dpScheme;
             dpScheme = nextScheme;
             this.qConfirm('dpScheme', dpScheme);
+            // #36 14 键布局（dpLayout pref，"26"|"14"）：变化即重渲染双拼
+            // 键面（renderMode 内部按 pref 换 dp14/qwerty 布局）。
+            const nextDpLayout = payload.dpLayout === '14' ? '14' : '26';
+            const dpLayoutChanged = nextDpLayout !== this.dpLayout;
+            this.dpLayout = nextDpLayout;
             if (modeChanged) this.renderMode();
+            else if (dpLayoutChanged && this.mode === 'double-pinyin') {
+                this.renderMode();
+            }
             // Degraded/warming state arrives with every hello (mode-fallback
             // §2.1): a rebuilt WebView restores its badge/notice silently.
             // hello is a snapshot, never a notification — the flag is what
             // keeps a rebuild from re-toasting the failure it reports.
             this.applyEngineLifecycle({ ...payload, snapshot: true });
             if (schemeChanged && this.mode === 'double-pinyin') {
-                this.renderLetters((MODES[this.mode] || MODES.direct).layout);
+                // renderMode（非 renderLetters）：dp14 键面的小字要跟着
+                // 新方案换（DP_KEYMAP），而 dp14 的布局判断在 renderMode。
+                this.renderMode();
                 this.updateLabels();
             }
             if (localeChanged) {
