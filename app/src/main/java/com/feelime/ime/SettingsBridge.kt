@@ -659,6 +659,7 @@ class SettingsBridge(
                 put("total", total)
             })
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(context))
+            .put("dpLayout", readDpLayout(context))
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
             .put("baseDict", com.feelime.ime.engine.BaseDictInstaller.statusJson(context))
             .put("customPhrases", JSONObject().apply {
@@ -1040,6 +1041,20 @@ class SettingsBridge(
         }
         context.sendBroadcast(
             Intent(ACTION_DP_SCHEME_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #36 双拼 14 键布局（"26"|"14"，仅双拼模式生效）：设置页入口
+     *  （快捷设置 tile 之外的主入口）。写 pref + 广播让键盘 hello 回流
+     *  重渲染（tile 与设置页双入口同 pref 同通道）。 */
+    @JavascriptInterface
+    fun setDpLayout(value: String, token: String) = guarded(token) {
+        if (value !in listOf("26", "14")) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_DP_LAYOUT, value).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
         pushState()
     }

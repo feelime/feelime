@@ -653,15 +653,32 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 .kb-row { display: flex; gap: 5px; margin-bottom: 5px; }
 .kb-row:last-child { margin-bottom: 0; }
 .kb-row.kb-indent { padding: 0 4.9%; }
-/* #36 双拼 14 键：合并对 = 一个宽键帽内两颗半区标准键无缝拼接。
- * 缝隙只剩对与对之间（26 键行内缝减半），半区仍各自独立按压反馈。
- * pair 占两键宽（flex:2），行内与单键（flex:1）混合分配。 */
-.merge-pair { flex: 2; min-width: 0; display: flex; }
+/* #36 双拼 14 键（真十四键观感，验收反馈二轮）：合并对显示为一个
+ * 完整键帽——两字母经 ::before 键帽级居中（无中缝），半区按钮自身
+ * 的字形隐藏、只保留触摸与按压反馈（半区宽 ≥ 原 26 键键宽，判定
+ * 分界无歧义）。韵母小字不显示（键面溢出，方案键位图在设置页有）。 */
+.merge-pair { flex: 2; min-width: 0; display: flex; position: relative; }
 .merge-pair .kb-key { flex: 1; min-width: 0; border-radius: 0; }
 .merge-pair .kb-key:first-child { border-radius: var(--radius-key) 0 0 var(--radius-key); }
 .merge-pair .kb-key:last-child { border-radius: 0 var(--radius-key) var(--radius-key) 0; }
-/* 半区中央的分隔线：极淡的一条，提示这是一颗宽键帽的两个字母。 */
-.merge-pair .kb-key:first-child { border-right: 1px solid var(--pressed); }
+.merge-pair .kb-key .kb-main { visibility: hidden; }
+.merge-pair .kb-key .kb-alt { display: none; }
+.merge-pair::before {
+    content: attr(data-glyph);
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* 两字母并排：字距略收，读作一颗键（如 "QW"）。 */
+    font-size: min(21px, calc(var(--kb-row-h, 44px) * 0.48));
+    font-weight: 400;
+    color: var(--text);
+    letter-spacing: 2px;
+    /* 不吞触摸：半区判定仍在底下两颗键上。 */
+    pointer-events: none;
+    z-index: 1;
+}
 /* Key height is the tunable variable (default 44). */
 .kb-key, .sym-tab {
     flex: 1;
@@ -847,13 +864,15 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
 .edit-grid .kb-key[data-edit="copy"] { grid-area: copy; }
 .edit-grid .kb-key[data-edit="cut"] { grid-area: cut; }
 .edit-grid .kb-key[data-edit="paste"] { grid-area: paste; }
-/* 方向箭头大字；扩选是面板内 toggle（点亮 = 方向键带 SHIFT），
- * 用 shift 的 armed 绿（.kb-mod.active 同款）点亮而非 :active 灰。 */
+/* 方向箭头大字；「选择」是面板内 toggle（点亮 = 方向键带 SHIFT），
+ * 锁定态用 accent 实底（验收反馈：细描边不够明显）——与粘滞键的
+ * armed 绿同语言但更满：底色 + 反差字，一眼锁定。 */
 .edit-grid .kb-key[data-arrow] { font-size: min(22px, calc(var(--kb-row-h, 44px) * 0.5)); font-weight: 400; }
 .edit-grid .kb-key[data-edit="sel"].armed {
-    color: var(--accent-text);
-    background: var(--mod-active-bg, #103a24);
-    box-shadow: inset 0 0 0 1px var(--accent);
+    color: var(--accent-ink);
+    background: var(--accent-strong);
+    font-weight: 650;
+    box-shadow: inset 0 0 0 2px var(--accent);
 }
 /* 右列文字键：主字 14px 与特殊键一致。 */
 .edit-grid .kb-key.edit-word { font-size: min(15px, calc(var(--kb-row-h, 44px) * 0.34)); font-weight: 500; }

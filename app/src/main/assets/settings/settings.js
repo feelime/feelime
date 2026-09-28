@@ -178,7 +178,11 @@ const I18N = {
         "input.double.title": "双拼方案",
         "input.double.badge": "输入",
         "input.double.scheme": "方案",
-        "input.double.hint": "键盘切到「双拼」模式后按所选方案出字。",        "input.double.ziranma": "自然码",
+        "input.double.hint": "键盘切到「双拼」模式后按所选方案出字。",        "input.double.layout": "键盘布局",
+        "input.double.layoutHint": "14 键把相邻两字母合并成宽键帽，按键更大更不易误触。",
+        "input.double.layout26": "26 键",
+        "input.double.layout14": "14 键",
+        "input.double.ziranma": "自然码",
         "input.double.flypy": "小鹤双拼",
         "input.double.sogou": "搜狗 / 微软双拼",
         "input.double.ziguang": "紫光双拼",
@@ -706,6 +710,10 @@ const I18N = {
         "input.double.badge": "Input",
         "input.double.scheme": "Scheme",
         "input.double.hint": "Takes effect when the keyboard is in Double Pinyin mode.",
+        "input.double.layout": "Key layout",
+        "input.double.layoutHint": "14-key merges neighbouring letters into wide caps - bigger targets, fewer mis-taps.",
+        "input.double.layout26": "26 keys",
+        "input.double.layout14": "14 keys",
         "input.double.ziranma": "Ziranma",
         "input.double.flypy": "Flypy (小鹤)",
         "input.double.sogou": "Sogou / MSPY",
@@ -1657,6 +1665,10 @@ function renderDoublePinyin(state) {
     const scheme = known.includes(state.dpScheme)
         ? state.dpScheme : "ziranma";
     if (document.activeElement !== select) select.value = scheme;
+    const layoutSel = $("dpLayout");
+    if (layoutSel && document.activeElement !== layoutSel) {
+        layoutSel.value = state.dpLayout === "14" ? "14" : "26";
+    }
     // 模糊音分组开关：按位掩码勾选，焦点所在的组不回写（连续点按不被
     // 异步 state 推送打断）。
     const mask = Number(state.fuzzyPinyinMask) || 0;
@@ -2824,6 +2836,20 @@ $("btnAddTile").addEventListener("click", () => call("addImeTile"));
 $("btnMic").addEventListener("click", () => call("requestMic"));
 $("uiLanguage").addEventListener("change", event => setUiLanguage(event.target.value));
 $("dpScheme").addEventListener("change", event => call("setDoublePinyinScheme", event.target.value));
+$("dpLayout").addEventListener("change", event => call("setDpLayout", event.target.value));
+
+// 输入测试框（验收反馈）：多行 textarea 随内容自适应增高，键盘弹出
+// 窗口压缩时也完整可见；min-height 兜底 rows=4 的初始高度。
+(() => {
+    const ta = $("testInput");
+    if (!ta) return;
+    const fit = () => {
+        ta.style.height = "auto";
+        ta.style.height = Math.max(96, ta.scrollHeight + 2) + "px";
+    };
+    ta.addEventListener("input", fit);
+    fit();
+})();
 
 // 键盘手感（mode-fallback §3/§4）：任一下拉变更即提交三值（-1=不变的是
 // 原生侧约定；这里三值总是全部上报，省一次「哪个变了」的状态跟踪）。

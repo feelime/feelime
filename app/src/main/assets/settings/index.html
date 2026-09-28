@@ -108,12 +108,12 @@
         <span class="entry-label"><span data-i18n="entry.backup.title">备份与恢复</span><small data-i18n="entry.backup.subtitle">设置 · 常用语 · 词库</small></span>
         <span class="entry-chevron" aria-hidden="true">›</span>
       </button>
-      <button class="entry" type="button" data-target="about">
-        <span class="entry-label"><span data-i18n="entry.about.title">关于</span><small data-i18n="entry.about.subtitle">版本信息 · 组件说明</small></span>
-        <span class="entry-chevron" aria-hidden="true">›</span>
-      </button>
       <button class="entry" type="button" data-target="test">
         <span class="entry-label"><span data-i18n="entry.test.title">输入测试</span><small data-i18n="entry.test.subtitle">唤起键盘试一试</small></span>
+        <span class="entry-chevron" aria-hidden="true">›</span>
+      </button>
+      <button class="entry" type="button" data-target="about">
+        <span class="entry-label"><span data-i18n="entry.about.title">关于</span><small data-i18n="entry.about.subtitle">版本信息 · 组件说明</small></span>
         <span class="entry-chevron" aria-hidden="true">›</span>
       </button>
     </nav>
@@ -394,6 +394,17 @@
           <option value="flypy" data-i18n="input.double.flypy">小鹤双拼</option>
           <option value="sogou" data-i18n="input.double.sogou">搜狗 / 微软双拼</option>
           <option value="ziguang" data-i18n="input.double.ziguang">紫光双拼</option>
+        </select>
+      </div>
+      <!-- #36 双拼 14 键布局（验收反馈：快捷设置 tile 太隐蔽，设置页主入口）。 -->
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.double.layout">键盘布局</span>
+          <small data-i18n="input.double.layoutHint">14 键把相邻两字母合并成宽键帽，按键更大更不易误触。</small>
+        </span>
+        <select id="dpLayout" class="select" aria-label="双拼键盘布局" data-i18n-aria="input.double.layout">
+          <option value="26" data-i18n="input.double.layout26">26 键</option>
+          <option value="14" data-i18n="input.double.layout14">14 键</option>
         </select>
       </div>
       <p id="dpNote" class="hint block"></p>
@@ -1024,7 +1035,9 @@
   <main>
     <section class="card" id="sec-test" aria-labelledby="testTitle">
       <div class="section-heading"><h2 id="testTitle" data-i18n="test.title">试输入一段文字</h2><span class="eyebrow" data-i18n="test.badge">测试</span></div>
-      <input type="text" id="testInput" data-i18n-placeholder="test.placeholder" data-i18n-aria="test.title" aria-label="试输入一段文字" placeholder="点这里唤起 Feelime 试一试" autocomplete="off">
+      <!-- 多行 textarea（反馈：测试框要支持多行）——rows 起步 4 行，
+           JS 随内容自适应增高，IME 弹出时窗口压缩也完整可见。 -->
+      <textarea id="testInput" rows="4" data-i18n-placeholder="test.placeholder" data-i18n-aria="test.title" aria-label="试输入一段文字" placeholder="点这里唤起 Feelime 试一试" autocomplete="off"></textarea>
       <p class="hint" data-i18n="test.note">输入内容只留在当前编辑框中。</p>
     </section>
   </main>

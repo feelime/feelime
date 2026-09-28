@@ -131,10 +131,10 @@
         "粘贴": "Paste",
         "复制": "Copy",
         "剪切": "Cut",
-        // #39-10 编辑工具条。扩选 = 点亮后方向键带 SHIFT 连续扩选
+        // #39-10 编辑工具条。选择 = 点亮后方向键带 SHIFT 连续扩选
         // （搜狗「开始选择」的 Android 等价物）。
         "编辑工具": "Editing",
-        "扩选": "Shift+arrows",
+        "选择": "Select",
         "光标到行首": "Line start",
         "光标到行尾": "Line end",
         // #36 双拼 14 键布局。
@@ -291,7 +291,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.1';
+    const KEYBOARD_VERSION = '3.73.2';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -485,7 +485,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // 两两合并到 14 个宽键帽，'|' 分组（L、M 单键）。合并对内两颗
         // 半区仍是标准 kb-key（data-key=单字母），长按弹层/分词/引擎
         // 全链路零改动——减少误触的来源是键帽变宽、行内缝隙减半。键帽
-        // 小字显示当前双拼方案的韵母/声母（DP_KEYMAP，随 schema 生成）。
+        // 显示两字母并排居中（韵母小字不显示，方案键位图在设置页有）。
         dp14: {
             rows: [
                 'qw|er|ty|ui|op',
@@ -1112,7 +1112,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // BEGIN GENERATED SCHEMA_MAP
     // schema-sha256: ziranma=ac60c13a00eae405 flypy=7850588e9495b50d sogou=e278729922814390 ziguang=6a139f79776718dd
     const DP_INITIAL_FINALS = {"ziranma":{"a":"ahijklno","b":"acdfghijklmnouxyz","c":"abefghijkloprsuvz","d":"abcefghijklmopqrsuvwxyz","e":"efginrz","f":"abcfghjosuz","g":"abdefghjkloprsuvwyz","h":"abdefghjkloprsuvwyz","i":"abdefghijkloprsuvwy","j":"cdimnpqrstuvwxy","k":"abdefghjkloprsuvwyz","l":"abcdeghijklmnopqrstuvwxyz","m":"abcefghijklmnoquxyz","n":"abcdefghijklmnopqrstuvwxyz","o":"abefghjkloruz","p":"abcfghijklmnouwxyz","q":"cdimnpqrstuvwxy","r":"befghijkoprsuvw","s":"abefghijkloprsuvz","t":"abceghijklmoprsuvxyz","u":"abdefghijklopruvwyz","v":"abdefghijkloprsuvwyz","w":"afghjlosuz","x":"cdimnpqrstuvwxy","y":"abehijklnoprstuvy","z":"abefghijkloprsuvz"},"flypy":{"a":"acdhijno","b":"abcdfghijklmnopuw","c":"acdefghijorsuvwyz","d":"acdefghijkmnopqrsuvwxyz","e":"efghinrw","f":"afghjnosuwz","g":"acdefghjklorsuvwxyz","h":"acdefghjklorsuvwxyz","i":"acdefghijklorsuvxyz","j":"biklmnpqrstuvxy","k":"acdefghjklorsuvwxyz","l":"abcdeghijklmnopqrstuvwxyz","m":"abcdefghijkmnopquwz","n":"abcdefghijklmnopqrstuvwxyz","o":"ouz","p":"abcdfghijkmnopuwxz","q":"biklmnpqrstuvxy","r":"cefghijorsuvxyz","s":"acdefghijorsuvwyz","t":"acdeghijkmnoprsuvwyz","u":"acdefghijkloruvwxyz","v":"acdefghijklorsuvwxyz","w":"adfghjosuw","x":"biklmnpqrstuvxy","y":"abcdehijkorstuvyz","z":"acdefghijorsuvwyz"},"sogou":{"a":"ahjkl","b":";acdfghijklmnouxz","c":"abefghijkloprsuvz","d":";abcefghijklmopqrsuvwxz","e":"efgrz","f":"abcfghjosuz","g":"abdefghjkloprsuvwyz","h":"abdefghjkloprsuvwyz","i":"abdefghijkloprsuvwy","j":";cdimnpqrstuwxy","k":"abdefghjkloprsuvwyz","l":";abcdeghijklmnopqrstuwxyz","m":";abcefghijklmnoquxz","n":";abcdefghijklmnopqrstuwxyz","o":"abefghjkloruz","p":";abcfghijklmnouwxz","q":";cdimnpqrstuwxy","r":"befghijkoprsuvw","s":"abefghijkloprsuvz","t":";abceghijklmoprsuvxz","u":"abdefghijklopruvwyz","v":"abdefghijkloprsuvwyz","w":"afghjlosuz","x":";cdimnpqrstuwxy","y":";abehijklnoprstuy","z":"abefghijkloprsuvz"},"ziguang":{"a":"aeghilmnopqrstuwxyz","b":";abdfgikopqrstuwy","c":"aehiklmnopqrstuwz","d":";abdefhijklmnopqrstuwxz","f":"abhkorstuwz","g":"aeghklmnopqrstuwxyz","h":"aeghklmnopqrstuwxyz","i":"aegiklmnopqrstuwxyz","j":";bdfghijlmnuvxy","k":"aeghklmnopqrstuwxyz","l":";abdefghijklmnopqrstuvxyz","m":";abdefijkopqrstuwyz","n":";abdefghijklmnopqrstuvwxyz","o":"aejkopqrstwz","p":";abdfikopqrstuwxyz","q":";bdfghijlmnuvxy","r":"ehilmnoqrstuwxz","s":"aehiklmnopqrstuwz","t":";abdefhiklmnopqrstuz","u":"aeghiklmnopqrstuwxyz","w":"ahkoprstuw","x":";bdfghijlmnuvxy","y":";aehilmnopqrsuvyz","z":"aehiklmnopqrstuwz"}};
-    const DP_KEYMAP = {"ziranma":{"q":"iu","w":"ua/ia","e":null,"r":"uan/er","t":"ue/ve","y":"ing/uai","u":"sh","i":"ch","o":"uo","p":"un","a":null,"s":"ong/iong","d":"iang/uang","f":"en","g":"eng","h":"ang","j":"an","k":"ao","l":"ai","z":"ei","x":"ie","c":"iao","v":"zh/ui ü","b":"ou","n":"in","m":"ian"},"flypy":{"q":"iu","w":"ei","e":null,"r":"uan/er","t":"ue/ve","y":"un","u":"sh","i":"ch","o":"uo","p":"ie","a":null,"s":"ong/iong","d":"ai","f":"en","g":"eng","h":"ang","j":"an","k":"ing/uai","l":"iang/uang","z":"ou","x":"ua/ia","c":"ao","v":"zh/ui ü","b":"in","n":"iao","m":"ian"},"sogou":{"q":"iu","w":"ua/ia","e":null,"r":"uan/er","t":"ue/ve","y":"uai","u":"sh","i":"ch","o":"uo","p":"un","a":null,"s":"ong/iong","d":"iang/uang","f":"en","g":"eng","h":"ang","j":"an","k":"ao","l":"ai","z":"ei","x":"ie","c":"iao","v":"zh/ui","b":"ou","n":"in","m":"ian"},"ziguang":{"q":"ao","w":"en","e":null,"r":"an","t":"eng","y":"uai/in","u":"zh","i":"sh","o":"uo","p":"ai","a":"ch","s":"ang","d":"ie","f":"ian","g":"iang/uang","h":"ong/iong","j":"iu/er","k":"ei","l":"uan","z":"ou","x":"ua/ia","v":null,"b":"iao","n":"ui üe","m":"un"}};
     // END GENERATED SCHEMA_MAP
 
     class FeelimeKeyboard {
@@ -1137,7 +1136,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Which key-area layer is visible (letters/symbols/numpad) -
             // panels and settings borrow the area and restore this.
             this.keyLayer = 'letters';
-            // #39-10 编辑面板的扩选 toggle（开 = 方向键/行首行尾带 SHIFT）。
+            // #39-10 编辑面板的选择 toggle（开 = 方向键/行首行尾带 SHIFT）。
             this.editSelecting = false;
             // #36 双拼 14 键布局（hello 推送，"26"|"14"，仅双拼模式生效）。
             this.dpLayout = '26';
@@ -1977,8 +1976,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             row.append(this.letterKey(group));
                             return;
                         }
+                        // 真十四键观感（验收反馈）：两字母并排居中显示在
+                        // 一个完整键帽上（data-glyph 由 CSS ::before 渲染，
+                        // 键帽级居中无中缝）；触摸判定保持半区（半区宽
+                        // ≥ 原 26 键键宽，且分界无歧义）。
                         const pair = document.createElement('div');
                         pair.className = 'merge-pair';
+                        pair.dataset.glyph = group.toUpperCase();
                         [...group].forEach(key => pair.append(this.letterKey(key)));
                         row.append(pair);
                     });
@@ -3876,12 +3880,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** 键面角标显示：hintsOnly 布局（t9）也要画出字母组，但走的是
          * 展示语义，与 altCandidates 的可上屏备选分开。 */
         keyAltHint(key) {
-            // #36 dp14 键面小字 = 当前双拼方案该键承载的韵母/声母
-            //（DP_KEYMAP 随 schema 生成，方案切换 hello 重渲染即换）。
-            if (this.lettersLayout === 'dp14' && this.mode === 'double-pinyin') {
-                const table = DP_KEYMAP[dpScheme] || DP_KEYMAP.ziranma;
-                return table[key] || '';
-            }
             if (this.chineseSymMode() && CN_ALTS[key]) return CN_ALTS[key];
             const layout = LAYOUTS[(MODES[this.mode] || MODES.direct).layout] || LAYOUTS.qwerty;
             const value = layout.alts[key];
@@ -6537,7 +6535,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 底行 行首|全选|行尾；第四列 删除/复制/剪切/粘贴。
             cell('up', '↑', { arrow: true, aria: '光标上移' });
             cell('left', '←', { arrow: true, aria: '光标左移' });
-            const sel = cell('sel', t("扩选"), { aria: '扩选' });
+            const sel = cell('sel', t("选择"), { aria: '选择' });
             cell('right', '→', { arrow: true, aria: '光标右移' });
             cell('down', '↓', { arrow: true, aria: '光标下移' });
             cell('home', '|←', { aria: '光标到行首' });
@@ -6578,11 +6576,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             bind('home', () => this.sendCombo(this.editSelecting ? ['Shift', 'Home'] : ['Home']));
             bind('end', () => this.sendCombo(this.editSelecting ? ['Shift', 'End'] : ['End']));
             bind('all', () => this.call(() => Native.editorAction('selectAll', this.token)));
-            bind('del', () => this.call(() => Native.backspace(this.token)));
-            bind('copy', () => this.call(() => Native.editorAction('copy', this.token)));
-            bind('cut', () => this.call(() => Native.editorAction('cut', this.token)));
-            bind('paste', () => this.call(() => Native.editorAction('paste', this.token)));
-            // 扩选 toggle：点亮后方向键/行首行尾带 SHIFT。
+            // 右列动作执行完即解除选择锁定（验收反馈）：对选中内容的
+            // 操作是选择流程的终点，保持锁定反而让后续方向键意外扩选。
+            const disarm = () => {
+                this.editSelecting = false;
+                sel.classList.remove('armed');
+            };
+            bind('del', () => { this.call(() => Native.backspace(this.token)); disarm(); });
+            bind('copy', () => { this.call(() => Native.editorAction('copy', this.token)); disarm(); });
+            bind('cut', () => { this.call(() => Native.editorAction('cut', this.token)); disarm(); });
+            bind('paste', () => { this.call(() => Native.editorAction('paste', this.token)); disarm(); });
+            // 选择 toggle：点亮后方向键/行首行尾带 SHIFT。
             sel.addEventListener('click', () => {
                 this.editSelecting = !this.editSelecting;
                 sel.classList.toggle('armed', this.editSelecting);
@@ -9186,10 +9190,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // keeps a rebuild from re-toasting the failure it reports.
             this.applyEngineLifecycle({ ...payload, snapshot: true });
             if (schemeChanged && this.mode === 'double-pinyin') {
-                // renderMode（非 renderLetters）：dp14 键面的小字要跟着
-                // 新方案换（DP_KEYMAP），而 dp14 的布局判断在 renderMode。
+                // renderMode（非 renderLetters）：dp14 的布局判断在
+                // renderMode，方案变化统一走它重渲染。
                 this.renderMode();
-                this.updateLabels();
             }
             if (localeChanged) {
                 this.renderLetters((MODES[this.mode] || MODES.direct).layout);
