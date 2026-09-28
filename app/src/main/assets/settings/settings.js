@@ -289,6 +289,14 @@ const I18N = {
         "action.githubRepo": "GitHub 仓库",
         "action.githubIssues": "问题反馈",
         "action.feishuGroup": "加入飞书交流群",
+        "action.checkUpdate": "检查更新",
+        "action.checkUpdatePlay": "去 Google Play 更新",
+        "action.dlThin": "下载精简版",
+        "action.dlFull": "下载完整版",
+        "update.checking": "正在检查更新…",
+        "update.upToDate": "已是最新版本（v{0}）",
+        "update.available": "发现新版本 v{0}（当前 v{1}），建议下载：",
+        "update.failed": "检查更新失败，请稍后再试（或到 GitHub Releases 页查看）",
         "about.copyHint": "反馈问题时直接粘贴；复制内容标记为敏感，不会进入键盘剪贴板历史。",
         "about.offlineHint": "全程离线：语音识别与文字候选都不联网。",
         "about.noticesTitle": "第三方许可与组件说明",
@@ -805,6 +813,14 @@ const I18N = {
         "action.githubRepo": "GitHub repository",
         "action.githubIssues": "Report an issue",
         "action.feishuGroup": "Join the Feishu group",
+        "action.checkUpdate": "Check for updates",
+        "action.checkUpdatePlay": "Update on Google Play",
+        "action.dlThin": "Download thin build",
+        "action.dlFull": "Download full build",
+        "update.checking": "Checking for updates…",
+        "update.upToDate": "Up to date (v{0})",
+        "update.available": "New version v{0} available (current v{1}). Download:",
+        "update.failed": "Update check failed. Try again later, or visit GitHub Releases.",
         "about.copyHint": "Paste this when reporting a problem. The copied report is marked sensitive and is kept out of keyboard clipboard history.",
         "about.offlineHint": "Everything stays offline: voice recognition and text candidates use no network.",
         "about.noticesTitle": "Third-party licenses & components",
@@ -2749,6 +2765,16 @@ function aboutRows(state) {
 
 function renderAbout(state) {
     $("btnAppStore").hidden = !state.playDistribution;
+    // 更新检测入口（关于页）：Play 渠道跳商店由商店管理更新；直装渠道
+    // 走 GitHub Releases 检测（见 checkGithubUpdate）。下载按钮只在检测
+    // 出新版本后出现，Play 渠道恒隐藏。
+    $("btnAboutCheckUpdate").hidden = false;
+    // data-i18n 跟着渠道换：translateStaticUi 按 key 重刷文案，静态 key
+    // 不换的话语言切换会把 Play 分支的「去 Google Play 更新」洗掉。
+    const checkKey = state.playDistribution ? "action.checkUpdatePlay" : "action.checkUpdate";
+    $("btnAboutCheckUpdate").dataset.i18n = checkKey;
+    $("btnAboutCheckUpdate").textContent = t(checkKey);
+    if (state.playDistribution) { $("btnDlThin").hidden = true; $("btnDlFull").hidden = true; }
     setToggleSafe("diagnosticsOn", state.diagnosticsOn);
     const host = $("aboutRows");
     host.replaceChildren();
@@ -3047,6 +3073,74 @@ $("btnCustomDocs").addEventListener("click", () => call("openDocs"));
 $("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"));
 // 飞书交流群（浏览器打开内置邀请链接，native 侧固定白名单同 openGithub）。
 $("btnFeishuGroup").addEventListener("click", () => call("openFeishuGroup"));
+
+// 关于页「检查更新」：Play 渠道跳商店详情页（版本/更新由商店管理）；
+// 直装渠道查 GitHub Releases——ghproxy 镜像先行（国内可达），直连回退
+// （海外更快）。WebView 的 file:// origin 依赖目标端 ACAO:*（GitHub
+// API 满足；镜像若拦截 CORS 则该源失败，两个源都挂才报错）。
+let latestReleaseAssets = null;
+function newerVersion(latest, current) {
+    const norm = s => String(s || "").replace(/^v/, "").split(".").map(n => parseInt(n, 10) || 0);
+    const a = norm(latest), b = norm(current);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const d = (a[i] || 0) - (b[i] || 0);
+        if (d) return d > 0;
+    }
+    return false;
+}
+async function checkGithubUpdate() {
+    $("btnDlThin").hidden = true;
+    $("btnDlFull").hidden = true;
+    latestReleaseAssets = null;
+    setNote("aboutNote", t("update.checking"));
+    const current = (lastState && lastState.appVersion) || "?";
+    const endpoints = [
+        "https://gh-proxy.com/https://api.github.com/repos/feelime/feelime/releases/latest",
+        "https://api.github.com/repos/feelime/feelime/releases/latest",
+    ];
+    for (const url of endpoints) {
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 8000);
+            const res = await fetch(url, { signal: ctrl.signal });
+            clearTimeout(timer);
+            if (!res.ok) continue;
+            const rel = await res.json();
+            const tag = String(rel.tag_name || "").replace(/^v/, "");
+            if (!tag) continue;
+            if (!newerVersion(tag, current)) {
+                setNote("aboutNote", t("update.upToDate", [tag]));
+                return;
+            }
+            setNote("aboutNote", t("update.available", [tag, current]));
+            latestReleaseAssets = {};
+            (rel.assets || []).forEach(asset => {
+                const m = /-(thin|full)\.apk$/.exec(asset.name || "");
+                if (m && asset.browser_download_url) latestReleaseAssets[m[1]] = asset.browser_download_url;
+            });
+            if (latestReleaseAssets.thin) $("btnDlThin").hidden = false;
+            if (latestReleaseAssets.full) $("btnDlFull").hidden = false;
+            return;
+        } catch (_) { /* 下一个源 */ }
+    }
+    setNote("aboutNote", t("update.failed"));
+}
+$("btnAboutCheckUpdate").addEventListener("click", () => {
+    if (lastState && lastState.playDistribution) {
+        call("openAppStore");
+        return;
+    }
+    checkGithubUpdate();
+});
+// 下载确认即点击本身：浏览器打开 ghproxy 加速的资产地址（native 白名单
+// 校验后再跳）。
+function downloadRelease(kind) {
+    const raw = latestReleaseAssets && latestReleaseAssets[kind];
+    if (!raw) return;
+    call("openReleaseDownload", "https://gh-proxy.com/" + raw);
+}
+$("btnDlThin").addEventListener("click", () => downloadRelease("thin"));
+$("btnDlFull").addEventListener("click", () => downloadRelease("full"));
 $("btnCopyAbout").addEventListener("click", () => {
     if (!lastState) return;
     call("copyText", aboutRows(lastState).map(([label, value]) => `${label}: ${value}`).join("\n"));

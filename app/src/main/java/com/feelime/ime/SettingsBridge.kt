@@ -2631,6 +2631,26 @@ class SettingsBridge(
         }
     }
 
+    /** 关于页「下载新版」：浏览器打开 GitHub release 资产地址（ghproxy
+     *  镜像前缀或仓库直链）。只放行 feelime 仓库的 release download 路径
+     *  ——openGithub 同原则，WebView 不驱动任意跳转。 */
+    @JavascriptInterface
+    fun openReleaseDownload(url: String, token: String) = guarded(token) {
+        val onGithub = url.startsWith(
+            "https://github.com/feelime/feelime/releases/download/")
+        val onMirror = url.startsWith(
+            "https://gh-proxy.com/https://github.com/feelime/feelime/releases/download/")
+        if (!onGithub && !onMirror) return@guarded
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(url),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
     /** §16: play builds route update actions to the store listing. */
     private fun openPlayListing() {
         val pkg = context.packageName
