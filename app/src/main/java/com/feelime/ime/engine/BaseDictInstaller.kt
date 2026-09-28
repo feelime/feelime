@@ -152,6 +152,10 @@ object BaseDictInstaller {
                     rollback(app)
                     InstallResult("BASE_DICT_INTERNAL", changed = true)
                 }
+            // finally 兜底（整体 review D）：收尾段（广播/补偿/事件回调）
+            // 若抛异常，building=true 与 FGS 通知会泄漏——进程内后续导入
+            // 全被 check(building) 拒。正常路径顺序不变。
+            try {
             building.set(false)
             stageSnapshot = null
             // 换装广播必须在 building 清零后发——receiver 的 P1-4 守卫正拦着
@@ -173,6 +177,10 @@ object BaseDictInstaller {
                     .put("message", messageFor(app, result.code)),
             )
             onFinished()
+            } finally {
+                building.set(false)
+                CompileGuardService.stop(app)
+            }
         }
     }
 
@@ -209,13 +217,13 @@ object BaseDictInstaller {
                     runCatching { revertFlypy(app) }
                     InstallResult("BASE_DICT_INTERNAL", changed = true)
                 }
+            try {
             building.set(false)
             stageSnapshot = null
             if (result.changed) {
                 app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             }
             compensatePendingFuzzy(app)
-            CompileGuardService.stop(app)
             pushEvent(
                 JSONObject()
                     .put("type", if (result.code == null) "flypyDone" else "flypyError")
@@ -223,6 +231,10 @@ object BaseDictInstaller {
                     .put("message", messageFor(app, result.code ?: "FLYPY_OK")),
             )
             onFinished()
+            } finally {
+                building.set(false)
+                CompileGuardService.stop(app)
+            }
         }
     }
 
@@ -277,6 +289,7 @@ object BaseDictInstaller {
             CompileGuardService.start(app)
             val code = runCatching { compileFuzzyVariant(app, mask) }
                 .getOrElse { "BASE_DICT_INTERNAL" as String? }
+            try {
             building.set(false)
             if (code != null) {
                 android.util.Log.w("FeelimeBaseDict", "fuzzy variant m$mask compile: $code")
@@ -288,7 +301,10 @@ object BaseDictInstaller {
             app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             // 补偿排队中的补编（串行 worker 上不存在重入）。
             compensatePendingFuzzy(app)
-            CompileGuardService.stop(app)
+            } finally {
+                building.set(false)
+                CompileGuardService.stop(app)
+            }
         }
     }
 
