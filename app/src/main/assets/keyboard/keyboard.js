@@ -229,6 +229,7 @@
         "关闭面板": "Close panel",
         "清空剪贴板": "Clear clipboard",
         "清空": "Clear",
+        "确认清空": "Confirm clear",
         "＋添加": "＋ Add",
         "松手结束": "Release to finish.",
         "点击任意位置结束": "Tap anywhere to finish.",
@@ -280,7 +281,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.70.0';
+    const KEYBOARD_VERSION = '3.71.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -976,19 +977,31 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         } catch (_) { /* bridge unavailable */ }
     }
 
-    /** 原生镜像比本地新（设置页导入过备份）时拉取恢复值（userdata.md §1.5）。
-     * rev 跳号只能出现在导入侧，比较用大于即可。 */
+    /** 原生镜像拉平（userdata.md §1.5）：native 是唯一真相源，镜像 rev
+     * 与本地记录【不等】（native 有新写入：设置页保存 / 备份恢复）就
+     * adopt values，方向无关。曾用 remoteRev > localRev 判「更新」——
+     * 备份恢复（UserdataBackup.restore）写镜像只做 rev+1 不看键盘本地
+     * rev，低 rev 备份导入后镜像低于本地，倒挂一旦发生永不拉平，设置
+     * 页的键盘选择从此到不了键盘（AVD 实测 5>1 卡死）。相等（没有新
+     * 写入）跳过：镜像里的陈旧值（如旧语言）不许顶掉 hello 带来的
+     * 新状态。rev 完全跟随 native（不是取 max）：CAS 的 base 必须等于
+     * mirrorRev，本地揣高值只会让后续 push 永远 -1。
+     * values 键缺席 = 镜像从未写入过（老 APK 升级首握手），跳过——
+     * 不能当「空备份」触发全量删除把本地键洗掉；键在值空（{}）是
+     * 显式恢复的空状态，照常 adopt（清空语义，4105 测试锁定）。 */
     function pullStores(token) {
         try {
             if (typeof Native.getStores !== 'function') return;
             const mirror = JSON.parse(Native.getStores(token) || '{}');
+            if (!Object.prototype.hasOwnProperty.call(mirror, 'values')) return;
             const remoteRev = parseInt(mirror.rev || 0, 10) || 0;
             const localRev = parseInt(localStorage.getItem('feelime_stores_rev') || '0', 10) || 0;
+            if (remoteRev === localRev) return;
             // 只有真正的键值对象才表达恢复语义：数组/字符串等异常载荷
             // 不能当成「空备份」触发全量删除（native 正常产出 JSONObject）。
             const values = mirror.values;
             const valid = values !== null && typeof values === 'object' && !Array.isArray(values);
-            if (remoteRev > localRev && valid) {
+            if (valid) {
                 keyboard.onStoresRestored(values);
                 localStorage.setItem('feelime_stores_rev', String(remoteRev));
             }
@@ -1416,7 +1429,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('panelClose').addEventListener('click', () => this.closePanel());
             document.getElementById('panelClear').addEventListener('click', () => {
                 if (this.panelTab !== 'clipboard') return;
-                this.call(() => Native.clearClipboard(this.token));
+                // 清空是破坏性操作（#39 补充建议）：首击进入确认态（红字
+                // 「确认清空」），3s 内再击才执行；超时或关面板恢复原样。
+                if (this.panelClearTimer) {
+                    this.armPanelClear(false);
+                    this.call(() => Native.clearClipboard(this.token));
+                } else {
+                    this.armPanelClear(true);
+                }
             });
             document.getElementById('panelManage').addEventListener('click', () => this.openPanelEditor(null));
             // The phrase editor input rides above the keyboard;
@@ -1661,6 +1681,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.mode === 't9' || this.mode === 'stroke';
         }
 
+        /** #39-8：形码（flypy）的符号交互与拼音一致——上滑 CN_ALTS 全角
+         * 符号、弹层/下滑 literal 直发（sendSymbol），否则符号会走 sendText
+         * 进形码引擎当编码被静默吞掉（用户实测「上滑没有反应」）。但引擎
+         * 语义仍是形码：isChineseMode 不收 flypy（第三行左键的分词/Shift
+         * 选择、T9 弹层等以它为准，' 分词对形码引擎无语义）。 */
+        chineseSymMode() {
+            return this.isChineseMode() || this.mode === 'flypy';
+        }
+
         sendKey(key) {
             // Inside the ctrl view an ARMED sticky modifier turns
             // the main keyboard's letter taps into host combos (Ctrl then w
@@ -1697,7 +1726,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // directly would bypass the punctuator and be dropped).
             // 组合中改走两步流（enginePunct）：Android librime 的组合中
             // 标点路径吞键（§9.6）。
-            if (key === '.' && this.isChineseMode()) {
+            if (key === '.' && this.chineseSymMode()) {
                 this.enginePunct(',');
             } else {
                 const text = this.applyCase(key);
@@ -3475,7 +3504,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         // 互换开关（issue #29-2）：默认上滑=alt 小字符、下滑=
                         // 大写；开互换后对调。键面小字提示随 CSS 翻到下侧。
                         const altOnUp = !this.flickSwap;
-                        if (key === '.' && this.isChineseMode()) {
+                        if (key === '.' && this.chineseSymMode()) {
                             // Main ，(tap, down) / alt 。(up);
                             // both keep flowing through the engine punctuator
                             // (Native.key) - full-width directly would be
@@ -3499,10 +3528,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             // Native.key() would feed the composition engine
                             // (digits become candidate selectors, uppercase
                             // becomes dead pinyin). commitText bypasses it.
-                            if (this.isChineseMode() && key === '.') {
+                            if (this.chineseSymMode() && key === '.') {
                                 // 标点槽组合中两步流（enginePunct，§9.6）。
                                 this.enginePunct(value);
-                            } else if (this.isChineseMode()) {
+                            } else if (this.chineseSymMode()) {
                                 this.sendSymbol(value);
                             } else {
                                 this.sendText(value);
@@ -3752,7 +3781,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         altCandidates(key) {
             // Chinese modes print their own symbol set.
-            if (this.isChineseMode() && CN_ALTS[key]) return [CN_ALTS[key]];
+            if (this.chineseSymMode() && CN_ALTS[key]) return [CN_ALTS[key]];
             const layout = LAYOUTS[(MODES[this.mode] || MODES.direct).layout] || LAYOUTS.qwerty;
             // t9 的字母组（abc/def…）只是键面提示，整段不是可上屏字符
             // （codex round-1 P2-3：上滑 2 曾把字面 'abc' 提交出去）。
@@ -3765,7 +3794,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** 键面角标显示：hintsOnly 布局（t9）也要画出字母组，但走的是
          * 展示语义，与 altCandidates 的可上屏备选分开。 */
         keyAltHint(key) {
-            if (this.isChineseMode() && CN_ALTS[key]) return CN_ALTS[key];
+            if (this.chineseSymMode() && CN_ALTS[key]) return CN_ALTS[key];
             const layout = LAYOUTS[(MODES[this.mode] || MODES.direct).layout] || LAYOUTS.qwerty;
             const value = layout.alts[key];
             if (!value) return '';
@@ -3928,7 +3957,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // Chinese mode prints full-width glyphs for the punct-slot
                 // cells; the commit value stays ASCII and closePopup routes
                 // it through the engine so the printed glyph is what lands.
-                const glyph = this.isChineseMode() && (char === ',' || char === '.')
+                const glyph = this.chineseSymMode() && (char === ',' || char === '.')
                     ? (char === ',' ? '，' : '。')
                     : char;
                 item.textContent = glyph;
@@ -4093,10 +4122,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // but半角 landing would NOT); other Chinese picks commit
                 // literally; English always goes native key.
                 const char = popup.selected.char;
-                if (this.isChineseMode() && (char === ',' || char === '.')) {
+                if (this.chineseSymMode() && (char === ',' || char === '.')) {
                     // 标点槽组合中两步流（enginePunct，§9.6）。
                     this.enginePunct(char);
-                } else if (this.isChineseMode()) {
+                } else if (this.chineseSymMode()) {
                     this.sendSymbol(char);
                 } else {
                     this.sendText(char);
@@ -4151,7 +4180,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         updateLabels() {
             // Pinyin keyboards show uppercase key glyphs
             // (candidates are what actually commit), direct shows lowercase.
-            const chinese = this.mode === 'pinyin' || this.mode === 'double-pinyin';
+            // #39-7：形码同此——键面大写与拼音统一（码即字母，四码顶字，
+            // 键面大写不会误导输入）。
+            const chinese = this.mode === 'pinyin' || this.mode === 'double-pinyin' ||
+                this.mode === 'flypy';
             const upper = this.shift || this.caps;
             document.querySelectorAll('[data-key]').forEach(button => {
                 const key = button.dataset.key;
@@ -4548,7 +4580,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * follows the input mode, 引号 defaults to zh. */
         variantNow(catId) {
             if (this.tableVariants[catId]) return this.tableVariants[catId];
-            return catId === 'common' && !this.isChineseMode() ? 'en' : 'zh';
+            return catId === 'common' && !this.chineseSymMode() ? 'en' : 'zh';
         }
 
         rowsFor(catId) {
@@ -4994,7 +5026,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * slot must go back to the mode's alt hint, not the bare letter. */
         renderFnLabels() {
             const on = this.ctrlView && this.sticky.Fn;
-            const chinese = this.mode === 'pinyin' || this.mode === 'double-pinyin';
+            const chinese = this.mode === 'pinyin' || this.mode === 'double-pinyin' ||
+                this.mode === 'flypy';
             const upper = this.shift || this.caps;
             document.querySelectorAll('#qwertyLayer [data-key]').forEach(button => {
                 const key = button.dataset.key;
@@ -7865,6 +7898,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const want = tab === 'favorites' ? 'favorites' : 'clipboard';
             this.panelTab = want;
             this.panelOpen = true;
+            // 打开/切换面板时撤掉「清空」可能残留的确认态。
+            this.armPanelClear(false);
             // Remember the layer to restore on close (panel can open from the
             // symbol layer too). #39-5 互斥：数字/表情/符号视图被剪贴板
             // /常用语面板顶掉——关面板回字母层，不再层层套娃（用户实录
@@ -7910,6 +7945,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         closePanel() {
+            // 「清空」若停在确认态一并撤下，重开面板不能仍挂在确认态。
+            this.armPanelClear(false);
             // 编辑卡还开着时面板只是取材完毕回键盘：卡的输入重定向
             // （setPanelInput）继续有效，不能在这里释放。
             if (this.settingsInputFocus && !this.phraseCardOpen()) this.setPanelInput(false);
@@ -7926,8 +7963,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.maybeResumeCtrlView();
         }
 
-        renderPanel() {
-            const list = document.getElementById('panelList');
+        /** 面板头「清空」的两击确认态（#39）：on=红字「确认清空」并起
+         * 3s 定时，超时自动撤；off=恢复文案与样式。WebView 无原生
+         * confirm（WebChromeClient 未挂 onJsConfirm），确认只能自建。 */
+        armPanelClear(on) {
+            const btn = document.getElementById('panelClear');
+            clearTimeout(this.panelClearTimer);
+            this.panelClearTimer = null;
+            if (on) {
+                this.panelClearTimer = setTimeout(() => this.armPanelClear(false), 3000);
+                btn.classList.add('danger');
+                btn.textContent = t("确认清空");
+            } else {
+                btn.classList.remove('danger');
+                btn.textContent = t("清空");
+            }
+        }
+
+        renderPanel() {            const list = document.getElementById('panelList');
             const empty = document.getElementById('panelEmpty');
             list.replaceChildren();
             const layer = document.getElementById('panelLayer');

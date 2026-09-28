@@ -2615,6 +2615,22 @@ class SettingsBridge(
         }
     }
 
+    /** 关于页「加入飞书交流群」：浏览器打开内置邀请链接（固定白名单，
+     *  与 openGithub 同原则——不收 WebView 传来的任意 URL）。 */
+    @JavascriptInterface
+    fun openFeishuGroup(token: String) = guarded(token) {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(
+                        "https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=172kdc52-1e50-4037-abab-0e731ab8cbe0",
+                    ),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
     /** §16: play builds route update actions to the store listing. */
     private fun openPlayListing() {
         val pkg = context.packageName

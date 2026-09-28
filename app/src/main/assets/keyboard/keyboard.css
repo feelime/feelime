@@ -680,6 +680,14 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
  * 标点槽是墨形绝对定位，主字（inset 42%/12%）与 alt 要一起上下镜像，
  * 只翻 alt 会两个墨形挤在下半键（验收 2026-09-24 实录）。 */
 body.flick-swap .kb-key.kb-letter { flex-direction: column-reverse; }
+/* #39-3（间距，用户 2026-09-28 补充「g↑建议上移一点」）：角标绝对定
+ * 位钉在键顶/键底 4px、主字回归视觉居中。原先角标随主字整体居中，
+ * 键行调高时角标跟着下沉、与键顶间距越拉越大（用户截图即此形态）；
+ * 钉边后任意行高角标位置恒定。默认布局角标在上方（提示上滑值），
+ * 互换布局（column-reverse）角标在下方——贴哪边由布局方向决定。 */
+.kb-key.kb-letter { position: relative; }
+.kb-key.kb-letter .kb-alt { position: absolute; top: 4px; left: 0; right: 0; }
+body.flick-swap .kb-key.kb-letter .kb-alt { top: auto; bottom: 4px; }
 body.flick-swap .kb-key[data-key="."] .kb-alt { top: auto; bottom: 4px; }
 body.flick-swap .kb-key.zh-punct .kb-main { inset: 12% 0 42%; }
 body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
@@ -1398,6 +1406,8 @@ body[data-one-hand] .panel-head { gap: 5px; }
 body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
 .panel-tabs { margin: 0; }
 .panel-action { color: var(--text); height: 30px; margin-left: auto; }
+/* 「清空」确认态（#39 两击确认） */
+.panel-action.danger { color: var(--danger); font-weight: 600; }
 #panelList {
     flex: 1;
     min-height: 0;

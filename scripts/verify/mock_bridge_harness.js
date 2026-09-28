@@ -815,8 +815,10 @@ class MockNative {
     }
     getStores(token) {
         this._record('getStores', [token]);
+        // 未写入过镜像 = 无 values 键（对齐真实 readStoresMirror 的 "{}"，
+        // pullStores 以 values 键缺席区分「未初始化」与「显式空恢复」）。
         if (this.storesPayload) return this.storesPayload;
-        return JSON.stringify({ rev: this.storesRev || 0, values: {} });
+        return '{}';
     }
     removeFavorite(id, token) {
         this._record('removeFavorite', [id, token]);
