@@ -2763,7 +2763,13 @@ test('dp14 layout: quick tile flips the preference through the bridge (issue #36
     w.tap(w.$('setupButton'));
     const tile = w.tile('双拼14键');
     assert(tile, 'dp14 tile rendered on the quick settings home');
+    // ace 实录回归：tile 本地翻后立即渲染，不等 hello 回流（回流值与
+    // 本地值相等，变化检测永远不触发——26 键死锁）。
+    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 0,
+        '26-key layout before the tap');
     w.tap(tile);
+    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 12,
+        'tile tap re-renders the merged pairs immediately');
     const saved = w.native.of('setQuickPref').filter(c => c.args[0] === 'dpLayout');
     equal(saved.length, 1, 'tile tap writes dpLayout once');
     equal(saved[0].args[1], '14', 'first tap selects the 14-key layout');

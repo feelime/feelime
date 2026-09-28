@@ -291,7 +291,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.0';
+    const KEYBOARD_VERSION = '3.73.1';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -6921,6 +6921,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             if (typeof Native.setQuickPref !== 'function') return;
                             this.dpLayout = this.dpLayout === '14' ? '26' : '14';
                             quickPref('dpLayout', this.dpLayout);
+                            // 本地翻完立即重渲染（ace 实录：tile 的本地翻
+                            // 与 hello 回流都检测不到「变化」——本地值已等于
+                            // 回流值，renderMode 永远不被触发）。
+                            if (this.mode === 'double-pinyin') this.renderMode();
                             rehome();
                         },
                     },
