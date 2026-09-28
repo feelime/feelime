@@ -95,7 +95,10 @@ object EngineDataStore {
         // 自编变体——shared 变体是按内置 table 编的，跨基底配对出错位候选。
         // 缺口返回 null 走严格全拼，补编由 ensureFuzzyVariantIfNeeded 负责。
         val customBase = File(context.filesDir, "rime-user/build/luna_pinyin.table.bin").isFile
-        val variant = userVariant.takeIf { it.isFile }
+        // codex 三轮 P1-2：自编变体还要无编译事务位（半截 prism 不可用）。
+        val userIntact = !customBase ||
+            com.feelime.ime.engine.BaseDictInstaller.fuzzyVariantIntact(context, mask)
+        val variant = userVariant.takeIf { it.isFile && userIntact }
             ?: sharedVariant.takeIf { it.isFile && !customBase }
         val active = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}.prism.bin")
         if (variant == null) return null

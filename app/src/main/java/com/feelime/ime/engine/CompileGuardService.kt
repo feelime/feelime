@@ -30,7 +30,14 @@ class CompileGuardService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startInForeground()
+        // codex 三轮 P2-4：升前台被系统拒（如后台态启动的临时许可过期）会
+        // 在主线程抛 ForegroundServiceStartNotAllowedException 直接崩进程
+        // ——接住并自灭，编译降级为无保活继续跑（与 start() 被拒同语义）。
+        runCatching { startInForeground() }
+            .onFailure {
+                android.util.Log.w("FeelimeBaseDict", "compile guard fg: ${it.message}")
+                stopSelf()
+            }
         return START_NOT_STICKY
     }
 

@@ -126,6 +126,11 @@ object BaseDictInstaller {
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "feelime-base-dict") }
     private val building = AtomicBoolean(false)
 
+    /** 忙时排队的登记/消费共用锁（codex 三轮 P2-3）：CAS 失败到写 pending
+     *  之间若被切走，收尾消费可能读到旧值 0 提前结束——丢唤醒。同锁后
+     *  消费方必然看到登记方刚写的值。 */
+    private val pendingLock = Any()
+
     // 可重订阅的状态快照（codex review P2-8）：编译期间设置页关闭重开，
     // 新页面从 state 恢复提示行，不依赖旧 bridge 的事件回调。
     @Volatile private var stageSnapshot: String? = null
@@ -149,38 +154,35 @@ object BaseDictInstaller {
             CompileGuardService.start(app)
             var result = runCatching { installBlocking(app, uri, displayName, pushEvent) }
                 .getOrElse {
-                    rollback(app)
+                    runCatching { rollback(app) }
                     InstallResult("BASE_DICT_INTERNAL", changed = true)
                 }
-            // finally 兜底（整体 review D）：收尾段（广播/补偿/事件回调）
-            // 若抛异常，building=true 与 FGS 通知会泄漏——进程内后续导入
-            // 全被 check(building) 拒。正常路径顺序不变。
-            try {
+            // building 先清（换装广播的前置——receiver 的 P1-4 守卫正拦着
+            // 编译期的 reloadGlobal）。此后本 lambda 不再触碰 building：
+            // 收尾补偿排入的下一个补编任务由它自己的 CAS 持有，上一个
+            // 任务的 finally 若再清零会让补编全程裸奔（codex 三轮 P1-1）。
             building.set(false)
             stageSnapshot = null
-            // 换装广播必须在 building 清零后发——receiver 的 P1-4 守卫正拦着
-            // 编译期的 reloadGlobal，building=true 时发等于自我吞掉。
-            if (result.changed) {
-                app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
-            }
-            // 导入期间用户切模糊音的补偿（P2-6）：走了排队路径的由
-            // compensatePendingFuzzy 处理；没走成排队的（基底导入期
-            // mode 尚未提交、receiver 早退，切到的组合不在安装清单）
-            // 由这次无条件补判兜住——prism 已在就 no-op。
-            compensatePendingFuzzy(app)
-            if (result.code == null) ensureFuzzyVariantIfNeeded(app)
-            CompileGuardService.stop(app)
-            pushEvent(
-                JSONObject()
-                    .put("type", if (result.code == null) "dictBaseDone" else "dictBaseError")
-                    .put("code", result.code ?: "OK")
-                    .put("message", messageFor(app, result.code)),
-            )
-            onFinished()
+            try {
+                if (result.changed) {
+                    app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
+                }
+                pushEvent(
+                    JSONObject()
+                        .put("type", if (result.code == null) "dictBaseDone" else "dictBaseError")
+                        .put("code", result.code ?: "OK")
+                        .put("message", messageFor(app, result.code)),
+                )
+                onFinished()
             } finally {
-                building.set(false)
                 CompileGuardService.stop(app)
             }
+            // 补偿放 building/FGS 语义收尾之后（P2-6）：走了排队路径的由
+            // compensatePendingFuzzy 处理；没走成排队的（基底导入期 mode
+            // 尚未提交、receiver 早退，切到的组合不在安装清单）由这次
+            // 无条件补判兜住——prism 已在就 no-op。
+            compensatePendingFuzzy(app)
+            if (result.code == null) ensureFuzzyVariantIfNeeded(app)
         }
     }
 
@@ -189,12 +191,14 @@ object BaseDictInstaller {
     /** 忙时排队的补编补偿（P2-6）：任务收尾（building 已清零）统一触发。
      *  目标变体若本次安装清单已编出（prism 在），ifNeeded 自行 no-op。 */
     private fun compensatePendingFuzzy(app: Context) {
-        val pending = app.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-            .getInt(KEY_FUZZY_PENDING_MASK, 0)
-        if (pending != 0) {
-            app.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
-                .remove(KEY_FUZZY_PENDING_MASK).apply()
-            ensureFuzzyVariantIfNeeded(app)
+        synchronized(pendingLock) {
+            val pending = app.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+                .getInt(KEY_FUZZY_PENDING_MASK, 0)
+            if (pending != 0) {
+                app.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
+                    .remove(KEY_FUZZY_PENDING_MASK).apply()
+                ensureFuzzyVariantIfNeeded(app)
+            }
         }
     }
 
@@ -217,24 +221,23 @@ object BaseDictInstaller {
                     runCatching { revertFlypy(app) }
                     InstallResult("BASE_DICT_INTERNAL", changed = true)
                 }
-            try {
             building.set(false)
             stageSnapshot = null
-            if (result.changed) {
-                app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
-            }
-            compensatePendingFuzzy(app)
-            pushEvent(
-                JSONObject()
-                    .put("type", if (result.code == null) "flypyDone" else "flypyError")
-                    .put("code", result.code ?: "FLYPY_OK")
-                    .put("message", messageFor(app, result.code ?: "FLYPY_OK")),
-            )
-            onFinished()
+            try {
+                if (result.changed) {
+                    app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
+                }
+                pushEvent(
+                    JSONObject()
+                        .put("type", if (result.code == null) "flypyDone" else "flypyError")
+                        .put("code", result.code ?: "FLYPY_OK")
+                        .put("message", messageFor(app, result.code ?: "FLYPY_OK")),
+                )
+                onFinished()
             } finally {
-                building.set(false)
                 CompileGuardService.stop(app)
             }
+            compensatePendingFuzzy(app)
         }
     }
 
@@ -267,9 +270,19 @@ object BaseDictInstaller {
         val variant = BaseDictFiles.fuzzyVariant(mask) ?: return
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         if (prefs.getString(KEY_MODE, "builtin") != "custom") return
-        if (File(context.filesDir, "rime-user/build/$variant.prism.bin").isFile) return
+        if (fuzzyVariantIntact(context, mask)) return
         android.util.Log.i("FeelimeBaseDict", "fuzzy variant $variant missing -> compile")
         ensureFuzzyVariantAsync(context, mask)
+    }
+
+    /** 变体产物可用 = prism 存在且无编译事务位残留（codex 三轮 P1-2：
+     *  librime 原地写，中断的半截 prism 文件也在——只看 isFile 会把
+     *  残骸当可用变体喂给运行时）。fuzzySchemaId 与入口共用本判定。 */
+    fun fuzzyVariantIntact(context: Context, mask: Int): Boolean {
+        val variant = BaseDictFiles.fuzzyVariant(mask) ?: return false
+        if (!File(context.filesDir, "rime-user/build/$variant.prism.bin").isFile) return false
+        return context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+            .getInt(KEY_FUZZY_COMPILING_MASK, 0) == 0
     }
 
     fun ensureFuzzyVariantAsync(context: Context, mask: Int) {
@@ -279,32 +292,35 @@ object BaseDictInstaller {
         // receiver 的 isBuilding 守卫必须同样拦住主线程 reloadGlobal（否则
         // finalize join 编译线程 = ANR）。抢不到即排队，由当前任务的收尾
         // （installBlocking 提交段 / 本函数结尾）统一补偿。
-        if (!building.compareAndSet(false, true)) {
-            context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
-                .putInt(KEY_FUZZY_PENDING_MASK, mask).apply()
-            android.util.Log.i("FeelimeBaseDict", "busy -> fuzzy m$mask queued")
-            return
+        synchronized(pendingLock) {
+            if (!building.compareAndSet(false, true)) {
+                context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
+                    .putInt(KEY_FUZZY_PENDING_MASK, mask).apply()
+                android.util.Log.i("FeelimeBaseDict", "busy -> fuzzy m$mask queued")
+                return
+            }
         }
         worker.execute {
             CompileGuardService.start(app)
             val code = runCatching { compileFuzzyVariant(app, mask) }
                 .getOrElse { "BASE_DICT_INTERNAL" as String? }
-            try {
             building.set(false)
-            if (code != null) {
-                android.util.Log.w("FeelimeBaseDict", "fuzzy variant m$mask compile: $code")
-            } else {
-                android.util.Log.i("FeelimeBaseDict", "fuzzy variant m$mask compiled")
-            }
-            // 失败也发（codex 二轮 P2-5）：reloadGlobal 已使旧会话失效，
-            // 失败收尾同样要重建会话（回严格全拼），否则输入不恢复。
-            app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
-            // 补偿排队中的补编（串行 worker 上不存在重入）。
-            compensatePendingFuzzy(app)
+            try {
+                if (code != null) {
+                    android.util.Log.w("FeelimeBaseDict", "fuzzy variant m$mask compile: $code")
+                } else {
+                    android.util.Log.i("FeelimeBaseDict", "fuzzy variant m$mask compiled")
+                }
+                // 失败也发（codex 二轮 P2-5）：reloadGlobal 已使旧会话失效，
+                // 失败收尾同样要重建会话（回严格全拼），否则输入不恢复。
+                app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             } finally {
-                building.set(false)
                 CompileGuardService.stop(app)
             }
+            // 补偿排队中的补编（串行 worker 上不存在重入）；放 building
+            // 清零之后，下一个任务的 CAS 不被本任务的 finally 覆盖
+            // （codex 三轮 P1-1）。
+            compensatePendingFuzzy(app)
         }
     }
 
@@ -472,6 +488,29 @@ object BaseDictInstaller {
         if (prefs.getInt(KEY_INSTALLING_PID, -1) == android.os.Process.myPid() &&
             isBuilding()
         ) return
+        // 补编中断的事务位（codex 三轮 P1-2）：不占 KEY_INSTALLING，单独
+        // 清扫——半截 prism 删掉，让下次 ensure 判定缺失并重编。
+        val staleCompiling = prefs.getInt(KEY_FUZZY_COMPILING_MASK, 0)
+        if (staleCompiling != 0) {
+            val variant = BaseDictFiles.fuzzyVariant(staleCompiling)
+            android.util.Log.w("FeelimeBaseDict", "sweeping interrupted fuzzy m$staleCompiling")
+            runCatching {
+                if (variant != null) {
+                    File(context.filesDir, "rime-user/build/$variant.prism.bin").delete()
+                }
+                // 编译现场的 user 根残留（源/umbrella/default/变体 schema）
+                // 一并清——finallyCleanup 没机会跑。
+                val user = File(context.filesDir, "rime-user")
+                File(user, BaseDictFiles.SOURCE_DIR).deleteRecursively()
+                File(user, BaseDictFiles.UMBRELLA_FILE).delete()
+                File(user, BaseDictFiles.DEFAULT_FILE).delete()
+                File(File(user, "build"), BaseDictFiles.DEFAULT_FILE).delete()
+                (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { m ->
+                    File(user, "${FuzzyPinyin.SCHEMA_ID}_m$m.schema.yaml").delete()
+                }
+            }
+            prefs.edit().remove(KEY_FUZZY_COMPILING_MASK).apply()
+        }
         val kind = prefs.getString(KEY_INSTALLING_KIND, KIND_BASE) ?: KIND_BASE
         android.util.Log.w("FeelimeBaseDict", "sweeping interrupted $kind install")
         // #20：按 kind 分派回滚目标——音形导入中断只回滚音形现场，
