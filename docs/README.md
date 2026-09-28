@@ -3,6 +3,12 @@
 按主题组织。给 AI agent / 新贡献者的阅读顺序建议：
 根目录 [AGENTS.md](../AGENTS.md)（工程约定与命令）→ 本索引 → 按任务挑对应主题。
 
+## development/ — 构建与环境
+
+- [`development/building.md`](development/building.md) — **新机器 / 换环境**
+  从零到出 APK 的完整步骤（前置组件、~/.config/feelime 配置、gradle 代理、
+  setup-assets.sh、构建命令与首包核验），含四个必踩坑的规避方法。
+
 ## design/ — 产品与键盘设计
 
 - [`design/keyboard.md`](design/keyboard.md) — 产品与交互语义的**权威文档**

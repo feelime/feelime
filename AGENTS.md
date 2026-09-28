@@ -62,6 +62,10 @@ third_party/                    许可证清单与来源闭包
 
 ## 本机构建环境（不入仓库）
 
+换机器 / 新环境从零到出第一个 APK 的完整步骤（JDK 版本、gradle 代理、
+SDK 定位等必踩坑的规避）见
+[docs/development/building.md](docs/development/building.md)。
+
 仓库面向开源，任何主机名、本机路径、签名凭据都不得入库；它们统一放在
 每台机器的 `~/.config/feelime/`，所有 worktree/clone 共享一份：
 

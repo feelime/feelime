@@ -99,4 +99,5 @@ echo "  models: $MODELS_ROOT"
 # The :feelime-models PAD module resolves its assets through the in-tree
 # path (gitignored); keep it pointing at the shared tree so Play builds see
 # the same verified bytes as direct builds.
+mkdir -p "$PROJECT_DIR/app/src/modelAssets"
 ln -sfn "$MODELS_ROOT" "$PROJECT_DIR/app/src/modelAssets/full"
