@@ -10,6 +10,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Model download consent checks whether the active network is metered. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 词库编译保活（CompileGuardService）：分钟级批处理跑在设置页进程，
+         无 FGS 时灭屏数分钟即被厂商系统清理（ace 实录 am_proc_died）。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <application
@@ -85,6 +89,17 @@
             <meta-data
                 android:name="android.view.im"
                 android:resource="@xml/method" />
+        </service>
+
+        <!-- 词库编译保活（specialUse：设备端词库重编译，用户在设置页
+             主动发起的分钟级批处理，见 CompileGuardService 注释）。 -->
+        <service
+            android:name=".engine.CompileGuardService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="device-side dictionary recompilation initiated by the user from the settings page" />
         </service>
 
         <!-- 诊断导出文件（cache/exports/）经系统分享面板发出（ACTION_SEND）。

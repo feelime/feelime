@@ -483,6 +483,7 @@ MODE_MENU_SUBSTRINGS = {
     "双拼": ["双拼", "DP"],
     "九宫格 T9": ["九宫格", "T9"],
     "笔画 Stroke": ["笔画", "Stroke", "笔"],
+    "音形 Shape": ["音形", "Shape", "形"],
     "Français": ["Français"],
     "Русский": ["Русский"],
     "日本語 Romaji": ["日本語", "Romaji", "Japanese"],
@@ -1658,6 +1659,8 @@ def switch_mode(kb, title):
         "双拼": {"双", "DP"},
         "九宫格 T9": {"九", "T9"},
         "笔画 Stroke": {"笔", "ST"},
+        # #20 音形：MODES 短标「形」；英文 alias 同款两字母约定。
+        "音形 Shape": {"形", "SH"},
         "Français": {"FR"},
         "Русский": {"РУ"},
         "日本語 Romaji": {"日", "JP"},

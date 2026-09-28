@@ -147,6 +147,17 @@ bash scripts/verify/run-all.sh    # 全量门禁（--list/--resume/--from/--prof
 从那里读；它进 APK 曾白占 17MB（2026-09 定罪），别再搬回去。再生成走
 pinned 管线（输入全部是上游开源归档，哈希钉死）：
 
+**手加/改 engine-data 文件必须同步登记 `MANIFEST.json`**（bytes+sha256）：
+`checkEngineArtifacts` 只校验已列出的文件，多出的新文件不报错也不进部署
+清单——设备端 `EngineDataStore` 按 MANIFEST 部署，不登记 = 永远不落位
+（2026-09-28 #20 实录：手加 feelime_flypy.schema.yaml 后设备报
+`missing input schema`，登记后即好）。
+
+**词库导入/编译类功能的部署依赖**：`EngineDataStore.ensureAsync` 只挂在
+IME service 的 onCreate——装新 APK 后直接进设置页（service 未起）时部署
+从未跑过，任何依赖 `verifyGroup` 的入口（词库导入等）必须先调
+`ensureSync`（BaseDictInstaller 两个导入入口已带，新入口照抄）。
+
 ```bash
 ./scripts/research/fetch-native-engine-inputs.sh ~/tmp/feelime-native-inputs
 # NDK r29 解压到任意目录后：

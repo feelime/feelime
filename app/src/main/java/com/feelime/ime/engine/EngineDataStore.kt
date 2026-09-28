@@ -29,6 +29,14 @@ object EngineDataStore {
         }.apply { isDaemon = true }.start()
     }
 
+    /** 同步部署（词库导入入口用）：ensureAsync 只挂在 IME service 的
+     *  onCreate——装新 APK 后直接进设置页（service 未起）时部署从未
+     *  跑过，verifyGroup 恒 null，导入必报 ENGINE_NOT_READY。已在
+     *  worker 线程，阻塞拷贝可接受。 */
+    fun ensureSync(context: Context) {
+        runCatching { ensure(context.applicationContext) }
+    }
+
     fun mismatched(): Boolean = mismatch
 
     /** Fast pointer check used for the HTML mode menu (no hashing). */
@@ -38,8 +46,19 @@ object EngineDataStore {
             InputMode.DIRECT -> true
             InputMode.PINYIN -> File(root, "rime/luna_pinyin.schema.yaml").isFile
             InputMode.DOUBLE_PINYIN -> File(root, "rime/${DoublePinyinScheme.schemaId(context)}.schema.yaml").isFile
-            InputMode.T9 -> File(root, "rime/luna_pinyin_t9.schema.yaml").isFile
+            // #35：基底自定义时 T9 就绪看 staging 产物（大词库跳编 T9 后
+            // 模式自动隐藏；shared 的 t9 prism 是按内置 table 编的，
+            // 配自定义 table 会错位候选，不能拿来用）。
+            InputMode.T9 ->
+                if (File(context.filesDir, "rime-user/build/luna_pinyin.table.bin").isFile)
+                    File(context.filesDir, "rime-user/build/luna_pinyin_t9.prism.bin").isFile
+                else File(root, "rime/luna_pinyin_t9.schema.yaml").isFile
             InputMode.STROKE -> File(root, "rime/feelime_stroke.schema.yaml").isFile
+            // #20 音形码表：产物不在 engine-data（用户设备端编译），就绪 =
+            // staging 里 table 存在（未导入时模式菜单不显示）。
+            InputMode.FLYPY -> File(
+                context.filesDir, "rime-user/build/${BaseDictFiles.FLYPY_TABLE}",
+            ).isFile
             InputMode.FRENCH -> File(root, "hunspell/fr.aff").isFile
             InputMode.RUSSIAN -> File(root, "hunspell/ru_RU.aff").isFile
             InputMode.JAPANESE -> File(root, "mozc/mozc.data").isFile
@@ -72,9 +91,17 @@ object EngineDataStore {
             context.filesDir, "rime-user/build/${FuzzyPinyin.SCHEMA_ID}_m$mask.prism.bin",
         )
         val sharedVariant = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}_m$mask.prism.bin")
-        val variant = userVariant.takeIf { it.isFile } ?: sharedVariant
+        // codex 二轮 P2-C：基底是用户自定义（staging 有自编 table）时只认
+        // 自编变体——shared 变体是按内置 table 编的，跨基底配对出错位候选。
+        // 缺口返回 null 走严格全拼，补编由 ensureFuzzyVariantIfNeeded 负责。
+        val customBase = File(context.filesDir, "rime-user/build/luna_pinyin.table.bin").isFile
+        // codex 三轮 P1-2：自编变体还要无编译事务位（半截 prism 不可用）。
+        val userIntact = !customBase ||
+            com.feelime.ime.engine.BaseDictInstaller.fuzzyVariantIntact(context, mask)
+        val variant = userVariant.takeIf { it.isFile && userIntact }
+            ?: sharedVariant.takeIf { it.isFile && !customBase }
         val active = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}.prism.bin")
-        if (!variant.isFile) return null
+        if (variant == null) return null
         // active 不在 MANIFEST 里，长度相等的内容损坏无法被启动校验发现：
         // 以内容一致为准，不一致就一律从已校验的变体重新物化
         // （codex round-1 P2-5）。

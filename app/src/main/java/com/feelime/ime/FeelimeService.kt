@@ -372,6 +372,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private val fuzzyPinyinReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             if (intent?.action != ACTION_FUZZY_PINYIN_CHANGED) return
+            // #35 延迟编译：custom 基底下切到未编译的模糊音组合时补编该
+            // 变体（builtin 基底用 shared 预编译全量恒不缺）。期间输入按
+            // 严格全拼降级，编完的换装广播重建会话用上新 prism。
+            runCatching {
+                com.feelime.ime.engine.BaseDictInstaller.ensureFuzzyVariantIfNeeded(applicationContext)
+            }
             onMain {
                 if (coordinator.currentMode == com.feelime.ime.engine.InputMode.PINYIN) {
                     coordinator.recreateEngineSession { }
@@ -613,6 +619,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // P1-5：上次基底词库编译若被进程中断（installing 标记残留），
         // 在任何引擎初始化之前回滚到内置——半截产物不能进运行时。
         com.feelime.ime.engine.BaseDictInstaller.sweepPending(this)
+        // P2-F 后半（codex 二轮）：service 未运行时用户切模糊音，换频道的
+        // 广播无人收——启动时补判目标变体是否缺失（custom 基底 + prism
+        // 在 = no-op，秒回）。
+        com.feelime.ime.engine.BaseDictInstaller.ensureFuzzyVariantIfNeeded(this)
         UiLanguage.preferences(this)
             .registerOnSharedPreferenceChangeListener(uiLanguageListener)
         engine = AsrEngine(applicationContext, this)
@@ -1858,7 +1868,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put(
                 "engineDataReady",
                 JSONObject().apply {
-                    listOf("pinyin", "double-pinyin", "t9", "stroke", "handwriting", "japanese", "french", "russian").forEach { mode ->
+                    // #20 flypy 是 strictReady：未导入码表时 hello 仍带
+                    // 字段（false），菜单不出入口；导入完成的换装广播会
+                    // 重推 hello 使其变可用。
+                    listOf("pinyin", "double-pinyin", "t9", "stroke", "flypy", "handwriting", "japanese", "french", "russian").forEach { mode ->
                         put(mode, engineDataReady(mode))
                     }
                 },

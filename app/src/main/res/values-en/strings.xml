@@ -26,4 +26,6 @@
     <string name="keyboard_signature_bad_title">Keyboard package signature mismatch</string>
     <string name="keyboard_signature_bad_message">This keyboard package was not signed with the official release key (it may be self-modified or third-party). After importing it runs marked as "signature unverified" and survives restart. Import anyway?</string>
     <string name="keyboard_signature_bad_confirm">Import anyway</string>
+    <string name="dict_compile_channel">Dictionary compilation</string>
+    <string name="dict_compile_title">Compiling dictionary…</string>
 </resources>

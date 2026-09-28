@@ -82,6 +82,18 @@ def open_appearance_page():
                              timeout=6.0) == ["appearance"]
 
 
+def open_skin_page():
+    """皮肤三级页（main 1eaedc3 起：背景图选择与键面滑杆从外观页挪进
+    skin 子页，外观页只剩主题/预览；返回键栈式回外观）。"""
+    if not open_appearance_page():
+        return False
+    if not shared.settings_tap('button[data-target="skin"]'):
+        return False
+    return shared.wait_until(
+        shared.settings_visible_pages,
+        lambda pages: "skin" in (pages or []), timeout=6.0) is not None
+
+
 def scroll_setting_into_view(selector):
     """把目标行滚到视口中央（外观页加了预览区后页面变长，拖拽落点
     依赖元素实际在屏内）。"""
@@ -188,7 +200,8 @@ def main():
         record("dark glyph is the moon", state.get("glyph") == "themeMoon", state)
 
     # S4 背景图：亮/暗两组各自内置（先亮组，键盘取证；再暗组换主题取证）。
-    if not open_appearance_page():
+    # 皮肤三级页之后 bg 选择在 skin 页；themeMode 仍在外观页。
+    if not open_skin_page():
         record("light bg builtin via real select", False, "page open failed")
     elif not (scroll_setting_into_view("#bgImageLight")
               and pick_until_pref("#bgImageLight", ["内置", "Built-in"], "bg_image_light_src", "builtin", expect_value="builtin")):
@@ -197,7 +210,8 @@ def main():
         record("light bg builtin via real select",
                wait_pref("bg_image_light_src", "builtin"))
         # 亮组图只在浅色主题下展示（S3 把主题留在了深色，先切回来）。
-        if not (shared.pick_select_option("#themeMode", ["浅色", "Light"],
+        if not (open_appearance_page()
+                and shared.pick_select_option("#themeMode", ["浅色", "Light"],
                                           expect_value="light")
                 and wait_pref("theme_mode", "light")):
             record("light bg check needs light theme", False)
@@ -208,7 +222,7 @@ def main():
                state)
         d.screenshot("/tmp/fv-appearance-light-bg.png")
 
-    if not open_appearance_page():
+    if not open_skin_page():
         record("dark bg builtin via real select", False, "page open failed")
     elif not (scroll_setting_into_view("#bgImageDark")
               and pick_until_pref("#bgImageDark", ["内置", "Built-in"], "bg_image_dark_src", "builtin", expect_value="builtin")):
@@ -226,7 +240,7 @@ def main():
         d.screenshot("/tmp/fv-appearance-dark-bg.png")
 
     # S5 不透明度：真实拖动滑块（拇指实际移动），再精确落 50 做键盘断言。
-    if not open_appearance_page():
+    if not open_skin_page():
         record("appearance page re-open for slider", False)
     else:
         scroll_setting_into_view("#keyOpacity")
@@ -254,22 +268,30 @@ def main():
             d.screenshot("/tmp/fv-appearance-opacity50.png")
 
     # S6 返回首页；清理到默认（无背景 / auto / 不透明）。
+    # 返回链（skin 三级页后是两跳）：skin→外观→首页。
     back_ok = False
-    if shared.settings_visible_pages() == ["appearance"]:
-        back = sev("(() => { const b = document.querySelector("
-                   " '[data-page=\"appearance\"] [data-back]');"
-                   " if (b) { b.click(); return 'ok'; } return 'miss'; })()")
+    if "skin" in (shared.settings_visible_pages() or []):
+        b1 = sev("(() => { const b = document.querySelector("
+                 " '[data-page=\"skin\"] [data-back]');"
+                 " if (b) { b.click(); return 'ok'; } return 'miss'; })()")
         time.sleep(0.6)
-        back_ok = back == "ok" and shared.settings_visible_pages() == ["home"]
+        if b1 == "ok" and shared.settings_visible_pages() == ["appearance"]:
+            b2 = sev("(() => { const b = document.querySelector("
+                     " '[data-page=\"appearance\"] [data-back]');"
+                     " if (b) { b.click(); return 'ok'; } return 'miss'; })()")
+            time.sleep(0.6)
+            back_ok = b2 == "ok" and shared.settings_visible_pages() == ["home"]
     record("appearance back button returns home", back_ok)
 
-    if open_appearance_page():
+    # 清理：bg/不透明度在 skin 页，主题在外观页。
+    if open_skin_page():
         legs = {
             "bgLight": pick_until_pref("#bgImageLight", ["无", "None"], "bg_image_light_src", "", expect_value="none"),
             "bgDark": pick_until_pref("#bgImageDark", ["无", "None"], "bg_image_dark_src", "", expect_value="none"),
             "opacity": (set_slider_via_events(100), wait_pref("key_opacity", "100"))[1],
-            "theme": pick_until_pref("#themeMode", ["跟随系统", "Follow system"], "theme_mode", "auto", expect_value="auto"),
         }
+        if open_appearance_page():
+            legs["theme"] = pick_until_pref("#themeMode", ["跟随系统", "Follow system"], "theme_mode", "auto", expect_value="auto")
         record("cleanup restores defaults (no bg / auto / opaque)", all(legs.values()),
                " ".join(f"{k}={'ok' if v else 'FAIL'}" for k, v in legs.items()))
     else:

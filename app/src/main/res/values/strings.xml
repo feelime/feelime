@@ -14,6 +14,8 @@
     <string name="shortcut_request_sent">已向桌面发出固定快捷方式请求</string>
     <string name="shortcut_request_rejected">桌面没有接受固定快捷方式请求</string>
     <string name="ime_tile_name">输入法切换</string>
+    <string name="dict_compile_channel">词库编译</string>
+    <string name="dict_compile_title">正在编译词库…</string>
     <string name="ime_tile_added">输入法磁贴已加入控制中心</string>
     <string name="ime_tile_already_added">输入法磁贴已经在控制中心里了</string>
     <string name="ime_tile_request_rejected">系统没有添加输入法磁贴，请在控制中心编辑页手动添加</string>

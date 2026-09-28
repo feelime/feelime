@@ -19,7 +19,8 @@ const $ = id => document.getElementById(id);
 // 键盘选择（验收 2026-09-24）：与键盘 MODES 一致；默认菜单 = round-6 五项。
 const KEYBOARD_MODES = [
     ['direct', '英文直出'], ['pinyin', '全拼'], ['double-pinyin', '双拼'],
-    ['t9', '九宫格'], ['stroke', '笔画'], ['handwriting', '手写'],
+    ['t9', '九宫格'], ['stroke', '笔画'], ['flypy', '音形'],
+    ['handwriting', '手写'],
     ['french', '法语'], ['russian', '俄语'], ['japanese', '日语'],
 ];
 const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
@@ -102,12 +103,22 @@ const I18N = {
         "nav.backDict": "返回词库",
         "dict.base.title": "基底词库",
         "dict.base.badge": "基底",
-        "dict.base.hint": "换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。",
+        "dict.base.hint": "换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典；万象拼音请选去声调的 Lite 版 zip 整包），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。",
         "dict.base.pick": "选择词库文件换装",
         "dict.base.revert": "恢复内置词库",
         "dict.base.builtin": "内置 rime-frost（白霜拼音）",
         "dict.base.custom": "自定义：{0}",
         "dict.base.nonPinyin": "抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。",
+        "dict.base.t9Skip": "此词库词条较多：编译九宫格（T9）词库的内存开销超出本机承受（会被系统中止），本次导入跳过了九宫格，拼音/双拼不受影响；换更小的词库或恢复内置后九宫格即恢复。",
+        "dict.base.toned": "此词库的编码带声调（疑似完整版，如万象拼音 Base）：键盘打不出声调符号，很多字将无法命中，请改用去声调的 Lite 版（或换回内置词库）。",
+        "flypy.title": "音形码表",
+        "flypy.badge": "音形",
+        "flypy.hint": "导入形码方案码表（如小鹤音形的 rime 词表 .dict.yaml，或 TAB 分隔的「词、码」纯文本）：两码音 + 两码形，四码唯一顶字上屏。在本机编译为独立的音形模式，不影响拼音词库；可随时移除。",
+        "flypy.pick": "导入音形码表",
+        "flypy.revert": "移除码表",
+        "flypy.none": "未导入（模式菜单暂无音形模式）",
+        "flypy.custom": "已导入：{0}",
+        "flypy.building": "正在处理音形码表…",
         "dict.base.stageCopy": "正在读取词库文件…",
         "dict.base.stageCompile": "正在编译词库（期间中文输入暂不可用），可离开此页，完成后自动换装",
         "dict.base.elapsed": "已编译 {0} 秒",
@@ -605,12 +616,22 @@ const I18N = {
         "nav.backDict": "Back to dictionary",
         "dict.base.title": "Base dictionary",
         "dict.base.badge": "Base",
-        "dict.base.hint": "Swap the whole lexicon: pick a rime dictionary file (.dict.yaml, e.g. from rime-ice) and it recompiles on this device (a few minutes); fuzzy/double-pinyin/T9 rebuild with it. Built-in can be restored anytime.",
+        "dict.base.hint": "Swap the whole lexicon: pick a rime dictionary file (.dict.yaml, e.g. from rime-ice; for wanxiang use the tone-free Lite zip) and it recompiles on this device (a few minutes); fuzzy/double-pinyin/T9 rebuild with it. Built-in can be restored anytime.",
         "dict.base.pick": "Pick a dictionary file",
         "dict.base.revert": "Restore built-in",
         "dict.base.builtin": "Built-in rime-frost",
         "dict.base.custom": "Custom: {0}",
         "dict.base.nonPinyin": "A large share of codes in this dictionary are not pinyin syllable sequences (shape-code layout): characters may not be reachable by typing their pronunciation. Dedicated shape-code schema support may come later.",
+        "dict.base.t9Skip": "This dictionary has many entries: compiling the T9 (9-key) prism would exceed this device's available memory, so the 9-key mode was skipped for this import. Pinyin and double-pinyin are unaffected; a smaller dictionary or the built-in one restores it.",
+        "dict.base.toned": "Codes in this dictionary carry tone marks (likely the full variant, e.g. wanxiang Base): tones are not typeable on this keyboard, so many entries will never match. Use the tone-free Lite variant (or restore the built-in).",
+        "flypy.title": "Shape-code table",
+        "flypy.badge": "Shape",
+        "flypy.hint": "Import a shape-code table (e.g. the flypy rime dict .dict.yaml, or plain TAB-separated word/code text): two sound codes + two shape codes, unique 4-code auto-commit. Compiled on this device into a standalone mode - the pinyin lexicon is untouched. Removable anytime.",
+        "flypy.pick": "Import shape-code table",
+        "flypy.revert": "Remove table",
+        "flypy.none": "Not imported (no shape mode in the mode menu yet)",
+        "flypy.custom": "Imported: {0}",
+        "flypy.building": "Processing the shape-code table…",
         "dict.base.stageCopy": "Reading the dictionary file…",
         "dict.base.stageCompile": "Compiling (Chinese input pauses meanwhile) - you can leave this page; the keyboard swaps over when done",
         "dict.base.elapsed": "{0}s elapsed",
@@ -1250,6 +1271,11 @@ window.FeelimeSettings = {
                 setNote("dictBaseNote", event.message || "");
                 $("dictBaseBuilding").hidden = true;
                 break;
+            case "flypyDone":
+            case "flypyError":
+                setNote("flypyNote", event.message || "");
+                $("flypyBuilding").hidden = true;
+                break;
             case "dpSchemeError":
                 setNote("dpNote", eventText(event, "error.INVALID_DP_SCHEME"));
                 break;
@@ -1356,6 +1382,7 @@ function render(state) {
     renderCustomPhrases(state);
     renderUserWords(state);
     renderDictBase(state);
+    renderFlypy(state);
     renderUpdate(state);
     renderAbout(state);
 }
@@ -2439,12 +2466,50 @@ function renderDictBase(state) {
     // #37：形码/音形特征持续警示（换回内置或导入拼音系码表即消失）。
     const warn = $("dictBaseNonPinyin");
     if (warn) warn.hidden = !(typeof base.nonPinyin === "number");
+    // #35：带调码表（疑似完整版）持续警示。
+    const toned = $("dictBaseToned");
+    if (toned) toned.hidden = !base.toned;
+    // T9 内存门跳编的持续提示（词条量/内存不足）。
+    const t9skip = $("dictBaseT9Skip");
+    if (t9skip) t9skip.hidden = !base.t9Skipped;
     $("btnBaseDictRevert").hidden = base.mode !== "custom" || base.building;
     $("btnBaseDictPick").disabled = !!base.building;
     $("dictBaseBuilding").hidden = !base.building;
     if (base.building) {
         $("dictBaseBuilding").textContent =
             dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+    }
+}
+$("btnFlypyPick").addEventListener("click", () => call("openFlypyDocument"));
+$("btnFlypyRevert").addEventListener("click", () => call("clearFlypy"));
+
+/** state.baseDict.flypy: {installed, name, installedAt}——音形码表独立
+ *  状态段（#20）。building 与基底换装共用同一互斥标志。 */
+function renderFlypy(state) {
+    const flypy = (state.baseDict || {}).flypy || {};
+    // #20 幂等补勾选（codex P2-6）：导入成功后音形进长按菜单——放在
+    // 渲染层而非 flypyDone 事件里，编译期间退出设置页丢事件的路径
+    // （旧 bridge 销毁）也能在下次渲染补上。
+    if (flypy.installed) {
+        const box = document.querySelector('#kbModeList input[data-kb-mode="flypy"]');
+        if (box && !box.checked) {
+            box.checked = true;
+            saveKeyboardSelectionFromUi();
+        }
+    }
+    const current = $("flypyCurrent");
+    const when = flypy.installedAt
+        ? new Date(flypy.installedAt).toLocaleString() : "";
+    current.textContent = flypy.installed && flypy.name
+        ? `${t("flypy.custom", [flypy.name])} · ${when}`
+        : t("flypy.none");
+    $("btnFlypyRevert").hidden = !flypy.installed || !!state.baseDict.building;
+    $("btnFlypyPick").disabled = !!state.baseDict.building;
+    const building = $("flypyBuilding");
+    building.hidden = !state.baseDict.building;
+    if (state.baseDict.building) {
+        building.textContent =
+            dictBaseStageText(state.baseDict.stage || "COMPILING", state.baseDict.elapsedMs);
     }
 }
 $("btnClearImportedDict").addEventListener("click", () => call("clearImportedDict"));
