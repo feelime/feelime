@@ -377,10 +377,21 @@ object BaseDictInstaller {
                 File(staging, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
             }.getOrElse { return finallyCleanup(user, staging, prefs, "STAGE_FAILED") }
 
+            // 冷启动竞态（取证实录：service onCreate 的补偿补编跑在首次
+            // 会话之前，引擎未 init——reloadGlobal 对未初始化引擎是 no-op，
+            // start_maintenance 里 !g_initialized 直接 return 0，补编必败。
+            // installBlocking 一直有 ensureGlobalInit，这里补齐同款前置）。
+            runCatching { RimeTextEngine.ensureGlobalInit(context) }
+                .getOrElse { return finallyCleanup(user, staging, prefs, "ENGINE_NOT_READY") }
             runCatching { RimeTextEngine.reloadGlobal(context) }
                 .getOrElse { return finallyCleanup(user, staging, prefs, "RELOAD_FAILED") }
+            // 冷启动竞态（实测实录）：reloadGlobal 后初始部署线程可能
+            // 还在跑，startMaintenance 直接 false——join 等它收尾再试一次。
             if (!NativeSmoke.rimeStartMaintenance(false)) {
-                return finallyCleanup(user, staging, prefs, "MAINTENANCE_FAILED")
+                NativeSmoke.rimeJoinMaintenance()
+                if (!NativeSmoke.rimeStartMaintenance(false)) {
+                    return finallyCleanup(user, staging, prefs, "MAINTENANCE_FAILED")
+                }
             }
             pollMaintenance({ })
             NativeSmoke.rimeJoinMaintenance()
@@ -487,15 +498,6 @@ object BaseDictInstaller {
      *  误导性的「自定义」态）。幂等：无标记即 no-op。 */
     fun sweepPending(context: Context) {
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(KEY_INSTALLING, false)) return
-        // codex P1-2：本进程 worker 正在编译（编译期间重开设置页）时，
-        // installing 标记是「活的」不是残留——此刻回滚会删掉正在写的
-        // 编译现场。冷启动残留的 pid 必然不同（或同 pid 但进程重启过、
-        // worker 不在跑——building=false 时仍走回滚，覆盖同 pid 重启的
-        // 理论窗口）。
-        if (prefs.getInt(KEY_INSTALLING_PID, -1) == android.os.Process.myPid() &&
-            isBuilding()
-        ) return
         // 补编中断的事务位（codex 三轮 P1-2）：不占 KEY_INSTALLING，单独
         // 清扫——半截 prism 删掉，让下次 ensure 判定缺失并重编。
         val staleCompiling = prefs.getInt(KEY_FUZZY_COMPILING_MASK, 0)
@@ -519,6 +521,15 @@ object BaseDictInstaller {
             }
             prefs.edit().remove(KEY_FUZZY_COMPILING_MASK).apply()
         }
+        if (!prefs.getBoolean(KEY_INSTALLING, false)) return
+        // codex P1-2：本进程 worker 正在编译（编译期间重开设置页）时，
+        // installing 标记是「活的」不是残留——此刻回滚会删掉正在写的
+        // 编译现场。冷启动残留的 pid 必然不同（或同 pid 但进程重启过、
+        // worker 不在跑——building=false 时仍走回滚，覆盖同 pid 重启的
+        // 理论窗口）。
+        if (prefs.getInt(KEY_INSTALLING_PID, -1) == android.os.Process.myPid() &&
+            isBuilding()
+        ) return
         val kind = prefs.getString(KEY_INSTALLING_KIND, KIND_BASE) ?: KIND_BASE
         android.util.Log.w("FeelimeBaseDict", "sweeping interrupted $kind install")
         // #20：按 kind 分派回滚目标——音形导入中断只回滚音形现场，
@@ -754,8 +765,11 @@ object BaseDictInstaller {
         // maintenance：full_check=true（staging 里已有同名产物时也要重编）。
         // 期间 librime 服务 disabled——中文输入暂不可用（上游语义）。
         if (!NativeSmoke.rimeStartMaintenance(true)) {
-            rollback(context)
-            return InstallResult("BASE_DICT_MAINTENANCE_START_FAILED", changed = true)
+            NativeSmoke.rimeJoinMaintenance()
+            if (!NativeSmoke.rimeStartMaintenance(true)) {
+                rollback(context)
+                return InstallResult("BASE_DICT_MAINTENANCE_START_FAILED", changed = true)
+            }
         }
         pushEvent(status("COMPILING"))
         val timeout = pollMaintenance(pushEvent)
