@@ -1054,10 +1054,12 @@ class KeyboardWorld {
     }
 
     touchUp(el, x = 20, y = 20) {
-        this.dispatch(el, 'touchend', x, y);
+        const event = this.dispatch(el, 'touchend', x, y);
         // Browsers synthesize a click after touchend unless the touchstart
-        // was preventDefault()-ed (keys do that and click manually).
-        if (el && !el._touchPrevented) el.click();
+        // OR the touchend was preventDefault()-ed (keys do the former on
+        // touchstart and click manually; the candidate bar's writing-swipe
+        // guard does the latter on touchend).
+        if (el && !el._touchPrevented && !(event && event.defaultPrevented)) el.click();
     }
 
     touchCancel(el) {
