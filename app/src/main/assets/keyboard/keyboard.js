@@ -131,6 +131,12 @@
         "粘贴": "Paste",
         "复制": "Copy",
         "剪切": "Cut",
+        // #39-10 编辑工具条。扩选 = 点亮后方向键带 SHIFT 连续扩选
+        // （搜狗「开始选择」的 Android 等价物）。
+        "编辑工具": "Editing",
+        "扩选": "Shift+arrows",
+        "光标到行首": "Line start",
+        "光标到行尾": "Line end",
         "光标左移": "Move cursor left",
         "光标右移": "Move cursor right",
         "光标上移": "Move cursor up",
@@ -281,7 +287,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.71.1';
+    const KEYBOARD_VERSION = '3.72.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -367,6 +373,9 @@ const TOOL_CATALOG = {
     onehand: 'toolOneHand',
     numpad: 'toolNumpad',
     emoji: 'toolEmoji',
+    // #39-10 编辑工具条：替换键区的编辑面板（方向键/扩选/全选/
+    // 复制剪切粘贴），动作全部复用现有桥通道。
+    edit: 'editTool',
 };
 const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'mic'] };
     const MIN_NATIVE_API = 1;
@@ -531,6 +540,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         menu: 'M5 4h3v3H5V4zm5.5 0h3v3h-3V4zM16 4h3v3h-3V4zM5 10.5h3v3H5v-3zm5.5 0h3v3h-3v-3zm5.5 0h3v3h-3v-3zM5 17h3v3H5v-3zm5.5 0h3v3h-3v-3zm5.5 0h3v3h-3v-3z',
         keyboard: 'M3 6h18a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V7a1 1 0 011-1zm1 2v8h16V8H4zm2 1.5h2v2H6v-2zm3.5 0h2v2h-2v-2zm3.5 0h2v2h-2v-2zM6 13h8v1.5H6V13zm9.5 0H17v1.5h-1.5V13z',
         dp: 'M8 3.5L3 12l5 8.5 5-8.5-5-8.5zm8 0l-5 8.5 5 8.5 5-8.5-5-8.5z',
+        // #39-10 编辑工具条：I 型光标（编辑语义最通行的图形）。
+        edit: 'M11 2h2v2h-2V2zm0 18h2v2h-2v-2zM4 5h16v2H4V5zm0 12h16v2H4v-2zM11 5h2v14h-2V5z',
         gear: 'M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96a7.03 7.03 0 00-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z',
     };
     const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -1110,6 +1121,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Which key-area layer is visible (letters/symbols/numpad) -
             // panels and settings borrow the area and restore this.
             this.keyLayer = 'letters';
+            // #39-10 编辑面板的扩选 toggle（开 = 方向键/行首行尾带 SHIFT）。
+            this.editSelecting = false;
             // The nine-pad's emoji sub-view (toggled by the smiley key).
             this.emojiView = false;
             // The 常用 pin lives per MODE; this is the mode it was reset
@@ -1417,6 +1430,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (fullSetup) {
                 fullSetup.addEventListener('click', () => {
                     this.closeSettingsPanel();
+                    this.closeEditPanel();
                     this.call(() => Native.openSetup(this.token));
                 });
             }
@@ -1879,6 +1893,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyModeHeight();
             this.closeModeMenu();
             this.closeSettingsPanel();
+            this.closeEditPanel();
             // renderMode is invoked on every mode change INCLUDING the one a
             // degrade/recovery event carries; the badge must survive it.
             this.renderDegradeBadge();
@@ -4299,6 +4314,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.settingsReturnLayer = name;
                 this.closeSettingsPanel();
             }
+            // #39-10 同款互斥：编辑面板也是键区替换层，层切换让位
+            // （closeEditPanel 会 showKeyLayer(editReturnLayer) 再入
+            // 此处：editLayer 已 hidden，直接放行切到目标层）。
+            {
+                const editLayer = document.getElementById('editLayer');
+                if (editLayer && !editLayer.hidden) {
+                    this.editReturnLayer = name;
+                    this.closeEditPanel();
+                }
+            }
             // codex P2：剪贴板/常用语面板开着时若有层切换入口（防御：
             // 面板开时工具栏整条隐藏，常规入口已不可点），层切换要收掉
             // 面板层，否则 panelLayer 与新键层同屏叠加。closePanel 会
@@ -4338,6 +4363,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         resetToHome() {
             this.closePanel();
             this.closeSettingsPanel();
+            this.closeEditPanel();
             this.clearEditorStrip();
             this.closeItemMenu();
             this.closeComboGrid();
@@ -4919,6 +4945,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (on && this.panelOpen) return; // panel owns the toolbar
             // The quick settings panel owns the key area too .
             if (on && document.getElementById('settingsPanel').classList.contains('open')) return;
+            // #39-10 编辑面板同样独占键区（ctrl 视图换的是候选栏槽位，
+            // 两个替换层叠加会把 ctrl 行画在编辑网格上方）。
+            if (on && !document.getElementById('editLayer').hidden) return;
             // Review P3: the editor strip (custom-symbol editing)
             // owns the bar too - it would fight the ctrl rows for the slot.
             if (on && document.body.classList.contains('editing')) return;
@@ -5479,6 +5508,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const editor = document.getElementById('toolbarEditor');
             if (!editor) return;
             this.closeSettingsPanel();
+            this.closeEditPanel();
             // 快照进入时的布局：「完成」才落盘，「取消」按快照整体回退。
             this._toolbarSnapshot = {
                 left: this.toolbarLeft.slice(),
@@ -5577,6 +5607,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 { key: 'onehand', id: 'toolOneHand', icon: 'onehand', label: '单手模式' },
                 { key: 'numpad', id: 'toolNumpad', icon: 'numpad', label: '数字键盘' },
                 { key: 'emoji', id: 'toolEmoji', icon: 'smiley', label: 'Emoji' },
+                { key: 'edit', id: 'editTool', icon: 'edit', label: '编辑工具' },
             ];
             const pool = document.getElementById('toolbarEditorGrid');
             defs.forEach(({ key, id, icon, label }) => {
@@ -5607,6 +5638,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     if (key === 'emoji') {
                         if (this.emojiView && this.keyLayer === 'numpad') this.showLetters();
                         else { this.emojiView = true; this.showNumpad(); }
+                        return;
+                    }
+                    // #39-10 编辑工具条：同款 toggle 语义（面板开着再点 = 回键区）。
+                    if (key === 'edit') {
+                        this.toggleEditPanel();
                         return;
                     }
                     this.toggleExtraTool(key);
@@ -6099,6 +6135,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ? this.heightEditSaved
                 : Math.max(bounds.min, this.heightEditSaved);
             this.closeSettingsPanel();
+            this.closeEditPanel();
             const card = document.getElementById('heightCard');
             card.hidden = false;
             card.classList.add('open');
@@ -6261,6 +6298,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const menu = document.getElementById('modeMenu');
             if (menu.classList.contains('open')) { this.closeModeMenu(); return; }
             this.closeSettingsPanel();
+            this.closeEditPanel();
             menu.replaceChildren();
             this.modeOrder().forEach(name => {
                 const config = MODES[name];
@@ -6344,6 +6382,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const panel = document.getElementById('settingsPanel');
             if (panel.classList.contains('open')) { this.closeSettingsPanel(); return; }
             this.closeModeMenu();
+            // #39-10：两个键区替换层互斥（编辑面板也要让位给快捷设置）。
+            this.closeEditPanel();
             // The control view owns the key area too - it never
             // coexists with the settings panel. Borrow, don't
             // switch off (closing the panel restores the rows).
@@ -6386,6 +6426,121 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The panel borrowed the bar from the ctrl view -
             // bring the rows back if the switch is still on.
             this.maybeResumeCtrlView();
+        }
+
+        /* ===== #39-10 编辑工具条（可选工具栏控件，搜狗「文字编辑」
+         * 形态）：替换键区的编辑面板，工具栏保留（再点工具即收）。
+         * 动作全部复用现有桥通道——方向键 editorCursor（终端等
+         * keyevent-cursor 场景天然兼容）、扩选/行首行尾走 sendCombo
+         * （SHIFT+Arrow/Home/End 组合层）、全选复制剪切粘贴
+         * editorAction（宿主 context menu 通道）、删除 backspace。 */
+        toggleEditPanel() {
+            const layer = document.getElementById('editLayer');
+            if (layer && !layer.hidden) { this.closeEditPanel(); return; }
+            this.closeModeMenu();
+            this.closeSettingsPanel();
+            if (this.panelOpen) this.closePanel();
+            // 编辑面板借用键区：ctrl 视图与编辑条让位（借不是关，
+            // 收面板时 maybeResumeCtrlView 归还）。
+            if (this.ctrlView) this.suspendCtrlView();
+            this.clearEditorStrip();
+            this.editSelecting = false;
+            this.renderEditPanel();
+            // 同 settingsPanel：记住被替换的键层，关闭时原样归还。
+            this.editReturnLayer = this.keyLayer;
+            this.hideKeyLayers();
+            layer.hidden = false;
+        }
+
+        closeEditPanel() {
+            const layer = document.getElementById('editLayer');
+            if (!layer || layer.hidden) return;
+            layer.hidden = true;
+            this.editSelecting = false;
+            this.showKeyLayer(this.editReturnLayer || 'letters');
+            this.maybeResumeCtrlView();
+        }
+
+        renderEditPanel() {
+            const layer = document.getElementById('editLayer');
+            if (!layer) return;
+            const grid = document.createElement('div');
+            grid.className = 'edit-grid';
+            const cell = (edit, label, opts = {}) => {
+                const b = document.createElement('button');
+                b.className = 'kb-key kb-special' + (opts.word ? ' edit-word' : '');
+                b.dataset.edit = edit;
+                if (opts.arrow) b.dataset.arrow = edit;
+                b.textContent = label;
+                if (opts.aria) {
+                    b.setAttribute('aria-label', t(opts.aria));
+                    b.setAttribute('data-i18n-aria-label', opts.aria);
+                }
+                b.addEventListener('touchstart', () => {
+                    b.classList.add('active-touch');
+                }, { passive: true });
+                const lift = () => b.classList.remove('active-touch');
+                b.addEventListener('touchend', lift);
+                b.addEventListener('touchcancel', lift);
+                grid.append(b);
+                return b;
+            };
+            // 布局照搜狗参照：↑ 跨三列；← 扩选 →；↓ 跨三列；
+            // 底行 行首|全选|行尾；第四列 删除/复制/剪切/粘贴。
+            cell('up', '↑', { arrow: true, aria: '光标上移' });
+            cell('left', '←', { arrow: true, aria: '光标左移' });
+            const sel = cell('sel', t("扩选"), { aria: '扩选' });
+            cell('right', '→', { arrow: true, aria: '光标右移' });
+            cell('down', '↓', { arrow: true, aria: '光标下移' });
+            cell('home', '|←', { aria: '光标到行首' });
+            cell('all', t("全选"), { word: true, aria: '全选' });
+            cell('end', '→|', { aria: '光标到行尾' });
+            cell('del', t("删除"), { word: true, aria: '删除' });
+            cell('copy', t("复制"), { word: true, aria: '复制' });
+            cell('cut', t("剪切"), { word: true, aria: '剪切' });
+            cell('paste', t("粘贴"), { word: true, aria: '粘贴' });
+
+            const cursor = way => {
+                // 扩选态走组合层（SHIFT+方向），普通态 editorCursor
+                // （与侧边条/终端 cursor 语义同源；旧壳缺该桥时回落
+                // 无 meta 的组合层，keyEvent 通道很早就有）。
+                if (this.editSelecting) {
+                    this.sendCombo(['Shift', {
+                        up: 'ArrowUp', down: 'ArrowDown',
+                        left: 'ArrowLeft', right: 'ArrowRight',
+                    }[way]]);
+                } else if (typeof Native.editorCursor === 'function') {
+                    this.call(() => Native.editorCursor(way, this.token));
+                } else {
+                    this.sendCombo([{
+                        up: 'ArrowUp', down: 'ArrowDown',
+                        left: 'ArrowLeft', right: 'ArrowRight',
+                    }[way]]);
+                }
+            };
+            const bind = (edit, handler) => {
+                const el = grid.querySelector(`[data-edit="${edit}"]`);
+                el.addEventListener('click', handler);
+            };
+            bind('up', () => cursor('up'));
+            bind('down', () => cursor('down'));
+            bind('left', () => cursor('left'));
+            bind('right', () => cursor('right'));
+            // 行首/行尾：扩选态同样带 SHIFT（扩到行首/行尾）。
+            bind('home', () => this.sendCombo(this.editSelecting ? ['Shift', 'Home'] : ['Home']));
+            bind('end', () => this.sendCombo(this.editSelecting ? ['Shift', 'End'] : ['End']));
+            bind('all', () => this.call(() => Native.editorAction('selectAll', this.token)));
+            bind('del', () => this.call(() => Native.backspace(this.token)));
+            bind('copy', () => this.call(() => Native.editorAction('copy', this.token)));
+            bind('cut', () => this.call(() => Native.editorAction('cut', this.token)));
+            bind('paste', () => this.call(() => Native.editorAction('paste', this.token)));
+            // 扩选 toggle：点亮后方向键/行首行尾带 SHIFT。
+            sel.addEventListener('click', () => {
+                this.editSelecting = !this.editSelecting;
+                sel.classList.toggle('armed', this.editSelecting);
+            });
+
+            layer.replaceChildren(grid);
         }
 
         /** Quick settings grew sub-pages - complex features
@@ -7950,6 +8105,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // committing to the editor.
             if (!this.phraseCardOpen()) this.clearEditorStrip();
             this.closeItemMenu();
+            // #39-10：剪贴板/常用语面板接管工具栏行，编辑面板（另一个
+            // 键区替换层）先让位。
+            this.closeEditPanel();
             // The panel REPLACES the toolbar row instead of adding
             // another line to the keyboard - its own head carries the tabs.
             document.getElementById('candidateBar').hidden = true;
@@ -9466,6 +9624,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         closeModeMenu: () => keyboard.closeModeMenu(),
         toggleSettingsPanel: () => keyboard.toggleSettingsPanel(),
         closeSettingsPanel: () => keyboard.closeSettingsPanel(),
+        // #39-10 编辑面板（preview/诊断与 mock 套件共用入口）。
+        toggleEditPanel: () => keyboard.toggleEditPanel(),
         toggleControlView: () => keyboard.setControlView(!keyboard.ctrlView),
         showNumpad: () => keyboard.showNumpad(),
         // Called by the native side on every IME show: hiding the IME can

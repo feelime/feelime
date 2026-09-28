@@ -3212,10 +3212,10 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(w.$('toolbarEditor').hidden, false, 'editor section visible');
 
     // 默认 5 个工具全在栏上（left=[ctrl,ime] right=[clipboard,favorites,mic]）；
-    // 仓库里是 7 个默认不上栏的开关型/动作型工具（动态创建）。
-    equal(w.$('toolbarEditorGrid').children.length, 8, 'pool starts with the 8 extra tools (#33-1 gear joins)');
+    // 仓库里是 8 个默认不上栏的开关型/动作型工具（动态创建）。
+    equal(w.$('toolbarEditorGrid').children.length, 9, 'pool starts with the 9 extra tools (#33-1 gear + #39-10 edit)');
     ['toolTheme', 'toolVibrate', 'toolSound', 'toolAssoc', 'toolOneHand',
-     'toolNumpad', 'toolEmoji'].forEach(id => {
+     'toolNumpad', 'toolEmoji', 'editTool'].forEach(id => {
         assert(w.$(id), id + ' created');
     });
 
@@ -3231,7 +3231,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(x);
     w.touchUp(x);
     equal(kb().toolbarRight.join(','), 'clipboard,mic', '× removes favorites from right group');
-    equal(w.$('toolbarEditorGrid').children.length, 9, 'removed tool joins the 8 extra tools');
+    equal(w.$('toolbarEditorGrid').children.length, 10, 'removed tool joins the 9 extra tools');
 
     // 点仓库里的 favorites 加回（right 组未满 → 追加到队尾）。
     // 编辑态点仓库只做「上工具栏」：favorites 的 click 直连
@@ -3244,7 +3244,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(fav);
     w.touchUp(fav);
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'pool tap appends to right group');
-    equal(w.$('toolbarEditorGrid').children.length, 8, 'pool back to the 8 extra tools');
+    equal(w.$('toolbarEditorGrid').children.length, 9, 'pool back to the 9 extra tools');
 
     // 「完成」退出并持久化。
     w.tap(w.$('toolbarEditDone'));
@@ -3268,13 +3268,13 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(xOf('mic'));
     w.touchUp(xOf('mic'));
     equal(kb().toolbarRight.join(','), 'clipboard', 'two removals land both in the pool');
-    equal(w.$('toolbarEditorGrid').children.length, 10,
-        'pool holds both removed tools + 8 extra tools (no innerHTML wipe)');
+    equal(w.$('toolbarEditorGrid').children.length, 11,
+        'pool holds both removed tools + 9 extra tools (no innerHTML wipe)');
     w.tap(w.$('toolbarEditCancel'));
     equal(kb().toolbarLeft.join(','), 'ctrl,ime', 'cancel restores left snapshot');
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'cancel restores right snapshot');
-    equal(w.$('toolbarEditorGrid').children.length, 8,
-        'pool drains back to the 8 extra tools after cancel');
+    equal(w.$('toolbarEditorGrid').children.length, 9,
+        'pool drains back to the 9 extra tools after cancel');
     equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'toolbarLayout').length, 1,
         'cancel never saves');
 
@@ -3291,7 +3291,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
             w.touchUp(x);
         });
     equal(kb().toolbarLeft.length + kb().toolbarRight.length, 0, 'bar fully stripped');
-    equal(w.$('toolbarEditorGrid').children.length, 13, 'all thirteen tools in the pool (#33-1 gear joins)');
+    equal(w.$('toolbarEditorGrid').children.length, 14, 'all fourteen tools in the pool (#33-1 gear + #39-10 edit)');
     w.tap(w.$('toolbarEditDone'));
     equal(kb().toolbarEdit, false, 'empty layout saves fine');
     w.touchDown(w.$('candidateBar'));
@@ -3344,7 +3344,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(st.toolbarRight.includes('ime'), true, 'ime lands in the right group');
     equal(st.toolbarLeft.length, 1, 'left group keeps one (the displaced tool)');
     equal(st.toolbarLeft.length + st.toolbarRight.length, 5, 'no tool lost in the swap');
-    equal(poolNow.children.length, 8, 'pool back to the extra tools only');
+    equal(poolNow.children.length, 9, 'pool back to the extra tools only');
     w.tap(w.$('toolbarEditCancel'));
 });
 
@@ -3375,10 +3375,10 @@ test('toolbar audit: a lost tool is forced back into the pool (issue #15)', {sin
     kb.toolbarAudit();
     equal(theme.hidden, false, 'pool tools are always visible');
 
-    // 兜底完整性:10 颗工具此刻都能在 bar 或 pool 找到。
+    // 兜底完整性:13 颗工具此刻都能在 bar 或 pool 找到。
     const all = ['ctrlTool','imeSwitchButton','clipboardButton','favoritesButton','mic',
         'toolTheme','toolVibrate','toolSound','toolAssoc','toolOneHand',
-        'toolNumpad','toolEmoji'];
+        'toolNumpad','toolEmoji','editTool'];
     const lost = all.filter(id => {
         const el = w.$(id);
         return !el || (!el.closest('#candidateBar') && !el.closest('#toolbarEditorGrid'));
@@ -3409,6 +3409,89 @@ test('numpad/emoji toolbar tools jump straight to the key view (issue #38)', {si
     const w2 = fresh();
     w2.hello({});
     assert(w2.$('toolEmoji').closest('#toolbarEditorGrid'), 'emoji tool waits in the pool');
+});
+
+// ------------------------------------------------- #39-10 编辑工具条
+// 搜狗「文字编辑」形态：工具栏可选控件，替换键区。方向键走 editorCursor
+// （终端 cursor 语义同源），扩选/行首行尾走组合层（SHIFT+Arrow/Home/End），
+// 全选/复制/剪切/粘贴走 editorAction，删除走 backspace——全部现有通道。
+test('edit toolbar tool: panel swaps the key area, every action rides existing bridges (issue #39-10)', {since: '3.72.0'}, () => {
+    const w = fresh({ toolbarLayout: JSON.stringify(
+        { left: ['ctrl', 'ime'], right: ['edit', 'favorites', 'mic'] }) });
+    assert(w.$('editTool'), 'edit tool created');
+    assert(w.$('editTool').closest('#candidateBar'), 'edit tool rides the bar');
+    equal(w.$('editLayer').hidden, true, 'edit layer starts hidden');
+
+    const editKey = name => w.$('editLayer').querySelector(`[data-edit="${name}"]`);
+    w.tap(w.$('editTool'));
+    equal(w.$('editLayer').hidden, false, 'tap opens the edit panel');
+    equal(w.$('qwertyLayer').hidden, true, 'key area swaps out');
+    // 13 键齐全：↑↓←→/扩选/行首/行尾/全选/删除/复制/剪切/粘贴。
+    ['up', 'down', 'left', 'right', 'sel', 'home', 'end', 'all', 'del', 'copy', 'cut', 'paste']
+        .forEach(name => assert(editKey(name), 'cell ' + name + ' rendered'));
+
+    // 普通方向键：editorCursor 四向。
+    w.native.reset();
+    w.tap(editKey('left'));
+    w.tap(editKey('up'));
+    equal(JSON.stringify(w.native.of('editorCursor').map(c => c.args[0])), '["left","up"]',
+        'plain arrows ride editorCursor');
+    equal(w.native.of('keyEventPhysical').length, 0, 'no combo channel for plain arrows');
+
+    // 扩选点亮：方向键/行首行尾带 SHIFT（组合层 physical 通道，Shift=1）。
+    w.tap(editKey('sel'));
+    equal(editKey('sel').className.includes('armed'), true, 'shift-select toggle lights up');
+    w.tap(editKey('left'));
+    equal(JSON.stringify(w.native.of('keyEventPhysical').map(c => c.args)),
+        '[[21,1,"tok-1"]]', 'armed arrows ride Shift+ArrowLeft');
+    // 行首行尾：普通态裸 Home/End（keyEvent 通道），扩选态 Shift+Home。
+    w.tap(editKey('home'));
+    equal(JSON.stringify(w.native.of('keyEventPhysical').map(c => c.args)),
+        '[[21,1,"tok-1"],[122,1,"tok-1"]]', 'armed home extends to line start');
+    w.tap(editKey('sel'));
+    w.tap(editKey('end'));
+    equal(JSON.stringify(w.native.of('keyEvent').map(c => c.args)),
+        '[[123,0,"tok-1"]]', 'plain end rides bare keyEvent');
+
+    // 右列四键 + 全选：editorAction / backspace。
+    w.native.reset();
+    w.tap(editKey('all'));
+    w.tap(editKey('copy'));
+    w.tap(editKey('cut'));
+    w.tap(editKey('paste'));
+    w.tap(editKey('del'));
+    equal(JSON.stringify(w.native.of('editorAction').map(c => c.args[0])),
+        '["selectAll","copy","cut","paste"]', 'select/copy/cut/paste ride editorAction');
+    equal(w.native.of('backspace').length, 1, 'delete rides backspace');
+
+    // 再点工具 = 关闭，键区按 editReturnLayer 归还（letters）。
+    w.tap(w.$('editTool'));
+    equal(w.$('editLayer').hidden, true, 'second tap closes the panel');
+    equal(w.$('qwertyLayer').hidden, false, 'letter layer restored');
+
+    // 互斥 A：编辑面板开着切键层（showNumpad 走 showKeyLayer）→ 面板让位。
+    w.tap(w.$('editTool'));
+    equal(w.$('editLayer').hidden, false, 're-open for exclusion checks');
+    w.context.window.Feelime.showNumpad();
+    equal(w.$('editLayer').hidden, true, 'key-layer switch closes the edit panel');
+    equal(w.$('numPadLayer').hidden, false, 'target layer shows');
+
+    // 互斥 B：快捷设置面板与编辑面板互为让位。
+    w.context.window.Feelime.resetToHome();
+    w.tap(w.$('editTool'));
+    w.tap(w.$('setupButton'));
+    equal(w.$('editLayer').hidden, true, 'quick settings takes the key area back');
+    equal(w.$('settingsPanel').classList.contains('open'), true, 'settings panel opens');
+    // resetToHome 收全部替换层。
+    w.context.window.Feelime.toggleEditPanel();
+    w.context.window.Feelime.resetToHome();
+    equal(w.$('editLayer').hidden, true, 'resetToHome closes the edit panel');
+    equal(w.$('qwertyLayer').hidden, false, 'reset lands on letters');
+});
+
+test('edit toolbar tool waits in the pool by default (issue #39-10)', {since: '3.72.0'}, () => {
+    const w = fresh();
+    assert(w.$('editTool').closest('#toolbarEditorGrid'), 'edit tool waits in the pool');
 });
 
 test('added toolbar tools hide while composing in every mode (issue #15)', {since: '3.59.0'}, () => {

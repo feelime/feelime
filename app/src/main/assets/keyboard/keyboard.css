@@ -799,6 +799,57 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
 /* ===== 九宫格数字键盘（长按 123，design §2.6）===== */
 #numPadLayer { display: flex; flex-direction: column; }
 #numPadLayer[hidden] { display: none; }
+/* ===== #39-10 编辑工具条（搜狗「文字编辑」形态）=====
+ * in-flow 替换键区（同 settingsPanel/panelLayer 机制），工具栏保留。
+ * 四行高度全部走 --kb-row-h（与 t9-grid 同法），横屏自动压缩。
+ * grid areas：↑ 跨三列居中、← 扩选 →、↓ 跨三列、底行 行首/全选/行尾；
+ * 第四列 = 右侧竖排 删除/复制/剪切/粘贴。 */
+#editLayer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#editLayer[hidden] { display: none; }
+.edit-grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1fr 1.3fr;
+    /* 行高 ≥ 键行基准且平分键区余量（t9 撑 --kb-row-h 是模式总高的事，
+     * qwerty 槽位下编辑面板自己吃满整个键区高度，不再露出底部空白）。 */
+    grid-template-rows: repeat(4, minmax(var(--kb-row-h, 44px), 1fr));
+    grid-template-areas:
+        "up    up    up    del"
+        "left  sel   right copy"
+        "down  down  down  cut"
+        "home  all   end   paste";
+    gap: 5px;
+}
+.edit-grid .kb-key {
+    flex: none;
+    min-width: 0;
+    height: 100%;
+}
+.edit-grid .kb-key[data-edit="up"] { grid-area: up; }
+.edit-grid .kb-key[data-edit="down"] { grid-area: down; }
+.edit-grid .kb-key[data-edit="left"] { grid-area: left; }
+.edit-grid .kb-key[data-edit="right"] { grid-area: right; }
+.edit-grid .kb-key[data-edit="sel"] { grid-area: sel; }
+.edit-grid .kb-key[data-edit="home"] { grid-area: home; }
+.edit-grid .kb-key[data-edit="all"] { grid-area: all; }
+.edit-grid .kb-key[data-edit="end"] { grid-area: end; }
+.edit-grid .kb-key[data-edit="del"] { grid-area: del; }
+.edit-grid .kb-key[data-edit="copy"] { grid-area: copy; }
+.edit-grid .kb-key[data-edit="cut"] { grid-area: cut; }
+.edit-grid .kb-key[data-edit="paste"] { grid-area: paste; }
+/* 方向箭头大字；扩选是面板内 toggle（点亮 = 方向键带 SHIFT），
+ * 用 shift 的 armed 绿（.kb-mod.active 同款）点亮而非 :active 灰。 */
+.edit-grid .kb-key[data-arrow] { font-size: min(22px, calc(var(--kb-row-h, 44px) * 0.5)); font-weight: 400; }
+.edit-grid .kb-key[data-edit="sel"].armed {
+    color: var(--accent-text);
+    background: var(--mod-active-bg, #103a24);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+/* 右列文字键：主字 14px 与特殊键一致。 */
+.edit-grid .kb-key.edit-word { font-size: min(15px, calc(var(--kb-row-h, 44px) * 0.34)); font-weight: 500; }
+/* 横屏：行距收紧（t9-grid 同款）。 */
+body.landscape .edit-grid { gap: 4px 5px; }
 .num-grid {
     flex: 1;
     min-height: 0;

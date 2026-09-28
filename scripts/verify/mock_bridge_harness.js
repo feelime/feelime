@@ -739,6 +739,10 @@ class MockNative {
     editorAction(action, token) {
         this._record('editorAction', [action, token]);
     }
+    // 侧条光标四向（FeelimeService.editorCursor，#39-10 编辑面板复用）。
+    editorCursor(dir, token) {
+        this._record('editorCursor', [dir, token]);
+    }
     enter(token) {
         this._record('enter', [token]);
     }

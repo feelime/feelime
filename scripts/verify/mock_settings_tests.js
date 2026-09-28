@@ -661,7 +661,7 @@ test('hidden pages still render from state pushes (R7: render does not follow th
 
 test('about page: version rows from device + active/built-in keyboards; 复制版本信息 posts copyText', () => {
     const world = new SettingsWorld();
-    world.push({ ...BASE_STATE });
+    world.push({ ...BASE_STATE, inputStats: { today: 12, total: 345 } });
     const rows = [...world.$('aboutRows').querySelectorAll('.row')]
         .map(r => r.textContent);
     assert(rows.some(t => t.includes('App 版本') && t.includes('0.17.6')), `app row: ${rows}`);
@@ -670,12 +670,16 @@ test('about page: version rows from device + active/built-in keyboards; 复制�
     assert(rows.some(t => t.includes('手机型号') && t.includes('Google Pixel 8')), `model row: ${rows}`);
     assert(rows.some(t => t.includes('系统版本') && t.includes('Android 15') && t.includes('35')),
         `os row: ${rows}`);
+    // #41 输入字数行渲染（今日/累计），但复制版本信息不带（易变数据）。
+    assert(rows.some(t => t.includes('输入字数') && t.includes('12') && t.includes('345')),
+        `stats row: ${rows}`);
 
     world.$('btnCopyAbout').click();
     const [text, token] = world.lastCall('copyText').args;
     equal(token, world.token, 'copyText token');
     const lines = text.split('\n');
     equal(lines.length, 5, 'copy block is one line per version row');
+    equal(lines.some(l => l.includes('输入字数')), false, 'volatile stats never join the copy block');
     assert(lines.some(l => l === 'App 版本: v0.17.6'), `app line: ${lines}`);
     assert(lines.some(l => l === '键盘版本（当前）: v3.20.0'), `active line: ${lines}`);
     assert(lines.some(l => l === '键盘版本（内置）: v3.21.0'), `built-in line: ${lines}`);
