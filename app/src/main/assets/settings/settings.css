@@ -370,6 +370,7 @@ h3 { margin: 0; font-size: 14px; font-weight: 650; }
 .btn.primary:active { background: #18ad7c; }
 .btn.local { border-color: var(--accent-text); }
 .btn.small { min-height: 30px; padding: 3px 10px; font-size: 12px; }
+.btn.danger { border-color: var(--danger); color: var(--danger); }
 .btn.link { border-color: transparent; background: transparent; color: var(--accent-text); }
 .btn.link:active { background: var(--pressed); }
 

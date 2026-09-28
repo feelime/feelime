@@ -1398,6 +1398,8 @@ body[data-one-hand] .panel-head { gap: 5px; }
 body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
 .panel-tabs { margin: 0; }
 .panel-action { color: var(--text); height: 30px; margin-left: auto; }
+/* 「清空」确认态（#39 两击确认） */
+.panel-action.danger { color: var(--danger); font-weight: 600; }
 #panelList {
     flex: 1;
     min-height: 0;

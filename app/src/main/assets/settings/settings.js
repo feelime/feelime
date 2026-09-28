@@ -158,6 +158,7 @@ const I18N = {
         "input.phrases.importHint": "rime 词库文件的词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。",
         "input.phrases.importBtn": "选择文件导入",
         "input.phrases.clearBtn": "清空导入词",
+        "input.phrases.confirmClear": "确认清空",
         "input.phrases.importedCount": "已导入 {0} 条",
         "page.phrases": "候选符号词",
         "nav.backInput": "返回键盘与输入",
@@ -673,6 +674,7 @@ const I18N = {
         "input.phrases.importHint": "Entries from a rime dictionary join the candidates as an overlay (the built-in lexicon stays; original frequencies are not carried). Importing again replaces the previous import.",
         "input.phrases.importBtn": "Pick a file",
         "input.phrases.clearBtn": "Clear imported",
+        "input.phrases.confirmClear": "Confirm clear",
         "input.phrases.importedCount": "{0} entries imported",
         "page.phrases": "Symbol candidates",
         "nav.backInput": "Back to Keyboard & input",
@@ -2353,6 +2355,8 @@ function renderCustomPhrases(state) {
         }
         const clear = $("btnClearImportedDict");
         if (clear) clear.hidden = imported === 0;
+        // 重渲染（导入/清空/语言切换）撤掉可能残留的确认态。
+        if (clearDictArmed) disarmClearDict();
     }
 }
 
@@ -2486,7 +2490,10 @@ $("btnFlypyRevert").addEventListener("click", () => call("clearFlypy"));
 /** state.baseDict.flypy: {installed, name, installedAt}——音形码表独立
  *  状态段（#20）。building 与基底换装共用同一互斥标志。 */
 function renderFlypy(state) {
-    const flypy = (state.baseDict || {}).flypy || {};
+    // baseDict 缺防御：旧 bridge/纯 flypy state 推送没有该段时整卡
+    // 渲染直接抛错（mock 套件 62 项连坐挂的根因）。
+    const base = state.baseDict || {};
+    const flypy = base.flypy || {};
     // #20 幂等补勾选（codex P2-6）：导入成功后音形进长按菜单——放在
     // 渲染层而非 flypyDone 事件里，编译期间退出设置页丢事件的路径
     // （旧 bridge 销毁）也能在下次渲染补上。
@@ -2503,16 +2510,37 @@ function renderFlypy(state) {
     current.textContent = flypy.installed && flypy.name
         ? `${t("flypy.custom", [flypy.name])} · ${when}`
         : t("flypy.none");
-    $("btnFlypyRevert").hidden = !flypy.installed || !!state.baseDict.building;
-    $("btnFlypyPick").disabled = !!state.baseDict.building;
+    $("btnFlypyRevert").hidden = !flypy.installed || !!base.building;
+    $("btnFlypyPick").disabled = !!base.building;
     const building = $("flypyBuilding");
-    building.hidden = !state.baseDict.building;
-    if (state.baseDict.building) {
+    building.hidden = !base.building;
+    if (base.building) {
         building.textContent =
-            dictBaseStageText(state.baseDict.stage || "COMPILING", state.baseDict.elapsedMs);
+            dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
     }
 }
-$("btnClearImportedDict").addEventListener("click", () => call("clearImportedDict"));
+/** 清空导入词的两击确认（#39 补充建议）：WebView 无原生 confirm
+ *  （WebChromeClient 未挂 onJsConfirm），首击变红「确认清空」，4s 内
+ *  再击才执行；超时或重新渲染恢复。 */
+let clearDictArmed = null;
+function disarmClearDict() {
+    clearTimeout(clearDictArmed);
+    clearDictArmed = null;
+    const btn = $("btnClearImportedDict");
+    btn.classList.remove("danger");
+    btn.textContent = t("input.phrases.clearBtn");
+}
+$("btnClearImportedDict").addEventListener("click", () => {
+    if (clearDictArmed) {
+        disarmClearDict();
+        call("clearImportedDict");
+        return;
+    }
+    const btn = $("btnClearImportedDict");
+    btn.classList.add("danger");
+    btn.textContent = t("input.phrases.confirmClear");
+    clearDictArmed = setTimeout(disarmClearDict, 4000);
+});
 $("btnCancelPhraseEdit").addEventListener("click", resetPhraseForm);
 $("btnSavePhrase").addEventListener("click", () => {
     if (!phraseStateReady()) return;

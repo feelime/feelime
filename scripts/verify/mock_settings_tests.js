@@ -1334,13 +1334,13 @@ test('keyboard rows render in modeOrder and drag reorder saves the full order', 
     } });
     const ids = () => [...world.doc.querySelectorAll('#kbModeList input[data-kb-mode]')]
         .map(b => b.dataset.kbMode);
-    equal(ids(), ['t9', 'pinyin', 'direct', 'double-pinyin', 'stroke', 'handwriting', 'french', 'russian', 'japanese'],
+    equal(ids(), ['t9', 'pinyin', 'direct', 'double-pinyin', 'stroke', 'flypy', 'handwriting', 'french', 'russian', 'japanese'],
         'rows follow modeOrder, unlisted modes appended in catalog order');
     assert(!world.doc.querySelector('.kb-move'), 'arrow buttons are gone (drag is the only reorder)');
-    // 把末行（handwriting，第 6 行）拖到指针越过前 2 行中心的位置：
-    // 落点直接映射（跨多格），全序落盘作第 3 参。
+    // 把 handwriting（flypy 入 catalog 后是第 7 行）拖到指针越过前 2 行
+    // 中心的位置：落点直接映射（跨多格），全序落盘作第 3 参。
     const rows = [...world.doc.querySelectorAll('#kbModeList .row')];
-    const handle = rows[5].querySelector('.kb-drag');
+    const handle = rows[6].querySelector('.kb-drag');
     assert(handle, 'drag handle rendered');
     // jsdom 不做 layout：给每行打桩等高 44px 依次排布（y=100 起）。
     rows.forEach((r, i) => {
@@ -1357,14 +1357,14 @@ test('keyboard rows render in modeOrder and drag reorder saves the full order', 
         assert(handlers.length > 0, `${type} listener present`);
         handlers.forEach(l => l.handler(ev));
     };
-    const host = rows[5].parentElement;
-    // 行5中心 y=340，上拖到 142：落在行1（pinyin，中心 164）之前——
+    const host = rows[6].parentElement;
+    // 行6中心 y=384，上拖到 142：落在行1（pinyin，中心 164）之前——
     // handwriting 跨 4 格直接落到第 2 位。
-    emit(handle, 'pointerdown', mkEv(340));
+    emit(handle, 'pointerdown', mkEv(384));
     emit(host, 'pointermove', mkEv(142));
     emit(host, 'pointerup', mkEv(142));
     const call = world.lastCall('saveKeyboardSelection');
-    equal(JSON.parse(call.args[2]), ['t9', 'handwriting', 'pinyin', 'direct', 'double-pinyin', 'stroke', 'french', 'russian', 'japanese'],
+    equal(JSON.parse(call.args[2]), ['t9', 'handwriting', 'pinyin', 'direct', 'double-pinyin', 'stroke', 'flypy', 'french', 'russian', 'japanese'],
         'drag persists the full row order as the 3rd arg (feelime_mode_order)');
     // 勾选集仍按行序收集 checked（menuModes 只是集合，序无关紧要）。
     equal(JSON.parse(call.args[0]).slice().sort(), ['direct', 'double-pinyin', 'pinyin', 'stroke', 't9'],
@@ -1372,7 +1372,7 @@ test('keyboard rows render in modeOrder and drag reorder saves the full order', 
     // 实参顺序契约：call() 把 token 追加在末尾，第 3 参必须是 order——
     // Kotlin 签名 token 若排第 3 位会静默拒绝（真机验收 2026-09-26 问题 A）。
     equal(typeof call.args[3], 'string', 'token rides last after the order json');
-    equal(JSON.parse(call.args[2]).length, 9, 'arg #3 parses as the order array');
+    equal(JSON.parse(call.args[2]).length, 10, 'arg #3 parses as the order array');
     // 保存失败要可见：keyboardsError 事件落到同一 note（覆盖乐观「已保存」）。
     world.FeelimeSettings().onEvent({ type: 'keyboardsError', code: 'BAD_KEYBOARD_SELECTION',
         message: '键盘选择数据格式错误' });
