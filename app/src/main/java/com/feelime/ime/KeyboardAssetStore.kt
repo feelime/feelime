@@ -11,7 +11,11 @@ import java.io.File
 class KeyboardAssetStore(private val root: File) {
 
     fun response(path: String): WebResourceResponse {
-        val relative = path.removePrefix("/keyboard/").ifBlank { "index.html" }
+        // ?v=<version> 只做缓存失效（真机实录：no-store 响应头仍被
+        // ColorOS WebView 的 HTTP cache 钉死旧 JS，rm built-in + 进程
+        // 重启都救不回，升级 APK 后键盘停留旧版）——URL 带版本，缓存
+        // key 天然随版本换。
+        val relative = path.removePrefix("/keyboard/").substringBefore('?').ifBlank { "index.html" }
         if (relative.split('/').any { it == ".." || it.isBlank() }) return missing()
         if (relative !in SERVED_FILES) return missing()
         val file = File(root, relative)
@@ -21,6 +25,19 @@ class KeyboardAssetStore(private val root: File) {
             headers["Content-Security-Policy"] =
                 "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
                     "connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'"
+            // 注入当前版本号：index.html 自身 no-store 不被缓存，它引用
+            // 的 js/css 的 URL 随 VERSION 变化。
+            val version = File(root, "VERSION").takeIf { it.isFile }
+                ?.readText()?.trim().takeUnless { it.isNullOrEmpty() } ?: "0"
+            val html = file.readText().replace("__KB_VERSION__", version)
+            return WebResourceResponse(
+                mimeType(relative),
+                "UTF-8",
+                200,
+                "OK",
+                headers,
+                html.byteInputStream(),
+            )
         }
         return WebResourceResponse(
             mimeType(relative),
