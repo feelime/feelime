@@ -56,6 +56,10 @@ object BaseDictInstaller {
     private const val KEY_TONED = "toned"
     /** 基底词条数（#35 T9 内存门的 flypy 联动用，兼诊断）。 */
     private const val KEY_TAB_LINES = "tab_lines"
+    /** T9 因词条量/内存被跳过（E：设置页持续提示直到换库/换小库）。 */
+    private const val KEY_T9_SKIPPED = "t9_skipped"
+    /** 主表构建的内存估算系数（实测万象 2.7M 词条峰值 1.2GB ≈ 450B/条）。 */
+    private const val BASE_BUILD_BYTES_PER_ENTRY = 600L
     private const val TONE_RATIO_THRESHOLD = 0.02
 
     // ---- #20 音形码表导入（小鹤音形）：独立于基底词库的第二换装通道 ----
@@ -458,6 +462,10 @@ object BaseDictInstaller {
             .putOpt("nonPinyin", nonPinyinHint(mode, built, ratio) ?: JSONObject.NULL)
             // #35：带调码表（疑似完整版）持续提示，直到换 Lite/内置。
             .put("toned", tonedHint(mode, built, prefs.getBoolean(KEY_TONED, false)))
+            // T9 跳过提示（E）：词条量/内存门跳编九宫格，直到换库消失。
+            .put("t9Skipped", mode == "custom" && built &&
+                prefs.getBoolean(KEY_T9_SKIPPED, false) &&
+                !File(context.filesDir, "rime-user/build/luna_pinyin_t9.prism.bin").isFile)
         val stage = stageSnapshot
         if (isBuilding() && stage != null) {
             json.put("stage", stage)
@@ -589,6 +597,21 @@ object BaseDictInstaller {
             "code-domain probe: segmentable=${nonPinyinRatio ?: "n/a"} " +
                 "toneRatio=${"%.4f".format(stats.toneRatio)} tables=${staged.files.size}")
 
+        // 内存预检（整体 review F）：主表构建峰值实测 ~450B/词条（万象
+        // 2.7M→1.2GB），按 600B/词条留余量估总峰值（table+主 prism 同场）。
+        // 可用内存兜不住直接报错——跑下去也是中途被系统杀（ace 实录：
+        // Athena SIGKILL 后全量回滚，用户白等十分钟）。
+        val availBytes = availMemory(context)
+        val estBytes = stats.tabLines * BASE_BUILD_BYTES_PER_ENTRY
+        if (availBytes in 1 until estBytes) {
+            android.util.Log.w("FeelimeBaseDict",
+                "memory preflight: avail=${availBytes / 1_000_000}MB " +
+                    "est=${estBytes / 1_000_000}MB entries=${stats.tabLines}")
+            sourceDir.deleteRecursively()
+            clearInstalling(context)
+            return InstallResult("BASE_DICT_MEMORY_LOW", changed = false)
+        }
+
         // 编译现场：umbrella + 31 变体 schema + default.yaml，双落位
         // （librime resolver 语义，真机首验 2 秒空转定罪）：
         // - user 根 = 源形态：source resolver（user→shared）从这里读
@@ -608,13 +631,36 @@ object BaseDictInstaller {
         // #35 延迟编译：核心 6 项 + 当前模糊音 1 变体（见 baseCompileSchemas）；
         // #20 联动：音形码表已导入时 flypy 同场在列。
         val flypyInstalled = isFlypyInstalled(context)
+        val includeT9 = BaseDictFiles.t9Eligible(stats.tabLines, availBytes)
         val compileSchemas = BaseDictFiles.baseCompileSchemas(
-            FuzzyPinyin.mask(context), flypyInstalled, stats.tabLines,
+            FuzzyPinyin.mask(context), flypyInstalled, includeT9,
         )
-        if ("luna_pinyin_t9" !in compileSchemas) {
+        if (!includeT9) {
             android.util.Log.w("FeelimeBaseDict",
-                "T9 skipped: ${stats.tabLines} entries > ${BaseDictFiles.T9_MAX_ENTRIES}")
+                "T9 skipped: ${stats.tabLines} entries, " +
+                    "avail=${availBytes / 1_000_000}MB")
         }
+
+        // #35 双拼/T9 纯拼音子伞表（「ing欧」定罪）：按表采样切分比例，
+        // 拼音码表照旧进全量伞表（全拼英文混输特性保留），字母码表
+        // （en/abbrev 类）只进全量伞。全部表都是拼音码时不分表（单文件
+        // #23 导入零变化）；切不出来（全字母）也退回全量（行为同旧）。
+        val dpTables: List<String> = if (syllables.isEmpty() || nonPinyinRatio == null) {
+            emptyList()
+        } else {
+            staged.files.filter { f ->
+                val lines = stats.perFile.firstOrNull { it.first == f }?.second ?: 0
+                lines <= 0 || runCatching {
+                    pinyinCodeRatio(f, syllables, NON_PINYIN_SAMPLE / 4, lines) >= 0.5f
+                }.getOrDefault(true)
+            }.map { it.name }.also { eligible ->
+                if (eligible.size == staged.files.size || eligible.isEmpty()) {
+                    android.util.Log.i("FeelimeBaseDict",
+                        "dp umbrella: no split (${eligible.size}/${staged.files.size} pinyin tables)")
+                }
+            }
+        }
+        val splitDp = dpTables.isNotEmpty() && dpTables.size < staged.files.size
         val assets = context.assets
         val defaultYaml = runCatching {
             BaseDictFiles.defaultYaml(
@@ -634,6 +680,24 @@ object BaseDictInstaller {
             File(user, BaseDictFiles.UMBRELLA_FILE).writeText(
                 BaseDictFiles.umbrellaYaml(sha.take(12), staged.files.map { it.name }, stats.tabLines),
             )
+            if (splitDp) {
+                // 子伞表（user 根源形态）+ 双拼/T9 schema 的 dictionary 改写
+                //（shared 原版引用 luna_pinyin；user/staging 双落位影随）。
+                File(user, BaseDictFiles.DP_UMBRELLA_FILE).writeText(
+                    BaseDictFiles.umbrellaYaml(sha.take(12), dpTables, stats.tabLines,
+                        BaseDictFiles.DP_DICTIONARY),
+                )
+                BaseDictFiles.KEYMAPPED_SCHEMAS.forEach { schema ->
+                    val src = EngineDataStore.readyFile(context, "rime/$schema.schema.yaml")
+                    if (src != null) {
+                        val rewritten = BaseDictFiles.rewriteDictionary(
+                            src.readText(), BaseDictFiles.DP_DICTIONARY,
+                        )
+                        File(user, "$schema.schema.yaml").writeText(rewritten)
+                        File(staging, "$schema.schema.yaml").writeText(rewritten)
+                    }
+                }
+            }
             (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
                 val variant = BaseDictFiles.variantSchema(template, mask)
                 File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(variant)
@@ -658,6 +722,15 @@ object BaseDictInstaller {
                 if (f.name.endsWith(".prism.bin") && managed &&
                     stem !in compileSchemas
                 ) f.delete()
+            }
+            if (!splitDp) {
+                // 上一基底分过表而本次不分（词库全拼音）：子伞产物与 schema
+                // 影随副本全部失效——prism 引用的字典已不存在。
+                staging.listFiles()?.forEach { f ->
+                    if (f.name == BaseDictFiles.DP_TABLE ||
+                        f.name.removeSuffix(".prism.bin") in BaseDictFiles.KEYMAPPED_SCHEMAS
+                    ) f.delete()
+                }
             }
         }.onFailure {
             rollback(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)
@@ -693,7 +766,9 @@ object BaseDictInstaller {
 
         // 产物校验（按本次编译清单推导；#35 延迟编译后只验进过清单的）。
         val build = File(user, "build")
-        val missing = requiredProducts(compileSchemas).filterNot { File(build, it).isFile }
+        val required = requiredProducts(compileSchemas) +
+            listOfNotNull(BaseDictFiles.DP_TABLE.takeIf { splitDp })
+        val missing = required.filterNot { File(build, it).isFile }
         if (missing.isNotEmpty()) {
             android.util.Log.w("FeelimeBaseDict", "missing products: $missing")
             rollback(context)
@@ -718,6 +793,7 @@ object BaseDictInstaller {
             .putFloat(KEY_NON_PINYIN_RATIO, nonPinyinRatio ?: -1f)
             .putBoolean(KEY_TONED, toned)
             .putInt(KEY_TAB_LINES, stats.tabLines)
+            .putBoolean(KEY_T9_SKIPPED, !includeT9)
             .apply()
         return InstallResult(null, changed = true)
     }
@@ -762,7 +838,8 @@ object BaseDictInstaller {
                 assets.open(BaseDictFiles.ASSETS_DEFAULT).bufferedReader().readText(),
                 BaseDictFiles.flypyCompileSchemas(
                     baseCustom,
-                    prefs.getInt(KEY_TAB_LINES, 0),
+                    baseCustom && BaseDictFiles.t9Eligible(
+                        prefs.getInt(KEY_TAB_LINES, 0), availMemory(context)),
                 ),
             )
         }.getOrNull() ?: run {
@@ -1004,6 +1081,13 @@ object BaseDictInstaller {
 
     /** 合法拼音音节集合：APK 拼式表（音节→各方案键序）的键空间。
      *  加载失败返回空集（调用方跳过检测，不误报）。 */
+    private fun availMemory(context: Context): Long = runCatching {
+        val mi = android.app.ActivityManager.MemoryInfo()
+        (context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager)
+            .getMemoryInfo(mi)
+        mi.availMem
+    }.getOrDefault(0L)
+
     private fun syllableSet(context: Context): Set<String> {
         val out = HashSet<String>()
         runCatching {
@@ -1260,6 +1344,12 @@ object BaseDictInstaller {
         File(user, BaseDictFiles.DEFAULT_FILE).delete()
         File(user, BaseDictFiles.SYMBOLS_FILE).delete()
         File(user, BaseDictFiles.UMBRELLA_FILE).delete()
+        // 双拼/T9 schema 的 dictionary 改写副本与子伞源（编译期影子，
+        // 运行时读 staging 的 compiled schema）。
+        File(user, BaseDictFiles.DP_UMBRELLA_FILE).delete()
+        BaseDictFiles.KEYMAPPED_SCHEMAS.forEach {
+            File(user, "$it.schema.yaml").delete()
+        }
         (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
             File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").delete()
         }
@@ -1301,7 +1391,7 @@ object BaseDictInstaller {
         if (keepFlypy) {
             prefs.remove(KEY_MODE).remove(KEY_NAME).remove(KEY_INSTALLED_AT)
                 .remove(KEY_SOURCE_SHA).remove(KEY_NON_PINYIN_RATIO).remove(KEY_TONED)
-                .remove(KEY_TAB_LINES)
+                .remove(KEY_TAB_LINES).remove(KEY_T9_SKIPPED)
                 .remove(KEY_FUZZY_COMPILING_MASK).remove(KEY_FUZZY_PENDING_MASK)
         } else {
             prefs.clear()
@@ -1352,6 +1442,7 @@ object BaseDictInstaller {
             "REVERTED" to "已恢复内置词库",
             "BASE_DICT_READ_FAILED" to "读取文件失败或超过 150MB 上限",
             "BASE_DICT_EMPTY" to "文件里没有词条（需要「词<TAB>码」行）",
+            "BASE_DICT_MEMORY_LOW" to "本机可用内存不足以编译此词库（大词库编译需要约几 GB 空闲内存），请关闭其他应用后重试或换用更小的词库",
             "BASE_DICT_DUPLICATE" to "包内有同名词表（不同目录下的同名 .dict.yaml），无法确定用哪个，请整理后重试",
             "BASE_DICT_ENGINE_NOT_READY" to "引擎数据还没准备好，稍后再试",
             "BASE_DICT_MAINTENANCE_START_FAILED" to "编译线程启动失败",

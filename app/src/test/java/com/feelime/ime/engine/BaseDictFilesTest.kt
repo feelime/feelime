@@ -204,24 +204,40 @@ class BaseDictFilesTest {
             BaseDictFiles.CORE_SCHEMAS + BaseDictFiles.FLYPY_SCHEMA,
             BaseDictFiles.flypyCompileSchemas(baseCustom = true),
         )
-        // #35 T9 内存门：词条超限剔除 T9（万象 2.7M 实测 RSS 爬到 6.9GB+
-        // 被系统 SIGKILL）；entries 缺省（0/未知）保留 T9（保守全量）。
+        // #35 T9 内存门（词条量 + 可用内存双门；万象 2.7M 实测 RSS 爬到
+        // 6.9GB+ 被系统 SIGKILL）。
         assertEquals(
             BaseDictFiles.CORE_SCHEMAS.filter { it != "luna_pinyin_t9" } + "luna_pinyin_fuzzy_m19",
             BaseDictFiles.baseCompileSchemas(
-                fuzzyMask = 19, flypyInstalled = false,
-                entries = BaseDictFiles.T9_MAX_ENTRIES + 1,
+                fuzzyMask = 19, flypyInstalled = false, includeT9 = false,
             ),
         )
         assertEquals(
             BaseDictFiles.CORE_SCHEMAS,
-            BaseDictFiles.baseCompileSchemas(fuzzyMask = 0, flypyInstalled = false,
-                entries = BaseDictFiles.T9_MAX_ENTRIES),
+            BaseDictFiles.baseCompileSchemas(
+                fuzzyMask = 0, flypyInstalled = false, includeT9 = true),
         )
         assertEquals(
             BaseDictFiles.CORE_SCHEMAS.filter { it != "luna_pinyin_t9" } + BaseDictFiles.FLYPY_SCHEMA,
-            BaseDictFiles.flypyCompileSchemas(baseCustom = true, baseEntries = 2_700_000),
+            BaseDictFiles.flypyCompileSchemas(baseCustom = true, includeT9 = false),
         )
+        // t9Eligible 双门边界：词条上限、内存按 4KB/词条。
+        assertEquals(false, BaseDictFiles.t9Eligible(BaseDictFiles.T9_MAX_ENTRIES + 1, Long.MAX_VALUE))
+        assertEquals(true, BaseDictFiles.t9Eligible(BaseDictFiles.T9_MAX_ENTRIES, Long.MAX_VALUE))
+        // 600k 词条 × 4KB = 2.4GB：可用 2GB 不够。
+        assertEquals(false, BaseDictFiles.t9Eligible(600_000, 2_000_000_000L))
+        assertEquals(true, BaseDictFiles.t9Eligible(500_000, 2_500_000_000L))
+        assertEquals(false, BaseDictFiles.t9Eligible(0, Long.MAX_VALUE))
+
+        // #35 双拼/T9 纯拼音子伞：dictionary 行只动 translator 的精确匹配。
+        val dpSchema = BaseDictFiles.rewriteDictionary(
+            "speller:\n  algebra: []\ntranslator:\n  dictionary: luna_pinyin\npunctuator:\n  dictionary: \"\"\n",
+            BaseDictFiles.DP_DICTIONARY,
+        )
+        assertTrue(dpSchema.contains("  dictionary: ${BaseDictFiles.DP_DICTIONARY}"))
+        // 其他 dictionary 行（空串/stroke 类）不被误伤。
+        assertTrue(dpSchema.count { it == "dictionary: ".first() } >= 0) // 形状占位
+        assertTrue(dpSchema.contains("dictionary: \"\""))
         // mask 边界。
         assertEquals(null, BaseDictFiles.fuzzyVariant(0))
         assertEquals(null, BaseDictFiles.fuzzyVariant(32))

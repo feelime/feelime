@@ -109,6 +109,7 @@ const I18N = {
         "dict.base.builtin": "内置 rime-frost（白霜拼音）",
         "dict.base.custom": "自定义：{0}",
         "dict.base.nonPinyin": "抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。",
+        "dict.base.t9Skip": "此词库词条较多：编译九宫格（T9）词库的内存开销超出本机承受（会被系统中止），本次导入跳过了九宫格，拼音/双拼不受影响；换更小的词库或恢复内置后九宫格即恢复。",
         "dict.base.toned": "此词库的编码带声调（疑似完整版，如万象拼音 Base）：键盘打不出声调符号，很多字将无法命中，请改用去声调的 Lite 版（或换回内置词库）。",
         "flypy.title": "音形码表",
         "flypy.badge": "音形",
@@ -621,6 +622,7 @@ const I18N = {
         "dict.base.builtin": "Built-in rime-frost",
         "dict.base.custom": "Custom: {0}",
         "dict.base.nonPinyin": "A large share of codes in this dictionary are not pinyin syllable sequences (shape-code layout): characters may not be reachable by typing their pronunciation. Dedicated shape-code schema support may come later.",
+        "dict.base.t9Skip": "This dictionary has many entries: compiling the T9 (9-key) prism would exceed this device's available memory, so the 9-key mode was skipped for this import. Pinyin and double-pinyin are unaffected; a smaller dictionary or the built-in one restores it.",
         "dict.base.toned": "Codes in this dictionary carry tone marks (likely the full variant, e.g. wanxiang Base): tones are not typeable on this keyboard, so many entries will never match. Use the tone-free Lite variant (or restore the built-in).",
         "flypy.title": "Shape-code table",
         "flypy.badge": "Shape",
@@ -2467,6 +2469,9 @@ function renderDictBase(state) {
     // #35：带调码表（疑似完整版）持续警示。
     const toned = $("dictBaseToned");
     if (toned) toned.hidden = !base.toned;
+    // T9 内存门跳编的持续提示（词条量/内存不足）。
+    const t9skip = $("dictBaseT9Skip");
+    if (t9skip) t9skip.hidden = !base.t9Skipped;
     $("btnBaseDictRevert").hidden = base.mode !== "custom" || base.building;
     $("btnBaseDictPick").disabled = !!base.building;
     $("dictBaseBuilding").hidden = !base.building;

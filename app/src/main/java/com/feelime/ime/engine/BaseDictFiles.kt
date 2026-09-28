@@ -68,6 +68,30 @@ object BaseDictFiles {
 
     /** 音形码表的 schema id（issue #20）。 */
     const val FLYPY_SCHEMA = "feelime_flypy"
+
+    /** #35 双拼/T9 的纯拼音子伞表（「ing欧」实测定罪）：双拼/T9 的
+     *  speller algebra 按键位变换码（如自然码 xform/ing$/Y/），英文
+     *  词典的字母码（ing/you/en…）不是拼音，被压成短键后与常规击键
+     *  全是碰撞（双拼打 y 出 [ing][欧] 缝合候选）。这些 schema 改引
+     *  用只含「拼音码表」的子伞表（按表采样切分比例 ≥ 0.5），全拼
+     *  伞表保留全部表（英文混输是全拼特性）。 */
+    const val DP_DICTIONARY = "luna_pinyin_dp"
+    const val DP_UMBRELLA_FILE = "luna_pinyin_dp.dict.yaml"
+    const val DP_TABLE = "luna_pinyin_dp.table.bin"
+
+    /** 引用 [DP_DICTIONARY] 的 schema（4 双拼 + T9）。 */
+    val KEYMAPPED_SCHEMAS = listOf(
+        "ziranma_double_pinyin", "double_pinyin_flypy",
+        "double_pinyin_sogou", "double_pinyin_ziguang",
+        "luna_pinyin_t9",
+    )
+
+    /** schema 的 translator.dictionary 行改写（只动 `dictionary: luna_pinyin`
+     *  精确匹配——文件里还有 dictionary: ""/stroke 等其他段，不能误伤）。 */
+    fun rewriteDictionary(schemaYaml: String, newDict: String): String =
+        schemaYaml.lineSequence().joinToString("\n") { line ->
+            if (line.trim() == "dictionary: luna_pinyin") "  dictionary: $newDict" else line
+        }
     const val FLYPY_DICT = "flypy.dict.yaml"
     const val FLYPY_TABLE = "flypy.table.bin"
 
@@ -95,17 +119,27 @@ object BaseDictFiles {
      *  跳过 T9（模式自动不可用），内置与中小词库不受影响。 */
     const val T9_MAX_ENTRIES = 600_000
 
+    /** T9 每词条的编译内存估算（含余量）：实测 6.9GB/2.7M ≈ 2.6KB/词条，
+     *  按 4KB 留余量。与词条上限双门：低配机（可用内存小）在更小的
+     *  词条数就会跳过 T9（codex 后整体 review F）。 */
+    const val T9_BYTES_PER_ENTRY = 4_000L
+
+    /** T9 编译资格 = 词条上限 + 可用内存双门。availBytes 传
+     *  ActivityManager.MemoryInfo.availMem。 */
+    fun t9Eligible(entries: Int, availBytes: Long): Boolean =
+        entries in 1..T9_MAX_ENTRIES && availBytes > entries * T9_BYTES_PER_ENTRY
+
     /** #35 延迟编译版换装清单：核心 6 项 + 当前模糊音组合 1 项（若开）
      *  + flypy 联动（#20：音形码表已导入时同场，见 [flypyCompileSchemas]）。
      *  其余 30 个变体在用户切换模糊音组合时按需补编（FuzzyPinyin
      *  开关链路的 ensureFuzzyVariant，见 BaseDictInstaller）。
-     *  entries 超过 [T9_MAX_ENTRIES] 时剔除 T9（内存保护，见常量注释）。 */
+     *  includeT9 由调用方按 [t9Eligible] 判定后传入。 */
     fun baseCompileSchemas(
         fuzzyMask: Int,
         flypyInstalled: Boolean,
-        entries: Int = 0,
+        includeT9: Boolean = true,
     ): List<String> {
-        val core = if (entries in 1..T9_MAX_ENTRIES || entries == 0) CORE_SCHEMAS
+        val core = if (includeT9) CORE_SCHEMAS
             else CORE_SCHEMAS.filter { it != "luna_pinyin_t9" }
         return core + listOfNotNull(fuzzyVariant(fuzzyMask)) +
             listOfNotNull(FLYPY_SCHEMA.takeIf { flypyInstalled })
@@ -117,11 +151,11 @@ object BaseDictFiles {
      *  ⚠ custom 基底 + flypy 组合的真机行为待验收实测（变体 schema 源
      *  在基底安装成功后已被清理，SchemaUpdate 找不到源时的行为要
      *  眼见为实）。 */
-    fun flypyCompileSchemas(baseCustom: Boolean, baseEntries: Int = 0): List<String> {
+    fun flypyCompileSchemas(baseCustom: Boolean, includeT9: Boolean = true): List<String> {
         if (!baseCustom) return listOf(FLYPY_SCHEMA)
         // T9 内存门同 baseCompileSchemas：大基底跳过（否则 flypy 导入的
         // maintenance 会补建 t9 prism，同样的内存炸弹）。
-        val core = if (baseEntries in 1..T9_MAX_ENTRIES || baseEntries == 0) CORE_SCHEMAS
+        val core = if (includeT9) CORE_SCHEMAS
             else CORE_SCHEMAS.filter { it != "luna_pinyin_t9" }
         return core + FLYPY_SCHEMA
     }
@@ -129,12 +163,17 @@ object BaseDictFiles {
     /** #35：tables = 落进 [SOURCE_DIR] 的词条表文件名（zip 多表导入；
      *  单文件导入就是 [SOURCE_FILE] 一项）。import_tables 的引用名 =
      *  文件名去掉 .dict.yaml（librime 惯例）。 */
-    fun umbrellaYaml(sourceSha: String, tables: List<String>, lineCount: Int): String = buildString {
+    fun umbrellaYaml(
+        sourceSha: String,
+        tables: List<String>,
+        lineCount: Int,
+        name: String = "luna_pinyin",
+    ): String = buildString {
         append("# Rime dictionary\n# encoding: utf-8\n")
         append("# issue #23: user-imported base dictionary (device-compiled).\n")
         append("# name MUST stay luna_pinyin - every schema references it.\n")
         append("---\n")
-        append("name: luna_pinyin\n")
+        append("name: $name\n")
         append("version: \"user-$sourceSha\"\n")
         append("sort: by_weight\n")
         append("import_tables:\n")
