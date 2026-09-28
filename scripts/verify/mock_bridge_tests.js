@@ -2731,23 +2731,23 @@ test('dp14 layout: merged pairs render, halves stay single-letter keys (issue #3
     const letters = [...w.document.querySelectorAll('#qwertyLayer [data-key]')]
         .map(b => b.dataset.key).filter(k => /^[a-z]$/.test(k)).sort().join('');
     equal(letters, 'abcdefghijklmnopqrstuvwxyz', 'all 26 letters present');
-    // 韵母小字（默认 ziranma）：q=iu、u=sh；e/a 单韵母自显留空。
-    // （选择器分两跳：mock 引擎的后代组合只支持两段。）
+    // 韵母小字不显示（验收二轮：键面溢出；方案键位图在设置页）。
     const alt = k => {
         const key = w.document.querySelector(`#qwertyLayer [data-key="${k}"]`);
         return key.querySelector('.kb-alt').textContent;
     };
-    equal(alt('q'), 'iu', 'ziranma q carries iu');
-    equal(alt('u'), 'sh', 'u is the sh initial home');
-    equal(alt('e'), '', 'single-letter final stays empty');
+    equal(alt('q'), '1', 'merged keys show the plain qwerty digit hint');
+    // 键帽级两字母并排：data-glyph 由 CSS 渲染，DOM 上挂在 pair。
+    const glyph = w.document.querySelector('#qwertyLayer .merge-pair');
+    equal(glyph.dataset.glyph, 'QW', 'pair carries the merged glyph label');
     // 半区点击 = 单字母键（key 通道进引擎组合，与 26 键完全一致）。
     w.native.reset();
     w.tap(w.document.querySelector('#qwertyLayer [data-key="q"]'));
     equal(w.native.of('key').slice(-1)[0].args[0], 'q', 'half-key tap sends the single letter');
-    // 方案切换：小字跟随 flypy（w=ei、k=ing/uai）。
+    // 方案切换重渲染仍工作（键面不变但 renderMode 路径要通）。
     w.hello({ mode: 'double-pinyin', dpLayout: '14', dpScheme: 'flypy' });
-    equal(alt('w'), 'ei', 'flypy w carries ei');
-    equal(alt('k'), 'ing/uai', 'flypy k carries ing/uai');
+    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 12,
+        'scheme switch keeps the merged pairs');
     // 其他模式不受 dpLayout 影响（pinyin 仍是 26 键）。
     w.hello({ mode: 'pinyin', dpLayout: '14' });
     equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 0,
@@ -3505,9 +3505,10 @@ test('edit toolbar tool: panel swaps the key area, every action rides existing b
         'plain arrows ride editorCursor');
     equal(w.native.of('keyEventPhysical').length, 0, 'no combo channel for plain arrows');
 
-    // 扩选点亮：方向键/行首行尾带 SHIFT（组合层 physical 通道，Shift=1）。
+    // 「选择」点亮（验收二轮：文案从扩选改选择，锁定态 accent 实底）：
+    // 方向键/行首行尾带 SHIFT（组合层 physical 通道，Shift=1）。
     w.tap(editKey('sel'));
-    equal(editKey('sel').className.includes('armed'), true, 'shift-select toggle lights up');
+    equal(editKey('sel').className.includes('armed'), true, 'select toggle lights up');
     w.tap(editKey('left'));
     equal(JSON.stringify(w.native.of('keyEventPhysical').map(c => c.args)),
         '[[21,1,"tok-1"]]', 'armed arrows ride Shift+ArrowLeft');
@@ -3530,6 +3531,9 @@ test('edit toolbar tool: panel swaps the key area, every action rides existing b
     equal(JSON.stringify(w.native.of('editorAction').map(c => c.args[0])),
         '["selectAll","copy","cut","paste"]', 'select/copy/cut/paste ride editorAction');
     equal(w.native.of('backspace').length, 1, 'delete rides backspace');
+    // 右列动作执行完解除选择锁定（验收反馈：保持锁定会让后续方向键
+    // 意外扩选）。上面四个动作在点亮态执行，全部应已解锁。
+    equal(editKey('sel').className.includes('armed'), false, 'clipboard actions disarm the select lock');
 
     // 再点工具 = 关闭，键区按 editReturnLayer 归还（letters）。
     w.tap(w.$('editTool'));
