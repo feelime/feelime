@@ -645,6 +645,12 @@ class SettingsBridge(
                 .put("enabled", hostEnabled())
                 .put("isDefault", hostIsDefaultIme()))
             .put("mic", JSONObject().put("granted", micGranted()))
+            // #41 字数统计：今日/累计上屏 code point 数（关于页展示）。
+            .put("inputStats", JSONObject().apply {
+                val (today, total) = InputStats.snapshot(context)
+                put("today", today)
+                put("total", total)
+            })
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(context))
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
             .put("baseDict", com.feelime.ime.engine.BaseDictInstaller.statusJson(context))

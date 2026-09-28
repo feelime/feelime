@@ -374,7 +374,9 @@ const I18N = {
         "about.builtInKeyboard": "键盘版本（内置）",
         "about.device": "手机型号",
         "about.android": "系统版本",
-        "about.androidValue": "Android {release}（API {sdk}）",
+                "about.androidValue": "Android {release}（API {sdk}）",
+        "about.inputStats": "输入字数",
+        "about.inputStatsValue": "今日 {today} · 累计 {total}",
         "note.saved": "已保存",
         "note.customSaved": "已保存，键盘下次载入时生效",
         "note.copied": "已复制",
@@ -898,7 +900,9 @@ const I18N = {
         "about.builtInKeyboard": "Keyboard version (built-in)",
         "about.device": "Device",
         "about.android": "System version",
-        "about.androidValue": "Android {release} (API {sdk})",
+                "about.androidValue": "Android {release} (API {sdk})",
+        "about.inputStats": "Characters typed",
+        "about.inputStatsValue": "Today {today} · Total {total}",
         "note.saved": "Saved",
         "note.customSaved": "Saved; applied the next time the keyboard loads",
         "note.copied": "Copied",
@@ -2750,17 +2754,27 @@ function renderUpdate(state) {
     $("updateDanger").textContent = t(confirmedBad ? "update.sigConfirmed" : "update.unsigned");
 }
 
-function aboutRows(state) {
+function aboutRows(state, opts = {}) {
     const device = state.device || {};
     const release = device.release || "?";
     const sdk = device.sdkInt === undefined ? "?" : device.sdkInt;
-    return [
+    const rows = [
         [t("about.appVersion"), `v${state.appVersion || "?"}`],
         [t("about.activeKeyboard"), `v${activeKeyboardVersion(state)}`],
         [t("about.builtInKeyboard"), `v${state.keyboardVersion || "?"}`],
         [t("about.device"), `${device.manufacturer || ""} ${device.model || ""}`.trim() || "?"],
         [t("about.android"), t("about.androidValue", { release, sdk })],
     ];
+    // #41 字数统计（native pref 唯一真相源，state 快照读取）。复制版本
+    // 信息（forCopy）不带：计数值随输入漂移，进了诊断贴反而成噪声。
+    if (state.inputStats && !opts.forCopy) {
+        rows.push([t("about.inputStats"),
+            t("about.inputStatsValue", {
+                today: state.inputStats.today || 0,
+                total: state.inputStats.total || 0,
+            })]);
+    }
+    return rows;
 }
 
 function renderAbout(state) {
@@ -3143,7 +3157,7 @@ $("btnDlThin").addEventListener("click", () => downloadRelease("thin"));
 $("btnDlFull").addEventListener("click", () => downloadRelease("full"));
 $("btnCopyAbout").addEventListener("click", () => {
     if (!lastState) return;
-    call("copyText", aboutRows(lastState).map(([label, value]) => `${label}: ${value}`).join("\n"));
+    call("copyText", aboutRows(lastState, { forCopy: true }).map(([label, value]) => `${label}: ${value}`).join("\n"));
     setNote("aboutNote", t("note.copied"));
 });
 

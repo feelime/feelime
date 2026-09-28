@@ -2060,6 +2060,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // stop, so this single commit replaces it atomically.
             connection.commitText(session.text, 1)
         }
+        // #41 字数统计：语音正常落定（流式 finish 或缓冲 commit）计
+        // session.text；rollback 分支在上面提前 return，天然不计。
+        InputStats.record(this, session.text)
     }
 
     private fun rollbackVoiceSession(session: VoiceSession) {
@@ -3238,6 +3241,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 rejectedCalls += 1
                 return@guarded
             }
+            // #41 字数统计：JS 直发文本走 pasteExternal→editor.commitText，
+            // 计数点在 InputConnectionEditorPort（此处再加会双计）。
             coordinator.pasteExternal(text)
         }
 

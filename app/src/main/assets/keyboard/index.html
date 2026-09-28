@@ -315,6 +315,11 @@
     </section>
     <!-- 九宫格数字键盘（长按 123 打开），全部由 renderNumpad 填充 -->
     <section id="numPadLayer" class="kb-layer" hidden></section>
+    <!-- #39-10 编辑工具条（可选工具栏控件，搜狗「文字编辑」形态）：
+         替换键区——左侧 ↑/← 扩选 →/↓、底部 行首/全选/行尾，右列
+         删除/复制/剪切/粘贴。全部动作复用现有桥通道（editorCursor/
+         keyEvent/SHIFT 扩选、editorAction、backspace），JS 填充。 -->
+    <section id="editLayer" class="kb-layer" hidden></section>
 
     <section id="panelLayer" hidden>
         <div class="panel-head">

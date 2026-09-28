@@ -15,6 +15,9 @@ class InputConnectionEditorPort(private val service: InputMethodService) : Edito
 
     override fun commitText(text: String) {
         service.currentInputConnection?.commitText(text, 1)
+        // #41 字数统计：引擎路径的上屏必经点（选词/直发/Hunpell 词）。
+        // 面板重定向不走这里（TextInputCoordinator 的包装层先分流）。
+        com.feelime.ime.InputStats.record(service, text)
     }
 
     override fun reopenComposing(start: Int, end: Int, word: String): Boolean {
