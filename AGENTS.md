@@ -137,6 +137,19 @@ bash scripts/verify/run-all.sh    # 全量门禁（--list/--resume/--from/--prof
                                   #  开头 pm clear 基线复位，段间清扫，flock 单设备锁）
 ```
 
+**设备层手验（不走 run-all 时的两条铁律，2026-09-28 实录）**：
+
+1. **双包并存必查默认 IME**：设备上 release 包（发版冒烟残留）与 .dev 包
+   并存时，点编辑框唤起的是**系统默认 IME** 的键盘——CDP 会连到旧代码的
+   键盘页白忙一场（症状：新行为完全不生效 / strictReady 模式恒
+   preparing）。动手前先
+   `adb shell ime set com.feelime.ime.dev/com.feelime.ime.FeelimeService`
+   并核对设置页首页状态为「默认输入法在线」。
+2. **覆盖安装新包后必须 `am force-stop` 重启 IME 进程**：输入法服务进程
+   跨 `install -r` 存活并继续跑旧 dex，hello/新逻辑全是旧行为。CDP 的
+   devtools socket 名随 pid 变（`/proc/net/unix` 现查）；force-stop 后
+   系统 may 把默认 IME 回落给其他包，重新 `ime set`。
+
 ## 词典引擎数据（engine-data）
 
 `app/src/main/assets/engine-data/`（rime/hunspell/mozc/assoc 数据，约 66MB）随仓库
