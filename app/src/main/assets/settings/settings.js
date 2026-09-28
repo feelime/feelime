@@ -288,6 +288,7 @@ const I18N = {
         "action.appStore": "在 Google Play 查看应用",
         "action.githubRepo": "GitHub 仓库",
         "action.githubIssues": "问题反馈",
+        "action.feishuGroup": "加入飞书交流群",
         "about.copyHint": "反馈问题时直接粘贴；复制内容标记为敏感，不会进入键盘剪贴板历史。",
         "about.offlineHint": "全程离线：语音识别与文字候选都不联网。",
         "about.noticesTitle": "第三方许可与组件说明",
@@ -803,6 +804,7 @@ const I18N = {
         "action.appStore": "View app on Google Play",
         "action.githubRepo": "GitHub repository",
         "action.githubIssues": "Report an issue",
+        "action.feishuGroup": "Join the Feishu group",
         "about.copyHint": "Paste this when reporting a problem. The copied report is marked sensitive and is kept out of keyboard clipboard history.",
         "about.offlineHint": "Everything stays offline: voice recognition and text candidates use no network.",
         "about.noticesTitle": "Third-party licenses & components",
@@ -3043,6 +3045,8 @@ $("btnGithubRepo").addEventListener("click", () => call("openGithub", "repo"));
 // #29-8：定制键盘 JSON 的官方说明文档（native 只认内置地址）。
 $("btnCustomDocs").addEventListener("click", () => call("openDocs"));
 $("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"));
+// 飞书交流群（浏览器打开内置邀请链接，native 侧固定白名单同 openGithub）。
+$("btnFeishuGroup").addEventListener("click", () => call("openFeishuGroup"));
 $("btnCopyAbout").addEventListener("click", () => {
     if (!lastState) return;
     call("copyText", aboutRows(lastState).map(([label, value]) => `${label}: ${value}`).join("\n"));
