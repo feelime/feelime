@@ -101,7 +101,7 @@
         "已恢复默认高度": "Default height restored",
         "输入法快捷切换": "Quick switch",
         "长按菜单": "Keyboard menu",
-        "定制键盘": "Custom keys",
+        "定制符号": "Custom symbols",
         "返回设置首页": "Back to quick settings",
         "收起设置": "Close quick settings",
         "色彩模式": "Appearance",
@@ -172,11 +172,11 @@
         "已定制 {0} 个键": "{0} custom keys",
         "未定制": "No custom keys",
         "粘贴 JSON ›": "Paste JSON ›",
-        "粘贴 JSON 定制键盘": "Paste custom keyboard JSON",
+        "粘贴 JSON 定制符号": "Paste custom-symbol JSON",
         "插入模板 ›": "Use example ›",
         "插入定制模板": "Use custom keyboard example",
         "查看说明 ›": "View guide ›",
-        "查看定制键盘说明": "View the custom keyboard guide",
+        "查看定制符号说明": "View the custom-symbol guide",
         "粘贴定制 JSON": "Paste custom keyboard JSON",
         "保存失败：本地存储不可用": "Could not save. Local storage is unavailable.",
         "已保存 {0} 个键": "Saved {0} keys",
@@ -211,7 +211,7 @@
         "关闭": "Close",
         "输入常用内容（最多 200 字）": "Enter a phrase (up to 200 characters)",
         "常用语内容": "Phrase",
-        "定制键盘 JSON": "Custom keyboard JSON",
+        "定制符号 JSON": "Custom-symbol JSON",
         "输入常用内容": "Enter a phrase",
         "输入码": "Shortcut",
         "留空时自动生成": "Leave blank to generate",
@@ -291,7 +291,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.72.0';
+    const KEYBOARD_VERSION = '3.73.0';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -6441,7 +6441,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // without a keyboard (and keeps the native redirect armed).
             this.clearEditorStrip();
             // The panel reopens on its home page (or the requested
-            // sub-page - the custom-row editor returns to 定制键盘).
+            // sub-page - the custom-row editor returns to 定制符号).
             this.settingsPage = page;
             // 全新打开回第一屏；打开后的 tile 重渲染由 qsPage 保持在当前页。
             this.qsPage = 0;
@@ -6602,7 +6602,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // The sub-page header rides the TOOLBAR (left:
                 // back + title, right: close) instead of its own row.
                 this.showSettingsPageBar({ pair: t("输入法快捷切换"), menu: t("长按菜单"),
-                    custom: t("定制键盘") }[page] || '');
+                    custom: t("定制符号") }[page] || '');
             } else {
                 this.hideSettingsPageBar();
             }
@@ -7002,15 +7002,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         },
                     },
                     {
-                        icon: ICONS.keyboard, label: t("定制键盘"), hold: 'customTitle',
-                        state: () => (customRows
-                            ? t("已定制 {0} 个键", customRows.reduce((sum, row) => sum + (row || []).length, 0))
-                            : t("未定制")),
-                        // customTitle=定制键盘卡标题，focusSetting 对卡级锚
-                        // 整卡呼吸。
-                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('customTitle', this.token)); },
-                    },
-                    {
                         icon: ICONS.swap, label: t("编辑工具栏"),
                         tap: () => {
                             this.closeSettingsPanel();
@@ -7060,7 +7051,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const edit = document.createElement('button');
             edit.className = 'set-opt set-nav';
             edit.textContent = t("粘贴 JSON ›");
-            edit.setAttribute('aria-label', t("粘贴 JSON 定制键盘"));
+            edit.setAttribute('aria-label', t("粘贴 JSON 定制符号"));
             edit.addEventListener('click', () => this.openCustomJsonEditor());
             const template = document.createElement('button');
             template.className = 'set-opt set-nav';
@@ -7071,7 +7062,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const docs = document.createElement('button');
             docs.className = 'set-opt set-nav';
             docs.textContent = t("查看说明 ›");
-            docs.setAttribute('aria-label', t("查看定制键盘说明"));
+            docs.setAttribute('aria-label', t("查看定制符号说明"));
             docs.addEventListener('click', () => {
                 if (typeof Native.openDocs === 'function') this.call(() => Native.openDocs(this.token));
             });

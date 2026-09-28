@@ -830,6 +830,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             modeStore = sharedPreferencesModeStore(),
             delayPoster = { delay, block -> main.postDelayed(block, delay) },
             diagnosticSink = { Diagnostics.log("engine", it) },
+            // 自家 app 的可编辑框（设置页 textarea）：拼音系组合镜像进
+            // 编辑器（#39 反馈「JSON 框打字像卡死」的根因——组合只画在
+            // 键盘 UI，编辑器零回显）。终端型（TYPE_NULL）不镜像。
+            ownAppEditor = {
+                val info = currentInputEditorInfo
+                info != null && info.packageName == packageName &&
+                    info.inputType and android.text.InputType.TYPE_MASK_CLASS !=
+                    android.text.InputType.TYPE_NULL
+            },
         )
     }
 
