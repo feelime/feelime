@@ -4128,6 +4128,34 @@ test('stores pull ignores malformed mirror payloads', {since: '3.28.0'}, () => {
         'array payload is not an empty backup');
 });
 
+// 备份恢复（restore 写镜像只做 rev+1）可以把镜像 rev 写到低于键盘本地
+// ——曾经的 remoteRev > localRev 门槛一旦倒挂永久卡死，设置页的键盘
+// 选择从此到不了键盘（AVD 实测 5>1）。修复后 native 是唯一真相源：
+// 握手无条件 adopt，rev 只取 max 记录。
+test('stores pull: rev inversion (mirror below local) still adopts; uninitialized mirror keeps local', {since: '3.71.0'}, () => {
+    const world = new KeyboardWorld().build();
+    world.storage.set('feelime_scrub_speed', '3');
+    world.hello();
+    // 本地 rev 推到 5，随后低 rev 备份导入把镜像写回 1（带新值）。
+    world.storage.set('feelime_stores_rev', '5');
+    world.native.storesPayload = JSON.stringify({
+        rev: 1,
+        values: { feelime_menu_modes: '["pinyin","flypy"]' },
+    });
+    world.hello();
+    equal(world.storage.get('feelime_menu_modes'), '["pinyin","flypy"]',
+        'inverted mirror still wins (native is the source of truth)');
+    equal(parseInt(world.storage.get('feelime_stores_rev'), 10) >= 1, true,
+        'rev follows the native mirror (CAS base stays consistent)');
+    // 未初始化镜像（values 键缺席，老 APK 升级首握手）：本地键不被洗掉。
+    world.native.storesPayload = undefined;
+    world.native.storesRev = 0;
+    world.storage.set('feelime_menu_modes', '["pinyin"]');
+    world.hello();
+    equal(world.storage.get('feelime_menu_modes'), '["pinyin"]',
+        'uninitialized mirror (no values key) does not wipe local keys');
+});
+
 test('restoring a backup without the locale key falls back to the default language', {since: '3.28.1'}, () => {
     const world = new KeyboardWorld().build();
     world.storage.set('feelime_ui_locale', 'en');

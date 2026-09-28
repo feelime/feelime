@@ -977,19 +977,31 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         } catch (_) { /* bridge unavailable */ }
     }
 
-    /** 原生镜像比本地新（设置页导入过备份）时拉取恢复值（userdata.md §1.5）。
-     * rev 跳号只能出现在导入侧，比较用大于即可。 */
+    /** 原生镜像拉平（userdata.md §1.5）：native 是唯一真相源，镜像 rev
+     * 与本地记录【不等】（native 有新写入：设置页保存 / 备份恢复）就
+     * adopt values，方向无关。曾用 remoteRev > localRev 判「更新」——
+     * 备份恢复（UserdataBackup.restore）写镜像只做 rev+1 不看键盘本地
+     * rev，低 rev 备份导入后镜像低于本地，倒挂一旦发生永不拉平，设置
+     * 页的键盘选择从此到不了键盘（AVD 实测 5>1 卡死）。相等（没有新
+     * 写入）跳过：镜像里的陈旧值（如旧语言）不许顶掉 hello 带来的
+     * 新状态。rev 完全跟随 native（不是取 max）：CAS 的 base 必须等于
+     * mirrorRev，本地揣高值只会让后续 push 永远 -1。
+     * values 键缺席 = 镜像从未写入过（老 APK 升级首握手），跳过——
+     * 不能当「空备份」触发全量删除把本地键洗掉；键在值空（{}）是
+     * 显式恢复的空状态，照常 adopt（清空语义，4105 测试锁定）。 */
     function pullStores(token) {
         try {
             if (typeof Native.getStores !== 'function') return;
             const mirror = JSON.parse(Native.getStores(token) || '{}');
+            if (!Object.prototype.hasOwnProperty.call(mirror, 'values')) return;
             const remoteRev = parseInt(mirror.rev || 0, 10) || 0;
             const localRev = parseInt(localStorage.getItem('feelime_stores_rev') || '0', 10) || 0;
+            if (remoteRev === localRev) return;
             // 只有真正的键值对象才表达恢复语义：数组/字符串等异常载荷
             // 不能当成「空备份」触发全量删除（native 正常产出 JSONObject）。
             const values = mirror.values;
             const valid = values !== null && typeof values === 'object' && !Array.isArray(values);
-            if (remoteRev > localRev && valid) {
+            if (valid) {
                 keyboard.onStoresRestored(values);
                 localStorage.setItem('feelime_stores_rev', String(remoteRev));
             }
