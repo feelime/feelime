@@ -210,18 +210,10 @@ class SetupActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(ContextCompat.getColor(this@SetupActivity, R.color.feelime_bg))
         }
-        // targetSdk 35 的强制 edge-to-edge 让 WebView 顶进 statusbar，
-        // 滚动内容与状态栏重叠（验收反馈）。给根布局垫 systemBars +
-        // 顶部 displayCutout 的 padding；不消费 insets，IME 的
-        // adjustResize 语义不受影响。
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
-            val bars = insets.getInsets(
-                androidx.core.view.WindowInsetsCompat.Type.systemBars() or
-                    androidx.core.view.WindowInsetsCompat.Type.displayCutout(),
-            )
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
-        }
+        // targetSdk 35 强制 edge-to-edge：WebView 全屏铺满（页面背景经
+        // viewport-fit=cover 填到 statusbar/手势条下，无原生深色割裂带），
+        // 安全区避让交给 CSS 的 env(safe-area-inset-*)（二轮反馈：native
+        // padding 让安全区露出 #0F0F18 深底，与浅色页面割裂）。
         launchMarker = android.widget.TextView(this).apply {
             importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES
             setSingleLine()

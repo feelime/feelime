@@ -71,12 +71,33 @@ html.theme-light {
 
 * { box-sizing: border-box; }
 
+/* 安全区滚动遮罩（验收三轮）：页面背景在 statusbar/手势条下淡出，
+   滚动内容穿过时渐隐，不与系统图标硬碰。 */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: calc(env(safe-area-inset-top) + 14px);
+    background: linear-gradient(var(--bg), transparent);
+    pointer-events: none;
+    z-index: 5;
+}
+body::after {
+    content: "";
+    position: fixed;
+    inset: auto 0 0 0;
+    height: calc(env(safe-area-inset-bottom) + 10px);
+    background: linear-gradient(transparent, var(--bg));
+    pointer-events: none;
+    z-index: 5;
+}
+
 html { min-height: 100%; background: var(--bg); }
 
 body {
     min-height: 100dvh;
     margin: 0;
-    padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+    padding: 0 calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
     background: var(--bg);
     color: var(--card-text);
     font: 15px/1.5 system-ui, "Noto Sans CJK SC", sans-serif;
@@ -99,7 +120,7 @@ textarea:focus-visible, summary:focus-visible {
 .hero {
     max-width: 680px;
     margin: 0 auto;
-    padding: calc(20px + env(safe-area-inset-top)) 4px 14px;
+    padding: calc(12px + env(safe-area-inset-top)) 4px 12px;
 }
 
 .hero-mark { display: flex; align-items: center; gap: 12px; }
