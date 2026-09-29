@@ -2737,9 +2737,12 @@ test('dp14 layout: merged pairs render, halves stay single-letter keys (issue #3
         return key.querySelector('.kb-alt').textContent;
     };
     equal(alt('q'), '1', 'merged keys show the plain qwerty digit hint');
-    // 键帽级两字母并排：data-glyph 由 CSS 渲染，DOM 上挂在 pair。
-    const glyph = w.document.querySelector('#qwertyLayer .merge-pair');
-    equal(glyph.dataset.glyph, 'QW', 'pair carries the merged glyph label');
+    // 验收三轮：贴合键帽保留每颗半区键自己的居中字母（无 glyph 覆盖层）。
+    const main = k => w.document.querySelector(`#qwertyLayer [data-key="${k}"]`).querySelector('.kb-main').textContent;
+    equal(main('q'), 'Q', 'half key keeps its own (uppercase) letter');
+    equal(main('w'), 'W', 'half key keeps its own (uppercase) letter');
+    equal(w.document.querySelector('#qwertyLayer .merge-pair').dataset.glyph,
+        undefined, 'no merged-glyph overlay data');
     // 半区点击 = 单字母键（key 通道进引擎组合，与 26 键完全一致）。
     w.native.reset();
     w.tap(w.document.querySelector('#qwertyLayer [data-key="q"]'));
@@ -2758,25 +2761,14 @@ test('dp14 layout: merged pairs render, halves stay single-letter keys (issue #3
         'returning to double pinyin restores the merged pairs');
 });
 
-test('dp14 layout: quick tile flips the preference through the bridge (issue #36)', {since: '3.72.0'}, () => {
+test('dp14 layout: quick tile removed, settings page is the entry (issue #36)', {since: '3.73.3'}, () => {
     const w = fresh({ mode: 'double-pinyin' });
     w.tap(w.$('setupButton'));
-    const tile = w.tile('双拼14键');
-    assert(tile, 'dp14 tile rendered on the quick settings home');
-    // ace 实录回归：tile 本地翻后立即渲染，不等 hello 回流（回流值与
-    // 本地值相等，变化检测永远不触发——26 键死锁）。
-    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 0,
-        '26-key layout before the tap');
-    w.tap(tile);
-    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 12,
-        'tile tap re-renders the merged pairs immediately');
-    const saved = w.native.of('setQuickPref').filter(c => c.args[0] === 'dpLayout');
-    equal(saved.length, 1, 'tile tap writes dpLayout once');
-    equal(saved[0].args[1], '14', 'first tap selects the 14-key layout');
-    // tile 本地态即时翻转（hello 重推后由 native 真相源对齐）。
-    w.tap(w.tile('双拼14键'));
-    equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'dpLayout').slice(-1)[0].args[1],
-        '26', 'second tap returns to 26');
+    // 验收反馈（低频入口）：快捷设置不再放 14 键 tile，避免误触且
+    // 清爽；设置页「双拼方案 → 键盘布局」是唯一入口。
+    assert(!w.tile('双拼14键'), 'dp14 tile no longer on quick settings');
+    equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'dpLayout').length, 0,
+        'nothing writes dpLayout from the keyboard surface');
 });
 
 test('dp scheme switch: single-key expansion uses the active scheme table', {since: '3.29.0'}, () => {
@@ -2893,7 +2885,7 @@ test('setup button opens the quick settings panel; full settings entry calls ope
     equal(JSON.stringify(world.tileNames()),
         JSON.stringify(modernTiles ? [
             '色彩模式', '中文联想', '按键声音', '按键振动',
-            '键盘高度', '双拼14键', '快捷切换', '长按菜单', '候选字号', '单手模式',
+            '键盘高度', '快捷切换', '长按菜单', '候选字号', '单手模式',
             '底部留白', '长按时长', '滑动选字',
             '编辑工具栏', '完整设置',
         ] : [
