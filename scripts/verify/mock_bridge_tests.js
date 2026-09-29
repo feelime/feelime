@@ -1702,6 +1702,113 @@ test('custom keys: empty table routes to settings; saveCustomJson persists (#39-
     equal(JSON.parse(mirrored.args[0]).rows[0][0].tap, '[esc]', 'mirror carries the table');
 });
 
+test('custom panel: every other view closes it (mutex, #39-12 overlap lesson)', {since: '3.73.9'}, () => {
+    // 用户实录两案（统计浮层、定制面板）都是同一类病：开新界面不收旧
+    // 面板。这条测试锁全方向——从「定制面板开着」出发，任何其他视图
+    // 上来都必须先收掉 customLayer，不许叠加。
+    const cases = [
+        ['quick settings drawer', w => w.context.window.Feelime.toggleSettingsPanel(),
+            w => w.$('settingsPanel').classList.contains('open')],
+        ['stats overlay', w => w.context.window.Feelime.toggleStatsPanel(),
+            w => !w.$('statsLayer').hidden],
+        ['edit panel', w => w.context.window.Feelime.toggleEditPanel(),
+            w => !w.$('editLayer').hidden],
+        ['mode menu', w => w.context.window.Feelime.toggleModeMenu(),
+            w => w.$('modeMenu').classList.contains('open')],
+        ['symbol layer', w => w.tap([...w.document.querySelectorAll('.kb-key')]
+            .find(el => el.textContent === '123')),
+            w => !w.$('symbolLayer').hidden],
+        ['numpad', w => w.context.window.Feelime.showNumpad(),
+            w => !w.$('numPadLayer').hidden],
+        ['clipboard panel', w => w.tap(w.$('clipboardButton')),
+            w => !w.$('panelLayer').hidden],
+        ['resetToHome', w => w.context.window.Feelime.resetToHome(),
+            () => true],
+        ['full setup entry', w => w.tap(w.$('fullSetupButton')),
+            () => true],
+    ];
+    cases.forEach(([name, open, held]) => {
+        const w = fresh();
+        w.context.window.Feelime.saveCustomJson(JSON.stringify({
+            version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+        }));
+        w.tap(w.$('toolCustom'));
+        assert(!w.$('customLayer').hidden, name + ': panel opens first');
+        open(w);
+        assert(w.$('customLayer').hidden,
+            name + ' must close the custom panel (no stacking)');
+        assert(held(w), name + ': the other view actually opened');
+    });
+});
+
+test('mutex gate: every key-area layer/drawer is registered in EXCLUSIVE_VIEWS (#39-12)', {since: '3.73.9'}, () => {
+    // 收口守门：新加键区替换层/整屏浮层必须登记 EXCLUSIVE_VIEWS。
+    // 统计浮层、定制面板两轮同款叠层事故都源于「新视图忘了关所有
+    // 人」——登记后 closeOtherViews 自动互斥；这里枚举 DOM 比对，
+    // 漏登记的下一个新层在本条直接红，而不是等用户截图。
+    const w = fresh();
+    const registered = w.context.window.Feelime.debugState().exclusiveEls;
+    // 常规层（showKeyLayer 主切换的键区，非互斥浮层）+ ctrlLayer
+    // （候选条行视图，生命周期归 setControlView）不进注册表。
+    const knownNonExclusive = ['qwertyLayer', 'symbolLayer', 'numPadLayer', 'ctrlLayer'];
+    const layers = [...w.document.querySelectorAll('.kb-layer')].map(el => el.id);
+    layers.forEach(id => {
+        if (knownNonExclusive.includes(id)) {
+            assert(!registered.includes(id),
+                id + ' is a plain key layer, must stay out of the registry');
+        } else {
+            assert(registered.includes(id),
+                id + ' is a key-area replacement layer but is NOT registered '
+                + 'in EXCLUSIVE_VIEWS - it will stack with other views '
+                + '(register it, or add it to knownNonExclusive with a reason)');
+        }
+    });
+    // 整屏级浮层（非 .kb-layer 的抽屉/面板）同样要登记。
+    ['settingsPanel', 'panelLayer', 'modeMenu'].forEach(id => {
+        assert(w.document.getElementById(id), id + ' exists in the DOM');
+        assert(registered.includes(id),
+            id + ' is a full-screen drawer but is NOT registered');
+    });
+});
+
+test('mutex gate: registry pairs are mutually exclusive in BOTH directions (#39-12)', {since: '3.73.9'}, () => {
+    // 全对全矩阵（从注册表自动生成——新视图登记后自动进矩阵，不用手写
+    // case）。每个方向：A 开着 → 开 B → A 必须已关；再验证 B 真开了。
+    const w = fresh();
+    w.context.window.Feelime.saveCustomJson(JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    }));
+    const names = w.context.window.Feelime.debugState().exclusiveViews;
+    const openers = {
+        settings: () => w.context.window.Feelime.toggleSettingsPanel(),
+        stats: () => w.context.window.Feelime.toggleStatsPanel(),
+        edit: () => w.context.window.Feelime.toggleEditPanel(),
+        custom: () => w.context.window.Feelime.toggleCustomPanel(),
+        panel: () => w.tap(w.$('clipboardButton')),
+        modeMenu: () => w.context.window.Feelime.toggleModeMenu(),
+    };
+    const held = {
+        settings: () => w.$('settingsPanel').classList.contains('open'),
+        stats: () => !w.$('statsLayer').hidden,
+        edit: () => !w.$('editLayer').hidden,
+        custom: () => !w.$('customLayer').hidden,
+        panel: () => !w.$('panelLayer').hidden,
+        modeMenu: () => w.$('modeMenu').classList.contains('open'),
+    };
+    names.forEach(a => {
+        names.forEach(b => {
+            if (a === b) return;
+            openers[a]();
+            assert(held[a](), a + ' opened');
+            openers[b]();
+            assert(!held[a](), a + ' must be closed by opening ' + b);
+            assert(held[b](), b + ' actually opened over ' + a);
+            // 收尾：把 b 关掉，下一对从干净态开始。
+            openers[b]();
+        });
+    });
+});
+
 test('custom JSON validation: limits and DSL errors name the problem', {since: '3.21.0'}, () => {
     const world = fresh();
     const save = text => world.context.window.Feelime.saveCustomJson(text);

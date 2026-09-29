@@ -298,7 +298,22 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.8';
+    const KEYBOARD_VERSION = '3.73.9';
+    // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
+    // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
+    // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
+    // 怎么关、返回层字段），开任何视图统一先 closeOtherViews(自己)，
+    // 登记即自动与全部视图互斥；mock 有守门测试枚举 DOM 层比对——
+    // 新增 .kb-layer/抽屉不登记直接红。局部小浮层（comboPopup/
+    // expandLayer/panelEditor/phraseCard）语义上是叠放小部件，不进表。
+    const EXCLUSIVE_VIEWS = {
+        settings: { el: 'settingsPanel', openClass: 'open', close: 'closeSettingsPanel', returnField: 'settingsReturnLayer' },
+        stats:    { el: 'statsLayer',    openClass: null,    close: 'closeStatsPanel',    returnField: 'statsReturnLayer' },
+        edit:     { el: 'editLayer',     openClass: null,    close: 'closeEditPanel',     returnField: 'editReturnLayer' },
+        custom:   { el: 'customLayer',   openClass: null,    close: 'closeCustomPanel',   returnField: 'customReturnLayer' },
+        panel:    { el: 'panelLayer',    openClass: null,    close: 'closePanel',         returnField: 'panelReturnLayer' },
+        modeMenu: { el: 'modeMenu',      openClass: 'open',  close: 'closeModeMenu' },
+    };
 
     // 14 键贴合开放的模式（全拼/双拼/英文；音形四码、日文假名角标等
     // 专业键面维持 26 键）。
@@ -1469,8 +1484,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const fullSetup = document.getElementById('fullSetupButton');
             if (fullSetup) {
                 fullSetup.addEventListener('click', () => {
-                    this.closeSettingsPanel();
-                    this.closeEditPanel();
+                    this.closeOtherViews();
                     this.call(() => Native.openSetup(this.token));
                 });
             }
@@ -1935,11 +1949,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 手写是唯一改键盘总高的模式：进出/旋转都把总高切回当前
             // 模式的值（进入=面板高度，离开=该方向已存高度）。
             this.applyModeHeight();
-            this.closeModeMenu();
-            this.closeSettingsPanel();
-            this.closeEditPanel();
-            this.closeStatsPanel();
-            this.closeCustomPanel();
+            this.closeOtherViews();
             // renderMode is invoked on every mode change INCLUDING the one a
             // degrade/recovery event carries; the badge must survive it.
             this.renderDegradeBadge();
@@ -4402,48 +4412,39 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * settings, editors) hide every layer via hideKeyLayers and hand
          * the remembered one back with showKeyLayer - no call site juggles
          * the individual hidden flags any more. */
+        exclusiveOpen(name) {
+            const v = EXCLUSIVE_VIEWS[name];
+            if (!v) return false;
+            const el = document.getElementById(v.el);
+            if (!el) return false;
+            return v.openClass ? el.classList.contains(v.openClass) : !el.hidden;
+        }
+
+        /** 收口互斥（#39-12）：开 except 视图前关掉其余开着的互斥视图。
+         *  except 省略 = 全关（resetToHome/renderMode 等全收场景）。 */
+        closeOtherViews(except) {
+            Object.keys(EXCLUSIVE_VIEWS).forEach(name => {
+                if (name === except || !this.exclusiveOpen(name)) return;
+                const close = EXCLUSIVE_VIEWS[name].close;
+                if (typeof this[close] === 'function') this[close]();
+            });
+        }
+
         showKeyLayer(name) {
             this.keyLayer = name;
             // #39-5 面板互斥：层切换（数字/表情/符号/字母）收掉长按
             // 模式菜单浮层——它锚在 IME 键上不随层走，留着会叠在新层
             // 上方（用户实录：功能菜单 + 数字面板两层同开）。
             this.closeModeMenu();
-            // #39-5 互斥补全（用户实录图2/图3）：快捷设置面板只替换
-            // 键区，但工具栏 emoji/123 按钮与面板内 tile 深链（快捷切换
-            // 直达数字/表情）仍能触发层切换——切层时面板必须让位，否则
-            // 新键层渲染在面板上/下叠加。openPanel 路径已在自身收面板，
-            // 这里补齐所有 showKeyLayer 路径。
-            const settingsPanel = document.getElementById('settingsPanel');
-            if (settingsPanel && settingsPanel.classList.contains('open')) {
-                this.settingsReturnLayer = name;
-                this.closeSettingsPanel();
-            }
-            // #39-10 同款互斥：编辑面板也是键区替换层，层切换让位
-            // （closeEditPanel 会 showKeyLayer(editReturnLayer) 再入
-            // 此处：editLayer 已 hidden，直接放行切到目标层）。
-            {
-                const editLayer = document.getElementById('editLayer');
-                if (editLayer && !editLayer.hidden) {
-                    this.editReturnLayer = name;
-                    this.closeEditPanel();
-                }
-            }
-            // #41 同款互斥：统计浮层占着键区时任何层切换都先收它
-            //（closeStatsPanel 会 showKeyLayer(statsReturnLayer) 再入
-            // 此处：statsLayer 已 hidden，直接放行切到目标层）。
-            {
-                const statsLayer = document.getElementById('statsLayer');
-                if (statsLayer && !statsLayer.hidden) {
-                    this.statsReturnLayer = name;
-                    this.closeStatsPanel();
-                }
-            }
-            // codex P2：剪贴板/常用语面板开着时若有层切换入口（防御：
-            // 面板开时工具栏整条隐藏，常规入口已不可点），层切换要收掉
-            // 面板层，否则 panelLayer 与新键层同屏叠加。closePanel 会
-            // showKeyLayer(panelReturnLayer) 再入此处：panelOpen 已
-            // 归零，直接放行，外层继续切到目标层。
-            if (this.panelOpen) this.closePanel();
+            // #39-12 收口：互斥视图让位统一走注册表（closeXxx 会
+            // showKeyLayer(returnField) 再入此处：彼时该视图已关，
+            // 直接放行切到目标层）。modeMenu 不记返回层（锚点浮层，
+            // 关掉即回，无层可还）。
+            Object.entries(EXCLUSIVE_VIEWS).forEach(([viewName, v]) => {
+                if (viewName === 'modeMenu' || !this.exclusiveOpen(viewName)) return;
+                if (v.returnField) this[v.returnField] = name;
+                this[v.close]();
+            });
             // The emoji sub-view belongs to a nine-pad session.
             if (name !== 'numpad') this.emojiView = false;
             this.hideKeyLayers();
@@ -4455,9 +4456,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         hideKeyLayers() {
-            document.getElementById('qwertyLayer').hidden = true;
-            document.getElementById('symbolLayer').hidden = true;
-            document.getElementById('numPadLayer').hidden = true;
+            // 键区替换层一律藏：正常路径由各自 close 先收（含 body class
+            // 清理与返回层记忆），这里兜底防漏。动态扫 .kb-layer——新层
+            // 零登记成本自动进（#39-12 实录：定制面板叠快捷设置抽屉）。
+            // ctrlLayer 除外：它是候选条行视图，与键区层共存，生命周期
+            // 归 setControlView。
+            document.querySelectorAll('.kb-layer').forEach(el => {
+                if (el.id !== 'ctrlLayer') el.hidden = true;
+            });
         }
 
         showSymbols() {
@@ -4476,9 +4482,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * there. Closes every panel/layer and returns to the letters (the
          * active MODE is untouched - renderMode would also drop it). */
         resetToHome() {
-            this.closePanel();
-            this.closeSettingsPanel();
-            this.closeEditPanel();
+            this.closeOtherViews();
             this.clearEditorStrip();
             this.closeItemMenu();
             this.closeComboGrid();
@@ -5026,6 +5030,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #39-10 编辑面板同样独占键区（ctrl 视图换的是候选栏槽位，
             // 两个替换层叠加会把 ctrl 行画在编辑网格上方）。
             if (on && !document.getElementById('editLayer').hidden) return;
+            // #39-12 定制面板同款独占。
+            if (on && !document.getElementById('customLayer').hidden) return;
             // Review P3: the editor strip (custom-symbol editing)
             // owns the bar too - it would fight the ctrl rows for the slot.
             if (on && document.body.classList.contains('editing')) return;
@@ -5585,8 +5591,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.toolbarEdit || this.composing) return;
             const editor = document.getElementById('toolbarEditor');
             if (!editor) return;
-            this.closeSettingsPanel();
-            this.closeEditPanel();
+            this.closeOtherViews();
             // 快照进入时的布局：「完成」才落盘，「取消」按快照整体回退。
             this._toolbarSnapshot = {
                 left: this.toolbarLeft.slice(),
@@ -6218,8 +6223,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.heightPreview = capped
                 ? this.heightEditSaved
                 : Math.max(bounds.min, this.heightEditSaved);
-            this.closeSettingsPanel();
-            this.closeEditPanel();
+            this.closeOtherViews();
             const card = document.getElementById('heightCard');
             card.hidden = false;
             card.classList.add('open');
@@ -6379,10 +6383,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 /* ===== mode menu ===== */
 
         toggleModeMenu(anchor) {
+            this.closeOtherViews('modeMenu');
             const menu = document.getElementById('modeMenu');
             if (menu.classList.contains('open')) { this.closeModeMenu(); return; }
-            this.closeSettingsPanel();
-            this.closeEditPanel();
             menu.replaceChildren();
             this.modeOrder().forEach(name => {
                 const config = MODES[name];
@@ -6465,9 +6468,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         toggleSettingsPanel(page = null) {
             const panel = document.getElementById('settingsPanel');
             if (panel.classList.contains('open')) { this.closeSettingsPanel(); return; }
-            this.closeModeMenu();
-            // #39-10：两个键区替换层互斥（编辑面板也要让位给快捷设置）。
-            this.closeEditPanel();
+            this.closeOtherViews('settings');
             // The control view owns the key area too - it never
             // coexists with the settings panel. Borrow, don't
             // switch off (closing the panel restores the rows).
@@ -6527,12 +6528,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.call(() => Native.openSetupPage('customTitle', this.token));
                 return;
             }
-            this.closeModeMenu();
-            this.closeSettingsPanel();
-            this.closeEditPanel();
-            this.closeStatsPanel();
-            this.closeCustomPanel();
-            if (this.panelOpen) this.closePanel();
+            this.closeOtherViews('custom');
             this.renderCustomPanel();
             this.customReturnLayer = this.keyLayer;
             this.hideKeyLayers();
@@ -6580,12 +6576,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         toggleStatsPanel() {
+            this.closeOtherViews('stats');
             const layer = document.getElementById('statsLayer');
             if (layer && !layer.hidden) { this.closeStatsPanel(); return; }
-            this.closeModeMenu();
-            this.closeSettingsPanel();
-            this.closeEditPanel();
-            if (this.panelOpen) this.closePanel();
             if (this.ctrlView) this.suspendCtrlView();
             this.renderStatsPanel();
             this.statsReturnLayer = this.keyLayer;
@@ -6751,6 +6744,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         toggleEditPanel() {
+            this.closeOtherViews('edit');
             const layer = document.getElementById('editLayer');
             if (layer && !layer.hidden) { this.closeEditPanel(); return; }
             this.closeModeMenu();
@@ -8443,9 +8437,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // committing to the editor.
             if (!this.phraseCardOpen()) this.clearEditorStrip();
             this.closeItemMenu();
-            // #39-10：剪贴板/常用语面板接管工具栏行，编辑面板（另一个
-            // 键区替换层）先让位。
-            this.closeEditPanel();
+            // 互斥统一走注册表（#39-12 收口）。
+            this.closeOtherViews('panel');
             // The panel REPLACES the toolbar row instead of adding
             // another line to the keyboard - its own head carries the tabs.
             document.getElementById('candidateBar').hidden = true;
@@ -9976,6 +9969,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         closeSettingsPanel: () => keyboard.closeSettingsPanel(),
         // #39-10 编辑面板（preview/诊断与 mock 套件共用入口）。
         toggleEditPanel: () => keyboard.toggleEditPanel(),
+        toggleStatsPanel: () => keyboard.toggleStatsPanel(),
+        toggleCustomPanel: () => keyboard.toggleCustomPanel(),
         toggleControlView: () => keyboard.setControlView(!keyboard.ctrlView),
         showNumpad: () => keyboard.showNumpad(),
         // Called by the native side on every IME show: hiding the IME can
@@ -9994,6 +9989,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // a closure, so gates cannot reach runtime fields without this.
         debugState: () => ({
             mode: keyboard.mode,
+            // #39-12 守门：互斥注册表名单（mock 枚举 DOM 层比对，
+            // 新视图漏登记直接红）。
+            exclusiveViews: Object.keys(EXCLUSIVE_VIEWS),
+            exclusiveEls: Object.values(EXCLUSIVE_VIEWS).map(v => v.el),
             // #12 复发取证：渲染短路三嫌疑直接暴露（心跳捎带）。
             vr: keyboard.variantReplaying ? 1 : 0,
             warm: keyboard.warming ? 1 : 0,
