@@ -146,6 +146,18 @@ bash scripts/verify/run-all.sh    # 全量门禁（--list/--resume/--from/--prof
                                   #  开头 pm clear 基线复位，段间清扫，flock 单设备锁）
 ```
 
+**键盘新增视图/浮层（互斥收口，2026-09-29 定案）**：
+
+keyboard.js 的整屏级视图（键区替换层 `.kb-layer`、快捷设置/剪贴板/
+模式菜单等抽屉）**必须登记 `EXCLUSIVE_VIEWS` 注册表**（判开方式 +
+close 方法 + 返回层字段），自己的 toggle/open 入口开头调一行
+`this.closeOtherViews('自己的名字')`。登记即与全部视图双向互斥；
+`hideKeyLayers` 动态扫 `.kb-layer`，层叠加这条路也已堵死。**守门测试**
+（mock `mutex gate` 两条）会枚举 DOM 层比对注册表、跑全对全矩阵——
+新视图漏登记直接红，不要靠手点验收发现叠层（统计浮层、定制面板
+两轮同款事故的教训）。局部小浮层（comboPopup/expandLayer/
+panelEditor/phraseCard）语义上是叠放小部件，不进表。
+
 **设备层手验（不走 run-all 时的两条铁律，2026-09-28 实录）**：
 
 1. **双包并存必查默认 IME**：设备上 release 包（发版冒烟残留）与 .dev 包
