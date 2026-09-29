@@ -73,6 +73,21 @@ else
     echo "  $checked asset(s) OK"
 fi
 
+# Kotlin/Java 域兜底：sha 核验只覆盖 Web 资产，原生代码的「忘重建/
+# 构建失败装旧产物」由产物 mtime 兜住——APK 比任一源文件旧就是旧产物
+#（2026-09-29 实录：手搓「gradlew | grep && adb install」管道链，grep
+# 命中 FAILED 也返回 0，构建失败照样装旧 APK，验收整套假失败）。
+newest_src=$(find app/src/main/java app/src/main/kotlin -name '*.kt' -newer "$APK" -print -quit 2>/dev/null || true)
+if [[ -n "$newest_src" ]]; then
+    if [[ "$allow_stale" -eq 1 ]]; then
+        echo "!! newer source than APK ($newest_src) -- installing anyway (--allow-stale)"
+    else
+        echo "ERROR: 源码比 APK 新（$newest_src）——Kotlin 改动不在产物里，" >&2
+        echo "  重新跑本脚本（去掉 --no-build）；确要装旧产物加 --allow-stale。" >&2
+        exit 1
+    fi
+fi
+
 echo "== install to $serial =="
 adb -s "$serial" install -r --no-streaming "$APK"
 

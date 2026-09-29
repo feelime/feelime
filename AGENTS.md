@@ -35,9 +35,14 @@ third_party/                    许可证清单与来源闭包
 ./scripts/install-debug-apk.sh <serial>
                                    # 构建+装机一条龙：assembleDirectDebug → 核验
                                    #   APK 内键盘/设置资产 sha 与仓库一致（防「改完
-                                   #   代码忘重建、装旧 APK 假失败」）→ adb install。
+                                   #   代码忘重建、装旧 APK 假失败」）+ 源码 mtime
+                                   #   兜底（Kotlin 域旧产物同样拦截）→ adb install。
                                    #   --no-build 复用现有产物；--allow-stale 显式
                                    #   强装旧产物（仅复现历史 bug 用）
+                                   # 真机验证装机必须走本脚本，禁止手搓
+                                   #   「gradlew … | grep … && adb install」管道链：
+                                   #   grep 命中 "BUILD FAILED" 也返回 0，构建失败
+                                   #   照样装旧 APK 假成功（2026-09-29 两犯实录）
 ./scripts/push-keyboard.sh --local # 键盘热更新：打包本仓键盘并推到设备（裸调需要 zip 参数）
 ```
 
