@@ -1670,14 +1670,14 @@ test('settings sub-pages: nav, key map, back (requirements 1+6)', {since: '3.33.
     assert(!world.tileNames().includes('常用语'), 'favorites entry removed from quick settings');
 });
 
-test('custom keys: tab hidden until saved; saveCustomJson persists (§15 editor lives in settings)', {since: '3.21.0'}, () => {
+test('custom keys: empty table routes to settings; saveCustomJson persists (#39-12 panel)', {since: '3.21.0'}, () => {
     const world = fresh();
-    const key123 = () => [...world.document.querySelectorAll('.kb-key')]
-        .find(el => el.textContent === '123');
-    const customTab = () => [...world.document.querySelectorAll('.sym-cat')]
-        .find(el => el.textContent === '定制');
-    world.tap(key123());
-    assert(!customTab(), 'no 定制 tab before a table exists');
+    // #39-12：定制键从符号面板 tab 迁成工具栏按钮直达的独立面板。
+    // 空表时按钮指路设置页（openSetupPage），不再藏 tab。
+    world.tap(world.$('toolCustom'));
+    assert(world.$('customLayer').hidden, 'panel stays closed before a table exists');
+    const setup = world.native.of('openSetupPage').slice(-1)[0];
+    assert(setup, 'empty table routes to the settings page');
     world.context.window.Feelime.saveCustomJson(JSON.stringify({
         version: 1,
         rows: [[
@@ -1688,7 +1688,14 @@ test('custom keys: tab hidden until saved; saveCustomJson persists (§15 editor 
     equal(saved.version, 1, 'schema version stored');
     equal(saved.rows[0][0].tap, '[esc]', 'DSL stored verbatim');
     equal(saved.rows[0][0].note, '终端 Esc', 'note stored');
-    assert(customTab(), '定制 tab appears after save');
+    world.tap(world.$('toolCustom'));
+    assert(!world.$('customLayer').hidden, 'panel opens after save');
+    assert(world.$('customLayer').textContent.includes('Esc'), 'saved key rendered');
+    world.tap(world.$('toolCustom'));
+    assert(world.$('customLayer').hidden, 'second tap closes the panel');
+    const cats = [...world.document.querySelectorAll('.sym-cat')]
+        .map(el => el.textContent);
+    assert(!cats.includes('定制'), 'no 定制 tab left on the symbol strip');
     // the table mirrors back to the native store for the settings page (§15)
     const mirrored = world.native.of('setCustomKeys').slice(-1)[0];
     assert(mirrored, 'native mirror called');
@@ -2179,13 +2186,8 @@ test('custom key taps: DSL executes text, keys and combos', () => {
             { t: '整理', tap: '[esc]ggVGD' },
         ], [], []],
     }));
-    const key123 = [...world.document.querySelectorAll('.kb-key')]
-        .find(el => el.textContent === '123');
-    world.tap(key123);
-    const customTab = [...world.document.querySelectorAll('.sym-cat')]
-        .find(el => el.textContent === '定制');
-    customTab.click();
-    const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')];
+    world.tap(world.$('toolCustom'));
+    const keys = [...world.document.querySelectorAll('#customLayer .sym-custom-key')];
     keys[0].click();
     equal(world.native.of('commitText').slice(-1)[0].args[0], '哈哈', 'text commits literally');
     keys[1].click();
@@ -2205,13 +2207,8 @@ test('legacy comma tables migrate into the v2 JSON store', () => {
     const world = fresh();
     world.storage.set('feelime_custom_rows',
         JSON.stringify([['★', '☆'], [], []]));
-    const key123 = [...world.document.querySelectorAll('.kb-key')]
-        .find(el => el.textContent === '123');
-    world.tap(key123);
-    const customTab = [...world.document.querySelectorAll('.sym-cat')]
-        .find(el => el.textContent === '定制');
-    assert(customTab, 'migrated table shows the 定制 tab');
-    customTab.click();
+    world.tap(world.$('toolCustom'));
+    assert(!world.$('customLayer').hidden, 'migrated table opens the panel');
     const saved = JSON.parse(world.storage.get('feelime_custom_keys_v2'));
     equal(saved.rows[0][0].t, '★', 'cap migrated');
     equal(saved.rows[0][0].tap, '★', 'tap migrated from the literal');
@@ -3364,9 +3361,9 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
 
     // 默认 5 个工具全在栏上（left=[ctrl,ime] right=[clipboard,favorites,mic]）；
     // 仓库里是 8 个默认不上栏的开关型/动作型工具（动态创建）。
-    equal(w.$('toolbarEditorGrid').children.length, 9, 'pool starts with the 9 extra tools (#33-1 gear + #39-10 edit)');
+    equal(w.$('toolbarEditorGrid').children.length, 10, 'pool starts with the 10 extra tools (#33-1 gear + #39-10 edit + #39-12 custom)');
     ['toolTheme', 'toolVibrate', 'toolSound', 'toolAssoc', 'toolOneHand',
-     'toolNumpad', 'toolEmoji', 'editTool'].forEach(id => {
+     'toolNumpad', 'toolEmoji', 'editTool', 'toolCustom'].forEach(id => {
         assert(w.$(id), id + ' created');
     });
 
@@ -3382,7 +3379,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(x);
     w.touchUp(x);
     equal(kb().toolbarRight.join(','), 'clipboard,mic', '× removes favorites from right group');
-    equal(w.$('toolbarEditorGrid').children.length, 10, 'removed tool joins the 9 extra tools');
+    equal(w.$('toolbarEditorGrid').children.length, 11, 'removed tool joins the 10 extra tools');
 
     // 点仓库里的 favorites 加回（right 组未满 → 追加到队尾）。
     // 编辑态点仓库只做「上工具栏」：favorites 的 click 直连
@@ -3395,7 +3392,20 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(fav);
     w.touchUp(fav);
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'pool tap appends to right group');
-    equal(w.$('toolbarEditorGrid').children.length, 9, 'pool back to the 9 extra tools');
+    equal(w.$('toolbarEditorGrid').children.length, 10, 'pool back to the 10 extra tools');
+
+    // #39-12：池里的定制按键必须能上栏——TOOL_CATALOG 漏登记时按钮
+    // 照样创建，但接线循环遍历目录，池里那颗点不动（真机实录）。
+    w.touchDown(w.$('toolCustom'));
+    w.touchUp(w.$('toolCustom'));
+    equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites,custom',
+        'pool tap lands custom on the right group');
+    equal(w.$('toolCustom').children.some(c => c.className === 'tool-x'),
+        true, 'cataloged custom carries the × badge');
+    w.touchDown(w.$('toolCustom').children.find(c => c.className === 'tool-x'));
+    w.touchUp(w.$('toolCustom').children.find(c => c.className === 'tool-x'));
+    equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites',
+        '× puts custom back in the pool');
 
     // 「完成」退出并持久化。
     w.tap(w.$('toolbarEditDone'));
@@ -3419,13 +3429,13 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(xOf('mic'));
     w.touchUp(xOf('mic'));
     equal(kb().toolbarRight.join(','), 'clipboard', 'two removals land both in the pool');
-    equal(w.$('toolbarEditorGrid').children.length, 11,
-        'pool holds both removed tools + 9 extra tools (no innerHTML wipe)');
+    equal(w.$('toolbarEditorGrid').children.length, 12,
+        'pool holds both removed tools + 10 extra tools (no innerHTML wipe)');
     w.tap(w.$('toolbarEditCancel'));
     equal(kb().toolbarLeft.join(','), 'ctrl,ime', 'cancel restores left snapshot');
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'cancel restores right snapshot');
-    equal(w.$('toolbarEditorGrid').children.length, 9,
-        'pool drains back to the 9 extra tools after cancel');
+    equal(w.$('toolbarEditorGrid').children.length, 10,
+        'pool drains back to the 10 extra tools after cancel');
     equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'toolbarLayout').length, 1,
         'cancel never saves');
 
@@ -3442,7 +3452,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
             w.touchUp(x);
         });
     equal(kb().toolbarLeft.length + kb().toolbarRight.length, 0, 'bar fully stripped');
-    equal(w.$('toolbarEditorGrid').children.length, 14, 'all fourteen tools in the pool (#33-1 gear + #39-10 edit)');
+    equal(w.$('toolbarEditorGrid').children.length, 15, 'all fifteen tools in the pool (#33-1 gear + #39-10 edit + #39-12 custom)');
     w.tap(w.$('toolbarEditDone'));
     equal(kb().toolbarEdit, false, 'empty layout saves fine');
     w.touchDown(w.$('candidateBar'));
@@ -3495,7 +3505,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(st.toolbarRight.includes('ime'), true, 'ime lands in the right group');
     equal(st.toolbarLeft.length, 1, 'left group keeps one (the displaced tool)');
     equal(st.toolbarLeft.length + st.toolbarRight.length, 5, 'no tool lost in the swap');
-    equal(poolNow.children.length, 9, 'pool back to the extra tools only');
+    equal(poolNow.children.length, 10, 'pool back to the extra tools only');
     w.tap(w.$('toolbarEditCancel'));
 });
 

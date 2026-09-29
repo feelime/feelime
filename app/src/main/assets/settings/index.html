@@ -89,7 +89,7 @@
         <span class="entry-chevron" aria-hidden="true">›</span>
       </button>
       <button class="entry" type="button" data-target="input">
-        <span class="entry-label"><span data-i18n="entry.input.title">键盘与输入</span><small data-i18n="entry.input.subtitle">双拼 · 定制符号</small></span>
+        <span class="entry-label"><span data-i18n="entry.input.title">键盘与输入</span><small data-i18n="entry.input.subtitle">双拼 · 定制按键</small></span>
         <span class="entry-chevron" aria-hidden="true">›</span>
       </button>
       <button class="entry" type="button" data-target="dict">
@@ -539,6 +539,14 @@
         <span class="row-label"><span data-i18n="input.feel.keySound">按键声音</span><small data-i18n="input.feel.keySoundHint">按键时轻响一声，跟随系统音量，静音时不响。</small></span>
         <input type="checkbox" id="keySound" class="toggle">
       </label>
+      <!-- #39-14 按键音量：三路音效（哔声/键击/自定义）共用。 -->
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.keySoundVolume">按键音量</span>
+          <small data-i18n="input.feel.keySoundVolumeHint">哔声、系统键击音与自定义音效共用。</small>
+        </span>
+        <input type="range" id="keySoundVolume" min="0" max="100" step="5" class="slider" aria-label="按键音量" data-i18n-aria="input.feel.keySoundVolume">
+      </div>
       <!-- #30-2 音效风格：默认哔声 / 系统键击音 / 自定义文件（SAF 选音频，
            拷进应用私有目录，SoundPool 预载播放）。 -->
       <div class="row language-row" id="keySoundStyleRow" data-keywords="音效 自定义 按键音 key sound style">
@@ -563,14 +571,26 @@
         <span class="row-label"><span data-i18n="input.feel.keyHaptic">按键振动</span><small data-i18n="input.feel.keyHapticHint">按键时轻短振动一下，强度跟随机型；系统触感总开关关闭时不震。</small></span>
         <input type="checkbox" id="keyHaptic" class="toggle">
       </label>
+      <!-- #39-14 振动强度：有幅度马达走振幅档，无幅度机型按时长近似。 -->
+      <div class="row language-row" id="keyHapticStrengthRow">
+        <span class="row-label">
+          <span data-i18n="input.feel.keyHapticStrength">振动强度</span>
+          <small id="keyHapticStrengthHint" data-i18n="input.feel.keyHapticStrengthHint">本机马达不支持强弱调节时按轻重的时长近似。</small>
+        </span>
+        <select id="keyHapticStrength" class="select" aria-label="振动强度" data-i18n-aria="input.feel.keyHapticStrength">
+          <option value="0" data-i18n="input.feel.hapticLight">弱</option>
+          <option value="1" data-i18n="input.feel.hapticMedium">中</option>
+          <option value="2" data-i18n="input.feel.hapticStrong">强</option>
+        </select>
+      </div>
       <p id="feelNote" class="hint block"></p>
     </section>
 
     <section class="card" id="sec-custom" aria-labelledby="customTitle">
-      <div class="section-heading"><h2 id="customTitle" data-i18n="input.custom.title">定制符号</h2><span class="eyebrow" data-i18n="input.custom.badge">高级</span></div>
+      <div class="section-heading"><h2 id="customTitle" data-i18n="input.custom.title">定制按键</h2><span class="eyebrow" data-i18n="input.custom.badge">高级</span></div>
       <div class="rows">
         <label class="row switch-row" for="customEnabled">
-          <span class="row-label"><span data-i18n="input.custom.enabled">启用定制符号</span><small id="customSummary">未定制</small></span>
+          <span class="row-label"><span data-i18n="input.custom.enabled">启用定制按键</span><small id="customSummary">未定制</small></span>
           <input type="checkbox" id="customEnabled" data-keywords="自定义键盘 快捷键 终端 vim 自定义按键 custom keys" class="toggle">
         </label>
       </div>
@@ -765,6 +785,12 @@
           <button class="btn" id="btnMic" type="button" data-i18n="voice.mic.action">去授权</button>
         </div>
       </div>
+      <!-- #39-13 长按空格语音开关：关=空格长按不触发、隐藏空格 mic 小标
+           与工具栏麦克风（不用语音的用户净化键盘）。 -->
+      <label class="row switch-row" for="voiceOnSpace">
+        <span class="row-label"><span data-i18n="voice.holdSpace">长按空格语音输入</span><small data-i18n="voice.holdSpaceHint">关闭后空格键不再显示麦克风，工具栏麦克风按钮同隐藏。</small></span>
+        <input type="checkbox" id="voiceOnSpace" data-keywords="语音 长按空格 麦克风 关闭 隐藏 voice hold space" class="toggle">
+      </label>
       <div class="rows">
         <label class="row" for="modelBackend">
           <span class="row-label"><span data-i18n="voice.backend.label">模型来源</span></span>
