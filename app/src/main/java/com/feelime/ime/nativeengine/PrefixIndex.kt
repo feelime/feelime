@@ -3,6 +3,9 @@ package com.feelime.ime.nativeengine
 import java.io.File
 
 class PrefixIndex private constructor(private val words: List<String>) {
+    /** 词典全词表（重音折叠索引等派生数据构建用）。 */
+    fun allWords(): List<String> = words
+
     fun find(prefix: String, limit: Int = 12): List<String> {
         val needle = prefix.lowercase()
         var low = 0

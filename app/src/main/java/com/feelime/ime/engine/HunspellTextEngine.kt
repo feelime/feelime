@@ -19,6 +19,9 @@ class HunspellTextEngine(
     private val appContext = context.applicationContext
     private var handle = 0L
     private var prefixIndex: PrefixIndex? = null
+
+    /** 重音折叠索引（ca→ça、etre→être）：无调形 → 带调词列表。 */
+    private var accentFold: Map<String, List<String>>? = null
     private var composing = ""
     private var allCandidates: List<Candidate> = emptyList()
     private var page = 0
@@ -37,6 +40,7 @@ class HunspellTextEngine(
                 throw EngineFailure(EngineCode.ENGINE_INIT_FAILED)
             }
             prefixIndex = PrefixIndex.load(File(dir, "$locale.prefix.txt"))
+            accentFold = buildAccentFold(prefixIndex?.allWords().orEmpty())
         }
     }
 
@@ -133,6 +137,12 @@ class HunspellTextEngine(
         // 法语省音恢复（用户实录 cetait → c'était）：插在 suggest 之前、
         // 原样拼对词之后（用户打了完整词时原样仍排第一）。
         if (locale.startsWith("fr")) suggested.addAll(0, elisionCandidates())
+        // 重音折叠候选（ca → ça、etre → être、deja → déjà）：键盘打不出
+        // 重音字符，无调形直查折叠表；suggest 排序不可靠、prefix 索引的
+        // startsWith 语义也带不进 ça（ç≠c）。
+        accentFold?.get(composing.lowercase())?.let { folds ->
+            suggested.addAll(0, folds)
+        }
         if (NativeSmoke.hunspellSpell(handle, composing) == 1) suggested.add(0, composing)
         allCandidates = suggested.distinct().mapIndexed { index, value ->
             Candidate(stableCandidateId("hunspell-$locale", 0, index, value), value)
@@ -156,10 +166,24 @@ class HunspellTextEngine(
             if (rest.length < minRest) return
             // 省音只在元音（或哑音 h）前。
             if (rest[0].lowercase() !in ELISION_VOWELS) return
-            val roots = LinkedHashSet<String>()
+            val roots = ArrayList<String>()
             if (NativeSmoke.hunspellSpell(handle, rest) == 1) roots += rest
             NativeSmoke.hunspellSuggest(handle, rest).lineSequence()
-                .filter { it.isNotEmpty() }.take(3).forEach { roots += it }
+                .filter { it.isNotEmpty() }.take(3)
+                .forEach { if (it !in roots) roots += it }
+            // 单字母词根的重音族展开（jusqu'à 的 à）：prefix 索引按
+            // startsWith 匹配，à 不以 a 开头永远进不来；重音族成员
+            // 过词典即收，并排到词根前面（打无调形求带调词，à 优先于
+            // 原字母 a）。
+            if (rest.length == 1) {
+                val accentedFirst = ArrayList<String>()
+                for (accented in ACCENT_FOLD[rest[0]] ?: charArrayOf()) {
+                    val form = accented.toString()
+                    if (NativeSmoke.hunspellSpell(handle, form) == 1) accentedFirst += form
+                }
+                roots.removeAll(accentedFirst)
+                roots.addAll(0, accentedFirst)
+            }
             for (root in roots) {
                 if (root[0].lowercase() !in ELISION_VOWELS) continue
                 val whole = head + "'" + root
@@ -203,6 +227,60 @@ class HunspellTextEngine(
 
         /** 省音发生的字母环境：元音（含各重音形）与哑音 h。 */
         private const val ELISION_VOWELS = "aàâäeéèêëiîïoôöuùûüyœæh"
+
+        /** 单字母词根重音族被 buildAccentFold 覆盖后仍保留：élision 的
+         *  root 展开走它（jusqu'a → jusqu'à 的整词拼装在 offer 侧）。 */
+
+        /** 词典全表构建无调形 → 带调词索引（fr/ru，一次 ~几十 ms）。 */
+        internal fun buildAccentFold(words: List<String>): Map<String, List<String>> {
+            val map = HashMap<String, MutableList<String>>()
+            for (word in words) {
+                if (word.isEmpty() || word.first().isUpperCase()) continue
+                val folded = foldAccents(word)
+                if (folded == word) continue
+                map.getOrPut(folded) { mutableListOf() }.add(word)
+            }
+            // 同键排序：重音字符少的先（常用形通常重音少），等重音数保持
+            // 词典序（词条顺序近似频次）。
+            map.values.forEach { list ->
+                list.sortBy { w -> w.count { it in ACCENT_CHARS } }
+            }
+            return map
+        }
+
+        /** 重音折叠（é→e、ç→c、ё→e…）：纯函数，JVM 可测。 */
+        internal fun foldAccents(word: String): String {
+            val sb = StringBuilder(word.length)
+            for (ch in word) sb.append(ACCENT_FOLD_MAP[ch] ?: ch)
+            return sb.toString()
+        }
+
+        private const val ACCENT_CHARS = "àâçéèêëîïôùûёÀÂÇÉÈÊËÎÏÔÙÛЁ"
+        private val ACCENT_FOLD_MAP = mapOf(
+            'é' to 'e', 'è' to 'e', 'ê' to 'e', 'ë' to 'e',
+            'à' to 'a', 'â' to 'a',
+            'î' to 'i', 'ï' to 'i',
+            'ô' to 'o',
+            'ù' to 'u', 'û' to 'u',
+            'ç' to 'c',
+            'É' to 'E', 'È' to 'E', 'Ê' to 'E', 'Ë' to 'E',
+            'À' to 'A', 'Â' to 'A',
+            'Î' to 'I', 'Ï' to 'I',
+            'Ô' to 'O',
+            'Ù' to 'U', 'Û' to 'U',
+            'Ç' to 'C',
+            'ё' to 'е', 'Ё' to 'Е',
+        )
+
+        /** 单字母词根的重音折叠族（jusqu'à 场景）。 */
+        private val ACCENT_FOLD = mapOf(
+            'a' to charArrayOf('à', 'â'),
+            'e' to charArrayOf('é', 'è', 'ê', 'ë'),
+            'i' to charArrayOf('î', 'ï'),
+            'o' to charArrayOf('ô'),
+            'u' to charArrayOf('ù', 'û'),
+            'c' to charArrayOf('ç'),
+        )
 
         /** 省音切分（纯逻辑，JVM 可测）：jusqu/qu/单字母三档。 */
         internal fun elisionSplitsStatic(word: String): List<Pair<String, String>> {
