@@ -298,7 +298,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.5';
+    const KEYBOARD_VERSION = '3.73.6';
 
     // 14 键贴合开放的模式（全拼/双拼/英文；音形四码、日文假名角标等
     // 专业键面维持 26 键）。
@@ -1152,6 +1152,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.editSelecting = false;
             // #36 双拼 14 键布局（hello 推送，"26"|"14"，仅双拼模式生效）。
             this.kbLayout = '26';
+            // 法语候选大小写循环（用户需求）：null=原样 'cap'=首字母大写
+            // 'upper'=全大写；组合期生效，组合结束归零。
+            this.caseMode = null;
             this.lettersLayout = null;
             // The nine-pad's emoji sub-view (toggled by the smiley key).
             this.emojiView = false;
@@ -4264,9 +4267,35 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         toggleShift() {
+            // 法语组合态：shift 循环当前候选大小写（全小写 → 首字母
+            // 大写 → 全大写 → 全小写），不切换键面大小写状态。
+            if (this.mode === 'french' && this.composing) {
+                this.caseMode = this.caseMode === 'cap' ? 'upper'
+                    : this.caseMode === 'upper' ? null : 'cap';
+                this.updateCaseKeyVisual();
+                this.renderCandidates(this.lastEngineState || {});
+                return;
+            }
             if (this.caps) this.caps = false;
             else this.shift = !this.shift;
             this.updateLabels();
+        }
+
+        /** caseMode 的 shift 键指示（cap=单亮，upper=锁定亮）。 */
+        updateCaseKeyVisual() {
+            const key = document.querySelector('.kb-mod.shift');
+            if (!key) return;
+            key.classList.toggle('case-cap', this.caseMode === 'cap');
+            key.classList.toggle('case-upper', this.caseMode === 'upper');
+        }
+
+        /** 大小写变形（首字母大写对撇号词取真首字母：c'était → C'était）。 */
+        caseifyText(text) {
+            if (this.caseMode === 'cap') {
+                return text.charAt(0).toUpperCase() + text.slice(1);
+            }
+            if (this.caseMode === 'upper') return text.toUpperCase();
+            return text;
         }
 
         lockShift() {
@@ -7704,6 +7733,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * composition alive - pick é on "ete" and it becomes "éte",
          * still composing (iOS-style, via the atomic setComposition). */
         choosePoolCandidate(candidate) {
+            // 法语大小写循环：变形提交绕过引擎 Choose（引擎提交原词+空格，
+            // 替换不了文本）；clearComposing + commitText 同 dyn:/fav: 通道，
+            // 尾空格与引擎 Choose 的提交形态一致。
+            if (this.mode === 'french' && this.caseMode && this.composing &&
+                candidate && !String(candidate.id).startsWith('alt:')) {
+                const text = this.caseifyText(candidate.text);
+                if (text !== candidate.text) {
+                    this.call(() => Native.clearComposing(this.token));
+                    this.call(() => Native.commitText(text + ' ', this.token));
+                    return;
+                }
+            }
             if (candidate && String(candidate.id).startsWith('dyn:')) {
                 this.call(() => Native.clearComposing(this.token));
                 this.call(() => Native.commitText(candidate.text, this.token));
@@ -8134,7 +8175,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.englishOrderedPool(this.expandCandidates || []).forEach((candidate, index) => {
                 const button = document.createElement('button');
                 button.className = index === 0 ? 'candidate first' : 'candidate';
-                button.textContent = candidate.text;
+                button.textContent = this.mode === 'french' && this.caseMode && state.composing
+                    ? this.caseifyText(candidate.text) : candidate.text;
                 let longPressed = false;
                 button.addEventListener('click', () => {
                     // A long-press opens the delete menu; the
@@ -8171,6 +8213,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.variantReplaying) return;
             const wasComposing = this.composing;
             this.composing = !!state.composing;
+            // 组合结束即撤法语大小写循环（连同 shift 键指示）。
+            if (wasComposing && !this.composing && this.caseMode) {
+                this.caseMode = null;
+                this.updateCaseKeyVisual();
+            }
             if (this.composing && rawInput !== undefined) this.lastRawInput = rawInput;
             // 8 键组合中逗号的两步收尾（issue #18）：候选确认的回声把组合
             // 收掉后，直发挂起的全角 ，；组合继续且 raw 变了（用户接着打）
