@@ -5,6 +5,7 @@
  * dictionary. User text, URLs, JSON, model titles, and device names are
  * always rendered as received. */
 "use strict";
+let keySoundVolumeTimer = 0;
 
 const BRIDGE = window.Native || { ready() {} };
 let token = "";
@@ -60,7 +61,7 @@ const I18N = {
         "nav.groups": "设置分组",
         "nav.back": "返回首页",
         "entry.input.title": "键盘与输入",
-        "entry.input.subtitle": "双拼 · 定制符号",
+        "entry.input.subtitle": "双拼 · 定制按键",
         "entry.dict.title": "词库",
         "entry.dict.subtitle": "导入 rime 词库 · 叠加候选",
         "entry.voice.title": "语音识别",
@@ -193,9 +194,9 @@ const I18N = {
         "input.double.note.sogou": "声母与全拼相同（zh=V、ch=I、sh=U 除外）；ing 在「;」键（键盘上即分词键位置），ü 在 Y。零声母固定先打 O：啊=oa、爱=ol、安=oj、恩=of、二=or。搜狗与微软双拼键位完全一致，用微软双拼习惯的选这项即可。",
         "input.double.note.ziguang": "紫光华宇拼音的双拼键位。zh=U、ch=A、sh=I；ing 在「;」键，ü 在 V（ju/qu/xu 也可用 v 键）。零声母固定先打 O：啊=oa、爱=op、安=or。",
         "input.double.mapCaption": "韵母键位图（键名下方为该键韵母，右下为双声母）",
-        "input.custom.title": "定制符号",
+        "input.custom.title": "定制按键",
         "input.custom.badge": "高级",
-        "input.custom.enabled": "启用定制符号",
+        "input.custom.enabled": "启用定制按键",
         "input.custom.jsonLabel": "定制 JSON（{\"version\":1,\"rows\":[[{\"t\":\"键面\",\"tap\":\"点击输出\",\"note\":\"备注\"}]]}）",
         "input.custom.jsonPlaceholder": "粘贴定制 JSON",
         "input.custom.note": "保存在本机，键盘下次载入时生效。",
@@ -235,6 +236,8 @@ const I18N = {
         "voice.downloadSource.archivePlaceholder": "例如：https://example.com/model.tar.bz2",
         "voice.downloadSource.save": "保存下载源",
         "voice.downloadSource.hint": "下载后会校验文件完整性；压缩包地址只用于流式模型的大文件，自定义源需同时填写仓库地址和对应的 tar.bz2 地址。",
+        "voice.holdSpace": "长按空格语音输入",
+        "voice.holdSpaceHint": "关闭后空格键不再显示麦克风，工具栏麦克风按钮同隐藏。",
         "voice.mic.permission": "麦克风权限",
         "voice.mic.hint": "语音输入必需，全程本地处理",
         "voice.mic.action": "去授权",
@@ -487,6 +490,11 @@ const I18N = {
         "input.feel.snapStandard": "标准",
         "input.feel.snapTight": "紧",
         "input.feel.keySound": "按键声音",
+        "input.feel.keySoundVolume": "按键音量",
+        "input.feel.keySoundVolumeHint": "哔声、系统键击音与自定义音效共用。",
+        "input.feel.keyHapticStrength": "振动强度",
+        "input.feel.keyHapticStrengthHint": "本机马达不支持强弱调节时按轻重的时长近似。",
+        "input.feel.hapticLight": "弱", "input.feel.hapticMedium": "中", "input.feel.hapticStrong": "强",
         "input.feel.keySoundHint": "按键时轻响一声，跟随系统音量，静音时不响。",
         "input.feel.keySoundStyle": "按键音效",
         "input.feel.keySoundStyleHint": "默认哔声之外的音效；",
@@ -591,7 +599,7 @@ const I18N = {
         "nav.back": "Back to home",
         "nav.backAppearance": "Back to appearance",
         "entry.input.title": "Keyboard & input",
-        "entry.input.subtitle": "Double pinyin · Custom symbols",
+        "entry.input.subtitle": "Double pinyin · Custom keys",
         "entry.dict.title": "Lexicon",
         "entry.dict.subtitle": "Import rime dicts · Extra candidates",
         "entry.backup.title": "Backup & restore",
@@ -727,7 +735,7 @@ const I18N = {
         "input.double.note.sogou": "Initials match full Pinyin (except zh=V, ch=I, sh=U); ing sits on the “;” key (the wide key on the keyboard), ü on Y. Zero-initial syllables always start with O: 啊=oa、爱=ol、安=oj、恩=of、二=or. Sogou and MSPY share the exact same layout.",
         "input.double.note.ziguang": "The Ziguang (紫光) layout. zh=U、ch=A、sh=I; ing sits on the “;” key, ü on V (ju/qu/xu also take v). Zero-initial syllables always start with O: 啊=oa、爱=op、安=or.",
         "input.double.mapCaption": "Final key map (finals under each key, double initials bottom-right)",
-        "input.custom.title": "Custom symbols",
+        "input.custom.title": "Custom keys",
         "input.custom.badge": "Advanced",
         "input.custom.enabled": "Enable custom symbols",
         "input.custom.jsonLabel": "Custom JSON ({\"version\":1,\"rows\":[[{\"t\":\"key label\",\"tap\":\"output\",\"note\":\"note\"}]]})",
@@ -767,6 +775,8 @@ const I18N = {
         "voice.downloadSource.archivePlaceholder": "For example: https://example.com/model.tar.bz2",
         "voice.downloadSource.save": "Save download source",
         "voice.downloadSource.hint": "Downloads are checked for integrity. The archive URL is only for the streaming model's large file; a custom source must provide both the repository URL and its matching tar.bz2 URL.",
+        "voice.holdSpace": "Hold-space voice input",
+        "voice.holdSpaceHint": "Off removes the mic glyph from the space bar and hides the toolbar mic.",
         "voice.mic.permission": "Microphone permission",
         "voice.mic.hint": "Required for voice input; processing stays on this device",
         "voice.mic.action": "Allow",
@@ -1012,6 +1022,11 @@ const I18N = {
         "input.feel.scrubHint": "Distance the caret moves per drag step.",
         "input.feel.snap": "Swipe selection range",
         "input.feel.snapHint": "How far the finger may drift during popup swipe before the pick cancels: loose = forgiving, tight = early cancel.",
+        "input.feel.keySoundVolume": "Key volume",
+        "input.feel.keySoundVolumeHint": "Shared by the beep, system keypress and custom sounds.",
+        "input.feel.keyHapticStrength": "Haptic strength",
+        "input.feel.keyHapticStrengthHint": "Approximated by duration when the motor lacks amplitude control.",
+        "input.feel.hapticLight": "Light", "input.feel.hapticMedium": "Medium", "input.feel.hapticStrong": "Strong",
         "input.feel.keySound": "Key sound",
         "input.feel.keySoundHint": "A soft click on each key press; follows system volume, silent in mute mode.",
         "input.feel.keySoundStyle": "Key sound style",
@@ -1644,6 +1659,9 @@ function renderFeel(state) {
         if (node && document.activeElement !== node) node.checked = !!value;
     };
     setToggle("keySound", state.keySound);
+    const vol = $("keySoundVolume");
+    if (vol && document.activeElement !== vol) vol.value = String(state.keySoundVolume ?? 60);
+    setSelect("keyHapticStrength", String(state.keyHapticStrength ?? 1), ["0", "1", "2"]);
     // #30-2 音效风格回读：custom 需文件在（native 已保证不悬空），文件行
     // 仅在选了 custom 或已有文件时露出。
     {
@@ -1751,6 +1769,9 @@ function setLed(rowId, ok) {
 }
 
 function renderVoice(state) {
+    if (document.activeElement !== $("voiceOnSpace")) {
+        $("voiceOnSpace").checked = state.voiceOnSpace !== false;
+    }
     if (document.activeElement !== $("modelBackend")) {
         $("modelBackend").value = state.modelBackend === "remote" ? "remote" : "auto";
     }
@@ -2961,6 +2982,7 @@ $("scrubSpeed").addEventListener("change", submitFeelOptions);
 $("flickSwap").addEventListener("change", event => call("setFlickSwap", event.target.checked));
 $("popupSnap").addEventListener("change", submitFeelOptions);
 $("modelBackend").addEventListener("change", event => call("setModelBackend", event.target.value));
+$("voiceOnSpace").addEventListener("change", event => call("setVoiceOnSpace", event.target.checked));
 $("modelDownloadSource").addEventListener("change", event => {
     const visible = event.target.value === "custom";
     $("modelDownloadCustom").hidden = !visible;
@@ -3039,8 +3061,16 @@ $("associationOn").addEventListener("change", event => call("setAssociation", ev
 $("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateTime", event.target.checked));
 $("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));
 
+$("keySoundVolume").addEventListener("input", event => {
+    clearTimeout(keySoundVolumeTimer);
+    keySoundVolumeTimer = setTimeout(
+        () => call("setKeySoundVolume", Number(event.target.value)), 250);
+});
+$("keyHapticStrength").addEventListener("change", event => call("setKeyHapticStrength", Number(event.target.value)));
+
 // #30-2 音效风格：custom 但文件还没选过时先走选文件（native 拒绝无文件的
 // custom，state 回推会把 select 弹回实际生效值）。
+
 $("keySoundStyle").addEventListener("change", event => {
     if (event.target.value === "custom") call("openKeySoundDocument");
     else call("setKeySoundStyle", event.target.value);

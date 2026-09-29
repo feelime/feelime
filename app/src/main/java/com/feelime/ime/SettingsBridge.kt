@@ -153,6 +153,29 @@ fun readToolbarLayout(context: Context): String =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getString(PREF_TOOLBAR_LAYOUT, "") ?: ""
 
+/** #39-14 按键音量（0-100，默认 60 与既有 ToneGenerator 基线一致）。 */
+const val PREF_KEY_SOUND_VOLUME = "key_sound_volume"
+
+fun readKeySoundVolume(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_KEY_SOUND_VOLUME, 60)
+        .coerceIn(0, 100)
+
+/** #39-14 振动强度档：0=弱 1=中（默认）2=强。 */
+const val PREF_KEY_HAPTIC_STRENGTH = "key_haptic_strength"
+
+fun readKeyHapticStrength(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_KEY_HAPTIC_STRENGTH, 1)
+        .coerceIn(0, 2)
+
+/** #39-13 长按空格语音输入（默认开）：关=长按不触发+隐藏麦克风。 */
+const val PREF_VOICE_ON_SPACE = "voice_on_space"
+
+fun readVoiceOnSpace(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_VOICE_ON_SPACE, true)
+
 /** #36→全局 字母键盘布局（拼音/双拼/英文生效）："26"（默认）|"14"。
  *  旧键 dp_layout 是双拼专属，读到非默认值迁移沿用。 */
 const val PREF_KB_LAYOUT = "kb_layout"
@@ -665,6 +688,11 @@ class SettingsBridge(
             })
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(context))
             .put("kbLayout", readKbLayout(context))
+            .put("voiceOnSpace", readVoiceOnSpace(context))
+            .put("keySoundVolume", readKeySoundVolume(context))
+            .put("keyHapticStrength", readKeyHapticStrength(context))
+            // 设备能力：无幅度马达的机型强度档按时长近似（hint 说明）。
+            .put("keyHapticAmplitude", hapticAmplitudeSupported())
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
             .put("baseDict", com.feelime.ime.engine.BaseDictInstaller.statusJson(context))
             .put("customPhrases", JSONObject().apply {
@@ -1046,6 +1074,49 @@ class SettingsBridge(
         }
         context.sendBroadcast(
             Intent(ACTION_DP_SCHEME_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #39-14 按键音量（0-100）/振动强度（0 弱/1 中/2 强）。 */
+    @JavascriptInterface
+    fun setKeySoundVolume(volume: Int, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_KEY_SOUND_VOLUME, volume.coerceIn(0, 100)).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    @JavascriptInterface
+    fun setKeyHapticStrength(strength: Int, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_KEY_HAPTIC_STRENGTH, strength.coerceIn(0, 2)).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    private fun hapticAmplitudeSupported(): Boolean {
+        val vibrator = if (Build.VERSION.SDK_INT >= 31) {
+            (context.getSystemService(android.os.VibratorManager::class.java))?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.os.Vibrator::class.java)
+        }
+        return vibrator?.hasVibrator() == true && vibrator.hasAmplitudeControl()
+    }
+
+    /** #39-13 长按空格语音开关：写 pref + 广播，键盘隐藏 mic 并停用
+     *  长按触发（空格 click 行为不变）。 */
+    @JavascriptInterface
+    fun setVoiceOnSpace(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_VOICE_ON_SPACE, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
         pushState()
     }

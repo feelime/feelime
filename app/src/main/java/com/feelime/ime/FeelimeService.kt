@@ -58,6 +58,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     /** 按键音（issue #5 问题 2）合成器：实例化开销高，懒加载复用，
      *  onDestroy 释放。 */
     private var keyTone: ToneGenerator? = null
+    /** keyTone 构造时的音量档（#39-14：变了要重建实例）。 */
+    private var keyToneVolume: Int = -1
 
     // #30-2 自定义按键音效：SoundPool 预载状态（keySoundStamp=文件
     //  mtime，文件被换时重载；load 是异步的，keySoundLoaded 由回调置位）。
@@ -1871,6 +1873,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("keySat", readKeySat(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("kbLayout", readKbLayout(this))
+            .put("voiceOnSpace", readVoiceOnSpace(this))
             .put("associationOn", readAssociation(this))
             .put("dynamicDateTimeOn", readDynamicDateTime(this))
             // 按键反馈开关（issue #5 问题 2）也进 hello：快捷设置方块的
@@ -2354,9 +2357,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 // 波形 one-shot 而非 createPredefined(EFFECT_CLICK)：预定义
                 // 效果在 MIUI 上静默无效（真机实录 2026-09-27，验收反馈
                 // 「震动无效」）——MIUI 对 VibrationEffect 预定义语义的支持
-                // 参差，裸波形（默认振幅、20ms）全 ROM 可用。丢掉新马达
-                // 的 click 曲线精细度，换确定性。
-                vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 20), -1))
+                // 参差，裸波形全 ROM 可用。丢掉新马达的 click 曲线精细度，
+                // 换确定性。#39-14 强度档：无幅度马达用时长近似
+                // （12/20/32ms），有幅度控制用振幅（80/160/255）。
+                val strength = readKeyHapticStrength(this@FeelimeService)
+                if (vibrator.hasAmplitudeControl()) {
+                    val amplitude = intArrayOf(80, 160, 255)[strength]
+                    vibrator.vibrate(VibrationEffect.createWaveform(
+                        longArrayOf(0, 18), intArrayOf(0, amplitude), -1))
+                } else {
+                    val ms = longArrayOf(12, 20, 32)[strength]
+                    vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, ms), -1))
+                }
             }
         }
 
@@ -2366,8 +2378,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             when (keySoundStyle(this@FeelimeService)) {
                 KEY_SOUND_STYLE_CUSTOM -> playCustomKeySound()
                 KEY_SOUND_STYLE_KEYPRESS -> runCatching {
-                    (getSystemService(AUDIO_SERVICE) as? AudioManager)
-                        ?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD, -1f)
+                    (getSystemService(AUDIO_SERVICE) as? AudioManager)?.playSoundEffect(
+                        AudioManager.FX_KEYPRESS_STANDARD,
+                        readKeySoundVolume(this@FeelimeService) / 100f,
+                    )
                 }
                 else -> playDefaultKeyTone()
             }
@@ -2380,9 +2394,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // muted，用户三档「完全没声」；系统流音量 dumpsys 显示 16/16，
             // 那是音量值不是 ROM 的输出开关。媒体流（160/160）不受该
             // 策略影响，另一台 ColorOS 旧版有声也说明 ROM 间策略不一。
+            // #39-14：ToneGenerator 只在构造时收音量——按 pref 建，音量
+            // 变了（设置页写入）丢弃旧实例重建。
+            val volume = readKeySoundVolume(this@FeelimeService)
+            if (keyTone != null && keyToneVolume != volume) {
+                runCatching { keyTone?.release() }
+                keyTone = null
+            }
             val tone = keyTone ?: runCatching {
-                ToneGenerator(AudioManager.STREAM_MUSIC, 60)
-            }.getOrNull()?.also { keyTone = it } ?: return
+                ToneGenerator(AudioManager.STREAM_MUSIC, volume)
+            }.getOrNull()?.also { keyTone = it; keyToneVolume = volume } ?: return
             runCatching { tone.startTone(ToneGenerator.TONE_PROP_BEEP, 40) }
         }
 
@@ -2420,7 +2441,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             }
             val pool2 = keySoundPool ?: run { playDefaultKeyTone(); return }
             if (!keySoundLoaded) { playDefaultKeyTone(); return }
-            runCatching { pool2.play(keySoundId, 0.6f, 0.6f, 1, 0, 1f) }
+            val vol = readKeySoundVolume(this@FeelimeService) / 100f
+            runCatching { pool2.play(keySoundId, vol, vol, 1, 0, 1f) }
                 .onFailure { playDefaultKeyTone() }
         }
 
@@ -2518,6 +2540,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     val right = parsed.optJSONArray("right") ?: return@guarded
                     if (left.length() > 4 || right.length() > 4) return@guarded
                     keyboardPrefs.edit().putString(PREF_TOOLBAR_LAYOUT, value).commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "voiceOnSpace" -> {
+                    // #39-13 长按空格语音开关（键盘侧暂无入口，预留 tile 用）。
+                    keyboardPrefs.edit().putBoolean(PREF_VOICE_ON_SPACE, value == "1").commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "kbLayout" -> {

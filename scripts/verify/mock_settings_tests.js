@@ -94,6 +94,9 @@ class MockSettingsNative {
     setOneHandPad(...a) { this._rec('setOneHandPad', a); }
     setKeySound(...a) { this._rec('setKeySound', a); }
     setKeyHaptic(...a) { this._rec('setKeyHaptic', a); }
+    setVoiceOnSpace(...a) { this._rec('setVoiceOnSpace', a); }
+    setKeySoundVolume(...a) { this._rec('setKeySoundVolume', a); }
+    setKeyHapticStrength(...a) { this._rec('setKeyHapticStrength', a); }
     // /R8: page reporting (BACK returns home first) + about-page
     // one-tap copy.
     reportPage(...a) { this._rec('reportPage', a); }
@@ -1112,6 +1115,23 @@ test('base dictionary card renders builtin/custom/building and wires the actions
     world.push({ ...BASE_STATE, baseDict: { mode: 'custom', building: false, name: 'x' } });
     world.$('btnBaseDictRevert').click();
     equal(world.lastCall('clearBaseDict').args, [world.token], 'revert clears the base dict');
+});
+
+test('issue-39 follow-ups: hold-space voice / key volume / haptic strength post via the bridge', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, voiceOnSpace: false, keySoundVolume: 40, keyHapticStrength: 2 });
+    equal(world.$('voiceOnSpace').checked, false, 'hold-space voice reflects off state');
+    equal(world.$('keySoundVolume').value, '40', 'volume slider reflects state');
+    equal(world.$('keyHapticStrength').value, '2', 'haptic strength reflects state');
+    const fire = (id, type, target) =>
+        world.$(id).listeners.find(l => l.type === type).handler({ target });
+    fire('voiceOnSpace', 'change', { checked: true });
+    equal(world.lastCall('setVoiceOnSpace').args, [true, world.token], 'toggle posts setVoiceOnSpace');
+    fire('keyHapticStrength', 'change', { value: '0' });
+    equal(world.lastCall('setKeyHapticStrength').args, [0, world.token], 'strength posts setKeyHapticStrength');
+    // 音量滑条防抖 250ms：input 当拍不进桥（sandbox 的 setTimeout 只入队）。
+    fire('keySoundVolume', 'input', { value: '75' });
+    equal(world.native.of('setKeySoundVolume').length, 0, 'volume debounced (not posted yet)');
 });
 
 test('key feedback toggles reflect state and commit with the token (default off)', () => {

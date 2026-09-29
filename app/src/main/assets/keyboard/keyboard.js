@@ -108,7 +108,7 @@
         "已恢复默认高度": "Default height restored",
         "输入法快捷切换": "Quick switch",
         "长按菜单": "Keyboard menu",
-        "定制符号": "Custom symbols",
+        "定制按键": "Custom keys",
         "返回设置首页": "Back to quick settings",
         "收起设置": "Close quick settings",
         "色彩模式": "Appearance",
@@ -179,11 +179,11 @@
         "已定制 {0} 个键": "{0} custom keys",
         "未定制": "No custom keys",
         "粘贴 JSON ›": "Paste JSON ›",
-        "粘贴 JSON 定制符号": "Paste custom-symbol JSON",
+        "粘贴 JSON 定制按键": "Paste custom-key JSON",
         "插入模板 ›": "Use example ›",
         "插入定制模板": "Use custom keyboard example",
         "查看说明 ›": "View guide ›",
-        "查看定制符号说明": "View the custom-symbol guide",
+        "查看定制按键说明": "View the custom-key guide",
         "粘贴定制 JSON": "Paste custom keyboard JSON",
         "保存失败：本地存储不可用": "Could not save. Local storage is unavailable.",
         "已保存 {0} 个键": "Saved {0} keys",
@@ -218,7 +218,7 @@
         "关闭": "Close",
         "输入常用内容（最多 200 字）": "Enter a phrase (up to 200 characters)",
         "常用语内容": "Phrase",
-        "定制符号 JSON": "Custom-symbol JSON",
+        "定制按键 JSON": "Custom-key JSON",
         "输入常用内容": "Enter a phrase",
         "输入码": "Shortcut",
         "留空时自动生成": "Leave blank to generate",
@@ -298,7 +298,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.6';
+    const KEYBOARD_VERSION = '3.73.8';
 
     // 14 键贴合开放的模式（全拼/双拼/英文；音形四码、日文假名角标等
     // 专业键面维持 26 键）。
@@ -391,6 +391,10 @@ const TOOL_CATALOG = {
     // #39-10 编辑工具条：替换键区的编辑面板（方向键/扩选/全选/
     // 复制剪切粘贴），动作全部复用现有桥通道。
     edit: 'editTool',
+    // #39-12 定制按键：工具栏直达的独立面板。忘了登进这份目录的话
+    // buildToggleTools 照样建按钮，但 setupToolbarEditor 的接线循环
+    // 遍历的是本目录——池里那颗点不动也拖不了（真机实录）。
+    custom: 'toolCustom',
 };
 const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'mic'] };
     const MIN_NATIVE_API = 1;
@@ -541,6 +545,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // the Chinese/English toggle, so their glyphs were removed.
     const ICON_PATHS = {
         stats: 'M5 13h3v6H5zM10.5 8h3v11h-3zM16 4h3v15h-3z',
+        custom: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h3v4h4v3h-7z',
         shift: 'M12 5l7 7h-4v6H9v-6H5z',
         caps: 'M12 3l7 7h-4v6H9v-6H5zM7 19h10v2H7z',
         backspace: 'M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4.59 12.59L16 17l-2.5-2.5L11 17l-1.41-1.41L12.09 13 9.59 10.5 11 9.1l2.5 2.5L16 9.1l1.41 1.41L14.91 13z',
@@ -736,7 +741,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         { id: 'common', label: '常用', rows: null }, // filled per keyboard mode
         // The user's own table, between 常用 and 最近; hidden
         // from the strip until it has content (renderSymbolCats filters).
-        { id: 'custom', label: '定制', rows: null },
         { id: 'recent', label: '最近', rows: null }, // filled from history, falls back to 常用
         {
             id: 'quote', label: '引号',
@@ -1207,6 +1211,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.touchOrigin = null;
             this.swiping = false;
             this.voiceHold = false;
+            // #39-13 长按空格语音（默认开）：关=长按不触发+隐藏空格 mic
+            // 小标与工具栏麦克风。
+            this.voiceOnSpace = true;
             this.voiceSession = null;
             this.spaceHoldTimer = 0;
             // 手写板状态（issue #28）：笔迹（书写区局部 CSS px）、在途请求
@@ -1932,6 +1939,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.closeSettingsPanel();
             this.closeEditPanel();
             this.closeStatsPanel();
+            this.closeCustomPanel();
             // renderMode is invoked on every mode change INCLUDING the one a
             // degrade/recovery event carries; the badge must survive it.
             this.renderDegradeBadge();
@@ -3176,17 +3184,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.className = 'kb-key kb-wide-4';
             button.id = 'spaceKey';
             // 长按空格拉起语音浮层（design §1.2）：右上角圆点标识可长按。
-            button.dataset.lp = 'voice-hold';
+            // #39-13：语音长按关掉后不画 mic 小标也不标可长按。
+            if (this.voiceOnSpace !== false) button.dataset.lp = 'voice-hold';
             button.setAttribute('aria-label', t("空格"));
-            const mic = document.createElementNS(SVG_NS, 'svg');
-            mic.setAttribute('viewBox', '0 0 24 24');
-            mic.setAttribute('class', 'space-mic');
-            mic.setAttribute('aria-hidden', 'true');
-            const path = document.createElementNS(SVG_NS, 'path');
-            path.setAttribute('d', ICON_PATHS.mic);
-            path.setAttribute('fill', 'currentColor');
-            mic.append(path);
-            button.append(mic);
+            if (this.voiceOnSpace !== false) {
+                const mic = document.createElementNS(SVG_NS, 'svg');
+                mic.setAttribute('viewBox', '0 0 24 24');
+                mic.setAttribute('class', 'space-mic');
+                mic.setAttribute('aria-hidden', 'true');
+                const path = document.createElementNS(SVG_NS, 'path');
+                path.setAttribute('d', ICON_PATHS.mic);
+                path.setAttribute('fill', 'currentColor');
+                mic.append(path);
+                button.append(mic);
+            }
             button.addEventListener('click', () => {
                 // 手写候选在条上时，空格=确认 top1 上屏（issue #28
                 // round-3）：走点选同一通道 commitInkCandidate，联想联动
@@ -3225,6 +3236,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 clearTimeout(this.spaceHoldTimer);
                 if (this.voiceHold) {
                     this.voiceHold = false;
+            // #39-13 长按空格语音（默认开）：关=长按不触发+隐藏空格 mic
+            // 小标与工具栏麦克风。
+            this.voiceOnSpace = true;
                     this.resetSlideCancel();
                     this.requestVoiceStop(true);
                 }
@@ -3234,7 +3248,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 button.classList.add('active-touch');
                 startY = event.touches[0].clientY;
                 slideProgress = 0;
-                if (!this.ready || !this.token) return;
+                if (!this.ready || !this.token || this.voiceOnSpace === false) return;
                 this.spaceHoldTimer = setTimeout(() => {
                     this.voiceHold = true;
                     this.voiceSession = 'space-hold';
@@ -3256,6 +3270,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.resetSlideCancel();
                 if (this.voiceHold) {
                     this.voiceHold = false;
+            // #39-13 长按空格语音（默认开）：关=长按不触发+隐藏空格 mic
+            // 小标与工具栏麦克风。
+            this.voiceOnSpace = true;
                     // 松手就上屏；只有上滑过阈值才撤销。
                     this.requestVoiceStop(armed ? true : cancelled);
                     if (armed) this.showToast(t("已撤销本次听写"));
@@ -4432,7 +4449,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.hideKeyLayers();
             document.getElementById(
                 name === 'symbols' ? 'symbolLayer'
-                    : name === 'numpad' ? 'numPadLayer' : 'qwertyLayer',
+                    : name === 'numpad' ? 'numPadLayer'
+                    : name === 'custom' ? 'customLayer' : 'qwertyLayer',
             ).hidden = false;
         }
 
@@ -4682,8 +4700,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const strip = document.getElementById('symCats');
             strip.replaceChildren();
             SYMBOL_CATEGORIES.forEach(category => {
-                // The custom tab only exists once the user saved a table.
-                if (category.id === 'custom' && !this.customKeys()) return;
                 const button = document.createElement('button');
                 button.className = 'sym-cat' + (category.id === this.symbolCat ? ' active' : '');
                 button.textContent = t(category.label);
@@ -4924,41 +4940,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         renderSymbols() {
             const grid = document.getElementById('symGrid');
             grid.replaceChildren();
-            // The custom table renders as three independent
-            // horizontally scrollable strips (unlimited keys per row, drag
-            // to see the overflow) with a fixed backspace column on the
-            // right - the old "row 3 cell 10 is delete" deal belonged to
-            // the even 10-column grid.
-            if (this.symbolCat === 'custom') {
-                const wrap = document.createElement('div');
-                wrap.className = 'sym-custom';
-                const rowsBox = document.createElement('div');
-                rowsBox.className = 'sym-custom-rows';
-                const rows = this.customKeys() || [[], [], []];
-                rows.forEach(row => {
-                    const strip = document.createElement('div');
-                    strip.className = 'kb-row sym-custom-row';
-                    (row || []).forEach(cell => {
-                        const button = document.createElement('button');
-                        button.className = 'kb-key sym-custom-key';
-                        button.textContent = cell.t;
-                        button.addEventListener('click', () => this.runCustomCell(cell));
-                        if (cell.note) {
-                            this.bindItemLongPress(button, () => this.showToast(cell.note));
-                        }
-                        strip.append(button);
-                    });
-                    rowsBox.append(strip);
-                });
-                const bsCol = document.createElement('div');
-                bsCol.className = 'sym-custom-bs';
-                bsCol.append(this.specialKey('backspace', ICONS.backspace,
-                    () => this.call(() => Native.backspace(this.token)),
-                    'kb-special', 'repeat'));
-                wrap.append(rowsBox, bsCol);
-                grid.append(wrap);
-                return;
-            }
             if (this.symbolCat === 'arrows') {
                 // The 方向 category commits directional TEXT (design §2.4):
                 // the glyphs land literally and ⇥ commits a real tab
@@ -5575,7 +5556,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     : (this.toolbarYield || composeHidden || overflow.has(dom));
             });
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = this.toolbarYield ||
+            if (mic) mic.hidden = this.voiceOnSpace === false || this.toolbarYield ||
                 (composeHidden && this.voiceState === 'idle');
         }
 
@@ -5705,6 +5686,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 { key: 'numpad', id: 'toolNumpad', icon: 'numpad', label: '数字键盘' },
                 { key: 'emoji', id: 'toolEmoji', icon: 'smiley', label: 'Emoji' },
                 { key: 'edit', id: 'editTool', icon: 'edit', label: '编辑工具' },
+                { key: 'custom', id: 'toolCustom', icon: 'custom', label: '定制按键' },
             ];
             const pool = document.getElementById('toolbarEditorGrid');
             defs.forEach(({ key, id, icon, label }) => {
@@ -5740,6 +5722,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // #39-10 编辑工具条：同款 toggle 语义（面板开着再点 = 回键区）。
                     if (key === 'edit') {
                         this.toggleEditPanel();
+                        return;
+                    }
+                    // #39-12 定制按键：独立面板（符号面板的定制 tab 已撤）。
+                    if (key === 'custom') {
+                        this.toggleCustomPanel();
                         return;
                     }
                     this.toggleExtraTool(key);
@@ -6531,6 +6518,67 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * keyevent-cursor 场景天然兼容）、扩选/行首行尾走 sendCombo
          * （SHIFT+Arrow/Home/End 组合层）、全选复制剪切粘贴
          * editorAction（宿主 context menu 通道）、删除 backspace。 */
+        toggleCustomPanel() {
+            const layer = document.getElementById('customLayer');
+            if (layer && !layer.hidden) { this.closeCustomPanel(); return; }
+            const rows = this.customKeys();
+            if (!rows) {
+                this.showToast(t("还没有定制按键，去设置的定制按键里保存"));
+                this.call(() => Native.openSetupPage('customTitle', this.token));
+                return;
+            }
+            this.closeModeMenu();
+            this.closeSettingsPanel();
+            this.closeEditPanel();
+            this.closeStatsPanel();
+            this.closeCustomPanel();
+            if (this.panelOpen) this.closePanel();
+            this.renderCustomPanel();
+            this.customReturnLayer = this.keyLayer;
+            this.hideKeyLayers();
+            layer.hidden = false;
+        }
+
+        closeCustomPanel() {
+            const layer = document.getElementById('customLayer');
+            if (!layer || layer.hidden) return;
+            layer.hidden = true;
+            this.showKeyLayer(this.customReturnLayer || 'letters');
+        }
+
+        /** #39-12：定制键表面（原符号面板定制 tab 的渲染整体迁移）。 */
+        renderCustomPanel() {
+            const layer = document.getElementById('customLayer');
+            if (!layer) return;
+            layer.textContent = '';
+            const wrap = document.createElement('div');
+            wrap.className = 'sym-custom';
+            const rowsBox = document.createElement('div');
+            rowsBox.className = 'sym-custom-rows';
+            (this.customKeys() || [[], [], []]).forEach(row => {
+                const strip = document.createElement('div');
+                strip.className = 'kb-row sym-custom-row';
+                (row || []).forEach(cell => {
+                    const button = document.createElement('button');
+                    button.className = 'kb-key sym-custom-key';
+                    button.textContent = cell.t;
+                    button.addEventListener('click', () => this.runCustomCell(cell));
+                    if (cell.note) {
+                        this.bindItemLongPress(button, () => this.showToast(cell.note));
+                    }
+                    strip.append(button);
+                });
+                rowsBox.append(strip);
+            });
+            const bsCol = document.createElement('div');
+            bsCol.className = 'sym-custom-bs';
+            bsCol.append(this.specialKey('backspace', ICONS.backspace,
+                () => this.call(() => Native.backspace(this.token)),
+                'kb-special', 'repeat'));
+            wrap.append(rowsBox, bsCol);
+            layer.append(wrap);
+        }
+
         toggleStatsPanel() {
             const layer = document.getElementById('statsLayer');
             if (layer && !layer.hidden) { this.closeStatsPanel(); return; }
@@ -6828,7 +6876,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // The sub-page header rides the TOOLBAR (left:
                 // back + title, right: close) instead of its own row.
                 this.showSettingsPageBar({ pair: t("输入法快捷切换"), menu: t("长按菜单"),
-                    custom: t("定制符号") }[page] || '');
+                    custom: t("定制按键") }[page] || '');
             } else {
                 this.hideSettingsPageBar();
             }
@@ -7332,10 +7380,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 return;
             }
             this.editorMode = null;
-            // The symbol strip's 定制 tab exists only once the table has
-            // content - refresh it wherever we are (showSymbols re-runs this
-            // anyway before the layer is next shown).
-            this.renderSymbolCats();
+            // The custom panel reads the store at render time; re-render it
+            // when it is on screen so the just-saved table shows immediately.
+            const panel = document.getElementById('customLayer');
+            if (panel && !panel.hidden) this.renderCustomPanel();
             this.closePanelEditor();
             this.showToast(t("已保存 {0} 个键", parsed.rows.reduce((sum, row) => sum + row.length, 0)));
         }
@@ -8311,7 +8359,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('composeExpand').hidden = !this.composing || voiceBusy;
             if (!this.composing && this.expanded && !this.variantReplaying) this.setExpanded(false);
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = this.composing && !recording;
+            if (mic) mic.hidden = this.voiceOnSpace === false ||
+                (this.composing && !recording);
             // 手写候选态的整行互斥要压过上面 mic/工具的通用可见性规则：
             // 引擎回声（commitText 后的空事件等）不得把工具栏插回候选行。
             if (this.mode === 'handwriting') this.applyInkBarChrome();
@@ -9347,6 +9396,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         if (!parsed.error) {
                             localStorage.setItem(CUSTOM_KEYS_STORE,
                                 JSON.stringify({ version: 1, rows: parsed.rows }));
+                            const cl = document.getElementById('customLayer');
+                            if (cl && !cl.hidden) this.renderCustomPanel();
                         }
                     } else {
                         // A keyboard upgraded from a pre-migration
@@ -9406,6 +9457,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.qConfirm('dpScheme', dpScheme);
             // 字母键盘布局（kbLayout pref，"26"|"14"）：变化即重渲染当前
             // 键面（renderMode 内部按 pref 换 dp14/qwerty 布局）。
+            this.voiceOnSpace = payload.voiceOnSpace !== false;
             const nextKbLayout = payload.kbLayout === '14' ? '14' : '26';
             const kbLayoutChanged = nextKbLayout !== this.kbLayout;
             this.kbLayout = nextKbLayout;

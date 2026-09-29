@@ -326,7 +326,8 @@ body.toolbar-edit #toolbarEditor { display: flex; }
 body[data-bg-image="on"] #toolbarEditor { background: transparent; }
 body.toolbar-edit #qwertyLayer,
 body.toolbar-edit #symbolLayer,
-body.toolbar-edit #numPadLayer { display: none; }
+body.toolbar-edit #numPadLayer,
+body.toolbar-edit #customLayer { display: none; }
 /* 模式切换用 hidden 属性;显式兜底防止 author display 覆盖 hidden。 */
 #qwertyLayer[hidden] { display: none; }
 #symbolLayer[hidden] { display: none; }
@@ -822,6 +823,9 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
  * 第四列 = 右侧竖排 删除/复制/剪切/粘贴。 */
 #editLayer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #editLayer[hidden] { display: none; }
+/* #39-12 定制按键独立面板：sym-custom 结构直接挂在本层（原符号面板 tab 迁出）。 */
+#customLayer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#customLayer[hidden] { display: none; }
 /* 法语候选大小写循环的 shift 指示（cap=单档亮，upper=锁定亮）。 */
 .kb-mod.shift.case-cap { box-shadow: inset 0 0 0 2px var(--accent); }
 .kb-mod.shift.case-upper {
