@@ -181,6 +181,8 @@ const I18N = {
         "input.double.hint": "键盘切到「双拼」模式后按所选方案出字。",        "input.double.layout": "键盘布局",
         "input.double.layoutHint": "14 键把相邻两字母合并成宽键帽，按键更大更不易误触。",
         "input.double.layout26": "26 键",
+        "input.feel.kbLayout": "字母键盘布局",
+        "input.feel.kbLayoutHint": "拼音、双拼、英文键盘通用；14 键把相邻两字母合并成宽键帽，按键更大更不易误触。",
         "input.double.layout14": "14 键",
         "input.double.ziranma": "自然码",
         "input.double.flypy": "小鹤双拼",
@@ -713,6 +715,8 @@ const I18N = {
         "input.double.layout": "Key layout",
         "input.double.layoutHint": "14-key merges neighbouring letters into wide caps - bigger targets, fewer mis-taps.",
         "input.double.layout26": "26 keys",
+        "input.feel.kbLayout": "Letter layout",
+        "input.feel.kbLayoutHint": "Applies to pinyin, double-pinyin and English; 14-key merges neighbouring letters into wider caps.",
         "input.double.layout14": "14 keys",
         "input.double.ziranma": "Ziranma",
         "input.double.flypy": "Flypy (小鹤)",
@@ -1630,6 +1634,7 @@ function renderFeel(state) {
         sel.value = src === "custom" ? "custom" : src;
     });
     setSelect("holdMs", state.holdMs ?? 350, ["200", "300", "350", "450", "600"]);
+    setSelect("kbLayout", state.kbLayout === "14" ? "14" : "26", ["26", "14"]);
     setSelect("scrubSpeed", state.scrubSpeed ?? 3, ["1", "2", "3", "4", "5"]);
     const flickSwap = $("flickSwap");
     if (flickSwap) flickSwap.checked = state.flickSwap === true;
@@ -1665,10 +1670,6 @@ function renderDoublePinyin(state) {
     const scheme = known.includes(state.dpScheme)
         ? state.dpScheme : "ziranma";
     if (document.activeElement !== select) select.value = scheme;
-    const layoutSel = $("dpLayout");
-    if (layoutSel && document.activeElement !== layoutSel) {
-        layoutSel.value = state.dpLayout === "14" ? "14" : "26";
-    }
     // 模糊音分组开关：按位掩码勾选，焦点所在的组不回写（连续点按不被
     // 异步 state 推送打断）。
     const mask = Number(state.fuzzyPinyinMask) || 0;
@@ -2836,7 +2837,7 @@ $("btnAddTile").addEventListener("click", () => call("addImeTile"));
 $("btnMic").addEventListener("click", () => call("requestMic"));
 $("uiLanguage").addEventListener("change", event => setUiLanguage(event.target.value));
 $("dpScheme").addEventListener("change", event => call("setDoublePinyinScheme", event.target.value));
-$("dpLayout").addEventListener("change", event => call("setDpLayout", event.target.value));
+$("kbLayout").addEventListener("change", event => call("setKbLayout", event.target.value));
 
 // 输入测试框（验收反馈）：多行 textarea 随内容自适应增高，键盘弹出
 // 窗口压缩时也完整可见；min-height 兜底 rows=4 的初始高度。

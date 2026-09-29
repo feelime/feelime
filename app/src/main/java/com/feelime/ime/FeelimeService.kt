@@ -1199,6 +1199,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     override fun onDestroy() {
         acceptAsrResults = false
+        // #41 二轮：击键是内存累加、搭便车落盘，服务销毁时刷一次。
+        InputStats.flush(applicationContext)
         inputConnectionGeneration += 1
         endBackspaceGestureSession(executeQueued = false)
         cursorQueryGeneration += 1
@@ -1868,7 +1870,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("keyHue", readKeyHue(this))
             .put("keySat", readKeySat(this))
             .put("toolbarLayout", readToolbarLayout(this))
-            .put("dpLayout", readDpLayout(this))
+            .put("kbLayout", readKbLayout(this))
             .put("associationOn", readAssociation(this))
             .put("dynamicDateTimeOn", readDynamicDateTime(this))
             // 按键反馈开关（issue #5 问题 2）也进 hello：快捷设置方块的
@@ -2260,6 +2262,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 rejectedCalls += 1
                 return@guarded
             }
+            InputStats.recordKeystroke(applicationContext)
             coordinator.key(char.codePointAt(0))
         }
 
@@ -2517,10 +2520,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     keyboardPrefs.edit().putString(PREF_TOOLBAR_LAYOUT, value).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
-                "dpLayout" -> {
-                    // #36 双拼 14 键布局（"26"|"14"，仅双拼模式生效）。
+                "kbLayout" -> {
+                    // 字母键盘布局（"26"|"14"，拼音/双拼/英文）。
                     if (value !in listOf("26", "14")) return@guarded
-                    keyboardPrefs.edit().putString(PREF_DP_LAYOUT, value).commit()
+                    keyboardPrefs.edit().putString(PREF_KB_LAYOUT, value).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "bottomPad" -> {
@@ -2566,10 +2569,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
 
         @JavascriptInterface
-        fun space(token: String) = guarded(token, limited = false) { coordinator.space() }
+        fun space(token: String) = guarded(token, limited = false) { InputStats.recordKeystroke(applicationContext); coordinator.space() }
 
         @JavascriptInterface
-        fun backspace(token: String) = guarded(token, limited = true) { coordinator.backspace() }
+        fun backspace(token: String) = guarded(token, limited = true) { InputStats.recordKeystroke(applicationContext); coordinator.backspace() }
 
         // ===== #34 删除键手势四件套（issue #34 v1）=====
         // 门闸取 limited=false：四个桥都由手指位移节律约束（一个手势
@@ -2609,6 +2612,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             }
             var execute = 0
             var generation = 0L
+            InputStats.recordKeystroke(applicationContext, count)
             synchronized(backspaceGestureLock) {
                 if (backspaceGestureEditorGeneration != inputConnectionGeneration) {
                     endBackspaceGestureSessionLockedDrop()
@@ -2680,7 +2684,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
 
         @JavascriptInterface
-        fun enter(token: String) = guarded(token, limited = false) { enter() }
+        fun enter(token: String) = guarded(token, limited = false) { InputStats.recordKeystroke(applicationContext); enter() }
 
         @JavascriptInterface
         fun moveCursor(delta: Int, token: String) = guarded(token, limited = false) {
@@ -3037,6 +3041,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         fun customKeys(token: String): String {
             if (token != pageToken) return ""
             return com.feelime.ime.CustomKeysStore(applicationContext).syncAnswer()
+        }
+
+        /** #41 二轮：输入统计浮层数据（同步返回 JSON，token 门闸同款）。 */
+        @JavascriptInterface
+        fun inputStats(token: String): String {
+            if (token != pageToken) return ""
+            return InputStats.snapshotJson(applicationContext)
         }
 
         @JavascriptInterface

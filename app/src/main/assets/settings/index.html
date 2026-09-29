@@ -396,17 +396,6 @@
           <option value="ziguang" data-i18n="input.double.ziguang">紫光双拼</option>
         </select>
       </div>
-      <!-- #36 双拼 14 键布局（验收反馈：快捷设置 tile 太隐蔽，设置页主入口）。 -->
-      <div class="row language-row">
-        <span class="row-label">
-          <span data-i18n="input.double.layout">键盘布局</span>
-          <small data-i18n="input.double.layoutHint">14 键把相邻两字母合并成宽键帽，按键更大更不易误触。</small>
-        </span>
-        <select id="dpLayout" class="select" aria-label="双拼键盘布局" data-i18n-aria="input.double.layout">
-          <option value="26" data-i18n="input.double.layout26">26 键</option>
-          <option value="14" data-i18n="input.double.layout14">14 键</option>
-        </select>
-      </div>
       <p id="dpNote" class="hint block"></p>
       <div id="dpKeymap"></div>
     </section>
@@ -429,6 +418,18 @@
 
     <section class="card" id="sec-feel" aria-labelledby="feelTitle">
       <div class="section-heading"><h2 id="feelTitle" data-i18n="input.feel.title">键盘手感</h2><span class="eyebrow" data-i18n="input.feel.badge">微调</span></div>
+      <!-- 字母键盘布局（#36 全局化）：拼音/双拼/英文共用的形态参数，
+           从双拼卡上移（不再只对双拼生效）。 -->
+      <div class="row language-row" data-keywords="14键 18键 宽键帽 布局 键盘布局 letters layout">
+        <span class="row-label">
+          <span data-i18n="input.feel.kbLayout">字母键盘布局</span>
+          <small data-i18n="input.feel.kbLayoutHint">拼音、双拼、英文键盘通用；14 键把相邻两字母合并成宽键帽，按键更大更不易误触。</small>
+        </span>
+        <select id="kbLayout" class="select" aria-label="字母键盘布局" data-i18n-aria="input.feel.kbLayout">
+          <option value="26" data-i18n="input.double.layout26">26 键</option>
+          <option value="14" data-i18n="input.double.layout14">14 键</option>
+        </select>
+      </div>
       <div class="row language-row">
         <span class="row-label">
           <span data-i18n="input.feel.hold">长按触发时长</span>

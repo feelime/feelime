@@ -2719,7 +2719,7 @@ test('dp14 layout: merged pairs render, halves stay single-letter keys (issue #3
     const w = fresh({ mode: 'double-pinyin' });
     equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 0,
         'default (26) double pinyin has no merged pairs');
-    w.hello({ mode: 'double-pinyin', dpLayout: '14' });
+    w.hello({ mode: 'double-pinyin', kbLayout: '14' });
     const pairs = [...w.document.querySelectorAll('#qwertyLayer .merge-pair')];
     equal(pairs.length, 12, '12 merged pairs across three rows (5+4+3)');
     equal(pairs.every(p => p.children.length === 2), true, 'each pair holds two half keys');
@@ -2748,17 +2748,63 @@ test('dp14 layout: merged pairs render, halves stay single-letter keys (issue #3
     w.tap(w.document.querySelector('#qwertyLayer [data-key="q"]'));
     equal(w.native.of('key').slice(-1)[0].args[0], 'q', 'half-key tap sends the single letter');
     // 方案切换重渲染仍工作（键面不变但 renderMode 路径要通）。
-    w.hello({ mode: 'double-pinyin', dpLayout: '14', dpScheme: 'flypy' });
+    w.hello({ mode: 'double-pinyin', kbLayout: '14', dpScheme: 'flypy' });
     equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 12,
         'scheme switch keeps the merged pairs');
-    // 其他模式不受 dpLayout 影响（pinyin 仍是 26 键）。
-    w.hello({ mode: 'pinyin', dpLayout: '14' });
+    // 全局化：全拼/英文同样吃 14 键（用户点名），音形维持 26 键。
+    w.hello({ mode: 'pinyin', kbLayout: '14' });
+    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 12,
+        'full pinyin honours the 14-key preference');
+    w.hello({ mode: 'direct', kbLayout: '14' });
+    equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 12,
+        'English honours the 14-key preference');
+    w.hello({ mode: 'flypy', kbLayout: '14' });
     equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 0,
-        'full pinyin ignores the 14-key preference');
+        'shape-code layout stays 26-key');
     // 回到双拼恢复 14 键。
-    w.hello({ mode: 'double-pinyin', dpLayout: '14' });
+    w.hello({ mode: 'double-pinyin', kbLayout: '14' });
     equal(w.document.querySelectorAll('#qwertyLayer .merge-pair').length, 12,
         'returning to double pinyin restores the merged pairs');
+});
+
+test('typing stats: tile opens the keyboard-layer panel with the bridge data (issue #41)', {since: '3.73.4'}, () => {
+    const w = fresh({ mode: 'pinyin' });
+    w.native._statsJson = JSON.stringify({
+        today: 21, total: 1234, keystrokes: 5000, streak: 3,
+        since: '2026-09-27', daysWith: 2, avgDaily: 617,
+        daily: [
+            { date: '2026-09-23', chars: 100 }, { date: '2026-09-24', chars: 0 },
+            { date: '2026-09-25', chars: 300 }, { date: '2026-09-26', chars: 813 },
+            { date: '2026-09-27', chars: 21 }, { date: '2026-09-28', chars: 0 },
+            { date: '2026-09-29', chars: 21 },
+        ],
+    });
+    w.tap(w.$('setupButton'));
+    const tile = w.tile('输入统计');
+    assert(tile, 'stats tile rendered on quick settings');
+    equal(w.document.querySelectorAll('#statsLayer .stats-card').length, 0,
+        'panel not rendered before the tap');
+    w.tap(tile);
+    assert(!w.document.getElementById('statsLayer').hidden, 'stats layer visible');
+    equal(w.document.querySelectorAll('#statsLayer .stats-bar-col').length, 7,
+        'seven-day bar chart rendered');
+    // 今天高亮（末柱 accent），里程碑 1000 已达成。
+    const lastBar = [...w.document.querySelectorAll('#statsLayer .stats-bar')].pop();
+    equal(lastBar.className.includes('today'), true, 'today bar is accented');
+    // mock 选择器不支持「.a.b」复合，className 过滤断言。
+    const earned = [...w.document.querySelectorAll('#statsLayer .stats-badge')]
+        .filter(b => b.className.includes('earned'));
+    equal(earned.length, 2, 'badges earned at 100 and 1k for total=1234');
+    // 换算行：1234 字 ≈ 1 篇高考作文。
+    const fun = w.document.querySelector('#statsLayer .stats-fun').textContent;
+    assert(fun.includes('篇高考作文'), 'conversion line has the essay analogy');
+    // 桥被调过一次（tile tap 拉快照）。
+    assert(w.native.of('inputStats').length >= 1, 'inputStats bridge called');
+    // 再点 tile 收起、键层归还。
+    w.tap(w.tile('输入统计'));
+    equal(w.document.getElementById('statsLayer').hidden, true, 'second tap closes the panel');
+    equal(w.document.getElementById('qwertyLayer').hidden, false,
+        'letter layer restored after close');
 });
 
 test('dp14 layout: quick tile removed, settings page is the entry (issue #36)', {since: '3.73.3'}, () => {
@@ -2767,8 +2813,8 @@ test('dp14 layout: quick tile removed, settings page is the entry (issue #36)', 
     // 验收反馈（低频入口）：快捷设置不再放 14 键 tile，避免误触且
     // 清爽；设置页「双拼方案 → 键盘布局」是唯一入口。
     assert(!w.tile('双拼14键'), 'dp14 tile no longer on quick settings');
-    equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'dpLayout').length, 0,
-        'nothing writes dpLayout from the keyboard surface');
+    equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'kbLayout').length, 0,
+        'nothing writes kbLayout from the keyboard surface');
 });
 
 test('dp scheme switch: single-key expansion uses the active scheme table', {since: '3.29.0'}, () => {
@@ -2885,12 +2931,12 @@ test('setup button opens the quick settings panel; full settings entry calls ope
     equal(JSON.stringify(world.tileNames()),
         JSON.stringify(modernTiles ? [
             '色彩模式', '中文联想', '按键声音', '按键振动',
-            '键盘高度', '快捷切换', '长按菜单', '候选字号', '单手模式',
+            '键盘高度', '输入统计', '快捷切换', '长按菜单', '候选字号', '单手模式',
             '底部留白', '长按时长', '滑动选字',
             '编辑工具栏', '完整设置',
         ] : [
             '色彩模式', '中文联想', '按键声音', '按键振动',
-            '键盘高度', '快捷切换', '候选字号', '界面语言',
+            '键盘高度', '输入统计', '快捷切换', '候选字号', '界面语言',
             ...(verAtLeast(KEYBOARD_VERSION, '3.43.0') ? ['单手模式'] : []),
             '底部留白', '长按时长', '滑动选字', '长按菜单',
             '定制键盘', '双拼方案',
