@@ -2819,6 +2819,40 @@ test('typing stats: tile opens the keyboard-layer panel with the bridge data (is
         'stats toolbar bar hidden on close');
 });
 
+test('french: shift cycles candidate case, pick commits the cased text', {since: '3.73.6'}, () => {
+    const w = fresh({ mode: 'french' });
+    // 组合态 + 引擎候选（c'était 等）。
+    w.engineState({ phase: 'READY', revision: 1, mode: 'french', composing: true,
+        rawInput: 'cetait', candidates: [
+            { id: 'e0', text: "c'était" }, { id: 'e1', text: 'était' }] });
+    const barText = () => [...w.document.querySelectorAll('#candidates .candidate')]
+        .map(b => b.textContent).join('|');
+    const shiftKey = () => [...w.document.querySelectorAll('.kb-mod')]
+        .find(el => el.classList.contains('shift'));
+    equal(barText(), "c'était|ç|était", 'original candidates (with the c-accent alt) before shift');
+    // shift 一档：首字母大写（c'était → C'était）。
+    w.tap(shiftKey());
+    equal(barText(), "C'était|Ç|Était", 'first shift capitalizes every candidate');
+    // shift 二档：全大写。
+    w.tap(shiftKey());
+    equal(barText(), "C'ÉTAIT|Ç|ÉTAIT", 'second shift uppercases');
+    // shift 三档：回原样。
+    w.tap(shiftKey());
+    equal(barText(), "c'était|ç|était", 'third shift returns to original');
+    // 提交变形：再按一次到 cap 档点候选 → clearComposing + commitText(变形+空格)。
+    w.tap(shiftKey());
+    w.native.reset();
+    w.tap(w.document.querySelectorAll('#candidates .candidate')[0]);
+    const committed = w.native.of('commitText');
+    equal(committed.length, 1, 'cased pick commits through the direct channel');
+    equal(committed[0].args[0], "C'était ", 'cased text lands with the trailing space');
+    assert(w.native.of('clearComposing').length === 1, 'composition cleared before commit');
+    // 组合结束归零（引擎回声 composing=false 撤循环态）。
+    w.engineState({ phase: 'READY', revision: 2, mode: 'french', composing: '', candidates: [] });
+    equal(w.document.querySelectorAll('#candidates .candidate').length, 0,
+        'bar empties with the composition');
+});
+
 test('dp14 layout: quick tile removed, settings page is the entry (issue #36)', {since: '3.73.3'}, () => {
     const w = fresh({ mode: 'double-pinyin' });
     w.tap(w.$('setupButton'));

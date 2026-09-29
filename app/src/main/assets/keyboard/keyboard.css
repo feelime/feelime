@@ -822,6 +822,14 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
  * 第四列 = 右侧竖排 删除/复制/剪切/粘贴。 */
 #editLayer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #editLayer[hidden] { display: none; }
+/* 法语候选大小写循环的 shift 指示（cap=单档亮，upper=锁定亮）。 */
+.kb-mod.shift.case-cap { box-shadow: inset 0 0 0 2px var(--accent); }
+.kb-mod.shift.case-upper {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+}
+
 /* --- #41 输入统计浮层 -------------------------------------------------- */
 .stats-wrap {
     flex: 1;
