@@ -653,32 +653,16 @@ body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
 .kb-row { display: flex; gap: 5px; margin-bottom: 5px; }
 .kb-row:last-child { margin-bottom: 0; }
 .kb-row.kb-indent { padding: 0 4.9%; }
-/* #36 双拼 14 键（真十四键观感，验收反馈二轮）：合并对显示为一个
- * 完整键帽——两字母经 ::before 键帽级居中（无中缝），半区按钮自身
- * 的字形隐藏、只保留触摸与按压反馈（半区宽 ≥ 原 26 键键宽，判定
- * 分界无歧义）。韵母小字不显示（键面溢出，方案键位图在设置页有）。 */
-.merge-pair { flex: 2; min-width: 0; display: flex; position: relative; }
+/* #36 双拼 14 键（验收反馈三轮）：相邻两字母贴合为一颗宽键帽——
+ * 触摸判定保持半区（半区宽 ≥ 原 26 键键宽，分界无歧义）；中间一道
+ * 分割线区分两个半区，每颗半区键保留自己的居中字母与上滑小字
+ * （韵母小字仍不显示：键面溢出，方案键位图在设置页有）。 */
+.merge-pair { flex: 2; min-width: 0; display: flex; }
 .merge-pair .kb-key { flex: 1; min-width: 0; border-radius: 0; }
 .merge-pair .kb-key:first-child { border-radius: var(--radius-key) 0 0 var(--radius-key); }
 .merge-pair .kb-key:last-child { border-radius: 0 var(--radius-key) var(--radius-key) 0; }
-.merge-pair .kb-key .kb-main { visibility: hidden; }
-.merge-pair .kb-key .kb-alt { display: none; }
-.merge-pair::before {
-    content: attr(data-glyph);
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    /* 两字母并排：字距略收，读作一颗键（如 "QW"）。 */
-    font-size: min(21px, calc(var(--kb-row-h, 44px) * 0.48));
-    font-weight: 400;
-    color: var(--text);
-    letter-spacing: 2px;
-    /* 不吞触摸：半区判定仍在底下两颗键上。 */
-    pointer-events: none;
-    z-index: 1;
-}
+/* 分割线：面板底色细缝，视觉上等同键间 gap 的窄化版。 */
+.merge-pair .kb-key + .kb-key { border-left: 2px solid var(--panel); }
 /* Key height is the tunable variable (default 44). */
 .kb-key, .sym-tab {
     flex: 1;

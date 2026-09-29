@@ -291,7 +291,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.2';
+    const KEYBOARD_VERSION = '3.73.3';
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -1976,13 +1976,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             row.append(this.letterKey(group));
                             return;
                         }
-                        // 真十四键观感（验收反馈）：两字母并排居中显示在
-                        // 一个完整键帽上（data-glyph 由 CSS ::before 渲染，
-                        // 键帽级居中无中缝）；触摸判定保持半区（半区宽
-                        // ≥ 原 26 键键宽，且分界无歧义）。
+                        // 14 键贴合（验收反馈三轮）：两颗半区标准键贴成
+                        // 一颗宽键帽（中间分割线与每键字母/上滑小字由
+                        // CSS 保留）；触摸判定保持半区（半区宽 ≥ 原
+                        // 26 键键宽，且分界无歧义）。
                         const pair = document.createElement('div');
                         pair.className = 'merge-pair';
-                        pair.dataset.glyph = group.toUpperCase();
                         [...group].forEach(key => pair.append(this.letterKey(key)));
                         row.append(pair);
                     });
@@ -6914,23 +6913,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     {
                         icon: ICONS.height, label: t("键盘高度"), hold: 'kbHeight', state: () => t("调节"),
                         tap: () => this.enterHeightEdit(),
-                    },
-                    {
-                        // #36 双拼 14 键：宽键帽合并布局（仅双拼模式生效；
-                        // 其他模式下设置也无害，切回双拼即见）。
-                        icon: ICONS.dp, label: t("双拼14键"),
-                        on: () => this.dpLayout === '14',
-                        state: () => (this.dpLayout === '14' ? t("14键") : t("26键")),
-                        tap: () => {
-                            if (typeof Native.setQuickPref !== 'function') return;
-                            this.dpLayout = this.dpLayout === '14' ? '26' : '14';
-                            quickPref('dpLayout', this.dpLayout);
-                            // 本地翻完立即重渲染（ace 实录：tile 的本地翻
-                            // 与 hello 回流都检测不到「变化」——本地值已等于
-                            // 回流值，renderMode 永远不被触发）。
-                            if (this.mode === 'double-pinyin') this.renderMode();
-                            rehome();
-                        },
                     },
                     {
                         icon: ICONS.swap, label: t("快捷切换"),
