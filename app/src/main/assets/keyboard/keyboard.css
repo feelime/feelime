@@ -549,15 +549,15 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
  * title on the left, close on the right, all in .tool pill styling; the
  * regular tools (logo, gear, clipboard, favorites, mic, hide, strip) hide
  * while a sub-page is up. */
-#settingsPageBar {
+#settingsPageBar, #statsPageBar {
     display: none;
     flex: 1;
     min-width: 0;
     align-items: center;
     gap: 8px;
 }
-#settingsPageBar .tool { flex: none; width: 32px; height: 32px; }
-#settingsPageBar .page-title {
+#settingsPageBar .tool, #statsPageBar .tool { flex: none; width: 32px; height: 32px; }
+#settingsPageBar .page-title, #statsPageBar .page-title {
     flex: 1;
     min-width: 0;
     font-size: 13px;
@@ -568,6 +568,12 @@ body[data-preedit-font="xlarge"] { --preedit-font-scale: 1.35; --preedit-band: 2
     text-overflow: ellipsis;
 }
 body.settings-page #settingsPageBar { display: flex; }
+/* #41 统计浮层：工具栏换成标题+✕（settingsPageBar 同款互斥形态——
+ * 常规工具全藏，统计面板外的任何界面不可能再叠上来）。 */
+body.stats-page #statsPageBar { display: flex; }
+body.stats-page #candidates,
+body.stats-page #candidateBar > .tool,
+body.settings-page #statsPageBar { display: none; }
 /* 子页打开时隐藏所有常规工具——直接子元素级选择器，动态开关工具
  * （toolTheme 等五个）自动覆盖，新增工具也不会再漏（真机翻车：逐 id
  * 枚举漏掉动态按钮，「输入法快捷切换」子页标题栏边上挂着一颗色彩
@@ -577,7 +583,7 @@ body.settings-page #candidateBar > .tool { display: none; }
 /* [hidden] must win even against the settings-page swap (lint R2). */
 #setupButton[hidden], #fullSetupButton[hidden], #clipboardButton[hidden],
 #favoritesButton[hidden], #hide[hidden], #settingsPageBar[hidden],
-#ctrlTool[hidden], #imeSwitchButton[hidden] {
+#ctrlTool[hidden], #imeSwitchButton[hidden], #statsPageBar[hidden] {
     display: none !important;
 }
 /* Author display:flex beats the UA [hidden] rule - compose controls and the
@@ -826,19 +832,6 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
     flex-direction: column;
     gap: 10px;
 }
-.stats-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.stats-title { font-size: 13px; font-weight: 650; color: var(--muted); letter-spacing: .06em; }
-.stats-close {
-    width: 34px; height: 34px;
-    border: 0; border-radius: var(--radius-key);
-    background: var(--key); color: var(--text);
-    font-size: 16px; line-height: 1;
-}
-.stats-close:active { background: var(--pressed); }
 .stats-hero { text-align: center; padding: 2px 0 0; }
 .stats-hero-label { font-size: 11px; color: var(--muted); letter-spacing: .12em; }
 .stats-total {

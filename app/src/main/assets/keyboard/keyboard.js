@@ -298,7 +298,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.4';
+    const KEYBOARD_VERSION = '3.73.5';
 
     // 14 键贴合开放的模式（全拼/双拼/英文；音形四码、日文假名角标等
     // 专业键面维持 26 键）。
@@ -4382,6 +4382,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.closeEditPanel();
                 }
             }
+            // #41 同款互斥：统计浮层占着键区时任何层切换都先收它
+            //（closeStatsPanel 会 showKeyLayer(statsReturnLayer) 再入
+            // 此处：statsLayer 已 hidden，直接放行切到目标层）。
+            {
+                const statsLayer = document.getElementById('statsLayer');
+                if (statsLayer && !statsLayer.hidden) {
+                    this.statsReturnLayer = name;
+                    this.closeStatsPanel();
+                }
+            }
             // codex P2：剪贴板/常用语面板开着时若有层切换入口（防御：
             // 面板开时工具栏整条隐藏，常规入口已不可点），层切换要收掉
             // 面板层，否则 panelLayer 与新键层同屏叠加。closePanel 会
@@ -6498,19 +6508,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.closeModeMenu();
             this.closeSettingsPanel();
             this.closeEditPanel();
-            this.closeStatsPanel();
             if (this.panelOpen) this.closePanel();
             if (this.ctrlView) this.suspendCtrlView();
             this.renderStatsPanel();
             this.statsReturnLayer = this.keyLayer;
             this.hideKeyLayers();
             layer.hidden = false;
+            // 工具栏换成标题+✕（body.stats-page 互斥：常规工具/候选条
+            // 全让位，面板之外不可能再叠别的界面——用户验收实录）。
+            document.body.classList.add('stats-page');
         }
 
         closeStatsPanel() {
             const layer = document.getElementById('statsLayer');
             if (!layer || layer.hidden) return;
             layer.hidden = true;
+            const bar = document.getElementById('statsPageBar');
+            if (bar) { bar.hidden = true; bar.replaceChildren(); }
+            document.body.classList.remove('stats-page');
             this.showKeyLayer(this.statsReturnLayer || 'letters');
             this.maybeResumeCtrlView();
         }
@@ -6548,14 +6563,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (html != null) node.innerHTML = html;
                 return node;
             };
-            const head = el('stats-head');
-            head.append(el('stats-title', t("输入统计")));
-            const close = document.createElement('button');
-            close.className = 'stats-close';
-            close.textContent = '✕';
-            close.addEventListener('click', () => this.closeStatsPanel());
-            head.append(close);
-            wrap.append(head);
+            // 标题与 ✕ 在工具栏（statsPageBar），键区从 hero 直接开始。
+            const bar = document.getElementById('statsPageBar');
+            if (bar) {
+                bar.replaceChildren();
+                const label = document.createElement('span');
+                label.className = 'page-title';
+                label.textContent = t("输入统计");
+                const close = document.createElement('button');
+                close.className = 'tool';
+                close.textContent = '×';
+                close.setAttribute('aria-label', t("收起统计"));
+                close.addEventListener('click', () => this.closeStatsPanel());
+                bar.append(label, close);
+                bar.hidden = false;
+            }
             const hero = el('stats-hero');
             hero.append(el('stats-hero-label', t("累计输入")));
             const totalLine = el('stats-total');

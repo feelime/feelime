@@ -2800,11 +2800,23 @@ test('typing stats: tile opens the keyboard-layer panel with the bridge data (is
     assert(fun.includes('篇高考作文'), 'conversion line has the essay analogy');
     // 桥被调过一次（tile tap 拉快照）。
     assert(w.native.of('inputStats').length >= 1, 'inputStats bridge called');
-    // 再点 tile 收起、键层归还。
+    // 工具栏互斥（验收六轮）：标题+✕ 进 statsPageBar，常规工具让位。
+    equal(w.document.body.classList.contains('stats-page'), true,
+        'body carries the stats-page swap class');
+    const bar = w.document.getElementById('statsPageBar');
+    equal(bar.hidden, false, 'stats toolbar bar visible');
+    equal(bar.querySelector('.page-title').textContent, '输入统计',
+        'bar title present');
+    assert(bar.querySelector('.tool'), 'bar close button present');
+    // 再点 tile 收起、键层归还、body class 与 bar 一并撤。
     w.tap(w.tile('输入统计'));
     equal(w.document.getElementById('statsLayer').hidden, true, 'second tap closes the panel');
     equal(w.document.getElementById('qwertyLayer').hidden, false,
         'letter layer restored after close');
+    equal(w.document.body.classList.contains('stats-page'), false,
+        'stats-page class cleared on close');
+    equal(w.document.getElementById('statsPageBar').hidden, true,
+        'stats toolbar bar hidden on close');
 });
 
 test('dp14 layout: quick tile removed, settings page is the entry (issue #36)', {since: '3.73.3'}, () => {
