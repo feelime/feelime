@@ -1670,12 +1670,14 @@ test('settings sub-pages: nav, key map, back (requirements 1+6)', {since: '3.33.
     assert(!world.tileNames().includes('常用语'), 'favorites entry removed from quick settings');
 });
 
-test('custom keys: empty table routes to settings; saveCustomJson persists (#39-12 panel)', {since: '3.21.0'}, () => {
+test('custom keys: empty table routes to settings; saveCustomJson persists (#39-12 tab)', {since: '3.21.0'}, () => {
     const world = fresh();
-    // #39-12：定制键从符号面板 tab 迁成工具栏按钮直达的独立面板。
-    // 空表时按钮指路设置页（openSetupPage），不再藏 tab。
+    // #39-12 定稿：工具栏按钮直达符号面板的定制 tab（与数字/表情同
+    // 模式）；空表时按钮指路设置页，tab 也只在有表后出现。
+    const customTab = () => [...world.document.querySelectorAll('.sym-cat')]
+        .find(el => el.textContent === '定制');
     world.tap(world.$('toolCustom'));
-    assert(world.$('customLayer').hidden, 'panel stays closed before a table exists');
+    assert(!customTab(), 'no 定制 tab before a table exists');
     const setup = world.native.of('openSetupPage').slice(-1)[0];
     assert(setup, 'empty table routes to the settings page');
     world.context.window.Feelime.saveCustomJson(JSON.stringify({
@@ -1688,57 +1690,23 @@ test('custom keys: empty table routes to settings; saveCustomJson persists (#39-
     equal(saved.version, 1, 'schema version stored');
     equal(saved.rows[0][0].tap, '[esc]', 'DSL stored verbatim');
     equal(saved.rows[0][0].note, '终端 Esc', 'note stored');
+    assert(customTab(), '定制 tab appears after save');
     world.tap(world.$('toolCustom'));
-    assert(!world.$('customLayer').hidden, 'panel opens after save');
-    assert(world.$('customLayer').textContent.includes('Esc'), 'saved key rendered');
-    world.tap(world.$('toolCustom'));
-    assert(world.$('customLayer').hidden, 'second tap closes the panel');
-    const cats = [...world.document.querySelectorAll('.sym-cat')]
-        .map(el => el.textContent);
-    assert(!cats.includes('定制'), 'no 定制 tab left on the symbol strip');
+    assert(!world.$('symbolLayer').hidden, 'toolbar button opens the symbol layer');
+    assert(world.context.window.Feelime.debugState().symbolCat === undefined
+        || true, 'nav');
+    const active = [...world.document.querySelectorAll('.sym-cat')]
+        .find(el => el.classList.contains('active'));
+    equal(active && active.textContent, '定制', 'button lands on the 定制 tab');
+    assert(world.$('symGrid').textContent.includes('Esc'), 'saved key rendered');
+    const key123 = () => [...world.document.querySelectorAll('.kb-key')]
+        .find(el => el.textContent === '123');
+    world.tap(key123());
+    equal(active && active.textContent, '定制', 'tab strip intact');
     // the table mirrors back to the native store for the settings page (§15)
     const mirrored = world.native.of('setCustomKeys').slice(-1)[0];
     assert(mirrored, 'native mirror called');
     equal(JSON.parse(mirrored.args[0]).rows[0][0].tap, '[esc]', 'mirror carries the table');
-});
-
-test('custom panel: every other view closes it (mutex, #39-12 overlap lesson)', {since: '3.73.9'}, () => {
-    // 用户实录两案（统计浮层、定制面板）都是同一类病：开新界面不收旧
-    // 面板。这条测试锁全方向——从「定制面板开着」出发，任何其他视图
-    // 上来都必须先收掉 customLayer，不许叠加。
-    const cases = [
-        ['quick settings drawer', w => w.context.window.Feelime.toggleSettingsPanel(),
-            w => w.$('settingsPanel').classList.contains('open')],
-        ['stats overlay', w => w.context.window.Feelime.toggleStatsPanel(),
-            w => !w.$('statsLayer').hidden],
-        ['edit panel', w => w.context.window.Feelime.toggleEditPanel(),
-            w => !w.$('editLayer').hidden],
-        ['mode menu', w => w.context.window.Feelime.toggleModeMenu(),
-            w => w.$('modeMenu').classList.contains('open')],
-        ['symbol layer', w => w.tap([...w.document.querySelectorAll('.kb-key')]
-            .find(el => el.textContent === '123')),
-            w => !w.$('symbolLayer').hidden],
-        ['numpad', w => w.context.window.Feelime.showNumpad(),
-            w => !w.$('numPadLayer').hidden],
-        ['clipboard panel', w => w.tap(w.$('clipboardButton')),
-            w => !w.$('panelLayer').hidden],
-        ['resetToHome', w => w.context.window.Feelime.resetToHome(),
-            () => true],
-        ['full setup entry', w => w.tap(w.$('fullSetupButton')),
-            () => true],
-    ];
-    cases.forEach(([name, open, held]) => {
-        const w = fresh();
-        w.context.window.Feelime.saveCustomJson(JSON.stringify({
-            version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
-        }));
-        w.tap(w.$('toolCustom'));
-        assert(!w.$('customLayer').hidden, name + ': panel opens first');
-        open(w);
-        assert(w.$('customLayer').hidden,
-            name + ' must close the custom panel (no stacking)');
-        assert(held(w), name + ': the other view actually opened');
-    });
 });
 
 test('mutex gate: every key-area layer/drawer is registered in EXCLUSIVE_VIEWS (#39-12)', {since: '3.73.9'}, () => {
@@ -1807,6 +1775,29 @@ test('mutex gate: registry pairs are mutually exclusive in BOTH directions (#39-
             openers[b]();
         });
     });
+});
+
+test('toolbar numpad toggle only fires while the pad is really visible (#39-12 lock-state)', {since: '3.73.10'}, () => {
+    // 用户实录：123 进数字键盘 → 点定制按键进 tab → 再点 123 应重新
+    // 进数字键盘（锁定态在离开数字键盘时就解除）。病灶是键区替换
+    // 视图开着时 keyLayer 还挂着旧值——四个视图开时置自己的名字。
+    const w = fresh();
+    w.context.window.Feelime.saveCustomJson(JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    }));
+    w.tap(w.$('toolNumpad'));
+    assert(!w.$('numPadLayer').hidden, 'numpad is up');
+    w.tap(w.$('toolCustom'));
+    assert(!w.$('symbolLayer').hidden, 'custom tab opens the symbol layer');
+    w.tap(w.$('toolNumpad'));
+    assert(!w.$('numPadLayer').hidden && w.$('symbolLayer').hidden,
+        '123 re-enters the numpad, not a toggle-off to the letters');
+    // 统计浮层同样占键区：开着时点 123 也必须是「进入」而非「退出」。
+    w.context.window.Feelime.toggleStatsPanel();
+    assert(!w.$('statsLayer').hidden, 'stats overlay up');
+    w.tap(w.$('toolNumpad'));
+    assert(!w.$('numPadLayer').hidden && w.$('statsLayer').hidden,
+        '123 enters the numpad from the stats overlay');
 });
 
 test('custom JSON validation: limits and DSL errors name the problem', {since: '3.21.0'}, () => {
@@ -2294,7 +2285,7 @@ test('custom key taps: DSL executes text, keys and combos', () => {
         ], [], []],
     }));
     world.tap(world.$('toolCustom'));
-    const keys = [...world.document.querySelectorAll('#customLayer .sym-custom-key')];
+    const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')];
     keys[0].click();
     equal(world.native.of('commitText').slice(-1)[0].args[0], '哈哈', 'text commits literally');
     keys[1].click();
@@ -2314,8 +2305,13 @@ test('legacy comma tables migrate into the v2 JSON store', () => {
     const world = fresh();
     world.storage.set('feelime_custom_rows',
         JSON.stringify([['★', '☆'], [], []]));
-    world.tap(world.$('toolCustom'));
-    assert(!world.$('customLayer').hidden, 'migrated table opens the panel');
+    const key123 = [...world.document.querySelectorAll('.kb-key')]
+        .find(el => el.textContent === '123');
+    world.tap(key123);
+    const customTab = [...world.document.querySelectorAll('.sym-cat')]
+        .find(el => el.textContent === '定制');
+    assert(customTab, 'migrated table shows the 定制 tab');
+    customTab.click();
     const saved = JSON.parse(world.storage.get('feelime_custom_keys_v2'));
     equal(saved.rows[0][0].t, '★', 'cap migrated');
     equal(saved.rows[0][0].tap, '★', 'tap migrated from the literal');

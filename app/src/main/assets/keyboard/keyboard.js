@@ -298,7 +298,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.9';
+    const KEYBOARD_VERSION = '3.73.10';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -310,7 +310,6 @@
         settings: { el: 'settingsPanel', openClass: 'open', close: 'closeSettingsPanel', returnField: 'settingsReturnLayer' },
         stats:    { el: 'statsLayer',    openClass: null,    close: 'closeStatsPanel',    returnField: 'statsReturnLayer' },
         edit:     { el: 'editLayer',     openClass: null,    close: 'closeEditPanel',     returnField: 'editReturnLayer' },
-        custom:   { el: 'customLayer',   openClass: null,    close: 'closeCustomPanel',   returnField: 'customReturnLayer' },
         panel:    { el: 'panelLayer',    openClass: null,    close: 'closePanel',         returnField: 'panelReturnLayer' },
         modeMenu: { el: 'modeMenu',      openClass: 'open',  close: 'closeModeMenu' },
     };
@@ -822,6 +821,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['Φ', 'Χ', 'Ψ', 'Ω', 'α', 'β', 'γ', 'δ', 'ε'],
             ],
         },
+        // #39-12 定稿：定制表回符号面板 tab（工具栏按钮 = 直达此 tab，
+        // 与数字/表情的行为模式统一；不做独立面板）。rows 动态来自
+        // customKeys()。
+        { id: 'custom', label: '定制', rows: null },
     ];
 
     // Chinese-mode alts carry their FINAL glyphs - mostly
@@ -4450,8 +4453,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.hideKeyLayers();
             document.getElementById(
                 name === 'symbols' ? 'symbolLayer'
-                    : name === 'numpad' ? 'numPadLayer'
-                    : name === 'custom' ? 'customLayer' : 'qwertyLayer',
+                    : name === 'numpad' ? 'numPadLayer' : 'qwertyLayer',
             ).hidden = false;
         }
 
@@ -4704,6 +4706,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const strip = document.getElementById('symCats');
             strip.replaceChildren();
             SYMBOL_CATEGORIES.forEach(category => {
+                // The custom tab only exists once the user saved a table.
+                if (category.id === 'custom' && !this.customKeys()) return;
                 const button = document.createElement('button');
                 button.className = 'sym-cat' + (category.id === this.symbolCat ? ' active' : '');
                 button.textContent = t(category.label);
@@ -4942,6 +4946,41 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         renderSymbols() {
+            // #39-12：定制 tab 的渲染（三行横滚条 + 右列删除），从旧版
+            // 迁回——工具栏按钮直达此 tab，与数字/表情面板同模式。
+            if (this.symbolCat === 'custom') {
+                const grid = document.getElementById('symGrid');
+                grid.textContent = '';
+                const wrap = document.createElement('div');
+                wrap.className = 'sym-custom';
+                const rowsBox = document.createElement('div');
+                rowsBox.className = 'sym-custom-rows';
+                const rows = this.customKeys() || [[], [], []];
+                rows.forEach(row => {
+                    const strip = document.createElement('div');
+                    strip.className = 'kb-row sym-custom-row';
+                    (row || []).forEach(cell => {
+                        const button = document.createElement('button');
+                        button.className = 'kb-key sym-custom-key';
+                        button.textContent = cell.t;
+                        button.addEventListener('click', () => this.runCustomCell(cell));
+                        if (cell.note) {
+                            this.bindItemLongPress(button, () => this.showToast(cell.note));
+                        }
+                        strip.append(button);
+                    });
+                    rowsBox.append(strip);
+                });
+                const bsCol = document.createElement('div');
+                bsCol.className = 'sym-custom-bs';
+                bsCol.append(this.specialKey('backspace', ICONS.backspace,
+                    () => this.call(() => Native.backspace(this.token)),
+                    'kb-special', 'repeat'));
+                wrap.append(rowsBox, bsCol);
+                grid.append(wrap);
+                return;
+            }
+
             const grid = document.getElementById('symGrid');
             grid.replaceChildren();
             if (this.symbolCat === 'arrows') {
@@ -5030,8 +5069,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #39-10 编辑面板同样独占键区（ctrl 视图换的是候选栏槽位，
             // 两个替换层叠加会把 ctrl 行画在编辑网格上方）。
             if (on && !document.getElementById('editLayer').hidden) return;
-            // #39-12 定制面板同款独占。
-            if (on && !document.getElementById('customLayer').hidden) return;
             // Review P3: the editor strip (custom-symbol editing)
             // owns the bar too - it would fight the ctrl rows for the slot.
             if (on && document.body.classList.contains('editing')) return;
@@ -5729,9 +5766,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         this.toggleEditPanel();
                         return;
                     }
-                    // #39-12 定制按键：独立面板（符号面板的定制 tab 已撤）。
+                    // #39-12 定稿：不做独立面板——按钮直达符号面板的
+                    // 定制 tab，与数字/表情一个行为模式（用户裁定）。
                     if (key === 'custom') {
-                        this.toggleCustomPanel();
+                        if (!this.customKeys()) {
+                            this.showToast(t("还没有定制按键，去设置的定制按键里保存"));
+                            this.call(() => Native.openSetupPage('customTitle', this.token));
+                            return;
+                        }
+                        this.showSymbols();
+                        this.symbolCat = 'custom';
+                        document.querySelectorAll('[data-sym-cat]').forEach(el => (
+                            el.classList.toggle('active', el.dataset.symCat === 'custom')));
+                        this.renderSymbols();
                         return;
                     }
                     this.toggleExtraTool(key);
@@ -6490,6 +6537,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The panel REPLACES the key area (no overlay) -
             // remember which key layer to restore on close.
             this.settingsReturnLayer = this.keyLayer;
+            // keyLayer 反映「当前键区」：抽屉占着键区时数字键盘已不可
+            // 见，123 的 toggle 判定不能再命中（否则点 123 会回字母层
+            // 而不是进数字键盘）。
+            this.keyLayer = 'settings';
             this.hideKeyLayers();
         }
 
@@ -6519,62 +6570,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * keyevent-cursor 场景天然兼容）、扩选/行首行尾走 sendCombo
          * （SHIFT+Arrow/Home/End 组合层）、全选复制剪切粘贴
          * editorAction（宿主 context menu 通道）、删除 backspace。 */
-        toggleCustomPanel() {
-            const layer = document.getElementById('customLayer');
-            if (layer && !layer.hidden) { this.closeCustomPanel(); return; }
-            const rows = this.customKeys();
-            if (!rows) {
-                this.showToast(t("还没有定制按键，去设置的定制按键里保存"));
-                this.call(() => Native.openSetupPage('customTitle', this.token));
-                return;
-            }
-            this.closeOtherViews('custom');
-            this.renderCustomPanel();
-            this.customReturnLayer = this.keyLayer;
-            this.hideKeyLayers();
-            layer.hidden = false;
-        }
-
-        closeCustomPanel() {
-            const layer = document.getElementById('customLayer');
-            if (!layer || layer.hidden) return;
-            layer.hidden = true;
-            this.showKeyLayer(this.customReturnLayer || 'letters');
-        }
-
-        /** #39-12：定制键表面（原符号面板定制 tab 的渲染整体迁移）。 */
-        renderCustomPanel() {
-            const layer = document.getElementById('customLayer');
-            if (!layer) return;
-            layer.textContent = '';
-            const wrap = document.createElement('div');
-            wrap.className = 'sym-custom';
-            const rowsBox = document.createElement('div');
-            rowsBox.className = 'sym-custom-rows';
-            (this.customKeys() || [[], [], []]).forEach(row => {
-                const strip = document.createElement('div');
-                strip.className = 'kb-row sym-custom-row';
-                (row || []).forEach(cell => {
-                    const button = document.createElement('button');
-                    button.className = 'kb-key sym-custom-key';
-                    button.textContent = cell.t;
-                    button.addEventListener('click', () => this.runCustomCell(cell));
-                    if (cell.note) {
-                        this.bindItemLongPress(button, () => this.showToast(cell.note));
-                    }
-                    strip.append(button);
-                });
-                rowsBox.append(strip);
-            });
-            const bsCol = document.createElement('div');
-            bsCol.className = 'sym-custom-bs';
-            bsCol.append(this.specialKey('backspace', ICONS.backspace,
-                () => this.call(() => Native.backspace(this.token)),
-                'kb-special', 'repeat'));
-            wrap.append(rowsBox, bsCol);
-            layer.append(wrap);
-        }
-
         toggleStatsPanel() {
             this.closeOtherViews('stats');
             const layer = document.getElementById('statsLayer');
@@ -6582,6 +6577,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.ctrlView) this.suspendCtrlView();
             this.renderStatsPanel();
             this.statsReturnLayer = this.keyLayer;
+            this.keyLayer = 'stats';
             this.hideKeyLayers();
             layer.hidden = false;
             // 工具栏换成标题+✕（body.stats-page 互斥：常规工具/候选条
@@ -6758,6 +6754,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.renderEditPanel();
             // 同 settingsPanel：记住被替换的键层，关闭时原样归还。
             this.editReturnLayer = this.keyLayer;
+            this.keyLayer = 'edit';
             this.hideKeyLayers();
             layer.hidden = false;
         }
@@ -7374,10 +7371,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 return;
             }
             this.editorMode = null;
-            // The custom panel reads the store at render time; re-render it
-            // when it is on screen so the just-saved table shows immediately.
-            const panel = document.getElementById('customLayer');
-            if (panel && !panel.hidden) this.renderCustomPanel();
+            // The symbol strip's 定制 tab exists only once the table has
+            // content - refresh it wherever we are (showSymbols re-runs this
+            // anyway before the layer is next shown).
+            this.renderSymbolCats();
             this.closePanelEditor();
             this.showToast(t("已保存 {0} 个键", parsed.rows.reduce((sum, row) => sum + row.length, 0)));
         }
@@ -9389,8 +9386,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         if (!parsed.error) {
                             localStorage.setItem(CUSTOM_KEYS_STORE,
                                 JSON.stringify({ version: 1, rows: parsed.rows }));
-                            const cl = document.getElementById('customLayer');
-                            if (cl && !cl.hidden) this.renderCustomPanel();
                         }
                     } else {
                         // A keyboard upgraded from a pre-migration
@@ -9970,7 +9965,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // #39-10 编辑面板（preview/诊断与 mock 套件共用入口）。
         toggleEditPanel: () => keyboard.toggleEditPanel(),
         toggleStatsPanel: () => keyboard.toggleStatsPanel(),
-        toggleCustomPanel: () => keyboard.toggleCustomPanel(),
         toggleControlView: () => keyboard.setControlView(!keyboard.ctrlView),
         showNumpad: () => keyboard.showNumpad(),
         // Called by the native side on every IME show: hiding the IME can
