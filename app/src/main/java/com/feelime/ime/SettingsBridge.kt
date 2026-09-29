@@ -153,12 +153,17 @@ fun readToolbarLayout(context: Context): String =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getString(PREF_TOOLBAR_LAYOUT, "") ?: ""
 
-/** #36 双拼 14 键布局（仅双拼模式生效）："26"（默认）|"14"。 */
-const val PREF_DP_LAYOUT = "dp_layout"
+/** #36→全局 字母键盘布局（拼音/双拼/英文生效）："26"（默认）|"14"。
+ *  旧键 dp_layout 是双拼专属，读到非默认值迁移沿用。 */
+const val PREF_KB_LAYOUT = "kb_layout"
+private const val PREF_KB_LAYOUT_LEGACY = "dp_layout"
 
-fun readDpLayout(context: Context): String =
-    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getString(PREF_DP_LAYOUT, "26") ?: "26"
+fun readKbLayout(context: Context): String {
+    val prefs = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+    val legacy = prefs.getString(PREF_KB_LAYOUT_LEGACY, null)
+    val value = prefs.getString(PREF_KB_LAYOUT, null) ?: legacy ?: "26"
+    return if (value == "14") "14" else "26"
+}
 
 /** 键帽不透明度（0-100，默认 100）：背景图开启时键帽可半透。 */
 const val PREF_KEY_OPACITY = "key_opacity"
@@ -659,7 +664,7 @@ class SettingsBridge(
                 put("total", total)
             })
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(context))
-            .put("dpLayout", readDpLayout(context))
+            .put("kbLayout", readKbLayout(context))
             .put("fuzzyPinyinMask", com.feelime.ime.engine.FuzzyPinyin.mask(context))
             .put("baseDict", com.feelime.ime.engine.BaseDictInstaller.statusJson(context))
             .put("customPhrases", JSONObject().apply {
@@ -1045,14 +1050,13 @@ class SettingsBridge(
         pushState()
     }
 
-    /** #36 双拼 14 键布局（"26"|"14"，仅双拼模式生效）：设置页入口
-     *  （快捷设置 tile 之外的主入口）。写 pref + 广播让键盘 hello 回流
-     *  重渲染（tile 与设置页双入口同 pref 同通道）。 */
+    /** 字母键盘布局（"26"|"14"，拼音/双拼/英文生效）：设置页唯一入口。
+     *  写 pref + 广播让键盘 hello 回流重渲染。 */
     @JavascriptInterface
-    fun setDpLayout(value: String, token: String) = guarded(token) {
+    fun setKbLayout(value: String, token: String) = guarded(token) {
         if (value !in listOf("26", "14")) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putString(PREF_DP_LAYOUT, value).commit()
+            .edit().putString(PREF_KB_LAYOUT, value).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

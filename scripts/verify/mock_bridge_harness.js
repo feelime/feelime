@@ -743,6 +743,11 @@ class MockNative {
     editorCursor(dir, token) {
         this._record('editorCursor', [dir, token]);
     }
+    // #41 二轮：输入统计快照（JSON 字符串，测试可注入 _statsJson）。
+    inputStats(token) {
+        this._record('inputStats', [token]);
+        return this._statsJson || '{}';
+    }
     enter(token) {
         this._record('enter', [token]);
     }

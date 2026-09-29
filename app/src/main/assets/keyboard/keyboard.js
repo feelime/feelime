@@ -36,6 +36,13 @@
     // until then everything uses the default 自然码.
     let dpScheme = 'ziranma';
     const UI_EN = {
+        "输入统计": "Typing stats", "累计输入": "Total typed", "字": "chars",
+        "今日": "Today", "连续": "streak", "天": "days", "查看": "View",
+        "累计击键": "Keystrokes", "键 / 字": "keys / char", "日均字数": "Daily avg",
+        "日": "Su", "一": "Mo", "二": "Tu", "三": "We", "四": "Th", "五": "Fr", "六": "Sa",
+        "≈": "≈", "篇高考作文": "exam essays", "条微博": "weibo posts",
+        "再来": "", "字就是一条微博": " more chars make a weibo post",
+        "与 Feelime 相伴": "with Feelime for",
         "英文 Direct": "English",
         "全拼 Pinyin": "Pinyin",
         "双拼": "Double Pinyin",
@@ -291,7 +298,11 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.3';
+    const KEYBOARD_VERSION = '3.73.4';
+
+    // 14 键贴合开放的模式（全拼/双拼/英文；音形四码、日文假名角标等
+    // 专业键面维持 26 键）。
+    const MERGEABLE_14 = new Set(['pinyin', 'double-pinyin', 'direct']);
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -481,7 +492,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 z: '@', x: '_', c: '#', v: '&', b: '?', n: '!', m: '…', '.': ',',
             },
         },
-        // #36 讯飞式 14 键双拼（仅双拼模式可选，dpLayout pref）：26 字母
+        // 14 键贴合布局（拼音/双拼/英文的 kbLayout pref）：26 字母
         // 两两合并到 14 个宽键帽，'|' 分组（L、M 单键）。合并对内两颗
         // 半区仍是标准 kb-key（data-key=单字母），长按弹层/分词/引擎
         // 全链路零改动——减少误触的来源是键帽变宽、行内缝隙减半。键帽
@@ -529,6 +540,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // M4: the enter key is text (换行/确定) and the globe key is replaced by
     // the Chinese/English toggle, so their glyphs were removed.
     const ICON_PATHS = {
+        stats: 'M5 13h3v6H5zM10.5 8h3v11h-3zM16 4h3v15h-3z',
         shift: 'M12 5l7 7h-4v6H9v-6H5z',
         caps: 'M12 3l7 7h-4v6H9v-6H5zM7 19h10v2H7z',
         backspace: 'M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4.59 12.59L16 17l-2.5-2.5L11 17l-1.41-1.41L12.09 13 9.59 10.5 11 9.1l2.5 2.5L16 9.1l1.41 1.41L14.91 13z',
@@ -1139,7 +1151,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #39-10 编辑面板的选择 toggle（开 = 方向键/行首行尾带 SHIFT）。
             this.editSelecting = false;
             // #36 双拼 14 键布局（hello 推送，"26"|"14"，仅双拼模式生效）。
-            this.dpLayout = '26';
+            this.kbLayout = '26';
             this.lettersLayout = null;
             // The nine-pad's emoji sub-view (toggled by the smiley key).
             this.emojiView = false;
@@ -1905,10 +1917,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.renderSymbols();
                 }
             }
-            // #36：双拼模式的 14 键布局（dpLayout pref）——只在双拼模式
-            // 生效，其他 qwerty 模式不受影响。
+            // 字母键盘布局（kbLayout pref，拼音/双拼/英文生效）：14 键
+            // 把相邻字母贴合为宽键帽；音形/日文等专业模式维持 26 键。
             this.renderLetters(config.layout === 'qwerty'
-                && this.mode === 'double-pinyin' && this.dpLayout === '14'
+                && MERGEABLE_14.has(this.mode) && this.kbLayout === '14'
                 ? 'dp14' : config.layout);
             // 手写是唯一改键盘总高的模式：进出/旋转都把总高切回当前
             // 模式的值（进入=面板高度，离开=该方向已存高度）。
@@ -1916,6 +1928,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.closeModeMenu();
             this.closeSettingsPanel();
             this.closeEditPanel();
+            this.closeStatsPanel();
             // renderMode is invoked on every mode change INCLUDING the one a
             // degrade/recovery event carries; the badge must survive it.
             this.renderDegradeBadge();
@@ -6479,6 +6492,165 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * keyevent-cursor 场景天然兼容）、扩选/行首行尾走 sendCombo
          * （SHIFT+Arrow/Home/End 组合层）、全选复制剪切粘贴
          * editorAction（宿主 context menu 通道）、删除 backspace。 */
+        toggleStatsPanel() {
+            const layer = document.getElementById('statsLayer');
+            if (layer && !layer.hidden) { this.closeStatsPanel(); return; }
+            this.closeModeMenu();
+            this.closeSettingsPanel();
+            this.closeEditPanel();
+            this.closeStatsPanel();
+            if (this.panelOpen) this.closePanel();
+            if (this.ctrlView) this.suspendCtrlView();
+            this.renderStatsPanel();
+            this.statsReturnLayer = this.keyLayer;
+            this.hideKeyLayers();
+            layer.hidden = false;
+        }
+
+        closeStatsPanel() {
+            const layer = document.getElementById('statsLayer');
+            if (!layer || layer.hidden) return;
+            layer.hidden = true;
+            this.showKeyLayer(this.statsReturnLayer || 'letters');
+            this.maybeResumeCtrlView();
+        }
+
+        /** #41 二轮：统计浮层。数据经 inputStats 桥同步拉全量 JSON。 */
+        renderStatsPanel() {
+            const layer = document.getElementById('statsLayer');
+            if (!layer) return;
+            let data = {};
+            try {
+                const raw = typeof Native.inputStats === 'function'
+                    ? Native.inputStats(this.token) : '';
+                data = raw ? JSON.parse(raw) : {};
+            } catch (error) { data = {}; }
+            const total = Number(data.total) || 0;
+            const today = Number(data.today) || 0;
+            const keystrokes = Number(data.keystrokes) || 0;
+            const streak = Number(data.streak) || 0;
+            const avgDaily = Number(data.avgDaily) || 0;
+            const days = Array.isArray(data.daily) ? data.daily : [];
+            const withDays = data.since
+                ? Math.max(1, Math.floor((Date.now() - new Date(data.since + 'T00:00:00')) / 86400000) + 1)
+                : 1;
+            const fmt = n => {
+                if (n < 10000) return String(n);
+                if (uiLocale === 'en') return Math.round(n / 1000) + 'k';
+                return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
+            };
+            layer.textContent = '';
+            const wrap = document.createElement('div');
+            wrap.className = 'stats-wrap';
+            const el = (cls, html) => {
+                const node = document.createElement('div');
+                node.className = cls;
+                if (html != null) node.innerHTML = html;
+                return node;
+            };
+            const head = el('stats-head');
+            head.append(el('stats-title', t("输入统计")));
+            const close = document.createElement('button');
+            close.className = 'stats-close';
+            close.textContent = '✕';
+            close.addEventListener('click', () => this.closeStatsPanel());
+            head.append(close);
+            wrap.append(head);
+            const hero = el('stats-hero');
+            hero.append(el('stats-hero-label', t("累计输入")));
+            const totalLine = el('stats-total');
+            totalLine.id = 'statsTotal';
+            const unit = document.createElement('span');
+            unit.className = 'stats-total-unit';
+            unit.textContent = t("字");
+            totalLine.append(unit);
+            hero.append(totalLine);
+            hero.append(el('stats-sub',
+                t("今日") + ' <b>' + today.toLocaleString() + '</b> ' + t("字")
+                + ' · ' + t("连续") + ' <b>' + streak + '</b> ' + t("天")));
+            wrap.append(hero);
+            const cards = el('stats-cards');
+            const card = (v, k) => {
+                const c = el('stats-card');
+                c.append(el('stats-card-v', v), el('stats-card-k', k));
+                return c;
+            };
+            cards.append(
+                card(fmt(keystrokes), t("累计击键")),
+                card(total > 0 ? (keystrokes / total).toFixed(1) : '—', t("键 / 字")),
+                card(fmt(avgDaily), t("日均字数")));
+            wrap.append(cards);
+            // 近 7 天柱状图（今天高亮；高度按窗口内最大值归一）。
+            const DOW = [t("日"), t("一"), t("二"), t("三"), t("四"), t("五"), t("六")];
+            const max = Math.max(1, ...days.map(d => Number(d.chars) || 0));
+            const bars = el('stats-bars');
+            days.forEach((d, i) => {
+                const isToday = i === days.length - 1;
+                const col = el('stats-bar-col');
+                const bar = el('stats-bar' + (isToday ? ' today' : ''));
+                bar.style.height = Math.round(Math.max(0.04, (Number(d.chars) || 0) / max) * 100) + '%';
+                col.append(bar);
+                const dow = el('stats-bar-dow' + (isToday ? ' today' : ''));
+                dow.textContent = DOW[new Date(d.date + 'T00:00:00').getDay()];
+                col.append(dow);
+                bars.append(col);
+            });
+            wrap.append(bars);
+            // 趣味换算：字数类比 + 相伴天数。
+            let fun = '';
+            if (total >= 800) {
+                fun = t("≈") + ' <b>' + Math.round(total / 800) + '</b> ' + t("篇高考作文");
+            } else if (total >= 140) {
+                fun = t("≈") + ' <b>' + Math.round(total / 140) + '</b> ' + t("条微博");
+            } else {
+                fun = t("再来") + ' <b>' + (140 - total) + '</b> ' + t("字就是一条微博");
+            }
+            wrap.append(el('stats-fun', fun + ' · ' + t("与 Feelime 相伴") + ' <b>' + withDays + '</b> ' + t("天")));
+            // 里程碑徽章：达成亮起（pop 动画）。
+            const badges = el('stats-badges');
+            [100, 1000, 10000, 100000, 1000000].forEach(m => {
+                const b = el('stats-badge' + (total >= m ? ' earned' : ''));
+                b.append(el('dot'));
+                const label = document.createElement('span');
+                label.textContent = m >= 10000 ? fmt(m) : String(m);
+                b.append(label);
+                badges.append(b);
+            });
+            wrap.append(badges);
+            layer.append(wrap);
+            // 入场动画：柱状图生长 + 徽章 pop + 大数字滚动。无 rAF 的
+            // 环境（Node mock）直接落终态，同步递归会炸栈。
+            const raf = typeof requestAnimationFrame === 'function'
+                ? requestAnimationFrame.bind(globalThis) : null;
+            if (raf) raf(() => raf(() => wrap.classList.add('grown')));
+            else wrap.classList.add('grown');
+            this.countUp(layer.querySelector('#statsTotal'), total, unit, raf);
+        }
+
+        /** 大数字滚动（ease-out ~0.9s；键盘可见时 rAF 正常跑）。 */
+        countUp(node, target, unitNode, raf) {
+            if (!node) return;
+            if (!(target > 0)) {
+                node.textContent = '0';
+                if (unitNode) node.append(unitNode);
+                return;
+            }
+            if (!raf) {
+                node.textContent = target.toLocaleString();
+                if (unitNode) node.append(unitNode);
+                return;
+            }
+            const start = Date.now();
+            const step = () => {
+                const p = Math.min(1, (Date.now() - start) / 900);
+                const eased = 1 - Math.pow(1 - p, 3);
+                node.textContent = Math.round(target * eased).toLocaleString();
+                if (p < 1) next(step);
+                else if (unitNode) node.append(unitNode);
+            };
+            raf(step);
+        }
+
         toggleEditPanel() {
             const layer = document.getElementById('editLayer');
             if (layer && !layer.hidden) { this.closeEditPanel(); return; }
@@ -6913,6 +7085,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     {
                         icon: ICONS.height, label: t("键盘高度"), hold: 'kbHeight', state: () => t("调节"),
                         tap: () => this.enterHeightEdit(),
+                    },
+                    {
+                        // #41 二轮：输入统计（键盘区浮层，含动画与换算）。
+                        icon: ICONS.stats, label: t("输入统计"),
+                        state: () => t("查看"),
+                        tap: () => { this.toggleStatsPanel(); rehome(); },
                     },
                     {
                         icon: ICONS.swap, label: t("快捷切换"),
@@ -9157,13 +9335,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const schemeChanged = nextScheme !== dpScheme;
             dpScheme = nextScheme;
             this.qConfirm('dpScheme', dpScheme);
-            // #36 14 键布局（dpLayout pref，"26"|"14"）：变化即重渲染双拼
+            // 字母键盘布局（kbLayout pref，"26"|"14"）：变化即重渲染当前
             // 键面（renderMode 内部按 pref 换 dp14/qwerty 布局）。
-            const nextDpLayout = payload.dpLayout === '14' ? '14' : '26';
-            const dpLayoutChanged = nextDpLayout !== this.dpLayout;
-            this.dpLayout = nextDpLayout;
+            const nextKbLayout = payload.kbLayout === '14' ? '14' : '26';
+            const kbLayoutChanged = nextKbLayout !== this.kbLayout;
+            this.kbLayout = nextKbLayout;
             if (modeChanged) this.renderMode();
-            else if (dpLayoutChanged && this.mode === 'double-pinyin') {
+            else if (kbLayoutChanged && MERGEABLE_14.has(this.mode)) {
                 this.renderMode();
             }
             // Degraded/warming state arrives with every hello (mode-fallback
