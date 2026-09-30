@@ -1693,6 +1693,12 @@ test('custom keys: empty table routes to settings; saveCustomJson persists (#39-
     assert(customTab(), '定制 tab appears after save');
     world.tap(world.$('toolCustom'));
     assert(!world.$('symbolLayer').hidden, 'toolbar button opens the symbol layer');
+    // toggle 语义：已在定制 tab 再点按钮 = 回主键盘（用户验收实录）。
+    world.tap(world.$('toolCustom'));
+    assert(!world.$('qwertyLayer').hidden && world.$('symbolLayer').hidden,
+        'second tap on the custom tool returns to the letters');
+    world.tap(world.$('toolCustom'));
+    assert(!world.$('symbolLayer').hidden, 'third tap re-enters the custom tab');
     assert(world.context.window.Feelime.debugState().symbolCat === undefined
         || true, 'nav');
     const active = [...world.document.querySelectorAll('.sym-cat')]
@@ -1798,6 +1804,50 @@ test('toolbar numpad toggle only fires while the pad is really visible (#39-12 l
     w.tap(w.$('toolNumpad'));
     assert(!w.$('numPadLayer').hidden && w.$('statsLayer').hidden,
         '123 enters the numpad from the stats overlay');
+});
+
+test('custom keys: backspace is table data; span/color fields (#39-12)', {since: '3.73.13'}, () => {
+    const world = fresh();
+    const save = text => world.context.window.Feelime.saveCustomJson(text);
+    // 校验器：非法 span/color 指名报错。
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: 'A', span: 4 }]] }));
+    assert(world.$('toast').textContent.includes('span'), 'span 4 rejected');
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: 'A', color: 'pink' }]] }));
+    assert(world.$('toast').textContent.includes('color'), 'pink rejected');
+    // 合法表：退格 cell + span/color 演示。
+    save(JSON.stringify({
+        version: 1,
+        rows: [[
+            { t: '⌫', tap: '[backspace]' },
+            { t: '⌫2', tap: '[bs]' },
+            { t: '宽', tap: 'wide', span: 2 },
+            { t: '存', tap: '[ctrl+s]', color: 'blue' },
+        ], [], []],
+    }));
+    assert(world.$('toast').textContent.includes('已保存 4 个键'), 'valid save');
+    world.tap(world.$('toolCustom'));
+    // 退格 cell 走 specialKey 形态（原生退格通道 + repeat），不是 runCustomCell。
+    // mock 的复合属性选择器不可靠：按 class 捞全量再手工过滤 dataset。
+    const bses = [...world.document.querySelectorAll('#symGrid .kb-key')]
+        .filter(el => el.dataset.role === 'backspace');
+    equal(bses.length, 2, 'both backspace spellings render as the special key');
+    assert(bses.every(el => el.dataset.lp === 'repeat'), 'repeat (hold-to-delete) kept');
+    const wide = [...world.document.querySelectorAll('#symGrid .sym-custom-key')]
+        .find(el => el.textContent === '宽');
+    equal(wide && wide.dataset.span, '2', 'span lands on the key');
+    const blue = [...world.document.querySelectorAll('#symGrid .sym-custom-key')]
+        .find(el => el.textContent === '存');
+    assert(blue && blue.classList.contains('ck-blue'), 'color class lands');
+    // 无退格 cell 的表：右列不再硬编码。
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []] }));
+    world.tap(world.$('toolCustom'));
+    assert(!world.document.querySelector('#symGrid .sym-custom-bs'),
+        'no hard-coded backspace column without a backspace cell');
+    // （原「默认模板带退格」是恒真假断言，评审 P2-3 已删）模板
+    // （CUSTOM_TEMPLATE）只经设置面板定制符号子页的「插入模板」按钮
+    // 暴露，该子页在键盘 mock 世界唯一入口是编辑器返回态
+    // （editorReturn==='custom'），无低成本直达链路；上文的
+    // [backspace] cell → 特殊退格键渲染已覆盖模板同款数据形态。
 });
 
 test('custom JSON validation: limits and DSL errors name the problem', {since: '3.21.0'}, () => {
@@ -2284,7 +2334,17 @@ test('custom key taps: DSL executes text, keys and combos', () => {
             { t: '整理', tap: '[esc]ggVGD' },
         ], [], []],
     }));
-    world.tap(world.$('toolCustom'));
+    // 3558e0f 起定制键有工具栏直达（toolCustom）；3.20.0 fixture 走
+    // 123 → 定制 tab 的旧入口（改入口时没分支，baseline 红了两条）。
+    if (world.$('toolCustom')) {
+        world.tap(world.$('toolCustom'));
+    } else {
+        const key123 = [...world.document.querySelectorAll('.kb-key')]
+            .find(el => el.textContent === '123');
+        world.tap(key123);
+        [...world.document.querySelectorAll('.sym-cat')]
+            .find(el => el.textContent === '定制').click();
+    }
     const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')];
     keys[0].click();
     equal(world.native.of('commitText').slice(-1)[0].args[0], '哈哈', 'text commits literally');
@@ -4832,11 +4892,14 @@ test('remove and clear clipboard hit the bridge with hex ids', () => {
     equal(world.native.of('removeClipboard')[0].args[0], 'a1', 'id passed');
     // Tapping × must not also paste the row content.
     equal(world.native.of('commitText').length, 0, 'remove must not paste');
-    // 清空是两击确认（#39）：首击只进入确认态（红字），再击才落桥。
+    // 清空是两击确认（#39，键盘 3.71.0 起）：首击只进入确认态（红字），
+    // 再击才落桥；3.20.0 fixture 仍是一击直清。
     world.tap(world.$('panelClear'));
-    equal(world.native.of('clearClipboard').length, 0, 'first tap only arms the confirm');
-    assert(world.$('panelClear').classList.contains('danger'), 'armed state is visible');
-    world.tap(world.$('panelClear'));
+    if (verAtLeast(KEYBOARD_VERSION, '3.71.0')) {
+        equal(world.native.of('clearClipboard').length, 0, 'first tap only arms the confirm');
+        assert(world.$('panelClear').classList.contains('danger'), 'armed state is visible');
+        world.tap(world.$('panelClear'));
+    }
     equal(world.native.of('clearClipboard').length, 1, 'clearClipboard called');
 });
 

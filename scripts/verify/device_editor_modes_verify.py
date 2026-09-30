@@ -689,22 +689,58 @@ def scrub_trace_metrics(trace, initial_position):
 
 def case_cursor_scrub(keyboard):
     """Compare slow/fast/reverse scrubs using page-recorded real events."""
-    if not shared.switch_mode_real("英文 Direct"):
-        record("cursor setup reaches Direct", False, "mode switch failed")
-        return keyboard
+    # 冷启拓扑（2026-09-30 9k 同配方）：全量链路里前面的段留下老 WebView
+    # 状态，eval 定向与真实落点分流、清理/播种连击焦点漂移（active=
+    # ckSave 实录）。force-stop + ime set 重绑 + HOME 往返 + fixture 聚焦
+    # 带起键盘，回到与单跑相同的年轻拓扑。
+    d.shell("am force-stop " + d.PKG)
+    time.sleep(1.0)
+    d.shell("ime set " + d.IME_SVC)
+    d.shell("input keyevent KEYCODE_HOME")
+    time.sleep(0.6)
     if not shared.launch_settings(with_fixtures=True):
         record("cursor settings textarea opens", False, "settings WebView unavailable")
+        return keyboard
+    d.ensure_keyboard_up()
+    wait_until(lambda: d.key_geometry(), lambda value: bool(value), timeout=8.0)
+    if not shared.switch_mode_real("英文 Direct"):
+        record("cursor setup reaches Direct", False, "mode switch failed")
         return keyboard
     # SetupActivity is singleTop and retains the page opened by earlier
     # cases. Navigate back before tapping the home-only input settings row.
     if shared.settings_visible_pages() != ["home"]:
         shared.settings_tap('.page:not([hidden]) [data-back]')
         wait_until(shared.settings_visible_pages, lambda value: value == ["home"], timeout=4.0)
+    # 键盘压窗塌滚动（fixture 字段聚焦 → 窗口只剩零头且整页不可滚，
+    # 2026-09-30 9k 同款取证）：键盘弹出态第一个 BACK 只收 IME，收完
+    # 窗口回满再导航。
+    if d.input_shown():
+        d.shell("input keyevent 4")
+        time.sleep(1.2)
     opened = shared.settings_tap('button[data-target="input"]')
     page = wait_until(shared.settings_visible_pages,
                       lambda value: value == ["input"], timeout=4.0)
-    focused = shared.settings_tap("#customJson", wait=1.0)
+    # 2026-09-30 拆页：JSON 兜底框住进 customkeys 三级页的折叠卡——
+    # 收起态无几何，tap 会点到下方入口行（active=btnOpenKeyboards 实录）。
+    shared.settings_tap('#btnOpenCustomKeys')
+    ck_page = wait_until(shared.settings_visible_pages,
+                         lambda value: value == ["customkeys"], timeout=4.0)
+    shared.sev("(() => { const fold = document.querySelector('.ck-json-fold');"
+               " if (fold) fold.open = true; return !!fold; })()")
+    # 量测→落点之间的滚动回收可把点顶偏一行：点到真聚焦为止。
+    focused = False
+    for _ in range(3):
+        focused = shared.settings_tap("#customJson", wait=1.0)
+        if focused and settings_snapshot().get("active") == "customJson":
+            break
+        time.sleep(0.8)
+    # 紧贴 focus 的 CTRL+A 会赶在 IME 绑定落定前送进 app（手动复现：
+    # 等一拍后一次 select-all+DEL 即清空且保持焦点）。等落定 + 一次重试。
+    time.sleep(0.6)
     cleared = b25.clear_settings_textarea_adb() if focused else False
+    if focused and not cleared:
+        time.sleep(0.8)
+        cleared = b25.clear_settings_textarea_adb()
     # `adb shell input text` cannot inject surrogate pairs on the AVD: the
     # Android input tool silently drops the emoji while keeping ASCII.  Seed
     # an ASCII value through the same real host path first so the movement

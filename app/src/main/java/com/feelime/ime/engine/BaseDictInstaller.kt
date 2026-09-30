@@ -80,6 +80,27 @@ object BaseDictInstaller {
     /** 音形码表量级 ~1MB（码+词 6 万条），20MB 上限足够宽。 */
     private const val FLYPY_MAX_SOURCE_BYTES = 20L * 1024 * 1024
 
+    // ---- 多槽（#7）：导入过的基底词库各存一槽，可列表选择/删除/再次
+    // 激活，不必重新走 SAF。槽目录 files/rime-user-dict/slots/<sha12>/，
+    // 源文件 + meta.json（name/sha/entries/installedAt）。flypy 留档独立
+    // 子目录——旧版 base/flypy 共用 rime-user-dict 根，任一通道清留档
+    // 都会把对方的存档一起删掉（用户实录「引入形码表后基底词库被
+    // 重置」的存储层根因）。
+    private const val SLOT_META = "meta.json"
+    private const val SLOTS_DIR = "slots"
+    private const val FLYPY_ARCHIVE_DIR = "flypy"
+    private fun slotsRoot(context: Context): File =
+        File(context.filesDir, "rime-user-dict/$SLOTS_DIR")
+    fun slotDir(context: Context, slotId: String): File =
+        File(slotsRoot(context), slotId)
+    /** 激活中的基底源目录（builtin 或槽丢失 = null）。 */
+    fun activeSourceDir(context: Context): File? {
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        val sha = prefs.getString(KEY_SOURCE_SHA, null) ?: return null
+        val dir = slotDir(context, sha.take(12))
+        return if (dir.isDirectory) dir else null
+    }
+
     /** 模糊音补编的双职标记（codex 二轮 P1-1/P2-4/P2-6）：忙时排队
      *  补偿的 pending mask；编译前置的事务位（进程中断后 sweepPending
      *  据此删半成品 prism——librime 原地写入，被杀时文件可能存在但不
@@ -140,6 +161,12 @@ object BaseDictInstaller {
     @Volatile private var stageSnapshot: String? = null
     @Volatile private var stageStartedAt: Long = 0L
 
+    /** 编译期的切换目标（#7 用户裁定：文案要反馈实际生效的词库）：
+     *  槽 id / "builtin"（revert），null = 非切换类编译（SAF 导入）。
+     *  state 随 building 下发 targetSlot——页面重开也能标出
+     *  「当前生效 X，正在切换到 Y」。 */
+    @Volatile private var pendingSlotId: String? = null
+
     /** @param pushEvent 主线程安全的 WebView 事件推送（SettingsBridge 提供）。 */
     fun installAsync(
         context: Context,
@@ -175,7 +202,8 @@ object BaseDictInstaller {
                     JSONObject()
                         .put("type", if (result.code == null) "dictBaseDone" else "dictBaseError")
                         .put("code", result.code ?: "OK")
-                        .put("message", messageFor(app, result.code)),
+                        .put("message", if (result.code == null) swappedMessage(app)
+                            else messageFor(app, result.code)),
                 )
                 onFinished()
             } finally {
@@ -343,8 +371,7 @@ object BaseDictInstaller {
             return null // 已有且非中断残留，无需补编
         }
 
-        val archive = File(context.filesDir, "rime-user-dict")
-        if (!archive.isDirectory) return "NO_ARCHIVE"
+        val archive = activeSourceDir(context) ?: return "NO_ARCHIVE"
         val template = engineTemplate(context) ?: return "ENGINE_NOT_READY"
         val defaultYaml = runCatching {
             BaseDictFiles.defaultYaml(
@@ -444,15 +471,143 @@ object BaseDictInstaller {
 
     fun revertAsync(context: Context, pushEvent: (JSONObject) -> Unit, onFinished: () -> Unit) {
         val app = context.applicationContext
+        pendingSlotId = "builtin"
         worker.execute {
             val code = runCatching { revert(app); null as String? }
                 .getOrElse { "BASE_DICT_REVERT_FAILED" }
+            pendingSlotId = null
             if (code == null) {
                 app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             }
             pushEvent(JSONObject().put("type", "dictBaseDone")
                 .put("code", code ?: "REVERTED")
                 .put("message", messageFor(app, code ?: "REVERTED")))
+            onFinished()
+        }
+    }
+
+    /** 旧版留档懒迁移（#7）：多槽前的导入把源散放在 rime-user-dict 根，
+     *  状态在 pref——首次读到时收进 slots/<sha12>/meta.json，之后走正常
+     *  槽管理。幂等：槽已存在或无源即 no-op。拷贝整体在 runCatching 内：
+     *  迁移跑在 statusJson→state 推送链上，一次 IO 异常若抛出去会把整次
+     *  state 推送吞掉（页面不刷新）——失败即 return，下次 state 再迁。 */
+    private fun migrateLegacyArchive(context: Context) {
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        val sha = prefs.getString(KEY_SOURCE_SHA, null) ?: return
+        val slotId = sha.take(12)
+        val slot = slotDir(context, slotId)
+        if (slot.isDirectory) return
+        val root = File(context.filesDir, "rime-user-dict")
+        val files = root.listFiles()?.filter { it.isFile }.orEmpty()
+        if (files.isEmpty()) return
+        runCatching {
+            slot.mkdirs()
+            files.forEach { it.copyTo(File(slot, it.name), overwrite = true) }
+        }.onFailure { return }
+        runCatching {
+            File(slot, SLOT_META).writeText(
+                JSONObject()
+                    .put("sha", sha)
+                    .put("name", prefs.getString(KEY_NAME, null) ?: slotId)
+                    .put("entries", prefs.getInt(KEY_TAB_LINES, 0))
+                    .put("installedAt", prefs.getLong(KEY_INSTALLED_AT, 0L))
+                    .toString(),
+            )
+        }
+        files.forEach { it.delete() }
+        android.util.Log.i("FeelimeBaseDict", "legacy archive migrated to slot $slotId")
+    }
+
+    /** #7 槽列表（meta.json 扫描；损坏槽跳过）。 */
+    fun slotsJson(context: Context): org.json.JSONArray {
+        migrateLegacyArchive(context)
+        val arr = org.json.JSONArray()
+        slotsRoot(context).listFiles()?.sortedBy { it.name }?.forEach { dir ->
+            if (!dir.isDirectory) return@forEach
+            val meta = runCatching {
+                JSONObject(File(dir, SLOT_META).readText())
+            }.getOrNull() ?: return@forEach
+            arr.put(JSONObject()
+                .put("id", dir.name)
+                .putOpt("name", meta.optString("name", dir.name))
+                .put("entries", meta.optInt("entries", 0))
+                .putOpt("installedAt", meta.optLong("installedAt", 0L)))
+        }
+        return arr
+    }
+
+    /** #7 激活槽：本地源重新编译（免 SAF），完成后与基底导入同一套
+     *  换装广播/事件链。 */
+    fun activateAsync(
+        context: Context,
+        slotId: String,
+        pushEvent: (JSONObject) -> Unit,
+        onFinished: () -> Unit,
+    ) {
+        check(building.compareAndSet(false, true)) { "install already running" }
+        val app = context.applicationContext
+        pendingSlotId = slotId
+        stageSnapshot = "COPYING"
+        stageStartedAt = SystemClock.elapsedRealtime()
+        worker.execute {
+            CompileGuardService.start(app)
+            var result = runCatching {
+                installBlockingInternal(app, SourceInput.Slot(slotId), null, pushEvent)
+            }.getOrElse {
+                runCatching { rollback(app) }
+                InstallResult("BASE_DICT_INTERNAL", changed = true)
+            }
+            building.set(false)
+            stageSnapshot = null
+            pendingSlotId = null
+            try {
+                if (result.changed) {
+                    app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
+                }
+                pushEvent(
+                    JSONObject()
+                        .put("type", if (result.code == null) "dictBaseDone" else "dictBaseError")
+                        .put("code", result.code ?: "OK")
+                        .put("message", if (result.code == null) swappedMessage(app)
+                            else messageFor(app, result.code)),
+                )
+                onFinished()
+            } finally {
+                CompileGuardService.stop(app)
+            }
+            compensatePendingFuzzy(app)
+            if (result.code == null) ensureFuzzyVariantIfNeeded(app)
+        }
+    }
+
+    /** #7 删除槽（快操作，桥线程直跑）。激活槽被删 → 先回内置（广播
+     *  由调用方 revertAsync 链发出）。返回 false = 槽不存在。 */
+    fun deleteSlot(
+        context: Context,
+        slotId: String,
+        pushEvent: (JSONObject) -> Unit,
+        onFinished: () -> Unit,
+    ) {
+        val dir = slotDir(context, slotId)
+        if (!dir.isDirectory) {
+            pushEvent(JSONObject().put("type", "dictBaseError")
+                .put("code", "BASE_DICT_SLOT_NOT_FOUND"))
+            onFinished()
+            return
+        }
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        val active = prefs.getString(KEY_SOURCE_SHA, "")?.take(12) == slotId
+        if (!active) {
+            dir.deleteRecursively()
+            pushEvent(JSONObject().put("type", "dictBaseDone")
+                .put("code", "SLOT_DELETED")
+                .put("message", messageFor(context, "SLOT_DELETED")))
+            onFinished()
+            return
+        }
+        // 激活槽：回内置，收尾再删槽。
+        revertAsync(context.applicationContext, pushEvent) {
+            dir.deleteRecursively()
             onFinished()
         }
     }
@@ -482,7 +637,17 @@ object BaseDictInstaller {
             json.put("stage", stage)
                 .put("elapsedMs", SystemClock.elapsedRealtime() - stageStartedAt)
         }
+        // 切换目标随 building 下发：页面重开时「当前生效 X，正在切换到
+        // Y」仍可恢复（null = SAF 导入等无槽目标）。
+        if (isBuilding()) json.putOpt("targetSlot", pendingSlotId ?: JSONObject.NULL)
         // #20：音形码表独立状态段。
+        // #7 多槽：已导入槽列表 + 当前激活槽 id（builtin = 空）。
+        json.put("slots", slotsJson(context))
+        json.putOpt("activeSlot", if (json.optString("mode") == "custom") {
+            (prefs.getString(KEY_SOURCE_SHA, null) ?: JSONObject.NULL).let {
+                if (it is String && it.length >= 12) it.take(12) else JSONObject.NULL
+            }
+        } else JSONObject.NULL)
         val flypyBuilt = File(context.filesDir, "rime-user/build/${BaseDictFiles.FLYPY_TABLE}").isFile
         json.put("flypy", JSONObject()
             .put("installed", prefs.getString(KEY_FLYPY_MODE, null) == "custom" && flypyBuilt)
@@ -554,6 +719,15 @@ object BaseDictInstaller {
         uri: Uri,
         displayName: String,
         pushEvent: (JSONObject) -> Unit,
+    ): InstallResult = installBlockingInternal(context, SourceInput.Uri(uri), displayName, pushEvent)
+
+    /** #7 从已导入槽重新激活：源来自本地槽目录（免 SAF），编译/提交
+     *  与新导入同链。 */
+    private fun installBlockingInternal(
+        context: Context,
+        source: SourceInput,
+        displayNameOverride: String?,
+        pushEvent: (JSONObject) -> Unit,
     ): InstallResult {
         // P2-7: maintenance 走同一个 librime 实例——编译入口自己保证
         // 引擎已 init（进程重启后直接进设置页的场景）。init 前先扫一遍
@@ -580,7 +754,27 @@ object BaseDictInstaller {
         }
         // #35：单文件或 zip 多表（万象 Lite 包）统一解包到 sourceDir。
         // 失败/超限时半截文件不残留（P2-9）：整目录清掉再报错。
-        val outcome = stageSource(context, uri, sourceDir)
+        // #7：槽激活时源直接从槽目录平移（displayName 取 meta）。
+        var displayName = displayNameOverride
+        val outcome: StageOutcome
+        if (source is SourceInput.Slot) {
+            val slotDir = slotDir(context, source.slotId)
+            val meta = runCatching {
+                JSONObject(File(slotDir, SLOT_META).readText())
+            }.getOrNull()
+            slotDir.listFiles()?.filter { it.name != SLOT_META }?.forEach {
+                it.copyTo(File(sourceDir, it.name), overwrite = true)
+            }
+            if (displayName == null) displayName = meta?.optString("name") ?: source.slotId
+            val files = sourceDir.listFiles()?.filter { it.isFile }.orEmpty()
+            // meta 缺 sha 键时 optString 返回 ""（非 null），elvis 不触发
+            // ——会把 KEY_SOURCE_SHA 写成空串、activeSlot 变 NULL（评审
+            // P3）。blank 守卫后回落槽 id（目录名即 sha12）。
+            val sha = meta?.optString("sha")?.takeIf { it.isNotBlank() } ?: source.slotId
+            outcome = StageOutcome(Staged(sha, files))
+        } else {
+            outcome = stageSource(context, (source as SourceInput.Uri).uri, sourceDir)
+        }
         val staged = outcome.staged
         if (staged == null) {
             sourceDir.deleteRecursively()
@@ -794,7 +988,8 @@ object BaseDictInstaller {
 
         // 清理编译期源 + 留档用户源 + 提交状态。换装广播由 installAsync 在
         // building 清零后统一发。
-        cleanupCompileSources(user, keepSource = true)
+        cleanupCompileSources(user, keepSource = true, context = context,
+            slot = Triple(sha, displayName ?: "", stats.tabLines))
         context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_INSTALLING, false)
             // P1-B 收尾：残留的补编事务位/排队位一并作废（半成品要么
@@ -1124,6 +1319,12 @@ object BaseDictInstaller {
      *  空 zip（无可解析表）返回非 null 空文件表，由调用方按 EMPTY 报。 */
     private class Staged(val sha: String, val files: List<File>)
 
+    /** #7 安装源：SAF Uri（新导入）或已导入槽（再次激活）。 */
+    private sealed class SourceInput {
+        class Uri(val uri: android.net.Uri) : SourceInput()
+        class Slot(val slotId: String) : SourceInput()
+    }
+
     private class StageOutcome(val staged: Staged?, val errorCode: String? = null)
 
     private fun stageSource(context: Context, uri: Uri, sourceDir: File): StageOutcome {
@@ -1354,7 +1555,13 @@ object BaseDictInstaller {
         return runCatching { shared.readText() }.getOrNull()
     }
 
-    private fun cleanupCompileSources(user: File, keepSource: Boolean) {
+    private fun cleanupCompileSources(
+        user: File,
+        keepSource: Boolean,
+        context: Context? = null,
+        slot: Triple<String, String, Int>? = null,
+        flypy: Boolean = false,
+    ) {
         File(user, BaseDictFiles.DEFAULT_FILE).delete()
         File(user, BaseDictFiles.SYMBOLS_FILE).delete()
         File(user, BaseDictFiles.UMBRELLA_FILE).delete()
@@ -1372,11 +1579,38 @@ object BaseDictInstaller {
         // compiled schema，与 prism 产物配套、运行时 schema 组件要读。
         File(File(user, "build"), BaseDictFiles.DEFAULT_FILE).delete()
         val sourceDir = File(user, BaseDictFiles.SOURCE_DIR)
-        if (keepSource) {
-            // 留档目录（在 rime-user 之外，天然不进 userdata 备份）。
-            val archive = File(user.parentFile, "rime-user-dict").apply { mkdirs() }
-            archive.listFiles()?.forEach { it.delete() }
-            sourceDir.listFiles()?.forEach { it.copyTo(File(archive, it.name), overwrite = true) }
+        if (keepSource && slot != null && context != null) {
+            // 多槽留档（#7）：base 写 slots/<sha12>（带 meta.json，不清
+            // 其他槽）；flypy 写独立子目录。
+            val (sha, name, entries) = slot
+            val dir = if (flypy) {
+                File(context.filesDir, "rime-user-dict/$FLYPY_ARCHIVE_DIR")
+            } else {
+                slotDir(context, sha.take(12))
+            }
+            // 槽再激活不刷新「导入时间」（评审 P3-10）：同 sha 槽重建前先
+            // 留住原 meta 的 installedAt——列表展示的是导入时刻而非激活
+            // 时刻。
+            val prevInstalledAt = runCatching {
+                JSONObject(File(dir, SLOT_META).readText()).optLong("installedAt", 0L)
+            }.getOrNull() ?: 0L
+            dir.deleteRecursively()
+            dir.mkdirs()
+            sourceDir.listFiles()?.forEach { it.copyTo(File(dir, it.name), overwrite = true) }
+            if (!flypy) {
+                runCatching {
+                    File(dir, SLOT_META).writeText(
+                        JSONObject()
+                            .put("sha", sha)
+                            .put("name", name)
+                            .put("entries", entries)
+                            .put("installedAt",
+                                if (prevInstalledAt > 0) prevInstalledAt
+                                else System.currentTimeMillis())
+                            .toString(),
+                    )
+                }
+            }
         }
         sourceDir.deleteRecursively()
     }
@@ -1400,7 +1634,12 @@ object BaseDictInstaller {
             }
             cleanupCompileSources(user, keepSource = false)
         }
-        File(context.filesDir, "rime-user-dict").deleteRecursively()
+        // #7 多槽：回内置不再清留档——槽是「已导入词库」的存档，切回
+        // 默认后仍可从槽再次激活。只清旧版散落根目录的文件（升级兼容）。
+        val archiveRoot = File(context.filesDir, "rime-user-dict")
+        archiveRoot.listFiles()?.forEach {
+            if (it.name != SLOTS_DIR && it.name != FLYPY_ARCHIVE_DIR) it.deleteRecursively()
+        }
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
         if (keepFlypy) {
             prefs.remove(KEY_MODE).remove(KEY_NAME).remove(KEY_INSTALLED_AT)
@@ -1449,11 +1688,25 @@ object BaseDictInstaller {
     private fun status(stage: String): JSONObject =
         JSONObject().put("type", "dictBaseProgress").put("stage", stage)
 
+    /** 成功文案带实际生效词库（用户裁定：文案要反馈实际生效的词库）：
+     *  push 时 prefs 已落新库，按 mode/name 组装；异常兜底回笼统文案。 */
+    private fun swappedMessage(context: Context): String {
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        val name = prefs.getString(KEY_NAME, null)
+        return if (prefs.getString(KEY_MODE, "builtin") == "custom" && !name.isNullOrBlank()) {
+            com.feelime.ime.t(context, "已切换到 $name", "Switched to: $name")
+        } else {
+            messageFor(context, null)
+        }
+    }
+
     private fun messageFor(context: Context, code: String?): String {
         val key = code ?: "OK"
         val zh = mapOf(
             "OK" to "基底词库换装完成",
             "REVERTED" to "已恢复内置词库",
+            "SLOT_DELETED" to "已删除该词库槽",
+            "BASE_DICT_SLOT_NOT_FOUND" to "该词库槽不存在（可能已被删除），稍后刷新列表再试",
             "BASE_DICT_READ_FAILED" to "读取文件失败或超过 150MB 上限",
             "BASE_DICT_EMPTY" to "文件里没有词条（需要「词<TAB>码」行）",
             "BASE_DICT_MEMORY_LOW" to "本机可用内存不足以编译此词库（大词库编译需要约几 GB 空闲内存），请关闭其他应用后重试或换用更小的词库",
@@ -1470,6 +1723,8 @@ object BaseDictInstaller {
         val en = mapOf(
             "OK" to "Base dictionary swapped",
             "REVERTED" to "Built-in dictionary restored",
+            "SLOT_DELETED" to "Dictionary slot deleted",
+            "BASE_DICT_SLOT_NOT_FOUND" to "That slot no longer exists (it may have been deleted); the list refreshes shortly",
             "BASE_DICT_READ_FAILED" to "Read failed or file exceeds the 150MB cap",
             "BASE_DICT_EMPTY" to "No entries found (needs word<TAB>code lines)",
             "BASE_DICT_DUPLICATE" to "Duplicate table names in the package (same .dict.yaml basename in different folders); reorganize and retry",

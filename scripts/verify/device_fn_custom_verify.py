@@ -401,6 +401,7 @@ CUSTOM_FIXTURE = json.dumps({
         {"t": "Esc", "tap": "[esc]", "note": "终端 Esc"},
         {"t": "☆", "tap": "☆"},
         {"t": "整理", "tap": "[esc]ggVGD", "note": "Vim 全文缩进"},
+        {"t": "⌫", "tap": "[backspace]", "note": "退格，长按连删"},
     ], [], []],
 }, ensure_ascii=False)
 
@@ -576,7 +577,7 @@ def main():
     time.sleep(1.0)
     summary = sev("document.getElementById('customSummary').textContent") or ""
     record("valid table saves through the settings page",
-           summary.strip() in ("已定制 3 个键", "3 custom keys"),
+           summary.strip() in ("已定制 4 个键", "4 custom keys"),
            f"summary={summary!r}")
     d.shell("input keyevent 4")  # back to the field for the keyboard-side cases
     time.sleep(1.2)
@@ -589,8 +590,10 @@ def main():
     time.sleep(0.6)
     keys = ev("(() => [...document.querySelectorAll('#symGrid .sym-custom-key')]"
               "   .map(el => el.textContent))()")
+    # 3558e0f 起退格不再是硬编码右列：表数据里 tap=[backspace] 的 cell
+    # 渲染为 specialKey（svg 图标，textContent 为空）。
     record("pasted table renders the custom strips",
-           custom_tab == "ok" and keys == ["Esc", "☆", "整理"], str(keys))
+           custom_tab == "ok" and keys == ["Esc", "☆", "整理", ""], str(keys))
     # Review P1-2: keys inside the overflow-x row must allow horizontal
     # panning - .kb-key's touch-action:none would strand the gesture.
     ta = ev("(() => { const k = document.querySelector('#symGrid .sym-custom-key');"
@@ -604,11 +607,11 @@ def main():
     time.sleep(0.6)
     field = d.field_text_retry()
     record("custom text key commits literally", field and "☆" in field, repr(field))
-    ev("document.querySelector('#symGrid .sym-custom-bs .kb-key').click()")
+    ev("document.querySelector('#symGrid [data-role=\"backspace\"]').click()")
     time.sleep(0.6)
     field = d.field_text_retry()
     if "☆" in (field or ""):
-        ev("document.querySelector('#symGrid .sym-custom-bs .kb-key').click()")
+        ev("document.querySelector('#symGrid [data-role=\"backspace\"]').click()")
         time.sleep(0.8)
         field = d.field_text_retry()
     record("backspace column deletes", "☆" not in (field or ""), repr(field))
@@ -634,7 +637,7 @@ def main():
     bounds = d.field_bounds()
     if bounds:
         d.tap((bounds[0] + bounds[2]) // 2, (bounds[1] + bounds[3]) // 2, wait=1.0)
-    ev("document.querySelector('#symGrid .sym-custom-bs .kb-key').click()")
+    ev("document.querySelector('#symGrid [data-role=\"backspace\"]').click()")
     time.sleep(0.6)
     field = d.field_text_retry()
     record("backspace recovers after refocus (esc focus boundary)",

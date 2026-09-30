@@ -21,9 +21,8 @@
         <p class="hero-tag" data-i18n="hero.tag">离线中英混合语音输入法</p>
       </div>
     </div>
-    <p class="hero-status" id="heroStatus" aria-live="polite">
-      <span data-i18n="hero.connecting">连接引擎…</span>
-    </p>
+    <!-- IME 状态行已删（用户实录：不该占在搜索框上方）。正常态零噪音；
+         异常态（未启用/未默认）由下方「输入法状态」卡的 LED+按钮承接。 -->
   </header>
 
   <!-- 设置搜索（验收 2026-09-24）：模糊匹配快速定位配置项；索引取每卡
@@ -318,28 +317,16 @@
     <h2 class="page-title" data-i18n="page.input">键盘与输入</h2>
   </header>
   <main>
-    <section class="card" id="sec-fuzzy" aria-labelledby="fuzzyTitle">
-      <div class="section-heading"><h2 id="fuzzyTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">全拼模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
-      <label class="row switch-row" for="fuzzyBit1">
-        <span class="row-label"><span data-i18n="input.fuzzy.g.ping">平翘舌</span><small data-i18n="input.fuzzy.g.ping.hint">z/zh、c/ch、s/sh：打 zang 也能出「张」，打 zhang 也能出「脏」。</small></span>
-        <input type="checkbox" id="fuzzyBit1" class="toggle" data-fuzzy-bit="1">
-      </label>
-      <label class="row switch-row" for="fuzzyBit2">
-        <span class="row-label"><span data-i18n="input.fuzzy.g.nl">声母 n/l</span><small data-i18n="input.fuzzy.g.nl.hint">打 nai 也能出「来」，打 lai 也能出「奶」。</small></span>
-        <input type="checkbox" id="fuzzyBit2" class="toggle" data-fuzzy-bit="2">
-      </label>
-      <label class="row switch-row" for="fuzzyBit4">
-        <span class="row-label"><span data-i18n="input.fuzzy.g.fh">声母 f/h</span><small data-i18n="input.fuzzy.g.fh.hint">打 fu 也能出「湖」，打 hu 也能出「父」。</small></span>
-        <input type="checkbox" id="fuzzyBit4" class="toggle" data-fuzzy-bit="4">
-      </label>
-      <label class="row switch-row" for="fuzzyBit8">
-        <span class="row-label"><span data-i18n="input.fuzzy.g.rl">声母 r/l</span><small data-i18n="input.fuzzy.g.rl.hint">打 re 也能出「乐」，打 le 也能出「热」。</small></span>
-        <input type="checkbox" id="fuzzyBit8" class="toggle" data-fuzzy-bit="8">
-      </label>
-      <label class="row switch-row" for="fuzzyBit16">
-        <span class="row-label"><span data-i18n="input.fuzzy.g.nasal">前后鼻音</span><small data-i18n="input.fuzzy.g.nasal.hint">an/ang、en/eng、in/ing：打 zang 也能出「张」，打 zhon 也能出「中」。</small></span>
-        <input type="checkbox" id="fuzzyBit16" class="toggle" data-fuzzy-bit="16">
-      </label>
+    <!-- 全拼模糊音（2026-09-30 验收拆分）：input 页过长，开关整体
+         移入「模糊音」三级页，本页只留入口。 -->
+    <section class="card" id="sec-fuzzy-entry" aria-labelledby="fuzzyEntryTitle">
+      <div class="section-heading"><h2 id="fuzzyEntryTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">全拼模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
+      <div class="rows">
+        <button class="row nav-row" id="btnOpenFuzzy" type="button" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh 开关">
+          <span class="row-label"><span data-i18n="input.fuzzy.manage">管理模糊音</span><small data-i18n="input.fuzzy.manageHint">分不清的音一起打：平翘舌、n/l、前后鼻音等开关。</small></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button>
+      </div>
     </section>
 
     <section class="card" id="sec-assoc" aria-labelledby="assocTitle">
@@ -419,8 +406,11 @@
     <section class="card" id="sec-feel" aria-labelledby="feelTitle">
       <div class="section-heading"><h2 id="feelTitle" data-i18n="input.feel.title">键盘手感</h2><span class="eyebrow" data-i18n="input.feel.badge">微调</span></div>
       <!-- 字母键盘布局（#36 全局化）：拼音/双拼/英文共用的形态参数，
-           从双拼卡上移（不再只对双拼生效）。 -->
-      <div class="row language-row" data-keywords="14键 18键 宽键帽 布局 键盘布局 letters layout">
+           从双拼卡上移（不再只对双拼生效）。
+           2026-09-30 整行隐藏（用户裁定）：现行 14 键贴合与讯飞原版
+           14 键方案不符，入口先收——已选 14 的用户不受影响（pref 保留，
+           键盘侧实现不动），待重做为讯飞口径后再放出。 -->
+      <div class="row language-row" hidden>
         <span class="row-label">
           <span data-i18n="input.feel.kbLayout">字母键盘布局</span>
           <small data-i18n="input.feel.kbLayoutHint">拼音、双拼、英文键盘通用；14 键把相邻两字母合并成宽键帽，按键更大更不易误触。</small>
@@ -586,27 +576,76 @@
       <p id="feelNote" class="hint block"></p>
     </section>
 
+    <!-- #39-12 三级页定稿：input 页只留入口，开关/JSON/编辑器进
+         「定制按键」二级页，「编辑器」三级页免 JSON 手搓。 -->
     <section class="card" id="sec-custom" aria-labelledby="customTitle">
       <div class="section-heading"><h2 id="customTitle" data-i18n="input.custom.title">定制按键</h2><span class="eyebrow" data-i18n="input.custom.badge">高级</span></div>
       <div class="rows">
-        <label class="row switch-row" for="customEnabled">
-          <span class="row-label"><span data-i18n="input.custom.enabled">启用定制按键</span><small id="customSummary">未定制</small></span>
-          <input type="checkbox" id="customEnabled" data-keywords="自定义键盘 快捷键 终端 vim 自定义按键 custom keys" class="toggle">
-        </label>
-      </div>
-      <label class="field-label" for="customJson" data-i18n="input.custom.jsonLabel">定制 JSON（{"version":1,"rows":[[{"t":"键面","tap":"点击输出","note":"备注"}]]}）</label>
-      <textarea id="customJson" rows="6" spellcheck="false" data-i18n-placeholder="input.custom.jsonPlaceholder" placeholder="粘贴定制 JSON"></textarea>
-      <div class="actions">
-        <button class="btn primary" id="btnSaveCustom" type="button" data-i18n="action.saveCustom">保存定制</button>
-        <button class="btn" id="btnCustomTemplate" type="button" data-i18n="action.insertTemplate">插入模板</button>
-        <button class="btn" id="btnCustomDocs" type="button" data-i18n="action.viewDocs">查看说明</button>
-        <span class="save-note" id="customNote" role="status" aria-live="polite"></span>
+        <button class="row nav-row" id="btnOpenCustomKeys" type="button" data-keywords="自定义键盘 快捷键 终端 vim 自定义按键 custom keys editor 编辑器">
+          <span class="row-label"><span data-i18n="input.custom.manage">管理定制按键</span><small id="customSummary">未定制</small></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button>
       </div>
       <p class="hint" data-i18n="input.custom.note">保存在本机，键盘下次载入时生效。</p>
     </section>
 
-    <!-- 键盘选择（验收 2026-09-24：快捷设置的 tile 入口外移，键盘越来越多
-         在快捷设置里改不友好）：长按菜单列出哪些键盘 + 快捷切换对。 -->
+    <!-- 键盘选择（2026-09-30 验收拆分）：内容移入「键盘选择」三级页，
+         本页只留入口；键盘 tile 深链（openSetupPage → focusSetting）
+         按元素最近页自动跟随，不受影响。 -->
+    <section class="card" id="secKeyboards-entry" aria-labelledby="keyboardsEntryTitle">
+      <div class="section-heading"><h2 id="keyboardsEntryTitle" data-keywords="键盘选择 长按菜单 快捷切换 勾选键盘" data-i18n="input.keyboards.title">键盘选择</h2><span class="eyebrow" data-i18n="input.keyboards.badge">菜单</span></div>
+      <div class="rows">
+        <button class="row nav-row" id="btnOpenKeyboards" type="button" data-keywords="键盘选择 长按菜单 快捷切换 勾选键盘 键盘列表 藏键盘">
+          <span class="row-label"><span data-i18n="input.keyboards.manage">管理键盘与快捷切换</span><small data-i18n="input.keyboards.manageHint">长按菜单列出哪些键盘、快捷切换键在两个键盘间往返。</small></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 全拼模糊音（2026-09-30 验收拆分）：键盘与输入的三级页，开关原样
+     迁入（id 不变，深链/搜索锚点跟随所在页）。 -->
+<div class="page" data-page="fuzzy" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="input" data-i18n-aria="nav.backInput" aria-label="返回键盘与输入">‹</button>
+    <h2 class="page-title" data-i18n="page.fuzzy">全拼模糊音</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-fuzzy" aria-labelledby="fuzzyTitle">
+      <div class="section-heading"><h2 id="fuzzyTitle" data-keywords="平翘舌 前后鼻音 n l 模糊音 分不清 z zh" data-i18n="input.fuzzy.title">全拼模糊音</h2><span class="eyebrow" data-i18n="input.fuzzy.badge">输入</span></div>
+      <label class="row switch-row" for="fuzzyBit1">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.ping">平翘舌</span><small data-i18n="input.fuzzy.g.ping.hint">z/zh、c/ch、s/sh：打 zang 也能出「张」，打 zhang 也能出「脏」。</small></span>
+        <input type="checkbox" id="fuzzyBit1" class="toggle" data-fuzzy-bit="1">
+      </label>
+      <label class="row switch-row" for="fuzzyBit2">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.nl">声母 n/l</span><small data-i18n="input.fuzzy.g.nl.hint">打 nai 也能出「来」，打 lai 也能出「奶」。</small></span>
+        <input type="checkbox" id="fuzzyBit2" class="toggle" data-fuzzy-bit="2">
+      </label>
+      <label class="row switch-row" for="fuzzyBit4">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.fh">声母 f/h</span><small data-i18n="input.fuzzy.g.fh.hint">打 fu 也能出「湖」，打 hu 也能出「父」。</small></span>
+        <input type="checkbox" id="fuzzyBit4" class="toggle" data-fuzzy-bit="4">
+      </label>
+      <label class="row switch-row" for="fuzzyBit8">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.rl">声母 r/l</span><small data-i18n="input.fuzzy.g.rl.hint">打 re 也能出「乐」，打 le 也能出「热」。</small></span>
+        <input type="checkbox" id="fuzzyBit8" class="toggle" data-fuzzy-bit="8">
+      </label>
+      <label class="row switch-row" for="fuzzyBit16">
+        <span class="row-label"><span data-i18n="input.fuzzy.g.nasal">前后鼻音</span><small data-i18n="input.fuzzy.g.nasal.hint">an/ang、en/eng、in/ing：打 zang 也能出「张」，打 zhon 也能出「中」。</small></span>
+        <input type="checkbox" id="fuzzyBit16" class="toggle" data-fuzzy-bit="16">
+      </label>
+    </section>
+  </main>
+</div>
+
+<!-- 键盘选择（2026-09-30 验收拆分）：键盘与输入的三级页，长按菜单
+     键盘列表 + 快捷切换对原样迁入（id 不变）。 -->
+<div class="page" data-page="keyboards" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="input" data-i18n-aria="nav.backInput" aria-label="返回键盘与输入">‹</button>
+    <h2 class="page-title" data-i18n="page.keyboards">键盘选择</h2>
+  </header>
+  <main>
     <section class="card" id="secKeyboards" aria-labelledby="keyboardsTitle">
       <div class="section-heading"><h2 id="keyboardsTitle" data-keywords="键盘选择 长按菜单 快捷切换 勾选键盘" data-i18n="input.keyboards.title">键盘选择</h2><span class="eyebrow" data-i18n="input.keyboards.badge">菜单</span></div>
       <div class="row block" id="menuModesRow">
@@ -650,9 +689,10 @@
           <small data-i18n="dict.base.hint">换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典；万象拼音请选去声调的 Lite 版 zip 整包），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。</small>
         </span>
       </div>
+      <!-- #7 已导入词库列表：默认 + 各槽（点选激活，可删除）。 -->
+      <div id="dictBaseSlots" class="dict-slots"></div>
       <div class="actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="btn" id="btnBaseDictPick" type="button" data-i18n="dict.base.pick">选择词库文件换装</button>
-        <button class="btn ghost-btn" id="btnBaseDictRevert" type="button" hidden data-i18n="dict.base.revert">恢复内置词库</button>
         <span class="save-note" id="dictBaseNote" role="status" aria-live="polite"></span>
       </div>
       <p class="hint" id="dictBaseBuilding" hidden></p>
@@ -971,12 +1011,98 @@
         <span class="entry-chevron" aria-hidden="true">›</span>
       </button>
     </section>
-  </main>
+  
+</main>
 </div>
 
 <!-- 开源许可与致谢（三级页，关于下）：排版化的组件清单，完整原文
      仍取 state.notices（assets third-party/THIRD_PARTY_NOTICES.txt）。
      组件行的名称/许可证/链接是专有名词，不进 i18n；用途句双语。 -->
+<!-- #39-12 三级页（合成一页）：键盘与输入 → 定制按键——开关、编辑器、
+     预览、快捷库全在这一页；JSON 兜底折叠在页底。 -->
+<div class="page" data-page="customkeys" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="input" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="page.customkeys">定制按键</h2>
+  </header>
+  <main>
+    <section class="card" aria-labelledby="ckHead">
+      <div class="section-heading"><h2 id="ckHead" data-i18n="ck.status.title">定制按键</h2><span class="eyebrow" data-i18n="input.custom.badge">高级</span></div>
+      <div class="rows">
+        <label class="row switch-row" for="customEnabled">
+          <span class="row-label"><span data-i18n="input.custom.enabled">启用定制按键</span><small id="ckStatus">未定制</small></span>
+          <input type="checkbox" id="customEnabled" class="toggle">
+        </label>
+      </div>
+      <p class="hint" data-i18n="input.custom.note">保存在本机，键盘下次载入时生效。</p>
+    </section>
+    <section class="card" aria-labelledby="ckPrevHead">
+      <div class="section-heading"><h2 id="ckPrevHead" data-i18n="ck.preview.title">预览</h2></div>
+      <div id="ckPreview" class="ck-preview" aria-live="polite"></div>
+    </section>
+    <section class="card" aria-labelledby="ckRowsHead">
+      <div class="section-heading"><h2 id="ckRowsHead" data-i18n="ck.rows.title">按键（第 1/2/3 行）</h2></div>
+      <div id="ckEditBar" class="ck-edit-bar" hidden>
+        <span data-i18n="ck.editBar.hint">拖动排序 · 点 × 删除 · 长按按键开始</span>
+        <button class="btn" id="ckEditDone" type="button" data-i18n="ck.editBar.done">完成</button>
+      </div>
+      <div id="ckRowList"></div>
+      <p class="hint" data-i18n="ck.quick.title.hint">先点一行里的「＋」，或在下面常用键里一键添加。</p>
+    </section>
+    <!-- 脏态离开确认（页内实现：confirm 依赖 WebChromeClient，不支持时
+         恒 false 会把用户锁死在页面里）。 -->
+    <div id="ckLeaveModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask"></div>
+      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
+        <div class="ck-modal-head"><span data-i18n="ck.confirmLeaveTitle">未保存的修改</span></div>
+        <p class="ck-leave-text" data-i18n="ck.confirmLeave">有未保存的修改，离开将丢失。仍要离开吗？</p>
+        <div class="ck-modal-foot">
+          <button id="ckLeaveGo" type="button" class="btn ck-btn-danger" data-i18n="ck.leaveGo">丢弃并离开</button>
+          <button id="ckLeaveStay" type="button" class="btn primary" data-i18n="ck.leaveStay">留下</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑 popup（bottom sheet）：点已有键/「＋」都从这里改，apply
+         后关闭、列表与预览当场刷新（每个动作的变化必须在当前屏可见）。 -->
+    <div id="ckModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="ckModalMask"></div>
+      <div class="ck-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="ckModalTitle">
+        <div class="ck-modal-head">
+          <span id="ckModalTitle" data-i18n="ck.edit.title">编辑按键</span>
+          <button id="ckModalCancel" type="button" class="ck-modal-x" aria-label="取消" data-i18n-aria="ck.cancel">×</button>
+        </div>
+        <div id="ckEditBody"></div>
+        <div class="ck-modal-foot">
+          <span class="save-note" id="ckEditNote" role="status" aria-live="polite"></span>
+          <button class="btn primary" id="ckApply" type="button" data-i18n="ck.apply">确定</button>
+        </div>
+      </div>
+    </div>
+    <details class="card ck-json-fold">
+      <summary data-i18n="ck.json.title">JSON（兜底）</summary>
+      <p class="hint" data-i18n="ck.json.hint">编辑器够用的日常不需要动这里；批量导入/导出或高级玩法可直接粘贴 JSON。</p>
+      <label class="field-label" for="customJson" data-i18n="input.custom.jsonLabel">定制 JSON（{"version":1,"rows":[[{"t":"键面","tap":"点击输出","note":"备注"}]]}）</label>
+      <textarea id="customJson" rows="6" spellcheck="false" data-i18n-placeholder="input.custom.jsonPlaceholder" placeholder="粘贴定制 JSON"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="btnSaveCustom" type="button" data-i18n="action.saveCustom">保存定制</button>
+        <button class="btn" id="btnCustomTemplate" type="button" data-i18n="action.insertTemplate">插入模板</button>
+        <button class="btn" id="btnCustomDocs" type="button" data-i18n="action.viewDocs">查看说明</button>
+        <span class="save-note" id="customNote" role="status" aria-live="polite"></span>
+      </div>
+    </details>
+  </main>
+
+  <!-- 保存条：页内流式布局（page = header + 滚动 main + 本条），滚动
+       区域就是保存条之上的可见空间——不 fixed、不遮挡、无需垫层
+       （fixed+垫层挡住 JSON 卡，用户两轮实录）。 -->
+  <div class="ck-save-bar" id="ckSaveBar">
+    <span id="ckDirtyHint" class="ck-dirty-hint" hidden data-i18n="ck.dirty">有未保存的修改</span>
+    <button class="btn" id="ckSave" type="button" data-i18n="ck.save">保存全部</button>
+    <span class="save-note" id="ckSaveNote" role="status" aria-live="polite"></span>
+  </div>
+</div>
+
 <div class="page" data-page="licenses" hidden>
   <header class="page-head">
     <button class="page-back" type="button" data-back="about" data-i18n-aria="nav.backAbout" aria-label="返回关于">‹</button>

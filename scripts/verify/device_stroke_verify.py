@@ -109,6 +109,14 @@ def main():
     record("stroke: preedit shows the component glyph",
            preedit() == "一", f"preedit={preedit()!r}")
     field = (d.field_text_retry() or "").strip()
+    # 61fc16a 起自家 app 的编辑框镜像组合 span（「打字像卡死」修复）：
+    # 字段里的 '一' 是设计内回显。不变量收窄为「组合不是字面落地」：
+    # 退格撤掉组合后字段必须回空（字面文本不会自己消失）。
+    if field == "一":
+        bx, by = ev("""(() => { const b = document.querySelector('[data-role="backspace"]');
+            const r = b.getBoundingClientRect(); return [r.left + r.width/2, r.top + r.height/2]; })()""")
+        d.tap(*css2phys((bx, by)), wait=0.6)
+        field = (d.field_text_retry() or "").strip()
     record("stroke: composition stays out of the host editor",
            field == "", f"field={field!r}")
 

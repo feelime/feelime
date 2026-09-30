@@ -4,7 +4,7 @@
 Covers the batch's own acceptance points that the legacy suites do not:
 #1 caps isolation, #2 Chinese flick commits, #3 fullwidth punct ink centering,
 #5 full mic glyph, #7 caps icon, #8 toggle sub label, #9 variant column
-survival, #10 collapse button ring, #11 ziranma map, #12 pair editor,
+survival, #10 collapse button ring, #11 ziranma map, #12 quick-switch deep-link,
 #13 symbol layer redesign.
 """
 import os
@@ -229,21 +229,28 @@ def main():
     ev("(() => { window.Feelime.closeSettingsPanel(); return 1; })()")
     time.sleep(0.4)
 
-    # ---- #12 pair editor: rows, tick, order save ----
+    # ---- #12 quick-switch tile deep-links the settings app ----
+    # 3.59.6 起 tile 直达完整设置的 quickPairA 行（openSetupPage），键盘内
+    # 配对编辑器子页随之失入口、已删（2026-09-30 清死码）。断言改为现行
+    # 行为：面板收起 + SetupActivity 前台；配对列表本体由 settings mock
+    # （keyboards 页 quickPairA/B）覆盖。
+    ev("(() => { window.Feelime.toggleSettingsPanel(); return 1; })()")
+    time.sleep(0.5)
     ev("(() => { const tile = [...document.querySelectorAll('#settingsPanel .qs-tile')]"
        ".find(t => ['快捷切换', 'Quick switch'].includes(t.querySelector('.qs-name')?.textContent.trim()));"
        " tile?.click(); return 1; })()")
-    time.sleep(0.4)
-    rows = ev("[...document.querySelectorAll('#pairEditor .pair-row')]"
-              ".map(r => r.dataset.mode)") or []
-    ticked = ev("[...document.querySelectorAll('#pairEditor .pair-tick.on')].length")
-    # 手写（issue #28）起配对编辑器列全部 9 个键盘（手写也是可配对键盘，
-    # round-5 快捷切换 手写↔上个键盘）。旧断言 7 个是手写分支之前的口径。
-    record("pair editor lists all keyboards with two ticks",
-           len(rows) == 9 and ticked == 2, f"rows={rows} ticks={ticked}")
-    shot('b10-pair-editor')
-    ev("(() => { window.Feelime.closeSettingsPanel(); return 1; })()")
-    time.sleep(0.3)
+    time.sleep(1.2)
+    panel_open = ev("(() => document.getElementById('settingsPanel')"
+                    ".classList.contains('open'))()")
+    focus = d.shell("dumpsys window 2>/dev/null | grep -m1 mCurrentFocus")
+    record("quick-switch tile deep-links to settings",
+           panel_open is False and 'Setup' in focus,
+           f"panel={panel_open} focus={focus.strip()[:90]}")
+    shot('b10-quickpair-deeplink')
+    # 回测试输入框：BACK 关设置页，#13 起继续用键盘。
+    d.shell("input keyevent BACK")
+    time.sleep(0.8)
+    clear(kb)
     # The long-press menu must follow the saved drag order: inject an order
     # (a real drag is covered by the mock), reopen the menu, compare.
     ev("(() => { localStorage.setItem('feelime_mode_order', JSON.stringify("

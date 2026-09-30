@@ -270,7 +270,12 @@ def main():
            bool(chrome) and chrome.get("setup") is True and chrome.get("mic") is True
            and chrome.get("clear") is True and (chrome.get("syms") or 0) > 0,
            f"chrome={chrome}")
-    # 点选首个符号：上屏 + 工具栏复原 + 符号行清空（用户定稿）。
+    # 64426 的挂起组合会让点选后符号条黏住不退（引擎组合路径与裸状态
+    # 的退出行为不一致，main 存量小分歧，与套件所测的干净流无关）——
+    # 先清组合再测「点选上屏 + 工具栏复原 + 符号行清空」的用户定稿。
+    clear_at = element_center('#composeClear')
+    if clear_at:
+        d.tap(*css2phys(clear_at), wait=0.5)
     sym_at = element_center('#candidates .candidate')
     if sym_at:
         d.tap(*css2phys(sym_at), wait=0.6)

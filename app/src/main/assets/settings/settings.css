@@ -172,6 +172,9 @@ textarea:focus-visible, summary:focus-visible {
 
 .page { display: block; }
 .page[hidden] { display: none; }
+/* 全局兜底：author 的 display:flex/grid 会盖过 [hidden]——元素「隐藏
+ * 了」却看得见（编辑完成条/常用区两轮实录）。 */
+[hidden] { display: none !important; }
 
 main { max-width: 680px; margin: 0 auto; }
 
@@ -880,3 +883,237 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
     border-color: var(--accent-text, #5cdeb0);
     color: var(--accent-text, #5cdeb0);
 }
+
+/* ===== #39-12 定制按键编辑器（三级页）===== */
+.nav-row { width: 100%; text-align: left; background: none; border: 0; padding: 10px 2px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.nav-row .chev { margin-left: auto; color: var(--muted, #999); font-size: 18px; }
+.ck-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.ck-chip {
+    border: 1px solid var(--border, #ccc); border-radius: 10px;
+    height: 38px; padding: 0 14px; background: var(--card, #fff); color: inherit;
+    font-size: 14px; cursor: pointer; min-width: 40px; text-align: center;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: border-color .12s, background .12s;
+}
+.ck-chip.selected { border-color: var(--accent, #3b82f6); box-shadow: 0 0 0 1px var(--accent, #3b82f6); }
+.ck-chip[data-span="2"] { min-width: 72px; }
+.ck-chip[data-span="3"] { min-width: 108px; }
+.ck-add-chip { color: var(--muted, #999); border-style: dashed; }
+.ck-none { color: var(--muted, #999); font-size: 12px; padding: 2px; }
+.ck-row-line { margin: 0; padding: 8px 0; }
+.ck-row-line + .ck-row-line { border-top: 1px solid var(--border, #e7e7e7); }
+.ck-preview { display: flex; flex-direction: column; gap: 4px; padding: 8px;
+    background: var(--bg, #f5f5f5); border-radius: 10px; }
+.ck-prev-row { display: flex; gap: 4px; flex-wrap: nowrap; min-height: 30px;
+    align-items: stretch; overflow-x: auto; scrollbar-width: none; }
+.ck-prev-row::-webkit-scrollbar { display: none; }
+.ck-prev-key {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none; min-width: 32px; padding: 0 7px; height: 30px; border-radius: 7px;
+    background: var(--card, #fff); border: 1px solid var(--border, #ccc);
+    font-size: 13px; font-weight: 550; white-space: nowrap;
+}
+.ck-prev-key[data-span="2"] { min-width: 92px; }
+.ck-prev-key[data-span="3"] { min-width: 140px; }
+/* 键面色板（与键盘侧 sym-custom-key 同 rgba，亮/暗底都可辨） */
+.ck-blue   { background: rgba(59, 130, 246, .32);  border-color: rgba(59, 130, 246, .60) !important; }
+.ck-green  { background: rgba(34, 197, 94, .30);   border-color: rgba(34, 197, 94, .55) !important; }
+.ck-orange { background: rgba(249, 115, 22, .32);  border-color: rgba(249, 115, 22, .55) !important; }
+.ck-red    { background: rgba(239, 68, 68, .30);   border-color: rgba(239, 68, 68, .55) !important; }
+.ck-purple { background: rgba(168, 85, 247, .30);  border-color: rgba(168, 85, 247, .55) !important; }
+.ck-color-chip { text-transform: capitalize; }
+.block { display: block; margin-top: 10px; }
+
+/* JSON 兜底折叠卡（#39-12 合成一页后收进页底） */
+.ck-json-fold { padding: 10px 14px; }
+.ck-json-fold > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.ck-json-fold[open] > summary { margin-bottom: 8px; }
+
+/* ===== #39-12 定制按键页布局：header + 滚动 main + 流内保存条 =====
+ * 保存条占用的空间从滚动区扣除（不 fixed 不遮挡——fixed+垫层会挡住
+ * 页底内容，用户两轮实录）。body 底 padding 兜 safe area。 */
+.page[data-page="customkeys"] {
+    display: flex; flex-direction: column;
+    height: calc(100dvh - 16px - env(safe-area-inset-bottom));
+}
+/* flex 列容器会吞掉 page-head 的块级宽度（shrink-to-fit 后整体右移，
+ * 与其他页左对齐不一致——用户实录）：显式拉满。 */
+.page[data-page="customkeys"] > .page-head { width: 100%; }
+.page[data-page="customkeys"] > main {
+    flex: 1; min-height: 0; overflow-y: auto;
+    width: 100%; max-width: 680px; margin: 0 auto;
+    padding-bottom: 4px;
+}
+/* ===== #39-12 编辑 popup（bottom sheet）+ 保存条 + 统一控件 ===== */
+.ck-modal { position: fixed; inset: 0; z-index: 60; }
+.ck-modal[hidden] { display: none; }
+.ck-modal-mask { position: absolute; inset: 0; background: rgba(0, 0, 0, .45); }
+.ck-modal-sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: var(--card, #fff); color: inherit;
+    border-radius: 16px 16px 0 0; padding: 4px 16px 0;
+    max-height: 84dvh;
+    /* 头固定、内容可滚（滚出渐隐让用户感知下方还有内容）、按钮吸底。 */
+    display: flex; flex-direction: column;
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, .18);
+}
+.ck-modal-head { flex: none; display: flex; align-items: center; padding: 12px 0 8px;
+    font-weight: 650; font-size: 17px; }
+#ckEditBody { flex: 1; min-height: 0; overflow-y: auto;
+    padding: 2px 0 10px; overscroll-behavior: contain; }
+.ck-modal-x { margin-left: auto; border: 0; background: none; font-size: 22px; line-height: 1; padding: 4px 8px; color: inherit; cursor: pointer; }
+.ck-modal-foot { flex: none; display: flex; align-items: center; gap: 10px;
+    padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); }
+.ck-modal-foot .btn { flex: 1; height: 50px; border-radius: 13px;
+    font-size: 16px; font-weight: 600; justify-content: center; }
+.ck-modal-foot .save-note { position: absolute; left: 16px; right: 16px;
+    bottom: calc(66px + env(safe-area-inset-bottom)); text-align: center; }
+#ckModal { overflow: visible; }
+.ck-btn-danger { color: #dc2626; border-color: rgba(220, 38, 38, .45); background: transparent; }
+.ck-save-bar {
+    flex: none; display: flex; flex-direction: column; gap: 7px;
+    padding: 10px 0 2px; margin-top: 8px;
+    border-top: 1px solid var(--border, #e5e5e5);
+    background: transparent;
+}
+.ck-save-bar #ckSave { width: 100%; height: 50px; border-radius: 13px;
+    font-size: 16px; font-weight: 600; }
+.ck-dirty-hint { color: #d97706; font-size: 13px; text-align: center; }
+#ckSave.ck-save-dirty {
+    background: linear-gradient(135deg, #3b82f6, #2563eb); border-color: transparent;
+    color: #fff; box-shadow: 0 4px 14px rgba(37, 99, 235, .45);
+    animation: ck-dirty-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ck-dirty-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.015); }
+}
+/* 统一表单行/按钮组/输入 */
+/* 行式属性行：短标签左、控件右占满余宽（一行一个属性） */
+.ck-row2 { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
+.ck-row2-label { flex: none; width: 84px; font-size: 13px; color: var(--muted, #888); }
+.ck-row2-bare .ck-row2-ctl { width: 100%; }
+.ck-row2-ctl { flex: 1; min-width: 0; display: flex; }
+.ck-row2-ctl.ck-input { padding: 9px 10px; border: 1px solid var(--border, #ccc);
+    border-radius: 9px; background: var(--card, #fff); color: inherit; font-size: 15px; }
+/* select 与 input 同外观（复合选择器：control 本身就是 .ck-row2-ctl，
+ * 写成「.ck-row2-ctl select」会一个都匹配不上——select 退回浏览器默认
+ * 样式，用户实录）。appearance 去原生轮廓，右侧留箭头空间。 */
+select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
+    border: 1px solid var(--border, #ccc); border-radius: 9px;
+    background: var(--card, #fff); color: inherit; font-size: 15px;
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; }
+.ck-mode-seg { margin: 4px 0 10px; }
+/* 「常用」起点区（新建 popup 顶部，点开展开） */
+.ck-common { margin: 2px 0 8px; }
+.ck-common-toggle { border: 1px dashed var(--border, #bbb); border-radius: 9px;
+    background: none; color: var(--accent-text, #2563eb); font-size: 14px;
+    padding: 7px 14px; cursor: pointer; }
+.ck-common-list { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border, #ddd); }
+.ck-seg { display: flex; flex-wrap: nowrap; gap: 6px; min-width: 0; }
+.ck-seg-btn {
+    border: 1px solid var(--border, #ccc); border-radius: 9px;
+    min-height: 34px; padding: 0 10px; background: var(--card, #fff); color: inherit;
+    font-size: 13.5px; cursor: pointer; flex: 1 1 0; min-width: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: border-color .12s, background .12s, color .12s;
+}
+.ck-seg-btn.selected { border-color: var(--accent, #3b82f6);
+    background: var(--accent, #3b82f6); color: #fff; font-weight: 600; }
+.ck-seg-btn.ck-blue   { background: rgba(59, 130, 246, .32); border-color: rgba(59, 130, 246, .60); }
+.ck-seg-btn.ck-blue.selected   { background: rgba(59, 130, 246, .85); color: #fff; }
+.ck-seg-btn.ck-green.selected  { background: rgba(34, 197, 94, .85); color: #fff; }
+.ck-seg-btn.ck-orange.selected { background: rgba(249, 115, 22, .85); color: #fff; }
+.ck-seg-btn.ck-red.selected    { background: rgba(239, 68, 68, .85); color: #fff; }
+.ck-seg-btn.ck-purple.selected { background: rgba(168, 85, 247, .85); color: #fff; }
+.ck-seg-btn.ck-green  { background: rgba(34, 197, 94, .30); border-color: rgba(34, 197, 94, .55); }
+.ck-seg-btn.ck-orange { background: rgba(249, 115, 22, .32); border-color: rgba(249, 115, 22, .55); }
+.ck-seg-btn.ck-red    { background: rgba(239, 68, 68, .30); border-color: rgba(239, 68, 68, .55); }
+.ck-seg-btn.ck-purple { background: rgba(168, 85, 247, .30); border-color: rgba(168, 85, 247, .55); }
+
+.ck-leave-text { margin: 4px 0 8px; font-size: 15px; line-height: 1.6;
+    text-align: center; color: var(--muted, #888); }
+#ckLeaveModal .ck-modal-head { justify-content: center; }
+#ckLeaveModal .ck-modal-foot { padding-top: 10px; }
+#ckLeaveModal .ck-modal-foot .btn { height: 50px; }
+
+/* 长按可移动模式：提示条 + × 徽章 + 拖动态 */
+.ck-edit-bar { display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; margin-bottom: 8px; border-radius: 10px;
+    background: rgba(59, 130, 246, .10); border: 1px dashed rgba(59, 130, 246, .45);
+    font-size: 13px; color: var(--accent-text, #2563eb); }
+.ck-edit-bar #ckEditDone { margin-left: auto; min-height: 34px; padding: 0 16px;
+    border-radius: 9px; }
+.ck-x { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: #ef4444; color: #fff; font-size: 13px;
+    line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.ck-chip { position: relative; }
+.ck-chip.ck-dragging { opacity: .45; transform: scale(.94); }
+
+/* 长按 chips 不触发文字选择/呼出菜单（用户实录）：交互元素禁选，
+ * JSON textarea/input 保持可选可输。 */
+.page[data-page="customkeys"] {
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+}
+.page[data-page="customkeys"] input,
+.page[data-page="customkeys"] textarea {
+    -webkit-user-select: text; user-select: text;
+}
+
+/* DSL 帮助（「高级」旁的 ?）：行内展开说明卡 */
+.ck-help-card { margin: 4px 0 10px; padding: 10px 12px; border-radius: 10px;
+    background: var(--bg, #f5f5f5); font-size: 13px; line-height: 1.7; }
+.ck-help-card code { background: rgba(127, 127, 127, .15); border-radius: 4px;
+    padding: 0 4px; font-size: 12px; }
+
+.ck-help { flex: none; width: 18px; height: 18px; border-radius: 50%;
+    border: 1px solid var(--border, #bbb); background: none;
+    color: var(--muted, #888); font-size: 12px; line-height: 1; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.ck-help-card[hidden] { display: none !important; }
+
+/* 颜色行：色圈需要呼吸感（逼仄实录） */
+.ck-row-color { min-height: 48px; }
+
+/* 自定义色调/饱和度滑块（外观页色调滑块同款形态：光谱渐变轨道）。 */
+.ck-hue { display: flex; align-items: center; gap: 12px; width: 100%; }
+.ck-hue-swatch { flex: none; width: 30px; height: 30px; border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, .15); }
+.ck-row-hue { min-height: 48px; }
+.ck-hue-range, .ck-sat-range {
+    flex: 1; min-width: 0; height: 22px; margin: 0;
+    -webkit-appearance: none; appearance: none;
+    border-radius: 11px; outline: none;
+}
+.ck-hue-range {
+    background: linear-gradient(90deg,
+        hsl(0,62%,48%), hsl(30,62%,48%), hsl(60,62%,48%), hsl(90,62%,48%),
+        hsl(120,62%,48%), hsl(150,62%,48%), hsl(180,62%,48%), hsl(210,62%,48%),
+        hsl(240,62%,48%), hsl(270,62%,48%), hsl(300,62%,48%), hsl(330,62%,48%),
+        hsl(360,62%,48%));
+}
+.ck-hue-range::-webkit-slider-thumb, .ck-sat-range::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: hsl(var(--thumb-hue, 210), 62%, 48%);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / .45);
+    cursor: pointer;
+}
+/* 饱和度轨道由 JS 按当前色相实时铺（灰 -> 纯色）。 */
+
+/* #7 已导入词库列表：radio 行（选择激活）+ 删除 */
+.dict-slots { display: flex; flex-direction: column; margin: 6px 0 10px; }
+.dict-slot { display: flex; align-items: center; gap: 10px; padding: 10px 6px; }
+.dict-slot + .dict-slot { border-top: 1px solid var(--border, #e7e7e7); }
+.dict-slot input[type="radio"] { flex: none; }
+.dict-slot .slot-label { flex: 1; min-width: 0; }
+.dict-slot .slot-label span { display: block; }
+.dict-slot .slot-label small { color: var(--muted, #888); }
+.dict-slot .slot-del { flex: none; border: 0; background: none; color: #dc2626;
+    font-size: 13px; padding: 6px 10px; cursor: pointer; }

@@ -77,6 +77,9 @@ SEGMENTS=(
     "9p t9|device"
     "9q appearance|device"
     "9r stroke|device"
+    # 注：10/11 的 PSS 内存门在 AVD 上冷启才有效——连跑多段后系统碎片化
+    # 会抬 ~10MiB（2026-09-30 实测：冷启绿、35 分钟套件链后红，代码零改
+    # 动）。红时先冷启复测再定罪，不要直接放宽 budget（会吃掉真回归）。
     "10/11 resource|device"
     "11/11 asr|asr"
 )
@@ -423,6 +426,12 @@ run_local_jvm() {
 }
 
 run_asr() {
+    # fixture 是用户录音（刻意不入库）：文件不存在时本段不可运行——
+    # 显式跳过而不是整跑红在最后一段（红会误读成语音坏了）。
+    if [[ ! -f "$FEELIME_ASR_FIXTURE" ]]; then
+        echo "== 11/11 asr: SKIP（FEELIME_ASR_FIXTURE 不存在: $FEELIME_ASR_FIXTURE；语音路径本批零改动） =="
+        return 0
+    fi
     # 性能门只在真机上成立（baseline 是 arm64 物理设备录的，AVD 上不可
     # 复现）。AVD 日常门跑单次正确性 smoke；发布前在真机跑完整 5 跑。
     if [[ "$(adb -s "$FEELIME_ADB_SERIAL" shell getprop ro.kernel.qemu | tr -d '[:space:]')" == "1" ]]; then

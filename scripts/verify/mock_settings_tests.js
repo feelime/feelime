@@ -88,6 +88,8 @@ class MockSettingsNative {
     setDynamicDateTime(...a) { this._rec('setDynamicDateTime', a); }
     openBaseDictDocument(...a) { this._rec('openBaseDictDocument', a); }
     clearBaseDict(...a) { this._rec('clearBaseDict', a); }
+    activateBaseDictSlot(...a) { this._rec('activateBaseDictSlot', a); }
+    deleteBaseDictSlot(...a) { this._rec('deleteBaseDictSlot', a); }
     saveCustomPhrases(...a) { this._rec('saveCustomPhrases', a); }
     setDiagnostics(...a) { this._rec('setDiagnostics', a); }
     exportDiagnostics(...a) { this._rec('exportDiagnostics', a); }
@@ -252,11 +254,11 @@ test('interface language is independent from input state and persists through st
 test('home shows input status and keeps versions on the about page', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
-    const hero = world.$('heroStatus').textContent;
-    assert(hero.includes('未设为默认'), 'default status');
-    assert(!hero.includes('3.26.0') && !hero.includes('0.17.6'), 'versions moved to about');
+    // hero 状态行已删（用户实录：不该占在搜索框上方）——正常/异常态
+    // 都由「输入法状态」卡表达（LED+按钮），页首不再有状态文案。
+    assert(!world.doc.getElementById('heroStatus'), 'hero status line removed');
     world.push({ ...BASE_STATE, ime: { enabled: true, isDefault: true } });
-    assert(world.$('heroStatus').textContent.includes('默认输入法在线'), 'default hero');
+    assert(!world.doc.getElementById('heroStatus'), 'still gone when default');
 });
 
 test('ime rows: LEDs reflect state; action buttons appear only when actionable', () => {
@@ -606,6 +608,161 @@ test('one-handed pad select mirrors state and routes setOneHandPad', () => {
         'change routes the pad tier with token');
 });
 
+test('custom key editor: tap parse/build round-trips (#39-12)', () => {
+    const world = new SettingsWorld();
+    const g = world.sandbox;
+    // 反猜型别：单键/组合/文本/宏。
+    equal(g.ckTapParse('[esc]').mode, 'single', '[esc] -> single');
+    equal(g.ckTapParse('[esc]').single, 'esc', 'single key name');
+    const combo = g.ckTapParse('[ctrl+s]');
+    equal(combo.mode, 'combo', '[ctrl+s] -> combo');
+    equal(combo.comboKey, 's', 'combo key');
+    equal([...combo.mods].join(','), 'ctrl', 'combo mods');
+    equal(g.ckTapParse('me@example.com').mode, 'text', 'plain text -> text');
+    equal(g.ckTapParse('[esc]ggVGD').mode, 'advanced', 'macro -> advanced');
+    // 构造：四型生成 tap 串。
+    equal(g.ckTapFromDraft({ mode: 'text', text: ':w' }), ':w', 'text build');
+    equal(g.ckTapFromDraft({ mode: 'single', single: 'f5' }), '[f5]', 'single build');
+    equal(g.ckTapFromDraft({ mode: 'combo', comboKey: 's', mods: new Set(['ctrl']) }),
+        '[ctrl+s]', 'combo build');
+    equal(g.ckTapFromDraft({ mode: 'advanced', dsl: '[esc]ggVGD' }), '[esc]ggVGD',
+        'advanced build');
+});
+
+test('custom key editor: new key -> apply -> save rides the saveCustom bridge (#39-12)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    });
+    g.ckEnter();
+    // 行 chips 与预览都从 textarea 载入。
+    equal(g.document.getElementById('ckRowList').textContent.includes('A'), true,
+        'existing key rendered as chip');
+    equal(g.document.getElementById('ckPreview').textContent.includes('A'), true,
+        'preview mirrors the table');
+    // 新建一颗组合键：走表单控件的 listener 链（ckDraft 是 let，不进
+    // vm 全局——只能从 UI 路径驱动，这本身也断言了接线）。
+    g.ckOpenNew(1);
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const tInput = g.document.getElementById('ckT');
+    tInput.value = '存'; fire(tInput, 'input');
+    // 类型是 segmented 按钮组（click 选中），色板同形态。
+    const segBtn = container => text =>
+        [...world.doc.querySelectorAll(container + ' .ck-seg-btn')]
+            .find(el => el.textContent === text);
+    fire(segBtn('#ckMode')('组合键'), 'click');
+    const keySel = g.document.getElementById('ckKey');
+    keySel.value = 's'; fire(keySel, 'change');
+    // 颜色：切「自定义」展开 hue 滑块，设 120。
+    const customBtn = [...world.doc.querySelectorAll('#ckEditBody .ck-seg-btn')]
+        .find(el => el.textContent === '自定义');
+    fire(customBtn, 'click');
+    const hueInput = g.document.querySelector('.ck-hue input');
+    assert(hueInput, 'hue slider appears only after picking custom');
+    hueInput.value = '120';
+    hueInput.listeners.find(l => l.type === 'input').handler();
+    // popup 开着（apply 前可见），确定后关闭。
+    equal(g.document.getElementById('ckModal').hidden, false, 'popup open while editing');
+    fire(g.document.getElementById('ckApply'), 'click');
+    equal(g.document.getElementById('ckModal').hidden, true, 'popup closes on apply');
+    // 脏态：保存条高亮 + 提示可见（用户验收：改完没保存必须看得见）。
+    equal(g.document.getElementById('ckSave').classList.contains('ck-save-dirty'),
+        true, 'save bar shows the dirty state');
+    equal(g.document.getElementById('ckDirtyHint').hidden, false, 'dirty hint visible');
+    // 保存走 saveCustom 桥，payload 携带新键。
+    world.native.calls.length = 0;
+    g.document.getElementById('ckSave').listeners
+        .find(l => l.type === 'click').handler();
+    const save = world.lastCall('saveCustom');
+    const rows = JSON.parse(save.args[0]).rows;
+    equal(rows[1][0].t, '存', 'new key saved on row 2');
+    equal(rows[1][0].tap, '[ctrl+s]', 'combo tap serialized');
+    equal(rows[1][0].color, 'h120s65', 'custom hue+sat serialized');
+});
+
+test('custom key editor: unsaved changes gate page navigation (#39-12)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    });
+    // 先真切进定制按键页（拦截看的是 currentPage，直调 ckEnter 不切页）。
+    world.FeelimeSettings().showPage('customkeys');
+    equal(world.doc.querySelector('[data-page="customkeys"]').hidden, false,
+        'entered the customkeys page');
+    // 弄脏：走脏态接口（快捷库卡已并入「＋」popup 的常用区）。
+    g.ckMarkDirty(true);
+    equal(g.document.getElementById('ckSave').classList.contains('ck-save-dirty'),
+        true, 'marking dirty lights the save bar');
+    // 脏态离开：被拦下弹页内确认，页面没切。
+    world.FeelimeSettings().showPage('home');
+    equal(g.document.getElementById('ckLeaveModal').hidden, false, 'leave confirm pops');
+    equal(world.doc.querySelector('[data-page="customkeys"]').hidden, false,
+        'still on the customkeys page');
+    // 「留下」= 关确认、停留、脏态保留。
+    g.document.getElementById('ckLeaveStay').listeners
+        .find(l => l.type === 'click').handler();
+    equal(g.document.getElementById('ckLeaveModal').hidden, true, 'stay closes confirm');
+    equal(g.document.getElementById('ckSave').classList.contains('ck-save-dirty'),
+        true, 'dirty state kept after staying');
+    // 再离开走「丢弃」= 真切走且脏态清。
+    world.FeelimeSettings().showPage('home');
+    g.document.getElementById('ckLeaveGo').listeners
+        .find(l => l.type === 'click').handler();
+    equal(world.doc.querySelector('[data-page="home"]').hidden, false, 'leave-go navigates');
+    equal(g.document.getElementById('ckSave').classList.contains('ck-save-dirty'),
+        false, 'dirty cleared after discarding');
+    // 干净态离开不弹确认。
+    world.FeelimeSettings().showPage('customkeys');
+    world.FeelimeSettings().showPage('home');
+    equal(g.document.getElementById('ckLeaveModal').hidden, true, 'clean leave has no confirm');
+});
+
+test('custom key editor: move mode (×/drag) + popup slimmed (#39-12)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'a' }, { t: 'B', tap: 'b' }], [{ t: 'C', tap: 'c' }], []],
+    });
+    g.ckEnter();
+    // popup 瘦身：无删除按钮、无移行控件（移动/删除全走长按模式）。
+    g.ckOpenChip(0, 0);
+    equal(g.document.getElementById('ckDelete'), null, 'popup has no delete button');
+    equal(g.document.getElementById('ckEditBody').textContent.includes('移到'), false,
+        'popup has no move-to-row control');
+    g.document.getElementById('ckModalCancel').listeners.find(l => l.type === 'click').handler();
+    // 可移动模式：× 徽章 + × 删除 + dirty。
+    const chipA = () => [...world.doc.querySelectorAll('#ckRowList .ck-chip')]
+        .find(e => e.textContent.replace('×','') === 'A');
+    g.ckEnterEditMode(chipA());
+    equal(g.document.getElementById('ckEditBar').hidden, false, 'edit bar visible');
+    const x = (chipA().children || []).find(c => c.className === 'ck-x')
+        || [...world.doc.querySelectorAll('#ckRowList .ck-x')][0];
+    x.listeners.find(l => l.type === 'click').handler({ stopPropagation() {} });
+    const rowTexts = [...world.doc.querySelectorAll('#ckRowList .ck-chips[data-ck-row]')]
+        .map(st => [...st.children].filter(e => e.classList.contains('ck-chip')
+            && !e.classList.contains('ck-add-chip'))
+            .map(e => e.textContent.replace('×', '')).join(','));
+    equal(rowTexts[0], 'B', '× removes the key (row 1 now B only)');
+    equal(g.document.getElementById('ckSave').classList.contains('ck-save-dirty'), true,
+        'removal marks dirty');
+    g.ckExitEditMode();
+    equal(g.document.getElementById('ckEditBar').hidden, true, 'done hides the bar');
+    // 长按链：touchstart 起定时器（不等待，仅验证接线不抛错）+ 位移取消。
+    const chip = [...world.doc.querySelectorAll('#ckRowList .ck-chip')][0];
+    const ts = chip.listeners.find(l => l.type === 'touchstart');
+    ts.handler({ touches: [{ clientX: 10, clientY: 10 }] });
+    chip.listeners.find(l => l.type === 'touchmove')
+        .handler({ touches: [{ clientX: 60, clientY: 10 }] });
+    chip.listeners.find(l => l.type === 'touchend').handler({});
+    equal(g.document.getElementById('ckEditBar').hidden, true,
+        'a scroll-sized move cancels the hold (no edit mode)');
+});
+
 test('navigation: home starts as the only visible page; showPage swaps and reports', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
@@ -614,20 +771,53 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     const hiddenMap = () => Object.fromEntries(
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
-        home: false, appearance: true, skin: true, input: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
-        backup: true, about: true, licenses: true, test: true,
+        home: false, appearance: true, skin: true, input: true, fuzzy: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
+        backup: true, about: true, customkeys: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
-        home: true, appearance: true, skin: true, input: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
-        backup: true, about: true, licenses: true, test: true,
+        home: true, appearance: true, skin: true, input: true, fuzzy: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
+        backup: true, about: true, customkeys: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
-    equal(world.lastCall('reportPage').args, ['voice', world.token], 'reportPage(page name) on sub-page');
+    equal(world.lastCall('reportPage').args, ['voice', 'home', world.token], 'reportPage(page, parent) on sub-page');
 
     world.FeelimeSettings().showPage('home');
     equal(hiddenMap().home, false, 'home visible again');
-    equal(world.lastCall('reportPage').args, ['home', world.token], 'reportPage(home) on home');
+    equal(world.lastCall('reportPage').args, ['home', 'home', world.token], 'reportPage(home) on home');
+
+    // #39-12 守门：DOM 里每个 .page 都必须能被 showPage 切到——
+    // PAGES 白名单漏登新页时入口点了没反应（真机实录），这里全量枚举。
+    [...world.doc.querySelectorAll('[data-page]')].forEach(node => {
+        const name = node.dataset.page;
+        world.FeelimeSettings().showPage(name);
+        equal(node.hidden, false, name + ' is switchable via showPage');
+    });
+    world.FeelimeSettings().showPage('home');
+
+    // 三级页守门（用户实录：自造词/定制按键系统 BACK 落回 home）：
+    // showPage 上报的父级必须与该页 ‹ 按钮 data-back 一致，且是合法页名
+    // ——壳侧系统 BACK 直接消费这个父级，这里锁死「单一事实源」链路。
+    const parents = {};
+    [...world.doc.querySelectorAll('[data-page]')].forEach(node => {
+        const name = node.dataset.page;
+        world.FeelimeSettings().showPage(name);
+        parents[name] = world.lastCall('reportPage').args[1];
+    });
+    world.FeelimeSettings().showPage('home');
+    [...world.doc.querySelectorAll('[data-page]')].forEach(node => {
+        const btn = node.querySelector('.page-back');
+        const declared = btn?.dataset.back || 'home';
+        equal(parents[node.dataset.page], declared,
+            node.dataset.page + ' reports its ‹ data-back as parent (' + declared + ')');
+        assert([...world.doc.querySelectorAll('[data-page]')]
+            .some(p => p.dataset.page === declared),
+            declared + ' is a real page (parent target exists)');
+    });
+    equal(parents.userwords, 'dict', 'userwords backs to the dict page');
+    equal(parents.customkeys, 'input', 'customkeys backs to the input page');
+    equal(parents.fuzzy, 'input', 'fuzzy backs to the input page');
+    equal(parents.keyboards, 'input', 'keyboards backs to the input page');
 
     // Unknown page names are a no-op (device gates probe with typos).
     world.FeelimeSettings().showPage('nosuch');
@@ -642,13 +832,61 @@ test('navigation: home entry buttons open their group; the sub-page back button 
     inputEntry.click();
     equal(world.doc.querySelector('[data-page="input"]').hidden, false, 'input page open');
     equal(world.doc.querySelector('[data-page="home"]').hidden, true, 'home hidden');
-    equal(world.lastCall('reportPage').args, ['input', world.token], 'entry click reports the page name');
+    equal(world.lastCall('reportPage').args, ['input', 'home', world.token], 'entry click reports the page name');
 
     const back = world.doc.querySelector('[data-page="input"] [data-back]');
     back.click();
     equal(world.doc.querySelector('[data-page="home"]').hidden, false, 'back returns home');
     equal(world.doc.querySelector('[data-page="input"]').hidden, true, 'input page hidden');
-    equal(world.lastCall('reportPage').args, ['home', world.token], 'back reports home');
+    equal(world.lastCall('reportPage').args, ['home', 'home', world.token], 'back reports home');
+});
+
+test('input page splits fuzzy and keyboards into third-level pages (2026-09-30 acceptance)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    // fake DOM 不支持 :not([hidden])——遍历比对（同 renderDictBase 口径）。
+    const visible = () => [...world.doc.querySelectorAll('[data-page]')]
+        .find(p => !p.hidden).dataset.page;
+
+    // 入口在 input 页：点开各自的三级页，内容 id 原样迁入。
+    world.FeelimeSettings().showPage('input');
+    world.$('btnOpenFuzzy').click();
+    equal(visible(), 'fuzzy', 'fuzzy entry opens the fuzzy page');
+    assert(world.$('fuzzyBit16'), 'fuzzy switches live on the fuzzy page');
+    equal(world.lastCall('reportPage').args, ['fuzzy', 'input', world.token],
+        'fuzzy reports input as its parent');
+    world.doc.querySelector('[data-page="fuzzy"] [data-back]').click();
+    equal(visible(), 'input', 'in-page back returns to input');
+
+    world.$('btnOpenKeyboards').click();
+    equal(visible(), 'keyboards', 'keyboards entry opens the keyboards page');
+    assert(world.$('kbModeList') && world.$('quickPairA'),
+        'keyboard list and quick-pair selects live on the keyboards page');
+    equal(world.lastCall('reportPage').args, ['keyboards', 'input', world.token],
+        'keyboards reports input as its parent');
+
+    // 快捷设置 tile 深链（openSetupPage → focusSetting）：锚点随卡片
+    // 迁入后要直接落到三级页。
+    world.FeelimeSettings().showPage('home');
+    equal(world.FeelimeSettings().focusSetting('quickPairA'), true,
+        'quickPairA anchor still resolves');
+    equal(visible(), 'keyboards', 'quickPairA tile lands on the keyboards page');
+    world.FeelimeSettings().showPage('home');
+    equal(world.FeelimeSettings().focusSetting('menuModesRow'), true,
+        'menuModesRow anchor still resolves');
+    equal(visible(), 'keyboards', 'menuModesRow tile lands on the keyboards page');
+    world.FeelimeSettings().showPage('home');
+    equal(world.FeelimeSettings().focusSetting('fuzzyBit16'), true,
+        'fuzzy switch anchor resolves');
+    equal(visible(), 'fuzzy', 'fuzzy anchors land on the fuzzy page');
+
+    // input 页瘦身：两张内容卡不在 input 页里了，只剩入口卡。
+    world.FeelimeSettings().showPage('input');
+    const inputPage = world.doc.querySelector('[data-page="input"]');
+    assert(inputPage.querySelector('#sec-fuzzy-entry'), 'fuzzy entry card on input');
+    assert(inputPage.querySelector('#secKeyboards-entry'), 'keyboards entry card on input');
+    equal(inputPage.querySelector('#sec-fuzzy'), null, 'fuzzy card moved out');
+    equal(inputPage.querySelector('#secKeyboards'), null, 'keyboards card moved out');
 });
 
 test('hidden pages still render from state pushes (R7: render does not follow the page)', () => {
@@ -1076,28 +1314,45 @@ test('datetime candidates toggle defaults on and commits with the token', () => 
         'datetime toggle + token');
 });
 
-test('base dictionary card renders builtin/custom/building and wires the actions (issue #23)', () => {
+test('base dictionary card renders builtin/custom/building and wires the actions (#23 + #7 slots)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
-    // builtin 态：内置文案 + 恢复按钮隐藏 + 换装可点。
+    // builtin 态：槽列表只有内置行（builtin radio 选中）+ 换装可点。
     assert(world.$('dictBaseCurrent').textContent.includes('rime-frost'),
         'builtin shows the built-in lexicon');
-    equal(world.$('btnBaseDictRevert').hidden, true, 'revert hidden on builtin');
+    const slotRows = () => [...world.doc.querySelectorAll('#dictBaseSlots .dict-slot')];
+    equal(slotRows().length, 1, 'no slots yet: only the builtin row');
+    assert(slotRows()[0].querySelector('input').checked,
+        'builtin radio checked');
     equal(world.$('btnBaseDictPick').disabled, false, 'pick enabled on builtin');
     equal(world.$('dictBaseBuilding').hidden, true, 'building hint hidden');
 
-    // custom 态：文件名 + 恢复按钮出现。
+    // custom + 槽：列表 = 内置 + 槽们，激活槽 radio 选中、槽行带删除。
     world.push({ ...BASE_STATE, baseDict: { mode: 'custom', building: false,
-        name: 'rime-ice.base.dict.yaml', installedAt: 1758300000000 } });
+        name: 'rime-ice.base.dict.yaml', installedAt: 1758300000000,
+        activeSlot: 'abc123def456',
+        slots: [
+            { id: 'abc123def456', name: 'rime-ice.base.dict.yaml', entries: 89000,
+              installedAt: 1758300000000 },
+            { id: 'fff222eee333', name: 'wanxiang-lite.zip', entries: 2700000,
+              installedAt: 1758400000000 },
+        ] } });
     assert(world.$('dictBaseCurrent').textContent.includes('rime-ice.base.dict.yaml'),
         'custom shows the imported name');
-    equal(world.$('btnBaseDictRevert').hidden, false, 'revert visible on custom');
+    equal(slotRows().length, 3, 'builtin + two slots');
+    const checkedId = slotRows().map(r => r.querySelector('input'))
+        .find(i => i.checked).value;
+    equal(checkedId, 'abc123def456', 'active slot radio checked');
+    equal(slotRows()[0].querySelector('.slot-del'), null,
+        'builtin row has no delete');
+    assert(slotRows()[2].querySelector('.slot-del'), 'slot rows carry delete');
 
-    // building 态：提示行显示 + 两个按钮都不可用。
+    // building 态：radio/删除全部禁用。
     world.push({ ...BASE_STATE, baseDict: { mode: 'builtin', building: true } });
     equal(world.$('dictBaseBuilding').hidden, false, 'building hint visible');
     equal(world.$('btnBaseDictPick').disabled, true, 'pick disabled while building');
-    equal(world.$('btnBaseDictRevert').hidden, true, 'revert hidden while building');
+    assert(slotRows().every(r => r.querySelector('input').disabled),
+        'slot radios disabled while building');
 
     // 事件：进度文案（阶段 + 已耗时）与完成收尾。
     world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
@@ -1109,12 +1364,92 @@ test('base dictionary card renders builtin/custom/building and wires the actions
     equal(world.$('dictBaseBuilding').hidden, true, 'done collapses the hint');
     equal(world.$('dictBaseNote').textContent, '基底词库换装完成', 'note carries the message');
 
-    // 按钮接线（带 token）。
+    // 按钮接线（带 token）：导入走 SAF；radio 点槽 = activate；点内置 =
+    // revert（恢复内置并入列表第一项）；删除按钮带槽 id。
     world.$('btnBaseDictPick').click();
     equal(world.lastCall('openBaseDictDocument').args, [world.token], 'pick opens the SAF picker');
-    world.push({ ...BASE_STATE, baseDict: { mode: 'custom', building: false, name: 'x' } });
-    world.$('btnBaseDictRevert').click();
-    equal(world.lastCall('clearBaseDict').args, [world.token], 'revert clears the base dict');
+    world.push({ ...BASE_STATE, baseDict: { mode: 'custom', building: false,
+        name: 'x', activeSlot: 'abc123def456',
+        slots: [{ id: 'abc123def456', name: 'x', entries: 1 }] } });
+    const activeRadio = slotRows().map(r => r.querySelector('input'))
+        .find(i => i.value === 'abc123def456');
+    activeRadio.checked = true;
+    activeRadio.listeners.find(l => l.type === 'change').handler({ target: activeRadio });
+    equal(world.lastCall('activateBaseDictSlot').args, ['abc123def456', world.token],
+        'radio on a slot activates it');
+    const builtinRadio = slotRows()[0].querySelector('input');
+    builtinRadio.checked = true;
+    builtinRadio.listeners.find(l => l.type === 'change').handler({ target: builtinRadio });
+    equal(world.lastCall('clearBaseDict').args, [world.token],
+        'radio on builtin reverts');
+    slotRows()[1].querySelector('.slot-del').listeners
+        .find(l => l.type === 'click').handler({ preventDefault() {}, stopPropagation() {} });
+    equal(world.lastCall('deleteBaseDictSlot').args, ['abc123def456', world.token],
+        'delete carries the slot id');
+});
+
+test('base dictionary switching copy states the effective lexicon and the target (#7 user ruling)', () => {
+    const world = new SettingsWorld();
+    // 复现路径：刚切回内置（note 残留「已恢复内置词库」）再点槽激活。
+    world.push({ ...BASE_STATE, baseDict: { mode: 'builtin', building: false,
+        slots: [
+            { id: 'abc123def456', name: 'rime-ice.base.dict.yaml', entries: 89000,
+              installedAt: 1758300000000 },
+            { id: 'fff222eee333', name: 'wanxiang-lite.zip', entries: 2700000,
+              installedAt: 1758400000000 },
+        ] } });
+    world.FeelimeSettings().onEvent({ type: 'dictBaseDone',
+        message: '已恢复内置词库' });
+    equal(world.$('dictBaseNote').textContent, '已恢复内置词库', 'stale revert note in place');
+
+    const slotRows = () => [...world.doc.querySelectorAll('#dictBaseSlots .dict-slot')];
+    const wanxiang = slotRows().map(r => r.querySelector('input'))
+        .find(i => i.value === 'fff222eee333');
+    wanxiang.checked = true;
+    wanxiang.listeners.find(l => l.type === 'change').handler({ target: wanxiang });
+    equal(world.lastCall('activateBaseDictSlot').args, ['fff222eee333', world.token],
+        'radio activates the slot');
+    equal(world.$('dictBaseNote').textContent, '', 'starting a switch clears the stale note');
+
+    // 编译期进度事件（state 尚未回推）：文案 = 实际生效 + 切换目标。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 32000 });
+    const hint = world.$('dictBaseBuilding').textContent;
+    assert(hint.includes('当前生效') && hint.includes('rime-frost'),
+        'hint names the still-effective lexicon: ' + hint);
+    assert(hint.includes('wanxiang-lite.zip'),
+        'hint names the switch target: ' + hint);
+    assert(hint.includes('32'), 'stage/elapsed still surface');
+
+    // 页面重开（state 恢复）：targetSlot 决定选中态——不再回落到内置。
+    world.push({ ...BASE_STATE, baseDict: { mode: 'builtin', building: true,
+        stage: 'COMPILING', elapsedMs: 60000, targetSlot: 'fff222eee333',
+        slots: [
+            { id: 'abc123def456', name: 'rime-ice.base.dict.yaml', entries: 89000 },
+            { id: 'fff222eee333', name: 'wanxiang-lite.zip', entries: 2700000 },
+        ] } });
+    equal(world.$('dictBaseBuilding').hidden, false, 'building restored from state');
+    const checkedId = slotRows().map(r => r.querySelector('input'))
+        .find(i => i.checked).value;
+    equal(checkedId, 'fff222eee333', 'radio points at the in-flight target, not builtin');
+    assert(world.$('dictBaseBuilding').textContent.includes('正在切换到'),
+        'restored hint carries the target too');
+
+    // 完成：pending 清掉，note 反映实际生效词库。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseDone',
+        message: '已切换到 wanxiang-lite.zip' });
+    equal(world.$('dictBaseNote').textContent, '已切换到 wanxiang-lite.zip',
+        'done note names the swapped-in lexicon');
+    world.push({ ...BASE_STATE, baseDict: { mode: 'custom', building: false,
+        name: 'wanxiang-lite.zip', activeSlot: 'fff222eee333',
+        slots: [
+            { id: 'abc123def456', name: 'rime-ice.base.dict.yaml', entries: 89000 },
+            { id: 'fff222eee333', name: 'wanxiang-lite.zip', entries: 2700000 },
+        ] } });
+    equal(slotRows().map(r => r.querySelector('input')).find(i => i.checked).value,
+        'fff222eee333', 'active slot stays checked after the swap');
+    assert(world.$('dictBaseCurrent').textContent.includes('wanxiang-lite.zip'),
+        'current line reflects the effective lexicon');
 });
 
 test('issue-39 follow-ups: hold-space voice / key volume / haptic strength post via the bridge', () => {
