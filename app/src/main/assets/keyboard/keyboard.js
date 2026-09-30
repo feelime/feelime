@@ -174,6 +174,7 @@
         "松手撤销": "Release to cancel",
         "粘贴 JSON 定义符号键盘（最多 3 行，每行键数不限）：t=键面，": "Paste JSON to define up to 3 key rows: t=label, ",
         "tap=单击行为（文本 / [esc] 单键 / [ctrl+s] 组合，可混排，如 [esc]ggVGD），": "tap=action (text, [esc], or [ctrl+s]; combine them, e.g. [esc]ggVGD), ",
+        "span=宽键倍数（1-3，可选），color=键面颜色（blue/green/orange/red/purple，可选），[backspace]=退格，": "span=key width 1-3 (optional), color=key color blue/green/orange/red/purple (optional), [backspace]=backspace, ",
         "note=长按说明。超宽的行可以左右拖动查看。": "note=long-press description. Swipe wide rows to see more keys.",
         "当前状态": "Status",
         "已定制 {0} 个键": "{0} custom keys",
@@ -298,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.10';
+    const KEYBOARD_VERSION = '3.73.15';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -586,8 +587,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         menu: 'M5 4h3v3H5V4zm5.5 0h3v3h-3V4zM16 4h3v3h-3V4zM5 10.5h3v3H5v-3zm5.5 0h3v3h-3v-3zm5.5 0h3v3h-3v-3zM5 17h3v3H5v-3zm5.5 0h3v3h-3v-3zm5.5 0h3v3h-3v-3z',
         keyboard: 'M3 6h18a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V7a1 1 0 011-1zm1 2v8h16V8H4zm2 1.5h2v2H6v-2zm3.5 0h2v2h-2v-2zm3.5 0h2v2h-2v-2zM6 13h8v1.5H6V13zm9.5 0H17v1.5h-1.5V13z',
         dp: 'M8 3.5L3 12l5 8.5 5-8.5-5-8.5zm8 0l-5 8.5 5 8.5 5-8.5-5-8.5z',
-        // #39-10 编辑工具条：I 型光标（编辑语义最通行的图形）。
-        edit: 'M11 2h2v2h-2V2zm0 18h2v2h-2v-2zM4 5h16v2H4V5zm0 12h16v2H4v-2zM11 5h2v14h-2V5z',
+        // #39-10 编辑工具条：衬线 I（编辑语义）+ 左右小箭头（选区/光标
+        // 可向两侧移动；2026-09-30 用户参照图定稿）。
+        edit: 'M9 4h6v2H9V4zM11 6h2v12h-2V6zM9 18h6v2H9v-2zM6 10L2.5 12 6 14zM18 10L21.5 12 18 14z',
         gear: 'M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96a7.03 7.03 0 00-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z',
     };
     const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -753,6 +755,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     ];
     const SYMBOL_CATEGORIES = [
         { id: 'common', label: '常用', rows: null }, // filled per keyboard mode
+        // #39-12 定稿：定制表回符号面板 tab（工具栏按钮 = 直达此 tab，
+        // 与数字/表情的行为模式统一；不做独立面板）。位置沿用旧版第
+        // 二位——追加到末尾会被分类条横滚藏到一屏外，用户找不到
+        // （真机实录）。
+        { id: 'custom', label: '定制', rows: null },
         // The user's own table, between 常用 and 最近; hidden
         // from the strip until it has content (renderSymbolCats filters).
         { id: 'recent', label: '最近', rows: null }, // filled from history, falls back to 常用
@@ -821,10 +828,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['Φ', 'Χ', 'Ψ', 'Ω', 'α', 'β', 'γ', 'δ', 'ε'],
             ],
         },
-        // #39-12 定稿：定制表回符号面板 tab（工具栏按钮 = 直达此 tab，
-        // 与数字/表情的行为模式统一；不做独立面板）。rows 动态来自
-        // customKeys()。
-        { id: 'custom', label: '定制', rows: null },
     ];
 
     // Chinese-mode alts carry their FINAL glyphs - mostly
@@ -1079,6 +1082,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         f7: 'F7', f8: 'F8', f9: 'F9', f10: 'F10', f11: 'F11', f12: 'F12',
     };
     const CUSTOM_MOD_TOKENS = { ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', win: 'Meta', meta: 'Meta' };
+    // 定制键色板（cell.color 的合法值）：预设色名而非任意 CSS 色，
+    // 零注入面；rgba 在亮/暗两种键底上都可辨。
+    const CUSTOM_KEY_COLORS = ['blue', 'green', 'orange', 'red', 'purple'];
     const CUSTOM_TEMPLATE = JSON.stringify({
         version: 1,
         rows: [
@@ -1086,10 +1092,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 { t: 'Esc', tap: '[esc]', note: 'Vim / 终端 Esc' },
                 { t: ':w', tap: ':w[enter]', note: 'Vim 保存' },
                 { t: '整理', tap: '[esc]ggVGD', note: 'Vim 全文重新缩进' },
-                { t: '保存', tap: '[ctrl+s]', note: '常见保存快捷键' },
+                { t: '保存', tap: '[ctrl+s]', note: '常见保存快捷键', color: 'blue' },
                 { t: '√', tap: '√' }, { t: '→', tap: '→' }, { t: 'F5', tap: '[f5]', note: '刷新' },
+                { t: '⌫', tap: '[backspace]', note: '退格，长按连删' },
             ],
-            [],
+            [
+                { t: '邮箱', tap: 'me@example.com', span: 2 },
+            ],
             [],
         ],
     }, null, 2);
@@ -4888,10 +4897,27 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     }
                     const parsed = this.parseTapDsl(tap);
                     if (parsed.error) return { error: t("「{0}」的 tap {1}", label, parsed.error) };
+                    // 可选字段：span（宽键倍数 1-3）与 color（预设色板）。
+                    if (cell.span != null) {
+                        if (![1, 2, 3].includes(cell.span)) {
+                            return { error: t("「{0}」的 span 只能是 1/2/3", label) };
+                        }
+                    }
+                    if (cell.color != null) {
+                        const hue = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color);
+                        const hueOk = hue && Number(hue[1]) <= 359
+                            && (hue[2] == null || Number(hue[2]) <= 100);
+                        if (!hueOk && !CUSTOM_KEY_COLORS.includes(cell.color)) {
+                            return { error: t("「{0}」的 color 只能是：{1} 或自定义色调 h0-h359", label, CUSTOM_KEY_COLORS.join('/')) };
+                        }
+                    }
                     if (++total > CUSTOM_LIMITS.keys) {
                         return { error: t("键总数超过 {0}", CUSTOM_LIMITS.keys) };
                     }
-                    keys.push({ t: label, tap, note });
+                    const clean = { t: label, tap, note };
+                    if (cell.span === 2 || cell.span === 3) clean.span = cell.span;
+                    if (cell.color != null) clean.color = cell.color;
+                    keys.push(clean);
                 }
                 rows.push(keys);
             }
@@ -4903,6 +4929,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * key/combo steps go through sendCombo (same channel as the ctrl
          * layer). Steps were validated when the table was saved; a table
          * edited out-of-band re-validates defensively. */
+        /** #39-12：cell 的 tap 恰好是单个裸 Backspace（无文本/无修饰）
+         *  → 退格专属渲染（specialKey + 长按连删）。 */
+        customCellIsBackspace(cell) {
+            const parsed = this.parseTapDsl(cell.tap);
+            if (parsed.error) return false;
+            const steps = parsed.steps;
+            return steps.length === 1 && steps[0].combo
+                && steps[0].combo.length === 1
+                && steps[0].combo[0] === 'Backspace';
+        }
+
         runCustomCell(cell) {
             const parsed = this.parseTapDsl(cell.tap);
             if (parsed.error) {
@@ -4960,23 +4997,41 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const strip = document.createElement('div');
                     strip.className = 'kb-row sym-custom-row';
                     (row || []).forEach(cell => {
+                        // 退格也是表数据的一部分：tap 恰好是单个
+                        // [backspace] 的 cell 渲染成specialKey 形态
+                        // （桥专用通道 + 长按连删，与原右列同体验），
+                        // 不指定就没有——不再硬编码右列。
+                        if (this.customCellIsBackspace(cell)) {
+                            strip.append(this.specialKey('backspace', ICONS.backspace,
+                                () => this.call(() => Native.backspace(this.token)),
+                                'kb-special sym-custom-key', 'repeat'));
+                            return;
+                        }
                         const button = document.createElement('button');
                         button.className = 'kb-key sym-custom-key';
+                        const hueM = cell.color ? /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color) : null;
+                        if (cell.color && !hueM && CUSTOM_KEY_COLORS.includes(cell.color)) {
+                            button.classList.add('ck-' + cell.color);
+                        } else if (hueM) {
+                            const sat = hueM[2] != null ? hueM[2] : 65;
+                            button.style.background = 'hsl(' + hueM[1] + ', ' + sat + '%, 45%)';
+                            button.style.borderColor = 'hsl(' + hueM[1] + ', ' + sat + '%, 35%)';
+                            button.style.color = '#fff';
+                        }
+                        if (cell.span === 2 || cell.span === 3) {
+                            button.dataset.span = String(cell.span);
+                        }
                         button.textContent = cell.t;
                         button.addEventListener('click', () => this.runCustomCell(cell));
                         if (cell.note) {
-                            this.bindItemLongPress(button, () => this.showToast(cell.note));
+                            this.bindItemLongPress(button, () =>
+                                this.showKeyNote(button, cell.note));
                         }
                         strip.append(button);
                     });
                     rowsBox.append(strip);
                 });
-                const bsCol = document.createElement('div');
-                bsCol.className = 'sym-custom-bs';
-                bsCol.append(this.specialKey('backspace', ICONS.backspace,
-                    () => this.call(() => Native.backspace(this.token)),
-                    'kb-special', 'repeat'));
-                wrap.append(rowsBox, bsCol);
+                wrap.append(rowsBox);
                 grid.append(wrap);
                 return;
             }
@@ -5774,11 +5829,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             this.call(() => Native.openSetupPage('customTitle', this.token));
                             return;
                         }
+                        // toggle 语义（与 123/编辑工具一致）：已在定制 tab
+                        // 再点 = 回主键盘；符号面板的其他 tab 则正常切入。
+                        if (this.keyLayer === 'symbols' && this.symbolCat === 'custom') {
+                            this.showLetters();
+                            return;
+                        }
                         this.showSymbols();
                         this.symbolCat = 'custom';
                         document.querySelectorAll('[data-sym-cat]').forEach(el => (
                             el.classList.toggle('active', el.dataset.symCat === 'custom')));
                         this.renderSymbols();
+                        // 分类条横滚：把定制 tab 滚进视口，否则用户
+                        // 看不到选中态（tab 点击 handler 同款）。
+                        const customTab = document.querySelector('[data-sym-cat="custom"]');
+                        if (customTab && customTab.scrollIntoView) {
+                            customTab.scrollIntoView({ behavior: 'smooth',
+                                inline: 'center', block: 'nearest' });
+                        }
                         return;
                     }
                     this.toggleExtraTool(key);
@@ -6856,24 +6924,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             layer.replaceChildren(grid);
         }
 
-        /** Quick settings grew sub-pages - complex features
-         * (quick-switch pairs, phrase management)
-         * get their own page with a back row instead of stacking inline
-         * blocks that overflowed the screen. */
+        /** Quick settings sub-pages: only the custom-row editor's
+         * return landing (定制符号) is left - the quick-switch and
+         * long-press-menu pages were superseded by tile deep-links into
+         * the settings app (3.59.6) and removed. */
         renderSettingsPanel(page = this.settingsPage) {
             const panel = document.getElementById('settingsPanel');
             panel.replaceChildren();
             if (page) {
                 // The sub-page header rides the TOOLBAR (left:
                 // back + title, right: close) instead of its own row.
-                this.showSettingsPageBar({ pair: t("输入法快捷切换"), menu: t("长按菜单"),
-                    custom: t("定制按键") }[page] || '');
+                this.showSettingsPageBar(page === 'custom' ? t("定制按键") : '');
             } else {
                 this.hideSettingsPageBar();
             }
-            if (page === 'pair') this.renderPairEditor(panel);
-            else if (page === 'menu') this.renderMenuEditor(panel);
-            else if (page === 'custom') this.renderCustomPage(panel);
+            if (page === 'custom') this.renderCustomPage(panel);
             else this.renderSettingsHome(panel);
         }
 
@@ -7290,6 +7355,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             hint.textContent =
                 t("粘贴 JSON 定义符号键盘（最多 3 行，每行键数不限）：t=键面，") +
                 t("tap=单击行为（文本 / [esc] 单键 / [ctrl+s] 组合，可混排，如 [esc]ggVGD），") +
+                t("span=宽键倍数（1-3，可选），color=键面颜色（blue/green/orange/red/purple，可选），[backspace]=退格，") +
                 t("note=长按说明。超宽的行可以左右拖动查看。");
             box.append(hint);
             const status = document.createElement('div');
@@ -7335,7 +7401,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.editorReturn = 'custom';
             this.customEditRow = null;
             const current = this.customKeys();
-            const rows = current || [[], [], []];
+            // 空表预填默认例子（含退格/宽键/颜色演示），改完存盘即生效。
+            const rows = current || JSON.parse(CUSTOM_TEMPLATE).rows;
             const editor = document.getElementById('panelEditor');
             const input = document.getElementById('panelEditorInput');
             const area = document.getElementById('panelEditorArea');
@@ -7377,104 +7444,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.renderSymbolCats();
             this.closePanelEditor();
             this.showToast(t("已保存 {0} 个键", parsed.rows.reduce((sum, row) => sum + row.length, 0)));
-        }
-
-        /** Quick-switch sub-page : pick EXACTLY the two keyboards
-         * the toggle key flips between - tick first, then the name. The
-         * long-press list is a separate setting (renderMenuEditor). */
-        renderPairEditor(panel) {
-            const box = document.createElement('div');
-            box.id = 'pairEditor';
-            const hint = document.createElement('div');
-            hint.className = 'pair-hint';
-            hint.textContent =
-                t("勾选两项作为切换键的快捷切换对（点已勾选项无效果，点未勾选项会替换最早勾选的一项）");
-            box.append(hint);
-            this.orderedModeNames().forEach(name => {
-                const row = document.createElement('div');
-                row.className = 'pair-row';
-                row.dataset.mode = name;
-                const tick = document.createElement('button');
-                const on = this.quickPair.includes(name);
-                tick.className = 'pair-tick' + (on ? ' on' : '');
-                tick.textContent = on ? '✓' : '';
-                tick.setAttribute('aria-label', t("快捷切换 {0}", t(MODES[name].title)));
-                const label = document.createElement('span');
-                label.className = 'pair-name';
-                label.textContent = t(MODES[name].title);
-                tick.addEventListener('click', () => {
-                    // Exactly two stay ticked: the pair must never drop to
-                    // one (the toggle shorthand would lie), so an un-tick is
-                    // a no-op and a new tick replaces the oldest member.
-                    if (this.quickPair.includes(name)) return;
-                    this.quickPair.push(name);
-                    if (this.quickPair.length > 2) this.quickPair.shift();
-                    try { localStorage.setItem('feelime_quick_pair', JSON.stringify(this.quickPair)); } catch (_) {}
-                    pushStores({ feelime_quick_pair: JSON.stringify(this.quickPair) });
-                    this.updateToggleLabels();
-                    box.querySelectorAll('.pair-row').forEach(el => {
-                        const active = this.quickPair.includes(el.dataset.mode);
-                        const t = el.querySelector('.pair-tick');
-                        t.classList.toggle('on', active);
-                        t.textContent = active ? '✓' : '';
-                    });
-                });
-                row.append(tick, label);
-                box.append(row);
-            });
-            panel.append(box);
-        }
-
-        /** Long-press menu sub-page : tick WHICH keyboards appear
-         * in the toggle's long-press menu (default: all; at least one stays),
-         * and drag to reorder that menu. Tick first, drag handle last. */
-        renderMenuEditor(panel) {
-            const box = document.createElement('div');
-            box.id = 'menuEditor';
-            const hint = document.createElement('div');
-            hint.className = 'pair-hint';
-            hint.textContent = t("勾选长按切换键时列出的键盘 · 拖动排序（至少保留一个）");
-            box.append(hint);
-            const enabled = this.menuModes();
-            this.orderedModeNames().forEach(name => {
-                const row = document.createElement('div');
-                row.className = 'pair-row';
-                row.dataset.mode = name;
-                const tick = document.createElement('button');
-                const on = enabled.includes(name);
-                tick.className = 'pair-tick' + (on ? ' on' : '');
-                tick.textContent = on ? '✓' : '';
-                tick.setAttribute('aria-label', t("长按菜单显示 {0}", t(MODES[name].title)));
-                const label = document.createElement('span');
-                label.className = 'pair-name';
-                label.textContent = t(MODES[name].title);
-                const handle = document.createElement('span');
-                handle.className = 'pair-drag';
-                handle.textContent = '≡';
-                handle.setAttribute('aria-label', t("拖动排序"));
-                tick.addEventListener('click', () => {
-                    // At least one keyboard stays listed: dropping the last
-                    // tick is ignored (an empty menu would brick the picker).
-                    const current = this.menuModes();
-                    if (current.includes(name) && current.length <= 1) return;
-                    const next = current.includes(name)
-                        ? current.filter(m => m !== name)
-                        : [...current, name];
-                    try {
-                        localStorage.setItem('feelime_menu_modes', JSON.stringify(next));
-                    } catch (_) {}
-                    pushStores({ feelime_menu_modes: JSON.stringify(next) });
-                    tick.classList.toggle('on', next.includes(name));
-                    tick.textContent = next.includes(name) ? '✓' : '';
-                });
-                row.append(tick, label, handle);
-                box.append(row);
-                this.bindListDrag(row, box, '.pair-row', 'mode', order => {
-                    try { localStorage.setItem('feelime_mode_order', JSON.stringify(order)); } catch (_) {}
-                    pushStores({ feelime_mode_order: JSON.stringify(order) });
-                });
-            });
-            panel.append(box);
         }
 
         /** Minimal in-flow touch drag (pairs, phrases):
@@ -9813,6 +9782,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         updateMicDisabled() {
             const mic = document.getElementById('mic');
             if (mic) mic.disabled = this.editorSensitive || this.voiceState === 'stopping';
+        }
+
+        /** 定制键备注：锚在键上方的气泡（1.6s 自隐）。 */
+        showKeyNote(anchor, text) {
+            const old = document.getElementById('keyNote');
+            if (old) old.remove();
+            const tip = document.createElement('div');
+            tip.id = 'keyNote';
+            tip.textContent = text;
+            document.body.append(tip);
+            const r = anchor.getBoundingClientRect();
+            const vw = document.documentElement.clientWidth;
+            tip.style.left = Math.max(8, Math.min(vw - tip.offsetWidth - 8,
+                r.left + r.width / 2 - tip.offsetWidth / 2)) + 'px';
+            tip.style.top = Math.max(6, r.top - tip.offsetHeight - 10) + 'px';
+            clearTimeout(this._keyNoteTimer);
+            this._keyNoteTimer = setTimeout(() => tip.remove(), 1600);
         }
 
         showToast(message) {

@@ -467,12 +467,30 @@ def case_settings_and_json(keyboard):
     # Feelime backspace key and the settings WebView's native InputConnection.
     settings_tap('button[data-target="input"]')
     wait_until(settings_visible_pages, lambda value: value == ["input"], timeout=4.0)
+    # 2026-09-30 拆页：JSON 兜底框住进 customkeys 三级页的折叠卡——先翻页
+    # 再展开折叠，textarea 才有几何可点（收起态无 rect，tap 永远够不着）。
+    settings_tap('#btnOpenCustomKeys')
+    wait_until(settings_visible_pages, lambda value: value == ["customkeys"], timeout=4.0)
+    sev("(() => { const fold = document.querySelector('.ck-json-fold');"
+        " if (fold) fold.open = true; return !!fold; })()")
     seeded = sev(
         "(() => { const ta = document.getElementById('customJson');"
         " if (!ta) return false; ta.value = '{\"version\":1,\"rows\":[["
         "{\"t\":\"alpha\",\"tap\":\"alpha\"}]]}';"
         " ta.dispatchEvent(new Event('input', {bubbles:true})); return ta.value.length; })()")
     focused = settings_tap("#customJson", wait=1.0)
+    # 时序竞态（~50% 复现，失败轮 dumpsys mInputShown=false 取证）：focus
+    # 点击后设置页的重排可能把刚唤起的 IME 收掉，而 key_geometry 只读
+    # DOM rect、IME 窗口藏了也给真坐标，连击就全打在设置页上。补唤必须
+    # 对着 customJson 自己点（ensure_keyboard_up 的字段发现不认折叠卡里
+    # 的 textarea，兜底还会把设置页重置回 home）。
+    def ensure_ime_over_json():
+        for _ in range(3):
+            if d.input_shown():
+                return True
+            settings_tap("#customJson", wait=1.0)
+        return d.input_shown()
+    ime_ok = ensure_ime_over_json()
     kb = wait_until(lambda: d.key_geometry(), lambda value: bool(value), timeout=8.0)
     value_before = sev("document.getElementById('customJson')?.value || ''") or ""
     # The caret placement is preparation after the real focus tap; no bridge
@@ -480,6 +498,18 @@ def case_settings_and_json(keyboard):
     sev("(() => { const ta = document.getElementById('customJson');"
         " if (!ta) return false; ta.focus();"
         " ta.setSelectionRange(ta.value.length, ta.value.length); return true; })()")
+    # 折叠卡刚展开的 textarea：InputConnection 绑定异步完成，绑定前退格
+    # 整批落空（键盘侧取证：首击恒不删、之后每击都删，走 KEYCODE_DEL 通
+    # 道）。先等第一次删除真落地，再开始计时的 10 连击——连击吞吐才是
+    # 本测对象，绑定窗口不是。
+    if kb:
+        for _ in range(10):
+            d.tap(*kb["<backspace>"], wait=0.15)
+            current = sev("document.getElementById('customJson')?.value || ''") or ""
+            if len(current) < len(value_before):
+                break
+            time.sleep(0.3)
+    ensure_ime_over_json()
     timings = []
     if kb:
         for _ in range(10):
@@ -488,9 +518,12 @@ def case_settings_and_json(keyboard):
             timings.append(time.monotonic() - start)
     value_after = sev("document.getElementById('customJson')?.value || ''") or ""
     max_latency = max(timings) if timings else float("inf")
+    # ime= 只作取证：JS focus() 场景下 dumpsys 的 mInputShown 恒假阴性
+    #（本轮三轮 ime=False 但 10 击删满 10 个），不作门禁。
     record("JSON editor accepts continuous real backspaces",
-           bool(seeded) and focused and bool(kb) and len(value_after) < len(value_before),
-           f"seed={seeded} focused={focused} before={len(value_before)} after={len(value_after)}")
+           bool(seeded) and focused and bool(kb)
+           and len(value_after) < len(value_before),
+           f"seed={seeded} focused={focused} ime={ime_ok} before={len(value_before)} after={len(value_after)}")
     record("each JSON backspace stays below the 2s regression threshold",
            bool(timings) and max_latency < 2.0,
            f"latencies={[round(value, 3) for value in timings]} max={max_latency:.3f}")

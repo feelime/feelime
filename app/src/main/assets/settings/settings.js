@@ -39,9 +39,6 @@ const I18N = {
     zh: {
         "title": "Feelime 设置",
         "hero.tag": "离线中英混合语音输入法",
-        "hero.connecting": "连接引擎…",
-        "hero.online": "默认输入法在线",
-        "hero.notDefault": "未设为默认",
         "status.title": "状态",
         "ime.title": "输入法状态",
         "ime.enabled": "在系统中启用 Feelime",
@@ -85,6 +82,8 @@ const I18N = {
         "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，输入码命中即出这个词；适合名字、缩写、行话。改动即时生效，重启保留。",
         "dict.userwords.manage": "管理词条",
         "page.userwords": "自造词",
+        "page.fuzzy": "全拼模糊音",
+        "page.keyboards": "键盘选择",
         "userwords.list.title": "词条",
         "userwords.list.empty": "还没有词条，在下方添加。",
         "userwords.form.text": "词条（如 你好世界）",
@@ -107,8 +106,11 @@ const I18N = {
         "dict.base.hint": "换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典；万象拼音请选去声调的 Lite 版 zip 整包），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。",
         "dict.base.pick": "选择词库文件换装",
         "dict.base.revert": "恢复内置词库",
+        "dict.slot.delete": "删除",
         "dict.base.builtin": "内置 rime-frost（白霜拼音）",
         "dict.base.custom": "自定义：{0}",
+        "dict.base.builtinNote": "内置 rime-frost 词库",
+        "dict.base.entries": "{0} 词条",
         "dict.base.nonPinyin": "抽样发现此词库的较多编码不是拼音音节组合（形码/音形码表特征）：可能无法按读音（拼音）预期打出这些字；如需形码输入请关注后续的专属方案支持。",
         "dict.base.t9Skip": "此词库词条较多：编译九宫格（T9）词库的内存开销超出本机承受（会被系统中止），本次导入跳过了九宫格，拼音/双拼不受影响；换更小的词库或恢复内置后九宫格即恢复。",
         "dict.base.toned": "此词库的编码带声调（疑似完整版，如万象拼音 Base）：键盘打不出声调符号，很多字将无法命中，请改用去声调的 Lite 版（或换回内置词库）。",
@@ -123,6 +125,7 @@ const I18N = {
         "dict.base.stageCopy": "正在读取词库文件…",
         "dict.base.stageCompile": "正在编译词库（期间中文输入暂不可用），可离开此页，完成后自动换装",
         "dict.base.elapsed": "已编译 {0} 秒",
+        "dict.base.switching": "当前生效 {0}，正在切换到 {1}：",
         "page.appearance": "外观",
         "themeMode.auto": "跟随系统",
         "themeMode.light": "浅色",
@@ -132,6 +135,8 @@ const I18N = {
         "page.about": "关于",
         "page.test": "输入测试",
         "input.fuzzy.title": "全拼模糊音",
+        "input.fuzzy.manage": "管理模糊音",
+        "input.fuzzy.manageHint": "分不清的音一起打：平翘舌、n/l、前后鼻音等开关。",
         "input.fuzzy.badge": "输入",
         "input.fuzzy.g.ping": "平翘舌",
         "input.fuzzy.g.ping.hint": "z/zh、c/ch、s/sh：打 zang 也能出「张」，打 zhang 也能出「脏」。",
@@ -200,7 +205,63 @@ const I18N = {
         "input.custom.jsonLabel": "定制 JSON（{\"version\":1,\"rows\":[[{\"t\":\"键面\",\"tap\":\"点击输出\",\"note\":\"备注\"}]]}）",
         "input.custom.jsonPlaceholder": "粘贴定制 JSON",
         "input.custom.note": "保存在本机，键盘下次载入时生效。",
+        "input.custom.manage": "管理定制按键",
+        "page.customkeys": "定制按键",
+        "ck.status.title": "定制按键",
+        "ck.openEditor": "打开编辑器",
+        "ck.openEditor.hint": "点选创建按键，不用写代码",
+        "ck.json.title": "JSON（兜底）",
+        "ck.json.hint": "编辑器够用的日常不需要动这里；批量导入/导出或高级玩法可直接粘贴 JSON。",
+        "ck.preview.title": "预览",
+        "ck.rows.title": "按键（第 1/2/3 行）",
+        "ck.quick.title": "常用键，一键加",
+        "ck.quick.title.hint": "先点一行里的「＋」，或在下面常用键里一键添加。",
+        "ck.edit.title": "编辑按键",
+        "ck.apply": "确定",
+        "ck.save": "保存全部",
+        "ck.add": "＋",
+        "ck.f.t": "键面文案",
+        "ck.f.t.hint": "按钮上显示的字",
+        "ck.f.action": "点击输出",
+        "ck.f.mode": "类型",
+        "ck.f.mode.text": "文本",
+        "ck.f.mode.single": "按键",
+        "ck.f.mode.combo": "组合键",
+        "ck.f.mode.advanced": "高级",
+        "ck.f.text": "要输入的文本，如 :w 或 me@example.com",
+        "ck.f.mods": "修饰键",
+        "ck.f.key": "按键",
+        "ck.f.dsl": "DSL（如 [esc]ggVGD）",
+        "ck.help.aria": "DSL 说明",
+        "ck.help.dsl": "<b>点了这颗键会发生什么，按顺序写下来就行：</b><br>· 要打字，直接写：<code>:w</code>（输入 :w）、<code>me@example.com</code>（输入邮箱）<br>· 按一个键，套上方括号：<code>[esc]</code>（Esc）、<code>[f5]</code>（F5 刷新）、<code>[backspace]</code>（退格）<br>· 组合键：<code>[ctrl+s]</code>（保存）、<code>[alt+f4]</code>（关窗口）<br>· 连着来：<code>[esc]ggVGD</code> = Vim 删除全文（Esc，gg 回开头，VG 选到结尾，D 删除）<br>· 可用的键名：esc、tab、enter、space、backspace、del、left、right、up、down、home、end、pgup、pgdn、f1～f12、单字母、数字；组合键的修饰：ctrl、alt、shift、win。",
+        "ck.f.span": "宽度",
+        "ck.f.color": "颜色",
+        "ck.color.default": "默认",
+        "ck.color.custom": "自定义",
+        "ck.color.hue": "色调",
+        "ck.color.sat": "饱和度",
+        "ck.f.note": "备注",
+        "ck.f.note.hint": "长按键面时显示",
+        "ck.editBar.hint": "拖动排序 · 点 × 删除 · 长按按键开始",
+        "ck.editBar.done": "完成",
+        "ck.common": "常用",
+        "ck.common.hint": "选一颗直接填好，改改就能用",
+        "ck.err.t": "键面不能为空",
+        "ck.err.tap": "点击输出不能为空",
+        "ck.note.saved": "已保存，键盘下次载入时生效",
+        "ck.note.deleted": "已删除",
+        "ck.row": "第 {n} 行",
+        "ck.none": "（空行）",
+        "ck.dirty": "有未保存的修改",
+        "ck.newTitle": "新建按键",
+        "ck.cancel": "取消",
+        "ck.confirmLeave": "有未保存的修改，离开将丢失。仍要离开吗？",
+        "ck.confirmLeaveTitle": "未保存的修改",
+        "ck.leaveGo": "丢弃并离开",
+        "ck.leaveStay": "留下",
         "input.keyboards.title": "键盘选择",
+        "input.keyboards.manage": "管理键盘与快捷切换",
+        "input.keyboards.manageHint": "长按菜单列出哪些键盘、快捷切换键在两个键盘间往返。",
         "input.keyboards.badge": "菜单",
         "input.keyboards.enable": "长按菜单里列出哪些键盘",
         "input.keyboards.hint": "勾选的键盘出现在长按切换键的菜单里，行序即菜单顺序（箭头调整）；不勾的还可以在菜单里临时勾回来。改动即时生效。",
@@ -576,9 +637,6 @@ const I18N = {
     en: {
         "title": "Feelime Settings",
         "hero.tag": "Offline Chinese-English voice input",
-        "hero.connecting": "Connecting to the engine…",
-        "hero.online": "Default input method is ready",
-        "hero.notDefault": "Not the default input method",
         "status.title": "Status",
         "ime.title": "Input method status",
         "ime.enabled": "Enable Feelime in system settings",
@@ -623,6 +681,8 @@ const I18N = {
         "dict.userwords.hint": "Add word + full-pinyin code pairs one by one; typing the code surfaces the word. Great for names, abbreviations, jargon. Applies immediately, survives restart.",
         "dict.userwords.manage": "Manage words",
         "page.userwords": "User words",
+        "page.fuzzy": "Fuzzy pinyin",
+        "page.keyboards": "Keyboard selection",
         "userwords.list.title": "Words",
         "userwords.list.empty": "No words yet - add one below.",
         "userwords.form.text": "Word (e.g. hello world)",
@@ -645,8 +705,11 @@ const I18N = {
         "dict.base.hint": "Swap the whole lexicon: pick a rime dictionary file (.dict.yaml, e.g. from rime-ice; for wanxiang use the tone-free Lite zip) and it recompiles on this device (a few minutes); fuzzy/double-pinyin/T9 rebuild with it. Built-in can be restored anytime.",
         "dict.base.pick": "Pick a dictionary file",
         "dict.base.revert": "Restore built-in",
+        "dict.slot.delete": "Delete",
         "dict.base.builtin": "Built-in rime-frost",
         "dict.base.custom": "Custom: {0}",
+        "dict.base.builtinNote": "Bundled rime-frost dictionary",
+        "dict.base.entries": "{0} entries",
         "dict.base.nonPinyin": "A large share of codes in this dictionary are not pinyin syllable sequences (shape-code layout): characters may not be reachable by typing their pronunciation. Dedicated shape-code schema support may come later.",
         "dict.base.t9Skip": "This dictionary has many entries: compiling the T9 (9-key) prism would exceed this device's available memory, so the 9-key mode was skipped for this import. Pinyin and double-pinyin are unaffected; a smaller dictionary or the built-in one restores it.",
         "dict.base.toned": "Codes in this dictionary carry tone marks (likely the full variant, e.g. wanxiang Base): tones are not typeable on this keyboard, so many entries will never match. Use the tone-free Lite variant (or restore the built-in).",
@@ -661,6 +724,7 @@ const I18N = {
         "dict.base.stageCopy": "Reading the dictionary file…",
         "dict.base.stageCompile": "Compiling (Chinese input pauses meanwhile) - you can leave this page; the keyboard swaps over when done",
         "dict.base.elapsed": "{0}s elapsed",
+        "dict.base.switching": "Active: {0}, switching to {1}: ",
         "page.appearance": "Appearance",
         "themeMode.auto": "Follow system",
         "themeMode.light": "Light",
@@ -670,6 +734,8 @@ const I18N = {
         "page.about": "About",
         "page.test": "Input test",
         "input.fuzzy.title": "Full-pinyin fuzzy",
+        "input.fuzzy.manage": "Manage fuzzy pinyin",
+        "input.fuzzy.manageHint": "Type confusable sounds interchangeably: z/zh, n/l, nasal endings and more.",
         "input.fuzzy.badge": "Input",
         "input.fuzzy.g.ping": "Retroflex z/zh, c/ch, s/sh",
         "input.fuzzy.g.ping.hint": "Typing zang also matches 张, typing zhang also matches 脏.",
@@ -741,7 +807,63 @@ const I18N = {
         "input.custom.jsonLabel": "Custom JSON ({\"version\":1,\"rows\":[[{\"t\":\"key label\",\"tap\":\"output\",\"note\":\"note\"}]]})",
         "input.custom.jsonPlaceholder": "Paste custom JSON",
         "input.custom.note": "Saved on this device and applied the next time the keyboard loads.",
+        "input.custom.manage": "Manage custom keys",
+        "page.customkeys": "Custom keys",
+        "ck.status.title": "Custom keys",
+        "ck.openEditor": "Open editor",
+        "ck.openEditor.hint": "Build keys by tapping - no code needed",
+        "ck.json.title": "JSON (fallback)",
+        "ck.json.hint": "The editor covers everyday needs; use JSON for bulk import/export or advanced tricks.",
+        "ck.preview.title": "Preview",
+        "ck.rows.title": "Keys (rows 1/2/3)",
+        "ck.quick.title": "Quick add",
+        "ck.quick.title.hint": "Tap ＋ in a row, or one-tap add from the common keys below.",
+        "ck.edit.title": "Edit key",
+        "ck.apply": "Apply",
+        "ck.save": "Save all",
+        "ck.add": "＋",
+        "ck.f.t": "Label",
+        "ck.f.t.hint": "Text shown on the key",
+        "ck.f.action": "Tap action",
+        "ck.f.mode": "Type",
+        "ck.f.mode.text": "Text",
+        "ck.f.mode.single": "Key",
+        "ck.f.mode.combo": "Combo",
+        "ck.f.mode.advanced": "Adv",
+        "ck.f.text": "Text to type, e.g. :w or me@example.com",
+        "ck.f.mods": "Mods",
+        "ck.f.key": "Key",
+        "ck.f.dsl": "DSL (e.g. [esc]ggVGD)",
+        "ck.help.aria": "DSL help",
+        "ck.help.dsl": "<b>Write what should happen, in order:</b><br>· Type text: just write it, e.g. <code>:w</code>, <code>me@example.com</code><br>· One key: bracket it, e.g. <code>[esc]</code>, <code>[f5]</code>, <code>[backspace]</code><br>· Combos: <code>[ctrl+s]</code> (save), <code>[alt+f4]</code><br>· Sequences: <code>[esc]ggVGD</code> = Vim delete the whole file: <code>[esc]ggVGD</code><br>· Key names: esc, tab, enter, space, backspace, del, arrows, home, end, pgup, pgdn, f1-f12, letters, digits; modifiers: ctrl, alt, shift, win.",
+        "ck.f.span": "Width",
+        "ck.f.color": "Color",
+        "ck.color.default": "Default",
+        "ck.color.custom": "Custom",
+        "ck.color.hue": "Hue",
+        "ck.color.sat": "Saturation",
+        "ck.f.note": "Note",
+        "ck.f.note.hint": "Shown on long-press",
+        "ck.editBar.hint": "Drag to reorder · × removes · long-press a key to start",
+        "ck.editBar.done": "Done",
+        "ck.common": "Common",
+        "ck.common.hint": "Pick one to prefill, tweak, apply",
+        "ck.err.t": "Key face is required",
+        "ck.err.tap": "Tap action is required",
+        "ck.note.saved": "Saved; applied the next time the keyboard loads",
+        "ck.note.deleted": "Deleted",
+        "ck.row": "Row {n}",
+        "ck.none": "(empty)",
+        "ck.dirty": "Unsaved changes",
+        "ck.newTitle": "New key",
+        "ck.cancel": "Cancel",
+        "ck.confirmLeave": "You have unsaved changes. Leave anyway?",
+        "ck.confirmLeaveTitle": "Unsaved changes",
+        "ck.leaveGo": "Discard and leave",
+        "ck.leaveStay": "Stay",
         "input.keyboards.title": "Keyboard selection",
+        "input.keyboards.manage": "Manage keyboards & quick switch",
+        "input.keyboards.manageHint": "Which keyboards appear in the long-press menu, and the quick-switch pair.",
         "input.keyboards.badge": "Menu",
         "input.keyboards.enable": "Keyboards listed in the long-press menu",
         "input.keyboards.hint": "Checked keyboards appear in the mode-key long-press menu; row order is the menu order (arrow buttons). Unchecked ones can be re-enabled from that menu. Applies immediately.",
@@ -1111,7 +1233,8 @@ const I18N = {
     },
 };
 
-const PAGES = ["home", "appearance", "skin", "input", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "licenses", "test"];
+// #39-12：customkeys（二级）与 customkeys-editor（三级）。
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -1321,6 +1444,7 @@ window.FeelimeSettings = {
             case "dictBaseError":
                 setNote("dictBaseNote", event.message || "");
                 $("dictBaseBuilding").hidden = true;
+                dictBasePending = null;
                 break;
             case "flypyDone":
             case "flypyError":
@@ -1371,7 +1495,20 @@ let currentPage = "home";
 
 function showPage(name) {
     if (!PAGES.includes(name)) return;
+    // #39-12 定制按键页：脏态离开先弹页内确认（改完退出没保存都不
+    // 知道——用户验收实录；不用 confirm：WebChromeClient 不处理时恒
+    // false 会把用户锁死）。收口在本函数里——包装外层函数会漏掉已
+    // 导出的旧引用。ckEnter 同理在进页时统一触发。
+    if (typeof ckDirty !== "undefined" && currentPage === "customkeys"
+        && name !== "customkeys" && ckDirty) {
+        ckLeaveTarget = name;
+        document.getElementById("ckLeaveModal").hidden = false;
+        return;
+    }
     const wasAppearance = currentPage === "appearance" || currentPage === "skin";
+    // 页内深链会再次 showPage(本页)：customkeys 此时不能 ckMarkDirty(false)
+    // ——脏标被清、内存编辑还在，离开不再确认，改动静默丢失（评审 P3-11）。
+    const wasCustomkeys = currentPage === "customkeys";
     currentPage = name;
     document.querySelectorAll("[data-page]").forEach(node => {
         node.hidden = node.dataset.page !== name;
@@ -1384,7 +1521,15 @@ function showPage(name) {
     const isPreviewPage = name === "appearance" || name === "skin";
     if (isPreviewPage && !wasAppearance) call("previewKeyboard", true);
     if (!isPreviewPage && wasAppearance) call("previewKeyboard", false);
-    call("reportPage", name);
+    // 页面父级随页上报：系统 BACK 逐级返回用。层级唯一事实源是本页
+    // ‹ 按钮的 data-back（index.html），壳侧不再维护第二份映射——
+    // userwords/customkeys 曾因此各自漂移回 home（用户验收实录）。
+    const back = document.querySelector(`.page[data-page="${name}"] .page-back`);
+    call("reportPage", name, back?.dataset?.back || "home");
+    if (name === "customkeys" && !wasCustomkeys && typeof ckEnter === "function") {
+        ckEnter();
+        ckMarkDirty(false);
+    }
 }
 
 /* --- 皮肤滑条显示态（模块级，跨 render 存活）-------------------------- */
@@ -1422,7 +1567,6 @@ function updateThemePreview() {
 
 function render(state) {
     state = state || {};
-    renderHero(state);
     renderIme(state);
     renderDoublePinyin(state);
     renderFeel(state);
@@ -1744,15 +1888,6 @@ function renderDpKeymap(scheme) {
     });
 }
 
-function renderHero(state) {
-    const host = $("heroStatus");
-    if (!host) return;
-    host.replaceChildren(statusSpan(
-        state.ime && state.ime.isDefault ? t("hero.online") : t("hero.notDefault"),
-        state.ime && state.ime.isDefault ? "ok" : "warn",
-    ));
-}
-
 function renderIme(state) {
     const ime = state.ime || {};
     setLed("imeEnabledRow", !!ime.enabled);
@@ -2008,6 +2143,8 @@ function renderAsr(state) {
 function renderCustom(state) {
     const custom = state.custom || {};
     $("customSummary").textContent = customSummary(custom.summary);
+    const ckStatus = document.getElementById("ckStatus");
+    if (ckStatus) ckStatus.textContent = customSummary(custom.summary);
     if (document.activeElement !== $("customEnabled")) $("customEnabled").checked = !!custom.enabled;
     if (document.activeElement !== $("customJson") && !$(`customJson`).value) {
         $("customJson").value = custom.json || "";
@@ -2497,7 +2634,6 @@ $("btnOpenLicenses").addEventListener("click", () => showPage("licenses"));
 // 词库导入（issue #37）：SAF 选择 .dict.yaml → 壳侧解析进 imported 段。
 $("btnImportDict").addEventListener("click", () => call("openDictDocument"));
 $("btnBaseDictPick").addEventListener("click", () => call("openBaseDictDocument"));
-$("btnBaseDictRevert").addEventListener("click", () => call("clearBaseDict"));
 
 /** 基底编译是黑盒（librime maintenance），无百分比——用阶段 + 已耗时
  *  提示；用户可离开页面，完成/失败由 dictBaseDone/dictBaseError 收尾。 */
@@ -2507,20 +2643,114 @@ function dictBaseStageText(stage, elapsedMs) {
     return stage === "COPYING" ? label : `${label}（${t("dict.base.elapsed", [seconds])}）`;
 }
 
+/** 切换目标（用户点选的 radio 值）：编译期间文案必须标出「实际生效 +
+ *  切换目标」（用户裁定——曾只有上一步的「已恢复内置词库」残留，分不清
+ *  现在用的哪个）。页面开着时它先于 state 推送可用；页面重开由
+ *  state.baseDict.targetSlot（Kotlin pendingSlotId）恢复同一信息。 */
+let dictBasePending = null;
+
+function dictBaseBuildingText(base) {
+    const stage = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+    const target = base.building && (base.targetSlot || dictBasePending);
+    if (!target) return stage;
+    let label = null;
+    if (target === "builtin") label = t("dict.base.builtin");
+    else {
+        const slot = (Array.isArray(base.slots) ? base.slots : [])
+            .find(s => s && s.id === target);
+        label = slot ? String(slot.name || slot.id) : null;
+    }
+    if (!label) return stage;
+    const effective = base.mode === "custom" && base.name
+        ? t("dict.base.custom", [base.name])
+        : t("dict.base.builtin");
+    return t("dict.base.switching", [effective, label]) + stage;
+}
+
 function onDictBaseProgress(event) {
     const building = $("dictBaseBuilding");
     building.hidden = false;
-    building.textContent = dictBaseStageText(event.stage, event.elapsedMs);
+    building.textContent = dictBaseBuildingText({
+        ...(lastState && lastState.baseDict),
+        stage: event.stage,
+        elapsedMs: event.elapsedMs,
+        building: true,
+    });
 }
 
 /** state.baseDict: {mode, building, stage, elapsedMs, name, installedAt}——
  *  编译中离开再进设置页，提示行从 state 快照恢复（不丢进度文本）。 */
 function renderDictBase(state) {
     const base = state.baseDict || {};
-    const current = $("dictBaseCurrent");
     const when = base.installedAt
         ? new Date(base.installedAt).toLocaleString() : "";
-    current.textContent = base.mode === "custom" && base.name
+    // #7 多槽列表：内置 + 已导入槽。radio 点选 = 激活（槽重编，免 SAF）；
+    // 「恢复内置」并入列表第一项（激活内置 = revert），槽行尾「删除」。
+    const host = $("dictBaseSlots");
+    if (host) {
+        host.textContent = "";
+        const building = !!base.building;
+        const mkRow = (value, label, note, delSlot) => {
+            const row = document.createElement("label");
+            row.className = "dict-slot";
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = "dictBaseChoice";
+            radio.value = value;
+            radio.disabled = building;
+            row.append(radio);
+            const labelBox = document.createElement("span");
+            labelBox.className = "slot-label";
+            const main = document.createElement("span");
+            main.textContent = label;
+            labelBox.append(main);
+            if (note) {
+                const small = document.createElement("small");
+                small.textContent = note;
+                labelBox.append(small);
+            }
+            row.append(labelBox);
+            if (delSlot) {
+                const del = document.createElement("button");
+                del.type = "button";
+                del.className = "slot-del";
+                del.textContent = t("dict.slot.delete");
+                del.disabled = building;
+                del.addEventListener("click", event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    call("deleteBaseDictSlot", delSlot);
+                });
+                row.append(del);
+            }
+            radio.addEventListener("change", () => {
+                // 清上一步的残留提示（曾把「已恢复内置词库」带进整个
+                // 切换期）；目标记进 dictBasePending 供 building 文案用。
+                setNote("dictBaseNote", "");
+                dictBasePending = radio.value;
+                if (radio.value === "builtin") call("clearBaseDict");
+                else call("activateBaseDictSlot", radio.value);
+            });
+            host.append(row);
+        };
+        const active = base.activeSlot || null;
+        const slots = Array.isArray(base.slots) ? base.slots : [];
+        mkRow("builtin", t("dict.base.builtin"),
+            t("dict.base.builtinNote"));
+        slots.forEach(slot => mkRow(slot.id,
+            String(slot.name || slot.id),
+            `${t("dict.base.entries", [slot.entries])}${slot.installedAt ? " · " + new Date(slot.installedAt).toLocaleString() : ""}`,
+            slot.id));
+        // 选中态不走属性选择器（部分环境不支持）：遍历比对 value。
+        // 编译期指向切换目标（targetSlot），成功后 activeSlot 接棒——
+        // 曾在 revert 后整场编译都显示「内置」选中，误导实际生效项。
+        const want = (building && base.targetSlot) || active || "builtin";
+        host.querySelectorAll("input").forEach(input => {
+            if (input.type === "radio") input.checked = input.value === want;
+        });
+    }
+    const current = $("dictBaseCurrent");
+    if (current) current.textContent = base.mode === "custom" && base.name
         ? `${t("dict.base.custom", [base.name])} · ${when}`
         : t("dict.base.builtin");
     // #37：形码/音形特征持续警示（换回内置或导入拼音系码表即消失）。
@@ -2532,12 +2762,10 @@ function renderDictBase(state) {
     // T9 内存门跳编的持续提示（词条量/内存不足）。
     const t9skip = $("dictBaseT9Skip");
     if (t9skip) t9skip.hidden = !base.t9Skipped;
-    $("btnBaseDictRevert").hidden = base.mode !== "custom" || base.building;
     $("btnBaseDictPick").disabled = !!base.building;
     $("dictBaseBuilding").hidden = !base.building;
     if (base.building) {
-        $("dictBaseBuilding").textContent =
-            dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+        $("dictBaseBuilding").textContent = dictBaseBuildingText(base);
     }
 }
 $("btnFlypyPick").addEventListener("click", () => call("openFlypyDocument"));
@@ -3034,7 +3262,7 @@ $("btnCustomTemplate").addEventListener("click", () => {
             [
                 { t: "Esc", tap: "[esc]", note: "单键" },
                 { t: ":w", tap: ":w[enter]", note: "文本+回车" },
-                { t: "整理", tap: "[esc]ggVGD", note: "Vim 全文缩进" },
+                { t: "整理", tap: "[esc]ggVGD", note: "Vim 删除全文" },
                 { t: "保存", tap: "[ctrl+s]", note: "组合键" },
                 { t: "F5", tap: "[f5]", note: "功能键" },
             ],
@@ -3141,6 +3369,624 @@ $("btnAppStore").addEventListener("click", () => call("openAppStore"));
 $("btnGithubRepo").addEventListener("click", () => call("openGithub", "repo"));
 // #29-8：定制键盘 JSON 的官方说明文档（native 只认内置地址）。
 $("btnCustomDocs").addEventListener("click", () => call("openDocs"));
+
+/* ===== #39-12 定制按键编辑器（三级页，免 JSON）============================
+ * 数据：ckRows = [[cell,...],[],[]]（cell {t,tap,note,span?,color?}），进入
+ * 页面时从 state.custom.json 载入；「保存全部」校验后走同一条 saveCustom
+ * 桥（JSON 兜底与编辑器共享真相源，textarea 同步刷新）。
+ * tap 的可视化构造：文本/单键/组合键/高级 DSL 四型；编辑已有键时按 tap
+ * 内容反猜型别（ckTapParse），切型重造。 */
+const CK_KEYS = [
+    ["esc", "Esc"], ["tab", "Tab"], ["enter", "Enter ⏎"], ["space", "Space"],
+    ["backspace", "退格 ⌫"], ["del", "Del"],
+    ["left", "←"], ["up", "↑"], ["down", "↓"], ["right", "→"],
+    ["home", "Home"], ["end", "End"], ["pgup", "PgUp"], ["pgdn", "PgDn"],
+].concat(Array.from({ length: 12 }, (_, i) => ["f" + (i + 1), "F" + (i + 1)]))
+    .concat(Array.from({ length: 26 }, (_, i) =>
+        [String.fromCharCode(97 + i), String.fromCharCode(65 + i)]))
+    .concat(Array.from({ length: 10 }, (_, i) => [String(i), String(i)]));
+const CK_KEY_NAME = Object.fromEntries(CK_KEYS);
+const CK_MODS = [["ctrl", "Ctrl"], ["alt", "Alt"], ["shift", "Shift"], ["win", "Win"]];
+const CK_COLORS = ["blue", "green", "orange", "red", "purple"];
+const CK_QUICK = [
+    { t: "Esc", tap: "[esc]" },
+    { t: "Tab", tap: "[tab]" },
+    { t: "⏎", tap: "[enter]" },
+    { t: "⌫", tap: "[backspace]", note: "退格，长按连删" },
+    { t: "←", tap: "[left]" }, { t: "→", tap: "[right]" },
+    { t: "↑", tap: "[up]" }, { t: "↓", tap: "[down]" },
+    { t: "Home", tap: "[home]" }, { t: "End", tap: "[end]" },
+    { t: "F5", tap: "[f5]" },
+    { t: "存", tap: "[ctrl+s]", color: "h210" },
+    { t: "复制", tap: "[ctrl+c]" }, { t: "粘贴", tap: "[ctrl+v]" },
+    { t: "剪切", tap: "[ctrl+x]" }, { t: "全选", tap: "[ctrl+a]" },
+    { t: "撤销", tap: "[ctrl+z]" },
+    { t: "邮箱", tap: "me@example.com", span: 2 },
+];
+let ckRows = null;
+let ckSel = null;   // 正在编辑的位置 {r, c, isNew}
+let ckDraft = null; // 表单草稿
+let ckDirty = false;
+let ckLeaveTarget = null;   // 脏态离开确认的目标页
+
+/** 脏态驱动的保存条：变更必须让用户看得见（用户验收实录）。
+ *  dirty 时按钮高亮 + 提示文案；保存后回落。 */
+function ckMarkDirty(dirty) {
+    ckDirty = dirty;
+    const bar = document.getElementById("ckSaveBar");
+    if (!bar) return;
+    document.getElementById("ckSave").classList.toggle("ck-save-dirty", dirty);
+    document.getElementById("ckDirtyHint").hidden = !dirty;
+}
+
+function ckOpenModal(isNew) {
+    const modal = document.getElementById("ckModal");
+    document.getElementById("ckModalTitle").textContent =
+        t(isNew ? "ck.newTitle" : "ck.edit.title");
+    setNote("ckEditNote", "");
+    modal.hidden = false;
+}
+
+function ckCloseModal() {
+    document.getElementById("ckModal").hidden = true;
+    ckSel = null;
+}
+
+/** tap 反猜型别 + 拆字段（编辑已有键时回填表单）。 */
+function ckTapParse(tap) {
+    const m = /^\[([a-z0-9+]+)\]$/.exec(String(tap || "").trim().toLowerCase());
+    if (m) {
+        const parts = m[1].split("+");
+        if (parts.length === 1 && CK_KEY_NAME[parts[0]]) {
+            return { mode: "single", single: parts[0] };
+        }
+        const key = parts[parts.length - 1];
+        const mods = parts.slice(0, -1);
+        const modNames = ["ctrl", "alt", "shift", "win"];
+        if (CK_KEY_NAME[key] && mods.every(x => modNames.includes(x))) {
+            return { mode: "combo", comboKey: key, mods: new Set(mods) };
+        }
+    }
+    if (!String(tap || "").includes("[")) return { mode: "text", text: tap || "" };
+    return { mode: "advanced", dsl: tap || "" };
+}
+
+/** 表单草稿 → tap 串。 */
+function ckTapFromDraft(d) {
+    if (d.mode === "text") return d.text || "";
+    if (d.mode === "single") return d.single ? "[" + d.single + "]" : "";
+    if (d.mode === "combo") {
+        const mods = CK_MODS.filter(([name]) => d.mods.has(name)).map(([name]) => name);
+        return d.comboKey ? "[" + mods.concat(d.comboKey).join("+") + "]" : "";
+    }
+    return d.dsl || "";
+}
+
+function ckLoad() {
+    let rows = null;
+    try {
+        const parsed = JSON.parse($("customJson").value || "null");
+        if (parsed && parsed.version === 1 && Array.isArray(parsed.rows)) rows = parsed.rows;
+    } catch (_) { /* textarea 空/坏 JSON → 模板 */ }
+    if (!rows || !rows.some(row => row && row.length)) rows = JSON.parse(CK_TEMPLATE).rows;
+    ckRows = [0, 1, 2].map(i => Array.isArray(rows[i]) ? rows[i].slice() : []);
+}
+
+const CK_TEMPLATE = JSON.stringify({
+    version: 1,
+    rows: [
+        [
+            { t: "Esc", tap: "[esc]", note: "Vim / 终端 Esc" },
+            { t: ":w", tap: ":w[enter]", note: "Vim 保存" },
+            { t: "整理", tap: "[esc]ggVGD", note: "Vim 删除全文" },
+            { t: "保存", tap: "[ctrl+s]", note: "常见保存快捷键", color: "blue" },
+            { t: "⌫", tap: "[backspace]", note: "退格，长按连删" },
+        ],
+        [{ t: "邮箱", tap: "me@example.com", span: 2 }],
+        [],
+    ],
+}, null, 2);
+
+function ckEnter() {
+    if (!ckRows) ckLoad();
+    ckSel = null;
+    ckEditMode = false;
+    document.getElementById("ckEditBar").hidden = true;
+    ckCloseModal();
+    ckRenderRows();
+    ckRenderPreview();
+}
+
+function ckRenderRows() {
+    const host = $("ckRowList");
+    host.textContent = "";
+    const bar = document.getElementById("ckEditBar");
+    if (bar) bar.hidden = !ckEditMode;
+    ckRows.forEach((row, r) => {
+        const line = document.createElement("div");
+        line.className = "ck-row-line";
+        const strip = document.createElement("div");
+        strip.className = "ck-chips";
+        if (!row.length) {
+            const none = document.createElement("span");
+            none.className = "ck-none";
+            none.textContent = t("ck.none");
+            strip.append(none);
+        }
+        strip.dataset.ckRow = String(r);
+        row.forEach((cell, c) => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            const isHue = /^h\d+$/.test(cell.color || "");
+            chip.className = "ck-chip" + (!isHue && cell.color ? " ck-" + cell.color : "");
+            if (isHue) {
+                chip.style.background = "hsl(" + cell.color.slice(1) + ", 65%, 45%)";
+                chip.style.borderColor = "hsl(" + cell.color.slice(1) + ", 65%, 35%)";
+                chip.style.color = "#fff";
+            }
+            chip.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
+            if (ckEditMode) {
+                // 长按编辑态：× 删除；chip 本体被拖动接管（单击无动作）。
+                const x = document.createElement("span");
+                x.className = "ck-x";
+                x.textContent = "×";
+                x.addEventListener("click", event => {
+                    event.stopPropagation();
+                    ckRows[r].splice(c, 1);
+                    ckRenderRows();
+                    ckRenderPreview();
+                    ckMarkDirty(true);
+                });
+                chip.append(x);
+            } else {
+                chip.addEventListener("click", () => ckOpenChip(r, c));
+            }
+            ckBindChipTouch(chip, r);
+            strip.append(chip);
+        });
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "ck-chip ck-add-chip";
+        add.textContent = t("ck.add");
+        add.addEventListener("click", () => ckOpenNew(r));
+        strip.append(add);
+        line.append(strip);
+        host.append(line);
+    });
+}
+
+/** 长按 = 进入可移动模式并拖起该键（键盘工具栏编辑同款形态：× 删除、
+ *  跨行拖动排序；popup 只管属性——用户裁定）。 */
+let ckEditMode = false;
+let ckDrag = null;   // {timer, fromR, fromC, dragging, startX, startY}
+// 拖动会话的 document 级监听（全局唯一一套）：live reorder 每轮重渲
+// 都会重绑目标 chip——不先移除旧监听就是 N 套 handler 叠跑，同一颗键
+// 被 splice N 次（真机实录：一次拖动后行里冒出 4 个退格）。
+let ckDragHandlers = null;
+
+function ckUnbindDrag() {
+    if (!ckDragHandlers) return;
+    document.removeEventListener("touchmove", ckDragHandlers.move);
+    document.removeEventListener("touchend", ckDragHandlers.end);
+    ckDragHandlers = null;
+}
+
+function ckEnterEditMode(firstChip) {
+    ckEditMode = true;
+    document.getElementById("ckEditBar").hidden = false;
+    ckRenderRows();
+    if (firstChip) ckBindDrag(firstChip);
+}
+
+function ckExitEditMode() {
+    ckEditMode = false;
+    document.getElementById("ckEditBar").hidden = true;
+    ckRenderRows();
+}
+
+function ckBindChipTouch(chip) {
+    chip.addEventListener("touchstart", event => {
+        if (ckEditMode || !ckRows) return;
+        const t = event.touches[0];
+        ckDrag = { timer: null, dragging: false,
+            startX: t.clientX, startY: t.clientY, chip };
+        ckDrag.timer = setTimeout(() => {
+            ckEnterEditMode(ckDrag.chip);
+        }, 350);
+    }, { passive: true });
+    chip.addEventListener("touchmove", event => {
+        if (!ckDrag) return;
+        const t = event.touches[0];
+        // 长按等待期位移超阈 = 取消（那是滚动，不是长按）。
+        if (!ckDrag.dragging && !ckEditMode
+            && Math.hypot(t.clientX - ckDrag.startX, t.clientY - ckDrag.startY) > 10) {
+            clearTimeout(ckDrag.timer);
+        }
+    }, { passive: true });
+    chip.addEventListener("touchend", () => {
+        if (ckDrag && !ckDrag.dragging) clearTimeout(ckDrag.timer);
+    }, { passive: true });
+}
+
+/** 编辑态拖动：live reorder——move 时按落点行/列把键 splice 到位。 */
+function ckBindDrag(chip) {
+    ckUnbindDrag();
+    const strip = chip.parentElement;
+    if (!strip) return;
+    const fromR = Number(strip.dataset.ckRow);
+    const fromC = [...strip.children].indexOf(chip);
+    const cell = ckRows[fromR] && ckRows[fromR][fromC];
+    if (!cell) return;
+    chip.classList.add("ck-dragging");
+    const onMove = event => {
+        const t = event.touches[0];
+        ckDrag.dragging = true;
+        const strips = [...document.querySelectorAll("#ckRowList .ck-chips[data-ck-row]")];
+        let toR = fromR;
+        for (const st of strips) {
+            const rect = st.getBoundingClientRect();
+            if (t.clientY >= rect.top && t.clientY <= rect.bottom) {
+                toR = Number(st.dataset.ckRow);
+                break;
+            }
+        }
+        const target = strips.find(st => Number(st.dataset.ckRow) === toR);
+        if (!target) return;
+        let toC = ckRows[toR].length;
+        [...target.children].forEach((el, i) => {
+            if (el === chip) return;
+            const rect = el.getBoundingClientRect();
+            if (t.clientX < rect.left + rect.width / 2) { toC = Math.min(toC, i); }
+        });
+        if (toR === fromR && toC > fromC) toC -= 1;
+        ckRows[fromR].splice(fromC, 1);
+        ckRows[toR].splice(toC, 0, cell);
+        ckMarkDirty(true);
+        ckRenderRows();
+        // 重渲后继续拖：新的同位键重新接管。
+        const stripNow = [...document.querySelectorAll("#ckRowList .ck-chips[data-ck-row]")]
+            .find(st => Number(st.dataset.ckRow) === toR);
+        const chipNow = stripNow && [...stripNow.children][toC];
+        if (chipNow) ckBindDrag(chipNow);
+    };
+    const onEnd = () => {
+        ckUnbindDrag();
+        const dragging = document.querySelector(".ck-dragging");
+        if (dragging) dragging.classList.remove("ck-dragging");
+        ckRenderRows();
+        ckRenderPreview();
+    };
+    document.addEventListener("touchmove", onMove, { passive: true });
+    document.addEventListener("touchend", onEnd, { passive: true });
+    ckDragHandlers = { move: onMove, end: onEnd };
+}
+
+function ckRenderPreview() {
+    const host = $("ckPreview");
+    host.textContent = "";
+    ckRows.forEach(row => {
+        const strip = document.createElement("div");
+        strip.className = "ck-prev-row";
+        if (!row.length) {
+            const none = document.createElement("span");
+            none.className = "ck-none";
+            none.textContent = t("ck.none");
+            strip.append(none);
+        }
+        row.forEach(cell => {
+            const key = document.createElement("span");
+            const isHue = /^h\d+$/.test(cell.color || "");
+            key.className = "ck-prev-key" + (!isHue && cell.color ? " ck-" + cell.color : "");
+            if (isHue) {
+                key.style.background = "hsl(" + cell.color.slice(1) + ", 65%, 45%)";
+                key.style.borderColor = "hsl(" + cell.color.slice(1) + ", 65%, 35%)";
+                key.style.color = "#fff";
+            }
+            key.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
+            if (cell.note) key.title = cell.note;
+            strip.append(key);
+        });
+        host.append(strip);
+    });
+}
+
+/** 编辑卡：isNew 时空白表单；否则按 cell 回填（tap 反猜型别）。 */
+function ckOpenChip(r, c) {
+    const cell = ckRows[r][c];
+    ckSel = { r, c, isNew: false };
+    // 全字段先兜底再让 parse 覆盖命中型：切到任何型都拿得到默认值
+    // （此前文本/组合键型缺 text/mods 字段，切换后输入框填 undefined、
+    // 组合键渲染直接中断——用户实录）。
+    ckDraft = {
+        t: cell.t,
+        text: "", single: "esc", comboKey: "s", mods: new Set(["ctrl"]), dsl: "",
+        ...ckTapParse(cell.tap),
+        color: cell.color || "",
+        note: cell.note || "",
+    };
+    ckBuildForm();
+    ckOpenModal(false);
+}
+
+function ckOpenNew(r) {
+    ckSel = { r, c: ckRows[r].length, isNew: true };
+    ckDraft = { t: "", mode: "single", single: "esc", text: "", comboKey: "s",
+        mods: new Set(["ctrl"]), dsl: "", color: "", note: "" };
+    ckBuildForm();
+    ckOpenModal(true);
+}
+
+/** 行式表单行：短标签在左、控件在右占满余宽（一行一个属性——空间
+ *  利用率优先，用户裁定）。 */
+function ckField(labelText, control, cls) {
+    const wrap = document.createElement("label");
+    wrap.className = "ck-row2" + (cls ? " " + cls : "");
+    if (labelText != null) {
+        const span = document.createElement("span");
+        span.className = "ck-row2-label";
+        span.textContent = labelText;
+        wrap.append(span);
+    } else {
+        wrap.classList.add("ck-row2-bare");
+    }
+    control.classList.add("ck-row2-ctl");
+    wrap.append(control);
+    return wrap;
+}
+
+/** 单选按钮组（类型/宽度/色板/修饰键共用同一形态）。 */
+function ckSegment(options, value, onPick) {
+    const row = document.createElement("div");
+    row.className = "ck-seg";
+    options.forEach(([v, label, cls]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "ck-seg-btn" + (cls ? " " + cls : "") + (v === value ? " selected" : "");
+        b.textContent = label;
+        b.addEventListener("click", () => onPick(v));
+        row.append(b);
+    });
+    return row;
+}
+
+function ckBuildForm() {
+    const body = $("ckEditBody");
+    body.textContent = "";
+    const d = ckDraft;
+
+    // 新建时提供「常用」起点：默认收起，点开展开，选一颗预填。
+    if (ckSel && ckSel.isNew) {
+        const common = document.createElement("div");
+        common.className = "ck-common";
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "ck-common-toggle";
+        toggle.textContent = t("ck.common") + " \u25be";
+        const list = document.createElement("div");
+        list.className = "ck-chips ck-common-list";
+        list.hidden = true;
+        CK_QUICK.forEach(item => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "ck-chip ck-common-chip" + (item.color ? " ck-" + item.color : "");
+            chip.textContent = item.t;
+            chip.title = item.note || item.tap;
+            chip.addEventListener("click", () => {
+                ckDraft.t = item.t;
+                ckDraft.note = item.note || "";
+                ckDraft.color = item.color || "";
+                Object.assign(ckDraft, ckTapParse(item.tap));
+                ckBuildForm();
+            });
+            list.append(chip);
+        });
+        toggle.addEventListener("click", () => {
+            list.hidden = !list.hidden;
+            toggle.textContent = t("ck.common") + (list.hidden ? " \u25be" : " \u25b4");
+        });
+        common.append(toggle, list);
+        body.append(common);
+    }
+
+    // 顺序：键面文案 -> 类型四选 -> 类型输入控件 -> 颜色 -> 备注。
+    const tInput = document.createElement("input");
+    tInput.id = "ckT";
+    tInput.className = "ck-input";
+    tInput.value = d.t;
+    tInput.placeholder = t("ck.f.t.hint");
+    tInput.addEventListener("input", () => { d.t = tInput.value; });
+    body.append(ckField(t("ck.f.t"), tInput));
+
+    const modeSeg = ckSegment([["text", t("ck.f.mode.text")], ["single", t("ck.f.mode.single")],
+        ["combo", t("ck.f.mode.combo")], ["advanced", t("ck.f.mode.advanced")]],
+        d.mode, v => { d.mode = v; ckBuildForm(); });
+    modeSeg.id = "ckMode";
+    modeSeg.classList.add("ck-mode-seg");
+    body.append(modeSeg);
+
+    const holder = document.createElement("div");
+    holder.id = "ckActionHolder";
+    body.append(holder);
+    ckBuildAction(holder);
+
+    // 颜色：默认 / 自定义（自定义才展开 hue 滑块行）。cell.color 记
+    // "h<度数>"（0-359）渲染按 hsl 算；旧色板名兼容读。
+    const HUE_RE = /^h\d{1,3}(?:s\d{1,3})?$/;
+    const isCustomHue = HUE_RE.test(d.color || "");
+    const colorSeg = ckSegment([["", t("ck.color.default")], ["custom", t("ck.color.custom")]],
+        isCustomHue ? "custom" : "", v => {
+            if (v === "custom") { if (!HUE_RE.test(d.color || "")) d.color = "h210s65"; }
+            else d.color = "";
+            ckBuildForm();
+        });
+    body.append(ckField(t("ck.f.color"), colorSeg, "ck-row-color"));
+    if (isCustomHue) {
+        // 双滑块：色调（全谱渐变轨道）+ 饱和度（灰->纯色，色相联动）。
+        const parts = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(d.color) || [null, "210", "65"];
+        let hueVal = parseInt(parts[1], 10);
+        let satVal = parts[2] != null ? parseInt(parts[2], 10) : 65;
+        const encode = () => { d.color = "h" + hueVal + "s" + satVal; };
+        const hueWrap = document.createElement("div");
+        hueWrap.className = "ck-hue";
+        const hue = document.createElement("input");
+        hue.type = "range";
+        hue.className = "ck-hue-range";
+        hue.min = "0"; hue.max = "359";
+        hue.value = String(hueVal);
+        const satWrap = document.createElement("div");
+        satWrap.className = "ck-hue";
+        const sat = document.createElement("input");
+        sat.type = "range";
+        sat.className = "ck-sat-range";
+        sat.min = "0"; sat.max = "100";
+        sat.value = String(satVal);
+        const swatch = document.createElement("span");
+        swatch.className = "ck-hue-swatch";
+        const paint = () => {
+            const css = "hsl(" + hueVal + ", " + satVal + "%, 45%)";
+            swatch.style.background = css;
+            hue.style.setProperty("--thumb-hue", String(hueVal));
+            sat.style.background = "linear-gradient(90deg, hsl(" + hueVal + ", 0%, 45%), " + css + ")";
+        };
+        paint();
+        hue.addEventListener("input", () => { hueVal = parseInt(hue.value, 10) || 0; encode(); paint(); });
+        sat.addEventListener("input", () => { satVal = parseInt(sat.value, 10) || 0; encode(); paint(); });
+        hueWrap.append(hue, swatch);
+        body.append(ckField(t("ck.color.hue"), hueWrap, "ck-row-hue"));
+        satWrap.append(sat);
+        body.append(ckField(t("ck.color.sat"), satWrap, "ck-row-hue"));
+    }
+
+    const noteInput = document.createElement("input");
+    noteInput.id = "ckNote";
+    noteInput.className = "ck-input";
+    noteInput.value = d.note;
+    noteInput.placeholder = t("ck.f.note.hint");
+    noteInput.addEventListener("input", () => { d.note = noteInput.value; });
+    body.append(ckField(t("ck.f.note"), noteInput));
+}
+
+function ckBuildAction(holder) {
+    holder.textContent = "";
+    const d = ckDraft;
+    if (d.mode === "text") {
+        const input = document.createElement("input");
+        input.id = "ckText";
+        input.className = "ck-input";
+        input.value = d.text;
+        input.placeholder = t("ck.f.text");
+        input.addEventListener("input", () => { d.text = input.value; });
+        holder.append(ckField(t("ck.f.mode.text"), input));
+    } else if (d.mode === "single" || d.mode === "combo") {
+        if (d.mode === "combo") {
+            // 修饰键：标签在左、按钮组在右，一行放下（多选）。
+            const row = document.createElement("div");
+            row.className = "ck-seg";
+            CK_MODS.forEach(([name, label]) => {
+                const chip = document.createElement("button");
+                chip.type = "button";
+                chip.className = "ck-seg-btn" + (d.mods.has(name) ? " selected" : "");
+                chip.textContent = label;
+                chip.addEventListener("click", () => {
+                    d.mods.has(name) ? d.mods.delete(name) : d.mods.add(name);
+                    ckBuildAction(holder);
+                });
+                row.append(chip);
+            });
+            holder.append(ckField(t("ck.f.mods"), row));
+        }
+        const keySel = document.createElement("select");
+        keySel.id = "ckKey";
+        CK_KEYS.forEach(([value, label]) => {
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = label;
+            keySel.append(opt);
+        });
+        keySel.value = d.mode === "single" ? (d.single || "esc") : (d.comboKey || "s");
+        keySel.addEventListener("change", () => {
+            if (d.mode === "single") d.single = keySel.value;
+            else d.comboKey = keySel.value;
+        });
+        holder.append(ckField(t("ck.f.key"), keySel));
+    } else {
+        // 高级：标签 + ? 帮助（点开 DSL 速查）+ 输入框，行式对齐。
+        const labelWrap = document.createElement("span");
+        labelWrap.className = "ck-dsl-label";
+        const labelText = document.createElement("span");
+        labelText.textContent = t("ck.f.mode.advanced");
+        const help = document.createElement("button");
+        help.type = "button";
+        help.className = "ck-help";
+        help.textContent = "?";
+        help.setAttribute("aria-label", t("ck.help.aria"));
+        const helpCard = document.createElement("div");
+        helpCard.className = "ck-help-card";
+        helpCard.hidden = true;
+        helpCard.innerHTML = t("ck.help.dsl");
+        help.addEventListener("click", () => {
+            helpCard.hidden = !helpCard.hidden;
+        });
+        labelWrap.append(labelText, help);
+        const input = document.createElement("input");
+        input.id = "ckDsl";
+        input.className = "ck-input";
+        input.value = d.dsl;
+        input.placeholder = t("ck.f.dsl");
+        input.addEventListener("input", () => { d.dsl = input.value; });
+        const row = ckField(null, input);
+        row.prepend(labelWrap);
+        labelWrap.classList.add("ck-row2-label");
+        labelWrap.style.display = "inline-flex";
+        labelWrap.style.gap = "6px";
+        labelWrap.style.alignItems = "center";
+        holder.append(row, helpCard);
+    }
+}
+
+$("ckApply").addEventListener("click", () => {
+    const d = ckDraft;
+    if (!d.t.trim()) return setNote("ckEditNote", t("ck.err.t"));
+    const tap = ckTapFromDraft(d);
+    if (!tap) return setNote("ckEditNote", t("ck.err.tap"));
+    const cell = { t: d.t.trim(), tap, note: d.note || "" };
+    if (d.color) cell.color = d.color;
+    if (ckSel.isNew) ckRows[ckSel.r].push(cell);
+    else ckRows[ckSel.r][ckSel.c] = cell;
+    ckCloseModal();
+    // 动作带来的变化必须在当前屏可见：列表+预览立即刷新，脏态亮起。
+    ckRenderRows();
+    ckRenderPreview();
+    ckMarkDirty(true);
+});
+
+$("ckEditDone").addEventListener("click", () => ckExitEditMode());
+$("ckModalCancel").addEventListener("click", () => ckCloseModal());
+$("ckModalMask").addEventListener("click", () => ckCloseModal());
+
+$("ckSave").addEventListener("click", () => {
+    const json = JSON.stringify({ version: 1, rows: ckRows });
+    call("saveCustom", json, $("customEnabled").checked);
+    $("customJson").value = json;
+    ckMarkDirty(false);
+    setNote("ckSaveNote", t("ck.note.saved"));
+});
+
+$("btnOpenCustomKeys").addEventListener("click", () => showPage("customkeys"));
+// 2026-09-30 验收拆分：模糊音/键盘选择收进三级页，input 页只留入口。
+$("btnOpenFuzzy").addEventListener("click", () => showPage("fuzzy"));
+$("btnOpenKeyboards").addEventListener("click", () => showPage("keyboards"));
+$("ckLeaveStay").addEventListener("click", () => {
+    ckLeaveTarget = null;
+    document.getElementById("ckLeaveModal").hidden = true;
+});
+$("ckLeaveGo").addEventListener("click", () => {
+    document.getElementById("ckLeaveModal").hidden = true;
+    ckMarkDirty(false);
+    const target = ckLeaveTarget;
+    ckLeaveTarget = null;
+    if (target) showPage(target);
+});
 $("btnGithubIssues").addEventListener("click", () => call("openGithub", "issues"));
 // 飞书交流群（浏览器打开内置邀请链接，native 侧固定白名单同 openGithub）。
 $("btnFeishuGroup").addEventListener("click", () => call("openFeishuGroup"));

@@ -3,8 +3,9 @@
 
 #1 settings sub-pages + phrase CRUD, #3 composition lands before literal,
 #4 space key style/mic contrast, #5 complete-input variant pinning, #6 key
-map page, #7 Chinese-mode literal popup picks, #8 pinyin preedit stays off
-the editor, #9 scrollable panel + toolbar full-settings entry.
+map page, #7 Chinese-mode literal popup picks, #8 pinyin composes as a
+replaceable span (own-app editor mirrors it), #9 scrollable panel + toolbar
+full-settings entry.
 (#2 deletion is covered by the legacy editor suites plus the xterm.js
 probe on the real device.)"""
 import json
@@ -63,13 +64,22 @@ def main():
     time.sleep(1.5)
     kb = d.fresh_kb(refocus=False) or kb
 
-    # ---- #8 pinyin preedit must NOT land in the editor ----
+    # ---- #8 pinyin composes on the keyboard; raw codes never land literally ----
+    # 61fc16a 起自家 app 的编辑框（本套件的 fixture 字段）镜像组合 span
+    #（「JSON 框打字像卡死」修复）：字段里看到原始码是设计内回显。
+    # 不变量收窄为：组合必须住在可替换的 span 里——空格选候选上屏后，
+    # 字段不得残留任何原始字母。
     clear(kb)
     d.type_word(kb, "nihk", wait=0.4)
     preedit = (d.devtools_preedit() or '').replace(' ', '')
     text = d.field_text_retry()
-    record("pinyin stays on the keyboard, not the editor",
-           preedit == "nihk" and text == "", f"preedit={preedit!r} field={text!r}")
+    mirrored = text.replace(' ', '') == 'nihk'
+    d.press(kb, "<space>", 0.3)
+    time.sleep(0.6)
+    after = d.field_text_retry()
+    record("pinyin composes on the keyboard; raw codes never land literally",
+           preedit == "nihk" and mirrored and not any(c in after for c in 'nihk'),
+           f"preedit={preedit!r} field={text!r} after={after!r}")
     clear(kb)
 
     # ---- #3 a live composition must LAND before a literal commit ----
@@ -155,42 +165,30 @@ def main():
     open_panel(kb)
     labels = ev("[...document.querySelectorAll('#settingsPanel .qs-name')]"
                 ".map(el => el.textContent)") or []
-    record("home page tiles (3.38.0 tile grid; voice/clipboard stay on the main keyboard)",
-           # 3.38.0: the row list became a 2x4 tile grid across two pages;
-           # both pages render into the DOM, so all 15 names are queryable.
+    record("home page tiles (grid; voice/clipboard stay on the main keyboard)",
+           # 3.38.0 起面板是跨两页的 tile 网格（DOM 全量可查）。名单随批次
+           # 漂移过两次：界面语言/定制键盘/双拼方案 tile 迁去了设置 app，
+           # 输入统计（#41）与编辑工具栏（#133）是新 tile——改 tile 时同步
+           # 这里，红=名单漂移不是套件坏。
            labels == ['色彩模式', '中文联想', '按键声音', '按键振动',
-                      '键盘高度', '快捷切换', '候选字号', '界面语言',
-                      '单手模式', '底部留白', '长按时长', '滑动选字',
-                      '长按菜单', '定制键盘', '双拼方案', '编辑工具栏',
-                      '完整设置']
+                      '键盘高度', '输入统计', '快捷切换', '长按菜单',
+                      '候选字号', '单手模式', '底部留白', '长按时长',
+                      '滑动选字', '编辑工具栏', '完整设置']
            or labels == ['Appearance', 'Associations', 'Key sound', 'Key vibration',
-                         'Keyboard height', 'Quick switch', 'Candidate size', 'Language',
-                         'One-handed', 'Bottom padding', 'Long-press delay', 'Swipe reach',
-                         'Keyboard menu', 'Custom keys', 'Double-pinyin', 'Edit toolbar',
-                         'All settings'],
+                         'Keyboard height', 'Typing stats', 'Quick switch', 'Keyboard menu',
+                         'Candidate size', 'One-handed', 'Bottom padding', 'Long-press delay',
+                         'Swipe reach', 'Edit toolbar', 'All settings'],
            repr(labels))
 
-    nav_to(kb, '快捷切换')
-    pair_rows = ev("[...document.querySelectorAll('#pairEditor .pair-row')].length") or 0
-    # #9: overflow is the FEATURE - the panel must scroll within the
-    # keyboard instead of pushing rows off-screen.
-    scroll = ev("(() => { const p = document.getElementById('settingsPanel');"
-                " return { oy: getComputedStyle(p).overflowY,"
-                " inKb: p.getBoundingClientRect().bottom <= window.innerHeight + 1 }; })()") or {}
-    # 手写（issue #28）起配对编辑器列 9 个键盘。
-    record("quick-switch sub-page scrolls inside the keyboard",
-           pair_rows == 9 and scroll.get('oy') == 'auto' and scroll.get('inKb') is True,
-           f"rows={pair_rows} scroll={scroll}")
-    # The back chevron rides the toolbar page bar (child 0).
-    ev("document.getElementById('settingsPageBar')?.children[0]?.click()")
-    time.sleep(0.4)
+    # 快捷切换子页已删（3.59.6 起 tile 深链完整设置的 quickPairA 行，
+    # 2026-09-30 清死码）：深链行为在 caps-flick #12 设备断言，面板滚动
+    # 不变量（#9）由下方 home 面板断言覆盖，此处无独立可门禁项。
+    ev("window.Feelime.closeSettingsPanel()")
+    time.sleep(0.3)
 
     # The phrases sub-page is gone - phrase add/edit/delete moved
     # INTO the favorites panel (native-redirect typing included). Covered by
     # the keymap suite; nothing to gate here any more.
-    # The back chevron rides the toolbar page bar (child 0).
-    ev("document.getElementById('settingsPageBar')?.children[0]?.click()")
-    time.sleep(0.3)
 
     # ---- #9 scrollable panel + toolbar full-settings entry ----
     ev("window.Feelime.closeSettingsPanel()")

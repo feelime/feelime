@@ -339,16 +339,11 @@ class SetupActivity : AppCompatActivity() {
             // not finish the activity mid-navigation. The page re-reports
             // its state after showPage lands anyway.
             if (bridge.onSubPage) {
-                // 逐级返回（issue #17 三级页）：phrases → input、
-                // licenses → about（验收反馈：许可三级页）、skin →
-                // appearance（皮肤三级页，codex P2：与页内 ‹ 按钮一致）；
-                // 其余子页与设计 §6.2 一律回 home。
-                val parent = when (bridge.subPageName) {
-                    "phrases" -> "input"
-                    "licenses" -> "about"
-                    "skin" -> "appearance"
-                    else -> "home"
-                }
+                // 逐级返回（issue #17 三级页）：目标页由页面 ‹ 按钮的
+                // data-back 随 reportPage 上报（userwords → dict、
+                // customkeys → input、licenses → about…），壳侧不再维护
+                // 第二份映射——那份 when 漂移过（自造词/定制按键落回 home）。
+                val parent = bridge.subPageParent
                 bridge.onSubPage = false
                 bridge.evaluate(
                     "window.FeelimeSettings && window.FeelimeSettings.showPage" +

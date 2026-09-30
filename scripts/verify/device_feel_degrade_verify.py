@@ -323,8 +323,13 @@ def case_clipboard_suppression():
 
     # Real tap on 清空, then the marker must exist in prefs (polled: the
     # async prefs flush trails the emptied panel by a beat).
+    # f29c0fa（键盘 3.71.0）起清空是两击确认：首击只亮红字确认态，再击
+    # 才落桥——旧的单击口径从此必挂。
     cleared = ev("(() => { const b = document.getElementById('panelClear');"
                  " if (!b) return false; b.click(); return true; })()")
+    if cleared:
+        time.sleep(0.5)
+        ev("(() => { document.getElementById('panelClear')?.click(); return true; })()")
     empty = shared.wait_until(
         lambda: panel.panel_items() == [], lambda value: value is True,
         timeout=8.0)

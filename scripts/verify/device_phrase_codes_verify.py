@@ -785,16 +785,70 @@ def settings_json_snapshot():
 
 def case_settings_json_focus(keyboard):
     """Real settings textarea caret and delete path stay focused and fast."""
-    if not shared.switch_mode_real("英文 Direct"):
-        record("JSON setup reaches Direct mode", False, "mode switch failed")
-        return keyboard
+    # 全量链路里 9j 在同会话先跑过：SetupActivity 携老 WebView 状态被
+    # resume，devtools 定向的 eval 与真实 tap 会有分流（单跑全绿、链路
+    # 内必挂的差因，两轮全量复现）。本用例自己 force-stop 冷启 app，
+    # 回到与单跑相同的年轻拓扑：fixture 聚焦带起键盘，再切 Direct。
+    # 焦点楔（prepare_readonly 同款，2026-09-23 9k 定位）：force-stop 后
+    # 直接 am start 会拉起「可见不可聚焦」的 SetupActivity，键盘唤不起、
+    # 模式键无几何。HOME 往返把焦点还给系统再重进。
+    d.shell("am force-stop " + d.PKG)
+    time.sleep(1.0)
+    # force-stop 掉默认 IME 后系统绑定会悬空（prepare_readonly 同款），
+    # 先 ime set 重绑再走 HOME 往返。
+    d.shell("ime set " + d.IME_SVC)
+    d.shell("input keyevent KEYCODE_HOME")
+    time.sleep(0.6)
     if not shared.launch_settings(with_fixtures=True):
         record("settings JSON page opens", False, "settings WebView unavailable")
         return keyboard
+    # 冷启后 fixture 字段的 IME 绑定是异步的，键盘没起来就长按模式键会
+    # 直接崩（#modeToggle 无几何）。fixtures 页有测试字段，ensure 在这里
+    # 能找对目标。
+    d.ensure_keyboard_up()
+    wait_until(lambda: d.key_geometry(), lambda value: bool(value), timeout=8.0)
+    if not shared.switch_mode_real("英文 Direct"):
+        record("JSON setup reaches Direct mode", False, "mode switch failed")
+        return keyboard
+    # launch_settings 聚焦 fixture 字段 → 键盘压窗：本机实测窗口只剩
+    # ~549 物理px 且 documentElement.scrollHeight 跟着塌到同高（整页不可
+    # 滚），customkeys 折叠卡永远滚不进来（geometry 定格在视口外 1900px）。
+    # 键盘弹出态的第一个 BACK 只收 IME 不会退出 activity；收完窗口回满
+    # 再导航，textarea 自己的 focus 点击会把键盘重新带起来。
+    if d.input_shown():
+        d.shell("input keyevent 4")
+        time.sleep(1.2)
     opened = shared.settings_tap('button[data-target="input"]')
     page = wait_until(shared.settings_visible_pages,
                       lambda value: value == ["input"], timeout=4.0)
-    field_tapped = shared.settings_tap("#customJson", wait=1.0)
+    # 2026-09-30 拆页：JSON 兜底框住进 customkeys 三级页的折叠卡——收起态
+    # textarea 无几何，settings_tap 会点到下面的入口行（btnOpenKeyboards）。
+    shared.settings_tap('#btnOpenCustomKeys')
+    ck_page = wait_until(shared.settings_visible_pages,
+                         lambda value: value == ["customkeys"], timeout=4.0)
+    sev("(() => { const fold = document.querySelector('.ck-json-fold');"
+        " if (fold) fold.open = true; return !!fold; })()")
+    # 折叠卡里 textarea 高 6 行，但设置 WebView 在键盘弹出态的滚动回收
+    # （~127px/轮，2026-09-23 同款竞态）可把落点顶到下一行的保存按钮
+    # （active=btnSaveCustom 实录）。量测→落点之间页面回吐，重点到真
+    # 聚焦为止；首轮过后布局已落定，重试即中。
+    # 落点偏置到 textarea 上 1/4：滚动回收的漂移（~127px）足以把中心点
+    # 顶到下一行的保存按钮（active=btnSaveCustom/ckSave 两轮实录），点按
+    # 钮还会触发 saveCustom→state 推送→再漂移；上偏后漂移仍落在 6 行
+    # textarea 内。点到真聚焦为止。
+    field_tapped = False
+    for _ in range(4):
+        geo = shared.settings_geometry("#customJson")
+        if geo:
+            (px, py), (left, top, right, bottom) = geo
+            py = int(top + (bottom - top) * 0.25)
+            if left <= px < right and top <= py < bottom:
+                d.tap(px, py, wait=1.0)
+                field_tapped = True
+        if field_tapped and settings_json_snapshot().get("active") == "customJson":
+            break
+        shared.settings_tap("#customJson", wait=1.0)
+        time.sleep(0.8)
     focus_snapshot = settings_json_snapshot()
     focus = focus_snapshot.get("active", "")
     if field_tapped and focus == "customJson":
@@ -859,7 +913,8 @@ def case_settings_json_focus(keyboard):
         abs(slow_scrub.get("start", -1) - fast_scrub.get("start", -1)) <= 3
     )
     record("settings JSON caret moves left without leaving focus",
-           opened and page == ["input"] and field_tapped and focus == "customJson"
+           opened and page == ["input"] and ck_page == ["customkeys"]
+           and field_tapped and focus == "customJson"
            and cleared and len(value_before) >= 100 and scrub_ok,
            f"page={page} focus={focus!r} valueLen={len(value_before)}"
            f" before={selection_before} slow={slow_scrub} fast={fast_scrub}"

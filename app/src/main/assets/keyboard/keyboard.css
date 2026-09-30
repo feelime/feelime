@@ -717,6 +717,15 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
     font-size: min(16px, calc(var(--kb-row-h, 44px) * 0.38));
     white-space: nowrap;
 }
+/* alt 隐藏后回中：flick-swap 起字母键是 alt 上/main 下的底锚
+ * （justify-content:flex-end + padding-bottom），沿用初版的「正常
+ * 居中」在底锚布局里变成低于键心 ~11px（9m Fn lock 断言抓到的存量
+ * 回归）。显式回中，并压掉两个方向的 flick padding。 */
+.kb-key.kb-letter.fn-label {
+    justify-content: center;
+    padding-top: 0;
+    padding-bottom: 0;
+}
 .kb-special { background: var(--special); font-size: min(15px, calc(var(--kb-row-h, 44px) * 0.34)); font-weight: 500; }
 .kb-mod.active, .kb-mod.locked { color: var(--accent-text); background: var(--mod-active-bg, #103a24); box-shadow: inset 0 0 0 1px var(--accent); }
 .kb-wide-1_4 { flex: 1.4; }
@@ -2162,22 +2171,47 @@ body.landscape #voiceSlideHint { margin-top: 48px; padding: 5px 13px; font-size:
 }
 #flickBlob.run { display: block; }
 
+/* toast（用户验收重做）：工具栏居中、暗亮通吃的高对比浮层——毛玻璃
+ * 底 + 阴影 + 边框三重区分，字号加大。 */
 #toast {
     display: none;
     position: absolute;
     left: 50%;
-    top: 44px;
+    top: 40px;
     transform: translateX(-50%);
     z-index: 40;
-    max-width: 90%;
-    padding: 7px 11px;
-    border-radius: 7px;
-    background: #3c2530;
-    color: #ffd8dc;
-    font-size: 11px;
+    max-width: 88%;
+    padding: 10px 16px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--panel, #2a2a2e) 88%, transparent);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    color: var(--text, #fff);
+    border: 1px solid color-mix(in srgb, var(--text, #fff) 18%, transparent);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, .35);
+    font-size: 14px;
+    line-height: 1.45;
     white-space: nowrap;
 }
 #toast.open { display: block; }
+/* 定制键备注：锚在键上方的气泡（同款高对比浮层） */
+#keyNote {
+    position: fixed;
+    z-index: 60;
+    max-width: 78%;
+    padding: 9px 13px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--panel, #2a2a2e) 92%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    color: var(--text, #fff);
+    border: 1px solid color-mix(in srgb, var(--text, #fff) 20%, transparent);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .3);
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: normal;
+    pointer-events: none;
+}
 
 
 /* While the phrase editor strip shows, the key area
@@ -2421,8 +2455,15 @@ body[data-bg-image="on"] #settingsPanel { background: transparent; }
      * key - only the 5px gaps would scroll. Same lesson as .sym-cat. */
     touch-action: pan-x;
 }
-.sym-custom-bs { flex: none; width: 44px; display: flex; }
-.sym-custom-bs .kb-key { width: 100%; height: 100%; }
+/* #39-12 定制键的可选键面：色板（rgba 叠加，亮/暗键底都可辨）与
+ * 宽键倍数（span 2/3；min/max 随档放宽，内容仍自适应）。 */
+.sym-custom-key.ck-blue   { background: rgba(59, 130, 246, .32);  border-color: rgba(59, 130, 246, .60); }
+.sym-custom-key.ck-green  { background: rgba(34, 197, 94, .30);   border-color: rgba(34, 197, 94, .55); }
+.sym-custom-key.ck-orange { background: rgba(249, 115, 22, .32);  border-color: rgba(249, 115, 22, .55); }
+.sym-custom-key.ck-red    { background: rgba(239, 68, 68, .30);   border-color: rgba(239, 68, 68, .55); }
+.sym-custom-key.ck-purple { background: rgba(168, 85, 247, .30);  border-color: rgba(168, 85, 247, .55); }
+.sym-custom-key[data-span="2"] { min-width: 92px; max-width: 160px; }
+.sym-custom-key[data-span="3"] { min-width: 140px; max-width: 220px; }
 /* The shared strip's textarea form (custom-JSON editing). */
 .phrase-area {
     height: auto;
@@ -2743,10 +2784,9 @@ body[data-bg-image="on"] #settingsPanel { background: transparent; }
 }
 .confirm-actions button:active, .confirm-actions button.active-touch { background: var(--pressed); }
 .confirm-actions button.danger { background: var(--danger); color: #fff; }
-/* Quick-switch pair editor (drag order + two ticks). */
-#pairEditor { margin: 6px 4px 2px; }
-#pairEditor .pair-hint { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
-#pairEditor { position: relative; }
+/* Pair-row primitives (tick + name + drag handle). The in-keyboard
+ * quick-switch editor is gone (tile deep-links the settings app since
+ * 3.59.6); these classes are still used by the custom-page rows. */
 .pair-row {
     display: flex;
     align-items: center;

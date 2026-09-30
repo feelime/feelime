@@ -495,6 +495,9 @@ class SettingsBridge(
      * shell's BACK callback returns home first instead of finishing
      * (design §6.2). */
     @Volatile var onSubPage: Boolean = false
+
+    /** 当前子页的父页（页面 ‹ data-back 上报；系统 BACK 的返回目标）。 */
+    @Volatile var subPageParent: String = "home"
     /** 当前子页名（"home"/"input"/"phrases"/…），BACK 逐级返回用。 */
     @Volatile var subPageName: String = "home"
 
@@ -1846,6 +1849,33 @@ class SettingsBridge(
         )
     }
 
+    /** #7 激活已导入槽（本地源重编，免 SAF）。token 恒末位（JS call()
+     *  统一追加）——曾写成首位，点槽激活被 token 门闸静默拒绝。 */
+    @JavascriptInterface
+    fun activateBaseDictSlot(slotId: String, token: String) = guarded(token) {
+        if (com.feelime.ime.engine.BaseDictInstaller.isBuilding()) return@guarded
+        com.feelime.ime.engine.BaseDictInstaller.activateAsync(
+            context,
+            slotId,
+            pushEvent = { payload -> pushEvent(payload) },
+            onFinished = { pushState() },
+        )
+        pushState()
+    }
+
+    /** #7 删除已导入槽（激活槽先回内置）。token 恒末位（同上）。 */
+    @JavascriptInterface
+    fun deleteBaseDictSlot(slotId: String, token: String) = guarded(token) {
+        if (com.feelime.ime.engine.BaseDictInstaller.isBuilding()) return@guarded
+        com.feelime.ime.engine.BaseDictInstaller.deleteSlot(
+            context,
+            slotId,
+            pushEvent = { payload -> pushEvent(payload) },
+            onFinished = { pushState() },
+        )
+        pushState()
+    }
+
     /** 恢复内置 frost 词库（删设备端编译产物 + 留档源）。 */
     @JavascriptInterface
     fun clearBaseDict(token: String) = guarded(token) {
@@ -2438,10 +2468,13 @@ class SettingsBridge(
 
     /** Sub-page presence for the shell's BACK callback. */
     @JavascriptInterface
-    fun reportPage(page: String, token: String) = guarded(token) {
-        // 页名而非布尔（issue #17 三级页）：系统 BACK 按 phrases → input →
-        // home 逐级返回；旧页面布尔协议与壳同 APK 发布，无兼容窗口。
+    fun reportPage(page: String, parent: String?, token: String) = guarded(token) {
+        // 页名而非布尔（issue #17 三级页）：系统 BACK 按 data-back 声明的
+        // 父级逐级返回（如 userwords → dict）；父级由页面 ‹ 按钮上报，
+        // 壳侧不维护第二份映射（曾漂移：userwords/customkeys 落回 home）。
+        // 旧页面双参协议与壳同 APK 发布，无兼容窗口。
         subPageName = page
+        subPageParent = parent?.takeIf { it.isNotBlank() } ?: "home"
         onSubPage = page != "home" && page.isNotBlank()
     }
 

@@ -292,10 +292,15 @@ def main():
         dp_dom = json.loads(dp_dom)
     except ValueError:
         dp_dom = {}
-    record("键盘与输入 page groups 双拼三方案 + 定制",
+    # 2026-09-30 拆页：模糊音/键盘选择收进三级页，定制按键收进
+    # customkeys 三级页（插入模板按钮随之迁走）——input 页断言改为
+    # 三个入口行 + 双拼卡本体。
+    record("键盘与输入 page groups 双拼三方案 + 三个三级入口",
            dp_dom.get("title") is True and dp_dom.get("chart") == 3
            and dp_options == "ziranma,flypy,sogou,ziguang"
-           and has_text(texts, "插入模板", "Insert template")
+           and has_text(texts, "管理定制按键", "Manage custom keys")
+           and has_text(texts, "管理模糊音", "Manage fuzzy pinyin")
+           and has_text(texts, "管理键盘与快捷切换", "Manage keyboards & quick switch")
            and has_text(texts, "Takes effect when the keyboard", "切到「双拼」模式")
            and has_none(texts, "离线中英混合语音输入法", "Offline Chinese-English voice input"),
            f"opts={dp_options} dom={dp_dom}")
