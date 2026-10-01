@@ -6344,6 +6344,50 @@ test('assoc backspace: off by default, on = clears assoc like × (issue #46)', {
     equal(w2.native.of('backspace').length, 1, 'composing: backspace deletes as usual');
 });
 
+test('wx slash: off commits literally, on routes / into the engine (issue #45)', {since: '3.73.19'}, () => {
+    // 默认关：pinyin 下 s 键上滑 '/' 直发上屏（sendSymbol → commitText），
+    // 引擎收不到键——万象 /sj /ri 功能引导无法触发的用户实测根因。
+    const w1 = fresh({ mode: 'pinyin' });
+    const s1 = w1.key('s');
+    w1.touchDown(s1, 20, 20);
+    w1.move(s1, 20, -30);
+    w1.touchUp(s1);
+    w1.clock.advance(2);
+    equal(w1.native.of('commitText').slice(-1)[0].args[0], '/',
+        'off: / inserts literally');
+
+    // 开启：同一手势改走按键通道进引擎（空闲与组合中都进，/sj 引导
+    // 正是组合段）。wxSlashOn 只在 hello 里带（二次空 hello 会重置 mode）。
+    const w2 = fresh({ mode: 'pinyin', wxSlashOn: true });
+    const s2 = w2.key('s');
+    w2.touchDown(s2, 20, 20);
+    w2.move(s2, 20, -30);
+    w2.touchUp(s2);
+    w2.clock.advance(2);
+    equal(w2.native.of('key').slice(-1)[0].args[0], '/',
+        'on: / reaches the engine via key()');
+    equal(w2.native.of('commitText').filter(c => c.args[0] === '/').length, 0,
+        'on: no direct commit bypasses the engine');
+    w2.engineState({ phase: 'COMPOSING', mode: 'pinyin', revision: 2, composing: '/s', rawInput: '/s',
+        candidates: [], hasNextPage: false });
+    w2.touchDown(s2, 20, 20);
+    w2.move(s2, 20, -30);
+    w2.touchUp(s2);
+    w2.clock.advance(2);
+    equal(w2.native.of('key').slice(-1)[0].args[0], '/',
+        'on: composing / still feeds the engine (guide segment)');
+
+    // T9 不在生效列表：符号行照旧直发。
+    const w3 = fresh({ mode: 't9', wxSlashOn: true });
+    w3.tap(w3.key('1'));
+    const slash = [...w3.document.querySelectorAll('#candidates .candidate')]
+        .find(b => b.textContent === '/');
+    assert(slash, 'slash present in the t9 symbol row');
+    w3.tap(slash);
+    equal(w3.native.of('commitText').slice(-1)[0].args[0], '/',
+        't9: unaffected, still literal');
+});
+
 test('mode switch clears assoc words', {since: '3.33.0'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.engineState({ phase: 'READY', mode: 'pinyin', revision: 3, composing: '', rawInput: '',

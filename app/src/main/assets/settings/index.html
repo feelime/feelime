@@ -358,6 +358,11 @@
         <span class="row-label"><span data-i18n="input.english.enable">英文词直出</span><small data-i18n="input.english.hint">拼音组合里直接敲 github、ios、android 这类英文词出候选，不用切英文模式；全拼和双拼通用。</small></span>
         <input type="checkbox" id="englishWordsOn" data-keywords="英文 english 英文词 直出 github" class="toggle">
       </label>
+      <!-- #45 万象拼音功能引导：默认 '/' 直发；开启后进引擎可触发 /sj /ri。 -->
+      <label class="row switch-row no-rule" for="wxSlashOn">
+        <span class="row-label"><span data-i18n="input.phrases.wxSlash">万象 / 键功能引导</span><small data-i18n="input.phrases.wxSlashHint">换装万象拼音方案后，开启可在拼音/双拼下用 / 进入功能引导（如 /sj 出时间、/ri 出日期）；关闭则 / 直接上屏。其它键盘不受影响。</small></span>
+        <input type="checkbox" id="wxSlashOn" data-keywords="万象 万象拼音 引导 斜杠 slash 时间 日期" class="toggle">
+      </label>
       <div class="row" data-keywords="英文 候选 位置 排名 english position">
         <span class="row-label"><span data-i18n="input.english.posLabel">英文词候选位置</span><small data-i18n="input.english.posHint">自动：不打扰拼音的词排第 1 位、与拼音键序重叠的排第 3 位；也可固定。</small></span>
         <select id="englishPos" class="select" aria-label="英文词候选位置">

@@ -1876,6 +1876,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("voiceOnSpace", readVoiceOnSpace(this))
             .put("associationOn", readAssociation(this))
             .put("backspaceAssocOn", readBackspaceAssoc(this))
+            .put("wxSlashOn", readWxSlash(this))
             .put("dynamicDateTimeOn", readDynamicDateTime(this))
             // 按键反馈开关（issue #5 问题 2）也进 hello：快捷设置方块的
             // 开/关状态要跟原生偏好走（设置页改动同样经这里回读）。

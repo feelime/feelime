@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.18';
+    const KEYBOARD_VERSION = '3.73.19';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1347,6 +1347,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.assocWords = [];
             // 联想让位态退格清联想（issue #46）：hello 回读，默认关。
             this.backspaceAssocOn = false;
+            // 万象 / 键功能引导（issue #45）：hello 回读，默认关。
+            this.wxSlashOn = false;
             // 按键反馈开关（issue #5 问题 2）：hello 回读（旧 APK 的 hello
             // 没有这两个字段，保持默认关）。
             this.keySound = false;
@@ -1883,6 +1885,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          */
         sendSymbol(text) {
             if (!text) return;
+            // #45 万象功能引导（/sj 时间 /ri 日期）：默认 '/' 直发上屏，
+            // 绕过引擎——万象方案的 recognizer 收不到键，功能引导永远
+            // 不触发。开关开启且在拼音/双拼（组合中或空闲）时，'/' 改走
+            // 按键通道进 rime；形码/手写/英文等其它模式不受影响。
+            if (text === '/' && this.wxSlashOn &&
+                (this.mode === 'pinyin' || this.mode === 'double-pinyin')) {
+                this.call(() => Native.key('/', this.token));
+                if (this.shift) { this.shift = false; this.updateLabels(); }
+                return;
+            }
             // Literal insertion - no case shifting: the 拼音/希腊 categories
             // contain letters, and leftover Shift must not turn ā into Ā.
             this.call(() => Native.commitText(text, this.token));
@@ -9340,6 +9352,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!this.associationOn) this.assocWords = [];
             // 联想让位态退格清联想（issue #46）。
             this.backspaceAssocOn = !!payload.backspaceAssocOn;
+            // 万象 / 键功能引导（issue #45）。
+            this.wxSlashOn = !!payload.wxSlashOn;
             // 日期时间候选开关：native 默认开，旧 APK 的 hello 不带字段
             // 也按开处理（!== false 容错）。
             this.dynamicDateTimeOn = payload.dynamicDateTimeOn !== false;
@@ -10057,6 +10071,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             toolbarRight: keyboard.toolbarRight.slice(),
             // #46 联想让位态退格清联想开关（设置页写入，hello 回读）。
             backspaceAssocOn: keyboard.backspaceAssocOn,
+            // #45 万象 / 键功能引导开关。
+            wxSlashOn: keyboard.wxSlashOn,
             // Automation gates drive setComposition (T9 音节条引擎验证等)；
             // DevTools 已是调试构建的完整控制面，token 不放大攻击面。
             token: keyboard.token,

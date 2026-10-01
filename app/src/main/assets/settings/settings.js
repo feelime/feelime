@@ -272,6 +272,8 @@ const I18N = {
         "input.keyboards.moveDown": "下移",
         "input.english.enable": "英文词直出",
         "input.english.hint": "拼音组合里直接敲 github、ios、android 这类英文词出候选，不用切英文模式；全拼和双拼通用。",
+        "input.phrases.wxSlash": "万象 / 键功能引导",
+        "input.phrases.wxSlashHint": "换装万象拼音方案后，开启可在拼音/双拼下用 / 进入功能引导（如 /sj 出时间、/ri 出日期）；关闭则 / 直接上屏。其它键盘不受影响。",
         "input.keyboards.pairA": "快捷切换 · 第一个",
         "input.keyboards.pairB": "快捷切换 · 第二个",
         "input.keyboards.pairHint": "点切换键在两个键盘之间往返；选最常用的两个。",
@@ -765,6 +767,8 @@ const I18N = {
         "input.phrases.hint": "Adds words like ↑ for shang and ✓ for dui near candidate #3; works in full and double Pinyin.",
         "input.english.enable": "English word candidates",
         "input.english.hint": "Type english words like github, ios or android right inside Pinyin composing — no mode switch; works in full and double Pinyin.",
+        "input.phrases.wxSlash": "wanxiang / feature guide",
+        "input.phrases.wxSlashHint": "After installing the wanxiang Pinyin schema, enable to route / into the engine in Pinyin modes (/sj types the time, /ri the date); off = / commits directly. Other keyboards are unaffected.",
         "input.phrases.manage": "Manage entries",
         "input.phrases.importHint": "Entries from a rime dictionary join the candidates as an overlay (the built-in lexicon stays; original frequencies are not carried). Importing again replaces the previous import.",
         "input.phrases.importBtn": "Pick a file",
@@ -1848,6 +1852,9 @@ function renderDoublePinyin(state) {
     }
     if (document.activeElement !== $("backspaceAssocOn")) {
         $("backspaceAssocOn").checked = !!state.backspaceAssocOn;
+    }
+    if (document.activeElement !== $("wxSlashOn")) {
+        $("wxSlashOn").checked = !!state.wxSlashOn;
     }
     if (document.activeElement !== $("dynamicDateTimeOn")) {
         $("dynamicDateTimeOn").checked = state.dynamicDateTimeOn !== false;
@@ -3294,6 +3301,7 @@ $("btnCheckUpdate").addEventListener("click", () => call("checkUpdate", $("updat
 $("autoUpdateCheck").addEventListener("change", event => call("setAutoUpdateCheck", event.target.checked));
 $("associationOn").addEventListener("change", event => call("setAssociation", event.target.checked));
 $("backspaceAssocOn").addEventListener("change", event => call("setBackspaceAssoc", event.target.checked));
+$("wxSlashOn").addEventListener("change", event => call("setWxSlash", event.target.checked));
 $("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateTime", event.target.checked));
 $("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));
 
