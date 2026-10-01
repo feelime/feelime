@@ -736,6 +736,14 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   `files/rime-user-dict/` 留档（不进 userdata 备份，build/ 产物同理——
   可再生且恢复后词库状态本来就要复位；mozc 的 build/ 不受排除影响）。
   换装/恢复经 `ACTION_BASE_DICT_CHANGED` 走 reloadGlobal + 会话重建。
+  已导入词库按源内容分槽保存，源文件在 `rime-user-dict/slots/<sha12>/`，
+  每槽 `compiled/` 保存基底产物、校验清单和该库的检测结果。再次选择时
+  校验缓存并复制产物，随后重建引擎会话，无需读取源文件或启动编译；
+  回内置保留槽及缓存。旧槽无缓存、缓存损坏、引擎数据/native/编译模板
+  变化时从留档源重新编译。旧版运行产物缺少编译版本记录，需首次重编
+  后才能缓存；模糊音变体只在缺少时补编，已有变体随槽保存。
+  全局忙碌标志用于阻止并发操作，进度另带操作类型：基底、音形、模糊音。
+  两张卡只显示各自操作的进度，基底切换保留音形码表及其导入时间。
   **librime 设备端编译的三个坑（真机四轮定位，改配置不改上游）**：
   ① resolver 双轨——源形态（schema 源/umbrella/import_tables）走
   user→shared，deployed 形态（WorkspaceUpdate 读 schema_list、

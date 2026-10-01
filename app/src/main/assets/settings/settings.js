@@ -123,6 +123,7 @@ const I18N = {
         "flypy.custom": "已导入：{0}",
         "flypy.building": "正在处理音形码表…",
         "dict.base.stageCopy": "正在读取词库文件…",
+        "dict.base.stageActivate": "正在切换词库…",
         "dict.base.stageCompile": "正在编译词库（期间中文输入暂不可用），可离开此页，完成后自动换装",
         "dict.base.elapsed": "已编译 {0} 秒",
         "dict.base.switching": "当前生效 {0}，正在切换到 {1}：",
@@ -722,6 +723,7 @@ const I18N = {
         "flypy.custom": "Imported: {0}",
         "flypy.building": "Processing the shape-code table…",
         "dict.base.stageCopy": "Reading the dictionary file…",
+        "dict.base.stageActivate": "Switching dictionary…",
         "dict.base.stageCompile": "Compiling (Chinese input pauses meanwhile) - you can leave this page; the keyboard swaps over when done",
         "dict.base.elapsed": "{0}s elapsed",
         "dict.base.switching": "Active: {0}, switching to {1}: ",
@@ -2638,6 +2640,7 @@ $("btnBaseDictPick").addEventListener("click", () => call("openBaseDictDocument"
 /** 基底编译是黑盒（librime maintenance），无百分比——用阶段 + 已耗时
  *  提示；用户可离开页面，完成/失败由 dictBaseDone/dictBaseError 收尾。 */
 function dictBaseStageText(stage, elapsedMs) {
+    if (stage === "ACTIVATING") return t("dict.base.stageActivate");
     const seconds = Math.round((elapsedMs || 0) / 1000);
     const label = stage === "COPYING" ? t("dict.base.stageCopy") : t("dict.base.stageCompile");
     return stage === "COPYING" ? label : `${label}（${t("dict.base.elapsed", [seconds])}）`;
@@ -2668,6 +2671,11 @@ function dictBaseBuildingText(base) {
 }
 
 function onDictBaseProgress(event) {
+    if (event.operation === "flypy") {
+        $("flypyBuilding").hidden = false;
+        $("flypyBuilding").textContent = dictBaseStageText(event.stage, event.elapsedMs);
+        return;
+    }
     const building = $("dictBaseBuilding");
     building.hidden = false;
     building.textContent = dictBaseBuildingText({
@@ -2763,8 +2771,8 @@ function renderDictBase(state) {
     const t9skip = $("dictBaseT9Skip");
     if (t9skip) t9skip.hidden = !base.t9Skipped;
     $("btnBaseDictPick").disabled = !!base.building;
-    $("dictBaseBuilding").hidden = !base.building;
-    if (base.building) {
+    $("dictBaseBuilding").hidden = !base.building || base.operation === "flypy";
+    if (base.building && base.operation !== "flypy") {
         $("dictBaseBuilding").textContent = dictBaseBuildingText(base);
     }
 }
@@ -2797,8 +2805,8 @@ function renderFlypy(state) {
     $("btnFlypyRevert").hidden = !flypy.installed || !!base.building;
     $("btnFlypyPick").disabled = !!base.building;
     const building = $("flypyBuilding");
-    building.hidden = !base.building;
-    if (base.building) {
+    building.hidden = !base.building || base.operation !== "flypy";
+    if (base.building && base.operation === "flypy") {
         building.textContent =
             dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
     }

@@ -1849,7 +1849,7 @@ class SettingsBridge(
         )
     }
 
-    /** #7 激活已导入槽（本地源重编，免 SAF）。token 恒末位（JS call()
+    /** #7 激活已导入槽（优先复用编译结果，免 SAF）。token 恒末位（JS call()
      *  统一追加）——曾写成首位，点槽激活被 token 门闸静默拒绝。 */
     @JavascriptInterface
     fun activateBaseDictSlot(slotId: String, token: String) = guarded(token) {
@@ -1876,7 +1876,7 @@ class SettingsBridge(
         pushState()
     }
 
-    /** 恢复内置 frost 词库（删设备端编译产物 + 留档源）。 */
+    /** 恢复内置 frost 词库（保留词库槽及编译缓存）。 */
     @JavascriptInterface
     fun clearBaseDict(token: String) = guarded(token) {
         if (com.feelime.ime.engine.BaseDictInstaller.isBuilding()) return@guarded

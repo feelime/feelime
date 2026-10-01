@@ -1878,6 +1878,27 @@ test('preview duo boards render and carry opacity + background image vars', () =
     equal(pv.style.getPropertyValue('--pv-key-alpha'), '0.4', 'opacity drag updates the preview live');
 });
 
+test('dictionary operation progress stays in its own card after reopening', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, baseDict: { mode: 'builtin', building: true,
+        operation: 'base', stage: 'COPYING', flypy: { installed: true, name: 'shape.dict.yaml' } } });
+    equal(world.$('dictBaseBuilding').hidden, false, 'base progress visible');
+    equal(world.$('flypyBuilding').hidden, true, 'shape does not pretend to read');
+    equal(world.$('btnFlypyPick').disabled, true, 'global operation remains exclusive');
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', operation: 'base',
+        stage: 'ACTIVATING', elapsedMs: 500 });
+    assert(world.$('dictBaseBuilding').textContent.includes('正在切换词库'), 'cache switch says switching');
+    assert(!world.$('dictBaseBuilding').textContent.includes('已编译'), 'cache switch does not pretend to compile');
+    world.push({ ...BASE_STATE, baseDict: { mode: 'builtin', building: true,
+        operation: 'flypy', stage: 'COPYING' } });
+    equal(world.$('dictBaseBuilding').hidden, true, 'base does not pretend to compile shape');
+    equal(world.$('flypyBuilding').hidden, false, 'shape progress restored from state');
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', operation: 'flypy',
+        stage: 'COMPILING', elapsedMs: 12000 });
+    equal(world.$('dictBaseBuilding').hidden, true, 'shape event stays out of base');
+    assert(world.$('flypyBuilding').textContent.includes('12'), 'shape gets elapsed time');
+});
+
 // ---------------------------------------------------------------- runner
 
 const failed = RESULTS.filter(([, ok]) => !ok);

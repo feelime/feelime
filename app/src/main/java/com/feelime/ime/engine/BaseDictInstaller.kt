@@ -43,6 +43,8 @@ object BaseDictInstaller {
     private const val KEY_NAME = "name"
     private const val KEY_INSTALLED_AT = "installed_at"
     private const val KEY_SOURCE_SHA = "source_sha"
+    private const val KEY_COMPILE_KEY = "compile_key"
+    private const val KEY_CACHE_DIRTY = "cache_dirty"
     private const val KEY_INSTALLING = "installing"
     // #37：码表域检测结果（-1=未检测）。切得开拼音音节的码列占比低于
     // 阈值 → 形码/音形码表特征，全拼方案（拼音 prism）下大量码无法命中。
@@ -158,6 +160,7 @@ object BaseDictInstaller {
 
     // 可重订阅的状态快照（codex review P2-8）：编译期间设置页关闭重开，
     // 新页面从 state 恢复提示行，不依赖旧 bridge 的事件回调。
+    @Volatile private var operationKind: String? = null
     @Volatile private var stageSnapshot: String? = null
     @Volatile private var stageStartedAt: Long = 0L
 
@@ -177,6 +180,7 @@ object BaseDictInstaller {
     ) {
         check(building.compareAndSet(false, true)) { "install already running" }
         val app = context.applicationContext
+        operationKind = KIND_BASE
         stageSnapshot = "COPYING"
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
@@ -192,8 +196,9 @@ object BaseDictInstaller {
             // 编译期的 reloadGlobal）。此后本 lambda 不再触碰 building：
             // 收尾补偿排入的下一个补编任务由它自己的 CAS 持有，上一个
             // 任务的 finally 若再清零会让补编全程裸奔（codex 三轮 P1-1）。
-            building.set(false)
             stageSnapshot = null
+            operationKind = null
+            building.set(false)
             try {
                 if (result.changed) {
                     app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
@@ -244,6 +249,7 @@ object BaseDictInstaller {
     ) {
         check(building.compareAndSet(false, true)) { "install already running" }
         val app = context.applicationContext
+        operationKind = KIND_FLYPY
         stageSnapshot = "COPYING"
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
@@ -253,8 +259,9 @@ object BaseDictInstaller {
                     runCatching { revertFlypy(app) }
                     InstallResult("BASE_DICT_INTERNAL", changed = true)
                 }
-            building.set(false)
             stageSnapshot = null
+            operationKind = null
+            building.set(false)
             try {
                 if (result.changed) {
                     app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
@@ -275,10 +282,14 @@ object BaseDictInstaller {
 
     /** #20 移除音形码表（删产物 + 留档，模式菜单随之隐藏）。 */
     fun revertFlypyAsync(context: Context, pushEvent: (JSONObject) -> Unit, onFinished: () -> Unit) {
+        check(building.compareAndSet(false, true)) { "install already running" }
+        operationKind = KIND_FLYPY
         val app = context.applicationContext
         worker.execute {
             val code = runCatching { revertFlypy(app); null as String? }
                 .getOrElse { "BASE_DICT_REVERT_FAILED" }
+            operationKind = null
+            building.set(false)
             if (code == null) {
                 app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             }
@@ -332,10 +343,15 @@ object BaseDictInstaller {
                 return
             }
         }
+        operationKind = "fuzzy"
+        stageSnapshot = "COMPILING"
+        stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             CompileGuardService.start(app)
             val code = runCatching { compileFuzzyVariant(app, mask) }
                 .getOrElse { "BASE_DICT_INTERNAL" as String? }
+            operationKind = null
+            stageSnapshot = null
             building.set(false)
             try {
                 if (code != null) {
@@ -389,7 +405,7 @@ object BaseDictInstaller {
                 val sourceDir = File(user, BaseDictFiles.SOURCE_DIR).apply {
                     deleteRecursively(); mkdirs()
                 }
-                archive.listFiles()?.forEach {
+                archive.listFiles()?.filter { it.isFile && it.name.endsWith(".dict.yaml") }?.forEach {
                     it.copyTo(File(sourceDir, it.name), overwrite = true)
                 }
                 File(user, BaseDictFiles.UMBRELLA_FILE).writeText(
@@ -451,14 +467,16 @@ object BaseDictInstaller {
         // 中途失败保留事务位——半成品/无产物都视为不可用，下次补编
         // 重走（开头 isFile && compiling==0 判定拦截误用）。
         if (code == "" || code == "PRISM_MISSING") {
-            prefs.edit().remove(KEY_FUZZY_COMPILING_MASK).apply()
+            val edit = prefs.edit().remove(KEY_FUZZY_COMPILING_MASK)
+            if (code == "") edit.putBoolean(KEY_CACHE_DIRTY, true)
+            edit.apply()
         }
         return code
     }
 
     /** 留档目录里的表文件名（补编现场恢复用）。 */
     private fun stagedTableNames(sourceDir: File): List<String> =
-        sourceDir.listFiles()?.map { it.name }?.sorted() ?: emptyList()
+        sourceDir.listFiles()?.filter { it.isFile && it.name.endsWith(".dict.yaml") }?.map { it.name }?.sorted() ?: emptyList()
 
     /** umbrella 的行数注释位（补编路径拿不到精确值，留诊断提示）。 */
     private fun stagedLineHint(@Suppress("UNUSED_PARAMETER") prefs: android.content.SharedPreferences): Int = 0
@@ -470,12 +488,23 @@ object BaseDictInstaller {
     }
 
     fun revertAsync(context: Context, pushEvent: (JSONObject) -> Unit, onFinished: () -> Unit) {
+        check(building.compareAndSet(false, true)) { "install already running" }
+        operationKind = KIND_BASE
         val app = context.applicationContext
         pendingSlotId = "builtin"
+        stageSnapshot = "ACTIVATING"
+        stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
-            val code = runCatching { revert(app); null as String? }
+            val code = runCatching {
+                saveActiveCache(app)
+                revert(app)
+                null as String?
+            }
                 .getOrElse { "BASE_DICT_REVERT_FAILED" }
             pendingSlotId = null
+            stageSnapshot = null
+            operationKind = null
+            building.set(false)
             if (code == null) {
                 app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
             }
@@ -536,8 +565,7 @@ object BaseDictInstaller {
         return arr
     }
 
-    /** #7 激活槽：本地源重新编译（免 SAF），完成后与基底导入同一套
-     *  换装广播/事件链。 */
+    /** 激活槽优先复用编译快照；旧槽或配置变化时从留档源编译。 */
     fun activateAsync(
         context: Context,
         slotId: String,
@@ -547,19 +575,24 @@ object BaseDictInstaller {
         check(building.compareAndSet(false, true)) { "install already running" }
         val app = context.applicationContext
         pendingSlotId = slotId
-        stageSnapshot = "COPYING"
+        operationKind = KIND_BASE
+        stageSnapshot = "ACTIVATING"
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             CompileGuardService.start(app)
             var result = runCatching {
-                installBlockingInternal(app, SourceInput.Slot(slotId), null, pushEvent)
+                sweepPending(app)
+                saveActiveCache(app)
+                activateCached(app, slotId)
+                    ?: installBlockingInternal(app, SourceInput.Slot(slotId), null, pushEvent)
             }.getOrElse {
                 runCatching { rollback(app) }
                 InstallResult("BASE_DICT_INTERNAL", changed = true)
             }
-            building.set(false)
             stageSnapshot = null
+            operationKind = null
             pendingSlotId = null
+            building.set(false)
             try {
                 if (result.changed) {
                     app.sendBroadcast(Intent(ACTION_BASE_DICT_CHANGED).setPackage(app.packageName))
@@ -578,6 +611,83 @@ object BaseDictInstaller {
             compensatePendingFuzzy(app)
             if (result.code == null) ensureFuzzyVariantIfNeeded(app)
         }
+    }
+
+    // 更新编译算法时递增版本；引擎数据、编译模板和 native 二进制变化自动失效。
+    @Volatile private var cachedCompileKey: String? = null
+    private fun cacheKey(context: Context): String {
+        cachedCompileKey?.let { return it }
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update("base-cache-v1".toByteArray())
+        listOf("engine-data/MANIFEST.json", BaseDictFiles.ASSETS_DEFAULT,
+            BaseDictFiles.ASSETS_SYMBOLS).forEach { asset ->
+            context.assets.open(asset).use { digest.update(it.readBytes()) }
+        }
+        val native = File(context.applicationInfo.nativeLibraryDir, "libfeelime_smoke.so")
+        // extractNativeLibs=false 的 APK 从 zip 直接装载 native。
+        if (native.isFile) digest.update(BaseDictCache.sha(native).toByteArray())
+        else java.util.zip.ZipFile(context.applicationInfo.sourceDir).use { apk ->
+            apk.entries().asSequence().filter { it.name.endsWith("/libfeelime_smoke.so") }
+                .sortedBy { it.name }.forEach { entry ->
+                    apk.getInputStream(entry).use { input ->
+                        val buffer = ByteArray(65536)
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            digest.update(buffer, 0, n)
+                        }
+                    }
+                }
+        }
+        return joinHex(digest.digest()).also { cachedCompileKey = it }
+    }
+
+    private val CACHE_STATE_KEYS = listOf(KEY_NAME, KEY_SOURCE_SHA, KEY_INSTALLED_AT,
+        KEY_NON_PINYIN_RATIO, KEY_TONED, KEY_TAB_LINES, KEY_T9_SKIPPED)
+
+    private fun saveActiveCache(context: Context) {
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        if (prefs.getString(KEY_MODE, "builtin") != "custom" ||
+            prefs.getBoolean(KEY_INSTALLING, false) ||
+            prefs.getInt(KEY_FUZZY_COMPILING_MASK, 0) != 0) return
+        val dir = activeSourceDir(context) ?: return
+        if (prefs.getString(KEY_COMPILE_KEY, null) != cacheKey(context)) return
+        val cache = File(dir, "compiled")
+        if (!prefs.getBoolean(KEY_CACHE_DIRTY, true) &&
+            File(cache, "cache.properties").isFile) return
+        // 缓存写失败不影响当前可用词库，下次选择仍可从源编译。
+        runCatching {
+            BaseDictCache.save(cache, File(context.filesDir, "rime-user/build"),
+                cacheKey(context), CACHE_STATE_KEYS.associateWith { prefs.all[it].toString() })
+            prefs.edit().putBoolean(KEY_CACHE_DIRTY, false).apply()
+        }.onFailure { android.util.Log.w("FeelimeBaseDict", "cache save: ${it.message}") }
+    }
+
+    private fun activateCached(context: Context, slotId: String): InstallResult? {
+        val cache = File(slotDir(context, slotId), "compiled")
+        if (!cache.isDirectory) return null
+        EngineDataStore.ensureSync(context)
+        val key = cacheKey(context)
+        if (BaseDictCache.read(cache, key) == null) return null
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        RimeTextEngine.ensureGlobalInit(context)
+        prefs.edit().putBoolean(KEY_INSTALLING, true)
+            .putString(KEY_INSTALLING_KIND, KIND_BASE)
+            .putInt(KEY_INSTALLING_PID, android.os.Process.myPid()).commit()
+        val state = BaseDictCache.restore(cache, File(context.filesDir, "rime-user/build"), key)
+            ?: error("cache changed during activation")
+        fun value(k: String) = state.getProperty("state.$k")
+        prefs.edit().putString(KEY_MODE, "custom").putString(KEY_COMPILE_KEY, key)
+            .putBoolean(KEY_CACHE_DIRTY, false)
+            .putString(KEY_NAME, value(KEY_NAME)).putString(KEY_SOURCE_SHA, value(KEY_SOURCE_SHA))
+            .putLong(KEY_INSTALLED_AT, value(KEY_INSTALLED_AT).toLong())
+            .putFloat(KEY_NON_PINYIN_RATIO, value(KEY_NON_PINYIN_RATIO).toFloat())
+            .putBoolean(KEY_TONED, value(KEY_TONED).toBoolean())
+            .putInt(KEY_TAB_LINES, value(KEY_TAB_LINES).toInt())
+            .putBoolean(KEY_T9_SKIPPED, value(KEY_T9_SKIPPED).toBoolean())
+            .remove(KEY_FUZZY_COMPILING_MASK).remove(KEY_FUZZY_PENDING_MASK)
+            .putBoolean(KEY_INSTALLING, false).commit()
+        return InstallResult(null, changed = true)
     }
 
     /** #7 删除槽（快操作，桥线程直跑）。激活槽被删 → 先回内置（广播
@@ -621,6 +731,7 @@ object BaseDictInstaller {
         val json = JSONObject()
             .put("mode", if (mode == "custom" && built) "custom" else "builtin")
             .put("building", isBuilding())
+            .putOpt("operation", operationKind)
             .putOpt("name", prefs.getString(KEY_NAME, null) ?: JSONObject.NULL)
             .putOpt("installedAt", prefs.getLong(KEY_INSTALLED_AT, 0L))
             // #37：形码/音形特征（可切码占比低于阈值）持续提示，直到换回
@@ -663,6 +774,8 @@ object BaseDictInstaller {
      *  误导性的「自定义」态）。幂等：无标记即 no-op。 */
     fun sweepPending(context: Context) {
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        if (isBuilding() && (prefs.getInt(KEY_INSTALLING_PID, -1) == android.os.Process.myPid() ||
+                operationKind == "fuzzy")) return
         // 补编中断的事务位（codex 三轮 P1-2）：不占 KEY_INSTALLING，单独
         // 清扫——半截 prism 删掉，让下次 ensure 判定缺失并重编。
         val staleCompiling = prefs.getInt(KEY_FUZZY_COMPILING_MASK, 0)
@@ -740,6 +853,8 @@ object BaseDictInstaller {
         runCatching { RimeTextEngine.ensureGlobalInit(context) }
             .onFailure { return InstallResult("BASE_DICT_ENGINE_NOT_READY", changed = false) }
 
+        saveActiveCache(context)
+
         // 事务开始（P1-5）：从此刻起任何中断都会被 sweepPending 回滚。
         context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_INSTALLING, true)
@@ -762,7 +877,7 @@ object BaseDictInstaller {
             val meta = runCatching {
                 JSONObject(File(slotDir, SLOT_META).readText())
             }.getOrNull()
-            slotDir.listFiles()?.filter { it.name != SLOT_META }?.forEach {
+            slotDir.listFiles()?.filter { it.isFile && it.name.endsWith(".dict.yaml") }?.forEach {
                 it.copyTo(File(sourceDir, it.name), overwrite = true)
             }
             if (displayName == null) displayName = meta?.optString("name") ?: source.slotId
@@ -998,12 +1113,15 @@ object BaseDictInstaller {
             .putString(KEY_MODE, "custom")
             .putString(KEY_NAME, displayName)
             .putString(KEY_SOURCE_SHA, sha)
+            .putString(KEY_COMPILE_KEY, cacheKey(context))
+            .putBoolean(KEY_CACHE_DIRTY, true)
             .putLong(KEY_INSTALLED_AT, System.currentTimeMillis())
             .putFloat(KEY_NON_PINYIN_RATIO, nonPinyinRatio ?: -1f)
             .putBoolean(KEY_TONED, toned)
             .putInt(KEY_TAB_LINES, stats.tabLines)
             .putBoolean(KEY_T9_SKIPPED, !includeT9)
             .apply()
+        saveActiveCache(context)
         return InstallResult(null, changed = true)
     }
 
@@ -1643,7 +1761,7 @@ object BaseDictInstaller {
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit()
         if (keepFlypy) {
             prefs.remove(KEY_MODE).remove(KEY_NAME).remove(KEY_INSTALLED_AT)
-                .remove(KEY_SOURCE_SHA).remove(KEY_NON_PINYIN_RATIO).remove(KEY_TONED)
+                .remove(KEY_SOURCE_SHA).remove(KEY_COMPILE_KEY).remove(KEY_CACHE_DIRTY).remove(KEY_NON_PINYIN_RATIO).remove(KEY_TONED)
                 .remove(KEY_TAB_LINES).remove(KEY_T9_SKIPPED)
                 .remove(KEY_FUZZY_COMPILING_MASK).remove(KEY_FUZZY_PENDING_MASK)
         } else {
@@ -1685,8 +1803,11 @@ object BaseDictInstaller {
             .putBoolean(KEY_INSTALLING, false).apply()
     }
 
-    private fun status(stage: String): JSONObject =
-        JSONObject().put("type", "dictBaseProgress").put("stage", stage)
+    private fun status(stage: String): JSONObject {
+        stageSnapshot = stage
+        return JSONObject().put("type", "dictBaseProgress").put("stage", stage)
+            .putOpt("operation", operationKind)
+    }
 
     /** 成功文案带实际生效词库（用户裁定：文案要反馈实际生效的词库）：
      *  push 时 prefs 已落新库，按 mode/name 组装；异常兜底回笼统文案。 */
