@@ -391,6 +391,14 @@ fun readAssociation(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_ASSOCIATION, false)
 
+/** 联想让位态退格清联想（issue #46）：默认关——退格照旧删字符，
+ *  开启后退格在联想让位态等效 ×（清联想恢复工具栏）。 */
+const val PREF_BACKSPACE_ASSOC = "backspace_assoc_on"
+
+fun readBackspaceAssoc(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_BACKSPACE_ASSOC, false)
+
 /** 日期时间快捷候选开关（issue #22，验收反馈）：默认开——date/time/
  *  week 动态候选不是人人都用，设置里可整体关掉。 */
 const val PREF_DYNAMIC_DATETIME = "dynamic_datetime_on"
@@ -715,6 +723,7 @@ class SettingsBridge(
                 }
             })
             .put("associationOn", readAssociation(context))
+            .put("backspaceAssocOn", readBackspaceAssoc(context))
             .put("dynamicDateTimeOn", readDynamicDateTime(context))
             .put("keySound", readKeySoundEnabled(context))
             .put("keySoundStyle", keySoundStyle(context))
@@ -1579,6 +1588,17 @@ class SettingsBridge(
     fun setAssociation(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_ASSOCIATION, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 联想让位态退格清联想（issue #46）：落盘 + 广播重推 hello。 */
+    @JavascriptInterface
+    fun setBackspaceAssoc(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_BACKSPACE_ASSOC, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

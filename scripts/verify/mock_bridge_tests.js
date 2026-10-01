@@ -6311,6 +6311,39 @@ test('assoc click routes through the real bridge (FeelimeNative)', {since: '3.33
     assert(!world.$('mic').hidden, 'mic restored after assoc pick');
 });
 
+test('assoc backspace: off by default, on = clears assoc like × (issue #46)', {since: '3.73.18'}, () => {
+    // 默认关：联想让位态退格照旧删字符（原生 backspace）。
+    const w1 = fresh({ mode: 'pinyin' });
+    w1.hello({});
+    w1.engineState({ phase: 'READY', mode: 'pinyin', revision: 1, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    w1.assoc(['的', '是']);
+    const bs1 = w1.document.querySelector('[data-role="backspace"]');
+    w1.tap(bs1);
+    const bsCalls1 = w1.native.of('backspace');
+    equal(bsCalls1.length, 1, 'default off: backspace reaches the native bridge');
+    equal(w1.$('candidates').children.length, 2, 'default off: assoc words stay');
+
+    // 开启：联想让位态退格 = 清联想恢复工具栏，不发原生删除。
+    const w2 = fresh({ mode: 'pinyin' });
+    w2.hello({ backspaceAssocOn: true });
+    w2.engineState({ phase: 'READY', mode: 'pinyin', revision: 1, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    w2.assoc(['的', '是']);
+    const bs2 = w2.document.querySelector('[data-role="backspace"]');
+    w2.tap(bs2);
+    equal(w2.$('candidates').children.length, 0, 'on: assoc words cleared');
+    assert(!w2.$('setupButton').hidden, 'on: toolbar restored');
+    assert(w2.$('composeClear').hidden, 'on: × retires with the yield');
+    equal(w2.native.of('backspace').length, 0, 'on: no native delete fired');
+
+    // 组合中不拦：退格是删拼音字母的常规通道。
+    w2.engineState({ phase: 'COMPOSING', mode: 'pinyin', revision: 2, composing: 'ni', rawInput: 'ni',
+        candidates: [{ text: '你' }], hasNextPage: false });
+    w2.tap(w2.document.querySelector('[data-role="backspace"]'));
+    equal(w2.native.of('backspace').length, 1, 'composing: backspace deletes as usual');
+});
+
 test('mode switch clears assoc words', {since: '3.33.0'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.engineState({ phase: 'READY', mode: 'pinyin', revision: 3, composing: '', rawInput: '',

@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.17';
+    const KEYBOARD_VERSION = '3.73.18';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1345,6 +1345,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 中文联想（docs/design/association.md），hello/onAssoc 驱动。
             this.associationOn = false;
             this.assocWords = [];
+            // 联想让位态退格清联想（issue #46）：hello 回读，默认关。
+            this.backspaceAssocOn = false;
             // 按键反馈开关（issue #5 问题 2）：hello 回读（旧 APK 的 hello
             // 没有这两个字段，保持默认关）。
             this.keySound = false;
@@ -1789,6 +1791,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return action(this.lastRevision);
         }
 
+        /** 退格键帽统一出口（issue #46）：开关开启且处于联想让位态
+         *  （无组合）时，退格等效 × ——清联想恢复工具栏、不动编辑框；
+         *  其余情况照旧走原生删除（回执透传给 #34 回滑恢复）。 */
+        backspaceAction() {
+            if (this.backspaceAssocOn && this.assocWords.length && !this.composing) {
+                this.assocWords = [];
+                this.renderCandidates(this.lastEngineState || {});
+                return true;
+            }
+            return this.call(() => Native.backspace(this.token));
+        }
+
         isChineseMode() {
             return this.mode === 'pinyin' || this.mode === 'double-pinyin' ||
                 this.mode === 't9' || this.mode === 'stroke';
@@ -2042,7 +2056,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 } else {
                     [...config.keys].forEach(key => row.append(this.letterKey(key)));
                 }
-                if (config.backspace) row.append(this.specialKey('backspace', ICONS.backspace, () => this.call(() => Native.backspace(this.token)), 'kb-wide-1_4 kb-special', 'repeat'));
+                if (config.backspace) row.append(this.specialKey('backspace', ICONS.backspace, () => this.backspaceAction(), 'kb-wide-1_4 kb-special', 'repeat'));
                 layer.append(row);
             });
             // Bottom row:
@@ -2122,7 +2136,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * emoji，底行 123(2/3) + mic 空格(5/3) + 中英(2/3) + 确认。 */
         t9GridChrome(grid, place) {
             place(this.specialKey('backspace', ICONS.backspace,
-                () => this.call(() => Native.backspace(this.token)),
+                () => this.backspaceAction(),
                 'kb-special', 'repeat'), 1, 5);
             const clearKey = this.specialKey('t9clear', t("重输"),
                 () => this.clearComposing(), 'kb-special');
@@ -2402,7 +2416,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (button._cancelRepeat) button._cancelRepeat();
                 return;
             }
-            this.call(() => Native.backspace(this.token));
+            this.backspaceAction();
         }
 
         /** 底行：符号（符号面板）/ 123（九宫格）/ 空格（候选条有手写
@@ -4626,7 +4640,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 push(digit('2'));
                 push(digit('3'));
                 push(this.specialKey('backspace', ICONS.backspace,
-                    () => this.call(() => Native.backspace(this.token)),
+                    () => this.backspaceAction(),
                     'num-fn kb-special', 'repeat'));
                 push(digit('4'));
                 push(digit('5'));
@@ -5042,7 +5056,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         // 不指定就没有——不再硬编码右列。
                         if (this.customCellIsBackspace(cell)) {
                             strip.append(this.specialKey('backspace', ICONS.backspace,
-                                () => this.call(() => Native.backspace(this.token)),
+                                () => this.backspaceAction(),
                                 'kb-special sym-custom-key', 'repeat'));
                             return;
                         }
@@ -5111,7 +5125,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     lastRow.append(blank);
                 }
                 lastRow.append(this.specialKey('backspace', ICONS.backspace,
-                    () => this.call(() => Native.backspace(this.token)),
+                    () => this.backspaceAction(),
                     'kb-special', 'repeat'));
                 wrap.append(lastRow);
                 grid.append(wrap);
@@ -5139,7 +5153,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 });
                 if (r === 2) {
                     row.append(this.specialKey('backspace', ICONS.backspace,
-                        () => this.call(() => Native.backspace(this.token)),
+                        () => this.backspaceAction(),
                         'kb-special', 'repeat'));
                 }
                 grid.append(row);
@@ -9324,6 +9338,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyToolbarLayout();
             this.associationOn = !!payload.associationOn;
             if (!this.associationOn) this.assocWords = [];
+            // 联想让位态退格清联想（issue #46）。
+            this.backspaceAssocOn = !!payload.backspaceAssocOn;
             // 日期时间候选开关：native 默认开，旧 APK 的 hello 不带字段
             // 也按开处理（!== false 容错）。
             this.dynamicDateTimeOn = payload.dynamicDateTimeOn !== false;
@@ -10039,6 +10055,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             toolbarEdit: keyboard.toolbarEdit,
             toolbarLeft: keyboard.toolbarLeft.slice(),
             toolbarRight: keyboard.toolbarRight.slice(),
+            // #46 联想让位态退格清联想开关（设置页写入，hello 回读）。
+            backspaceAssocOn: keyboard.backspaceAssocOn,
             // Automation gates drive setComposition (T9 音节条引擎验证等)；
             // DevTools 已是调试构建的完整控制面，token 不放大攻击面。
             token: keyboard.token,

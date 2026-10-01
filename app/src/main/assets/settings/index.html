@@ -335,6 +335,11 @@
         <span class="row-label"><span data-i18n="input.assoc.enable">选词后联想下一个词</span><small data-i18n="input.assoc.hint">上屏后在候选条给出高频接续词，点击可连续联想；只在全拼/双拼生效。</small></span>
         <input type="checkbox" id="associationOn" data-keywords="联想 接续词 下一个词 association" class="toggle">
       </label>
+      <!-- #46 联想让位态退格=清联想恢复工具栏（同右上角 ×）。 -->
+      <label class="row switch-row no-rule" for="backspaceAssocOn">
+        <span class="row-label"><span data-i18n="input.assoc.backspaceClear">联想时退格清除联想</span><small data-i18n="input.assoc.backspaceClearHint">联想候选显示时按退格先清联想、恢复工具栏（不删字）；关闭则退格照旧删字。</small></span>
+        <input type="checkbox" id="backspaceAssocOn" data-keywords="退格 删除 联想 backspace 关闭联想" class="toggle">
+      </label>
     </section>
 
     <section class="card" id="sec-datetime" aria-labelledby="datetimeTitle">

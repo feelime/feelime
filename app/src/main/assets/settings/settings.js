@@ -152,6 +152,8 @@ const I18N = {
         "input.assoc.badge": "输入",
         "input.assoc.enable": "选词后联想下一个词",
         "input.assoc.hint": "上屏后在候选条给出高频接续词，点击可连续联想；只在全拼/双拼生效。",
+        "input.assoc.backspaceClear": "联想时退格清除联想",
+        "input.assoc.backspaceClearHint": "联想候选显示时按退格先清联想、恢复工具栏（不删字）；关闭则退格照旧删字。",
         "input.datetime.title": "日期时间候选",
         "input.datetime.badge": "输入",
         "input.datetime.enable": "打 date/time/week 出日期时间",
@@ -751,6 +753,8 @@ const I18N = {
         "input.assoc.badge": "Input",
         "input.assoc.enable": "Suggest the next word after a commit",
         "input.assoc.hint": "Shows frequent followers in the candidates bar after a word commits; tap to keep the chain going. Full/Double Pinyin only.",
+        "input.assoc.backspaceClear": "Backspace dismisses associations",
+        "input.assoc.backspaceClearHint": "When association candidates are showing, backspace clears them and restores the toolbar (nothing deleted); off = backspace deletes as usual.",
         "input.datetime.title": "Date & time candidates",
         "input.datetime.badge": "Input",
         "input.datetime.enable": "Type date/time/week for quick stamps",
@@ -1841,6 +1845,9 @@ function renderDoublePinyin(state) {
     });
     if (document.activeElement !== $("associationOn")) {
         $("associationOn").checked = !!state.associationOn;
+    }
+    if (document.activeElement !== $("backspaceAssocOn")) {
+        $("backspaceAssocOn").checked = !!state.backspaceAssocOn;
     }
     if (document.activeElement !== $("dynamicDateTimeOn")) {
         $("dynamicDateTimeOn").checked = state.dynamicDateTimeOn !== false;
@@ -3286,6 +3293,7 @@ $("btnCustomTemplate").addEventListener("click", () => {
 $("btnCheckUpdate").addEventListener("click", () => call("checkUpdate", $("updateSource").value));
 $("autoUpdateCheck").addEventListener("change", event => call("setAutoUpdateCheck", event.target.checked));
 $("associationOn").addEventListener("change", event => call("setAssociation", event.target.checked));
+$("backspaceAssocOn").addEventListener("change", event => call("setBackspaceAssoc", event.target.checked));
 $("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateTime", event.target.checked));
 $("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));
 
