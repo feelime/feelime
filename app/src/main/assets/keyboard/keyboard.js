@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.15';
+    const KEYBOARD_VERSION = '3.73.20';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1251,9 +1251,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.inkOrigin = null;
             this.inkMoved = false;
             this.inkReqId = 0;
+            this.inkStaleAfter = 0;
             this.inkCandidates = [];
             this.inkTimer = null;
             this.inkHoldTimer = null;
+            // 手写让位态标记（#39-6 复发修复）：写字会话（笔迹进行中/
+            // 已有笔迹/有候选）为 true——updateComposing 的收起键通用
+            // 可见性行据此复核，防把让位翻回去。
+            this.inkBarActive = false;
             // 书写区几何对账的缓存（inkSyncViewport）与停顿触发延时档位
             // （0=快 300ms / 1=标准 600ms / 2=慢 1200ms，hello 下发）。
             this._inkViewport = '';
@@ -1340,6 +1345,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 中文联想（docs/design/association.md），hello/onAssoc 驱动。
             this.associationOn = false;
             this.assocWords = [];
+            // 联想让位态退格清联想（issue #46）：hello 回读，默认关。
+            this.backspaceAssocOn = false;
+            // 万象 / 键功能引导（issue #45）：hello 回读，默认关。
+            this.wxSlashOn = false;
             // 按键反馈开关（issue #5 问题 2）：hello 回读（旧 APK 的 hello
             // 没有这两个字段，保持默认关）。
             this.keySound = false;
@@ -1688,8 +1697,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.t9CloseSymbolBar();
                     return;
                 }
-                // 手写候选态的 × = 清笔迹+候选，工具栏恢复（无组合可清）。
-                if (this.mode === 'handwriting' && (this.inkCandidates || []).length) {
+                // 手写候选态/写字中的 × = 清笔迹+候选，工具栏恢复
+                // （无组合可清）。写字中也成立——× 是让位态行内唯一
+                // 出口（#39-6 复发修复）。
+                if (this.mode === 'handwriting' &&
+                    ((this.inkCandidates || []).length || (this.inkStrokes || []).length)) {
                     this.inkReset();
                     return;
                 }
@@ -1781,6 +1793,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return action(this.lastRevision);
         }
 
+        /** 退格键帽统一出口（issue #46）：开关开启且处于联想让位态
+         *  （无组合）时，退格等效 × ——清联想恢复工具栏、不动编辑框；
+         *  其余情况照旧走原生删除（回执透传给 #34 回滑恢复）。 */
+        backspaceAction() {
+            if (this.backspaceAssocOn && this.assocWords.length && !this.composing) {
+                this.assocWords = [];
+                this.renderCandidates(this.lastEngineState || {});
+                return true;
+            }
+            return this.call(() => Native.backspace(this.token));
+        }
+
         isChineseMode() {
             return this.mode === 'pinyin' || this.mode === 'double-pinyin' ||
                 this.mode === 't9' || this.mode === 'stroke';
@@ -1861,6 +1885,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          */
         sendSymbol(text) {
             if (!text) return;
+            // #45 万象功能引导（/sj 时间 /ri 日期）：默认 '/' 直发上屏，
+            // 绕过引擎——万象方案的 recognizer 收不到键，功能引导永远
+            // 不触发。开关开启且在拼音/双拼（组合中或空闲）时，'/' 改走
+            // 按键通道进 rime；形码/手写/英文等其它模式不受影响。
+            if (text === '/' && this.wxSlashOn &&
+                (this.mode === 'pinyin' || this.mode === 'double-pinyin')) {
+                this.call(() => Native.key('/', this.token));
+                if (this.shift) { this.shift = false; this.updateLabels(); }
+                return;
+            }
             // Literal insertion - no case shifting: the 拼音/希腊 categories
             // contain letters, and leftover Shift must not turn ā into Ā.
             this.call(() => Native.commitText(text, this.token));
@@ -2034,7 +2068,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 } else {
                     [...config.keys].forEach(key => row.append(this.letterKey(key)));
                 }
-                if (config.backspace) row.append(this.specialKey('backspace', ICONS.backspace, () => this.call(() => Native.backspace(this.token)), 'kb-wide-1_4 kb-special', 'repeat'));
+                if (config.backspace) row.append(this.specialKey('backspace', ICONS.backspace, () => this.backspaceAction(), 'kb-wide-1_4 kb-special', 'repeat'));
                 layer.append(row);
             });
             // Bottom row:
@@ -2114,7 +2148,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * emoji，底行 123(2/3) + mic 空格(5/3) + 中英(2/3) + 确认。 */
         t9GridChrome(grid, place) {
             place(this.specialKey('backspace', ICONS.backspace,
-                () => this.call(() => Native.backspace(this.token)),
+                () => this.backspaceAction(),
                 'kb-special', 'repeat'), 1, 5);
             const clearKey = this.specialKey('t9clear', t("重输"),
                 () => this.clearComposing(), 'kb-special');
@@ -2394,7 +2428,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (button._cancelRepeat) button._cancelRepeat();
                 return;
             }
-            this.call(() => Native.backspace(this.token));
+            this.backspaceAction();
         }
 
         /** 底行：符号（符号面板）/ 123（九宫格）/ 空格（候选条有手写
@@ -2535,6 +2569,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.inkMoved = false;
                 this.inkCurrent = [this.inkOrigin];
                 // 书写中撤未决识别：下一笔是新的字形，迟到候选会误导。
+                // 已在途的识别结果记 staleAfter 作废（不动 reqId 计数
+                // 语义——它锚定「每次请求 +1」），已显示的旧候选撤下：
+                // 写字期间行内只剩「手写」标识与 ×，旧候选词不再可点
+                // （短笔画窜上去误触旧词=误上屏）。
+                this.inkStaleAfter = this.inkReqId;
+                if ((this.inkCandidates || []).length) {
+                    this.inkCandidates = [];
+                    this.renderCandidates(this.lastEngineState || {});
+                }
+                // 落笔即让位（#39-6 复发修复）：不等识别回来，写字全程
+                // 工具栏整行让位、收起键隐藏，短笔画无按钮可触发。
+                this.applyInkBarChrome();
                 clearTimeout(this.inkTimer);
                 this.inkTimer = null;
                 clearTimeout(this.inkHoldTimer);
@@ -2600,6 +2646,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 残笔丢弃：不完整的一笔不进识别，也不撤销未决请求。
                 this.inkCurrent = null;
                 this.inkPaint();
+                // 中断后若既无笔迹也无候选，对账恢复工具栏（让位只跟
+                // 书写会话走，#39-6 复发修复）。
+                this.applyInkBarChrome();
             }, { passive: false });
         }
 
@@ -2729,6 +2778,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const tag = document.getElementById('inkTag');
                 if (tag) tag.hidden = true;
                 this.setToolbarYield(false);
+                this.inkBarActive = false;
             }
         }
 
@@ -2741,14 +2791,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** 手写候选态（wetype 形态，issue #28 round-2）：有识别候选=工具
-         * 栏整行让位（含 mic，仅留 × 与收起键），「手写」标识 + 候选横排
-         * 占满整行；无候选/清空后=工具栏原样。语音进行中不让位——mic 是
-         * stop 入口必须存活（与联想让位的守卫同一口径）。round-3：点选
-         * 上屏后的联想词同一条 bar 接手，让位语义与拼音态一致（× 由
-         * composeClear 的联想分支恢复），但「手写」标识只跟识别候选走。 */
+         * 栏整行让位（含 mic，仅留 ×），「手写」标识 + 候选横排占满整行；
+         * 无候选/清空后=工具栏原样。语音进行中不让位——mic 是 stop 入口
+         * 必须存活（与联想让位的守卫同一口径）。round-3：点选上屏后的
+         * 联想词同一条 bar 接手，让位语义与拼音态一致（× 由 composeClear
+         * 的联想分支恢复），但「手写」标识只跟识别候选走。
+         * #39-6 后续（复发）：让位提前到落笔——写字全程（笔迹进行中/
+         * 已有笔迹/有候选）整行让位。原实现等「候选回来」才让位，写字
+         * 与识别在途的窗口里按钮全在，短笔画（点/顿笔，位移小、约 0.1s
+         * 抬笔）与正常点按不可分，起笔稍高即误触（24px 守卫天然漏过）。
+         * 收起键一并隐藏（用户裁定：写字中行内只留标识与 ×；收键盘走
+         * 系统返回键/点输入框外）。 */
         applyInkBarChrome() {
             const active = this.mode === 'handwriting' &&
-                (this.inkCandidates || []).length > 0;
+                ((this.inkCandidates || []).length > 0 ||
+                 (this.inkStrokes || []).length > 0 ||
+                 this.inkTouchId !== null);
+            this.inkBarActive = active;
             const assocOnly = this.mode === 'handwriting' && !active &&
                 (this.assocWords || []).length > 0;
             const tag = document.getElementById('inkTag');
@@ -2756,11 +2815,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.voiceState === 'idle') {
                 this.setToolbarYield(active || assocOnly);
                 // mic 虽在让位清单里，但 updateComposing 的通用可见性行
-                // （非组合=可见）先于本调用执行，这里显式压回。
+                // （非组合=可见）先于本调用执行，这里显式压回。收起键双
+                // 向显式设置（恢复路径不经 updateComposing 时也得翻回）
+                // ——联想让位（assocOnly）不藏收起键，与拼音联想同口径。
                 if (active) {
                     const mic = document.getElementById('mic');
                     if (mic) mic.hidden = true;
                 }
+                const hideBtn = document.getElementById('hide');
+                if (hideBtn) hideBtn.hidden = active;
             }
             return active;
         }
@@ -2785,7 +2848,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onInkCandidates(payload) {
             if (this.mode !== 'handwriting') return;
             const reqId = Number(payload && payload.reqId);
-            if (reqId !== this.inkReqId) return;
+            // 落笔即作废在途结果（inkStaleAfter）：旧字形的迟到候选不得
+            // 在新笔画进行中复活（#39-6 复发修复配套）。
+            if (reqId !== this.inkReqId || reqId <= (this.inkStaleAfter || 0)) return;
             const error = payload && payload.error;
             if (error === 'unavailable') {
                 this.showToast(t("手写模型未就绪"));
@@ -4587,7 +4652,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 push(digit('2'));
                 push(digit('3'));
                 push(this.specialKey('backspace', ICONS.backspace,
-                    () => this.call(() => Native.backspace(this.token)),
+                    () => this.backspaceAction(),
                     'num-fn kb-special', 'repeat'));
                 push(digit('4'));
                 push(digit('5'));
@@ -5003,7 +5068,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         // 不指定就没有——不再硬编码右列。
                         if (this.customCellIsBackspace(cell)) {
                             strip.append(this.specialKey('backspace', ICONS.backspace,
-                                () => this.call(() => Native.backspace(this.token)),
+                                () => this.backspaceAction(),
                                 'kb-special sym-custom-key', 'repeat'));
                             return;
                         }
@@ -5072,7 +5137,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     lastRow.append(blank);
                 }
                 lastRow.append(this.specialKey('backspace', ICONS.backspace,
-                    () => this.call(() => Native.backspace(this.token)),
+                    () => this.backspaceAction(),
                     'kb-special', 'repeat'));
                 wrap.append(lastRow);
                 grid.append(wrap);
@@ -5100,7 +5165,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 });
                 if (r === 2) {
                     row.append(this.specialKey('backspace', ICONS.backspace,
-                        () => this.call(() => Native.backspace(this.token)),
+                        () => this.backspaceAction(),
                         'kb-special', 'repeat'));
                 }
                 grid.append(row);
@@ -5944,18 +6009,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** 候选条当前宽度还放得下几颗工具（单手模式键区让位后 bar 变窄，
-         *  容量自动变小）。MIN_CAND 给候选词留的最小宽度必须收窄：96px
-         *  时 352px 宽的 ace 真机 cap=4，比默认布局的 5 颗还少，新增一律
-         *  被拒（真机验收抓到）；候选区本身可横向滚动兜底。布局塌陷时
-         *  （宽度 0）放宽到 8，不挡编辑。 */
+         *  容量自动变小）。候选词与工具栏**互斥**（让位机制）：候选显示
+         *  时整行归候选、工具全组隐藏；空闲时整行归工具——不存在「给
+         *  候选留底」的预算，只扣 F 与收起键（issue #47 复盘修正）。
+         *  布局塌陷时（宽度 0）放宽到 8，不挡编辑。 */
         toolbarCapacity() {
             const bar = document.getElementById('candidateBar');
             const setup = document.getElementById('setupButton');
             const hide = document.getElementById('hide');
             if (!bar || !setup || !hide || !bar.clientWidth) return 8;
-            const BTN = 32, GAP = 5, MIN_CAND = 24;
+            const BTN = 32, GAP = 5;
             const avail = bar.clientWidth - setup.offsetWidth - hide.offsetWidth
-                - MIN_CAND - GAP * 2;
+                - GAP * 2;
             return Math.max(1, Math.floor(avail / (BTN + GAP)));
         }
 
@@ -8302,8 +8367,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Compose controls exist only while there is something to clear.
             // A live voice session hides them too: the × must not clear the
             // ASR partial that shares the editor span .
+            // 手写让位态（#39-6 复发修复）× 是行内唯一出口，通用规则
+            // 不得把它翻没（与收起键同款复核）。
             const voiceBusy = recording;
-            document.getElementById('composeClear').hidden = !this.composing || voiceBusy;
+            document.getElementById('composeClear').hidden =
+                (!this.composing &&
+                    !(this.mode === 'handwriting' && !!this.inkBarActive)) || voiceBusy;
             // T9 符号行 chrome 态：空闲刷新（onNativeState 回声、空引擎事
             // 件）不得把工具栏翻回来——× 是唯一取消入口（codex round-2
             // P2-4）。组合/语音中的可见性仍由上面的通用规则管。
@@ -8327,7 +8396,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // While composing the right side carries exactly two
             // buttons (× and ˅). The keyboard-dismiss chevron looks identical
             // to the expand arrow - hide it until the composition ends.
-            document.getElementById('hide').hidden = this.composing;
+            // 手写让位态（#39-6 复发修复）同样藏收起键：applyInkBarChrome
+            // 先行设置，此处按 inkBarActive 复核，防本行把让位翻回去。
+            document.getElementById('hide').hidden = this.composing ||
+                (this.mode === 'handwriting' && !!this.inkBarActive);
             // Collapse overlays only on the idle→composing transition, so a
             // stream of unrelated native events cannot close an open menu.
             // Typing INTO a panel input (phrase add/edit) must
@@ -9278,6 +9350,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyToolbarLayout();
             this.associationOn = !!payload.associationOn;
             if (!this.associationOn) this.assocWords = [];
+            // 联想让位态退格清联想（issue #46）。
+            this.backspaceAssocOn = !!payload.backspaceAssocOn;
+            // 万象 / 键功能引导（issue #45）。
+            this.wxSlashOn = !!payload.wxSlashOn;
             // 日期时间候选开关：native 默认开，旧 APK 的 hello 不带字段
             // 也按开处理（!== false 容错）。
             this.dynamicDateTimeOn = payload.dynamicDateTimeOn !== false;
@@ -9993,6 +10069,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             toolbarEdit: keyboard.toolbarEdit,
             toolbarLeft: keyboard.toolbarLeft.slice(),
             toolbarRight: keyboard.toolbarRight.slice(),
+            // #46 联想让位态退格清联想开关（设置页写入，hello 回读）。
+            backspaceAssocOn: keyboard.backspaceAssocOn,
+            // #45 万象 / 键功能引导开关。
+            wxSlashOn: keyboard.wxSlashOn,
             // Automation gates drive setComposition (T9 音节条引擎验证等)；
             // DevTools 已是调试构建的完整控制面，token 不放大攻击面。
             token: keyboard.token,
