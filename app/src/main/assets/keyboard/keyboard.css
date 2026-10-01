@@ -404,21 +404,6 @@ body.toolbar-edit #numPadLayer { display: none; }
 /* 候选条编辑态：可编辑 icon 右上角 × 徽章（点按移除）；非编辑态隐藏
  * 且不参与按钮 flex 布局。 */
 .tool-x { display: none; }
-/* 编辑态候选区 ghost 占位：这行非编辑态要显示候选词（容量按给候选
- * 留底计算），空置时用户看到的是「无主空白」，误以为还能塞按钮
- * （issue #47）。联想态候选非空时 :empty 不成立，自动不显示。 */
-body.toolbar-edit #candidates:empty::before {
-    content: "候选词区";
-    flex: none;
-    margin: auto;
-    padding: 0 8px;
-    border: 1px dashed hsl(0 0% 60% / 0.45);
-    border-radius: 6px;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 24px;
-    white-space: nowrap;
-}
 body.toolbar-edit #candidateBar .tool[data-tool] {
     position: relative;
     /* × 伸出按钮顶边 5px，左组紧邻候选区（DOM 靠后=绘制在上）时会被

@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.19';
+    const KEYBOARD_VERSION = '3.73.20';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -5816,7 +5816,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!el || !el.classList.contains('editor-pool')) return;
             if (this.toolbarLeft.length + this.toolbarRight.length
                 >= this.toolbarCapacity()) {
-                this.showToast(t("工具栏空间不够（中间区域要留给候选词）"));
+                this.showToast(t("工具栏空间不够"));
                 return;
             }
             el.classList.remove('editor-pool');
@@ -6009,18 +6009,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** 候选条当前宽度还放得下几颗工具（单手模式键区让位后 bar 变窄，
-         *  容量自动变小）。MIN_CAND 给候选词留的最小宽度必须收窄：96px
-         *  时 352px 宽的 ace 真机 cap=4，比默认布局的 5 颗还少，新增一律
-         *  被拒（真机验收抓到）；候选区本身可横向滚动兜底。布局塌陷时
-         *  （宽度 0）放宽到 8，不挡编辑。 */
+         *  容量自动变小）。候选词与工具栏**互斥**（让位机制）：候选显示
+         *  时整行归候选、工具全组隐藏；空闲时整行归工具——不存在「给
+         *  候选留底」的预算，只扣 F 与收起键（issue #47 复盘修正）。
+         *  布局塌陷时（宽度 0）放宽到 8，不挡编辑。 */
         toolbarCapacity() {
             const bar = document.getElementById('candidateBar');
             const setup = document.getElementById('setupButton');
             const hide = document.getElementById('hide');
             if (!bar || !setup || !hide || !bar.clientWidth) return 8;
-            const BTN = 32, GAP = 5, MIN_CAND = 24;
+            const BTN = 32, GAP = 5;
             const avail = bar.clientWidth - setup.offsetWidth - hide.offsetWidth
-                - MIN_CAND - GAP * 2;
+                - GAP * 2;
             return Math.max(1, Math.floor(avail / (BTN + GAP)));
         }
 

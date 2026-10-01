@@ -3672,7 +3672,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.tap(w.$('toolbarEditCancel'));
 });
 
-test('toolbar edit: capacity rejection toast explains the candidate zone (issue #47)', {since: '3.73.17'}, () => {
+test('toolbar edit: capacity rejection toast fires at the real cap (issue #47)', {since: '3.73.17'}, () => {
     const w = fresh();
     w.hello({});
     const kb = () => w.context.window.Feelime.debugState();
@@ -3681,7 +3681,8 @@ test('toolbar edit: capacity rejection toast explains the candidate zone (issue 
     w.touchUp(w.$('mic'));
     equal(kb().toolbarEdit, true, 'edit mode on');
     // fake DOM 里 clientWidth=0 → toolbarCapacity 放宽到 8：默认 5 颗，
-    // 仓库点 3 颗到 8，第 4 颗触顶被拒。
+    // 仓库点 3 颗到 8，第 4 颗触顶被拒。候选词与工具栏互斥（让位），
+    // 容量只扣 F 与收起键——不存在「给候选留底」的扣减（#47 复盘）。
     ['toolTheme', 'toolVibrate', 'toolSound'].forEach(id => {
         w.touchDown(w.$(id));
         w.touchUp(w.$(id));
@@ -3692,8 +3693,8 @@ test('toolbar edit: capacity rejection toast explains the candidate zone (issue 
     equal(kb().toolbarLeft.length + kb().toolbarRight.length, 8, 'rejected add stays at 8');
     equal(w.$('toolAssoc').classList.contains('editor-pool'), true,
         'rejected tool stays in the pool');
-    equal(w.$('toast').textContent.includes('候选词'), true,
-        'rejection toast names the candidate zone (the blank users mistake for free space)');
+    equal(w.$('toast').textContent.includes('工具栏空间不够'), true,
+        'rejection toast fires at the physical cap');
 });
 
 test('toolbar audit: a lost tool is forced back into the pool (issue #15)', {since: '3.59.0'}, () => {
