@@ -3672,6 +3672,30 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.tap(w.$('toolbarEditCancel'));
 });
 
+test('toolbar edit: capacity rejection toast explains the candidate zone (issue #47)', {since: '3.73.17'}, () => {
+    const w = fresh();
+    w.hello({});
+    const kb = () => w.context.window.Feelime.debugState();
+    w.touchDown(w.$('mic'));
+    w.clock.advance(400);
+    w.touchUp(w.$('mic'));
+    equal(kb().toolbarEdit, true, 'edit mode on');
+    // fake DOM 里 clientWidth=0 → toolbarCapacity 放宽到 8：默认 5 颗，
+    // 仓库点 3 颗到 8，第 4 颗触顶被拒。
+    ['toolTheme', 'toolVibrate', 'toolSound'].forEach(id => {
+        w.touchDown(w.$(id));
+        w.touchUp(w.$(id));
+    });
+    equal(kb().toolbarLeft.length + kb().toolbarRight.length, 8, 'filled to capacity');
+    w.touchDown(w.$('toolAssoc'));
+    w.touchUp(w.$('toolAssoc'));
+    equal(kb().toolbarLeft.length + kb().toolbarRight.length, 8, 'rejected add stays at 8');
+    equal(w.$('toolAssoc').classList.contains('editor-pool'), true,
+        'rejected tool stays in the pool');
+    equal(w.$('toast').textContent.includes('候选词'), true,
+        'rejection toast names the candidate zone (the blank users mistake for free space)');
+});
+
 test('toolbar audit: a lost tool is forced back into the pool (issue #15)', {since: '3.59.0'}, () => {
     const w = fresh();
     w.hello({});
