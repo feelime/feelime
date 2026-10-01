@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.15';
+    const KEYBOARD_VERSION = '3.73.16';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1251,9 +1251,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.inkOrigin = null;
             this.inkMoved = false;
             this.inkReqId = 0;
+            this.inkStaleAfter = 0;
             this.inkCandidates = [];
             this.inkTimer = null;
             this.inkHoldTimer = null;
+            // 手写让位态标记（#39-6 复发修复）：写字会话（笔迹进行中/
+            // 已有笔迹/有候选）为 true——updateComposing 的收起键通用
+            // 可见性行据此复核，防把让位翻回去。
+            this.inkBarActive = false;
             // 书写区几何对账的缓存（inkSyncViewport）与停顿触发延时档位
             // （0=快 300ms / 1=标准 600ms / 2=慢 1200ms，hello 下发）。
             this._inkViewport = '';
@@ -1688,8 +1693,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.t9CloseSymbolBar();
                     return;
                 }
-                // 手写候选态的 × = 清笔迹+候选，工具栏恢复（无组合可清）。
-                if (this.mode === 'handwriting' && (this.inkCandidates || []).length) {
+                // 手写候选态/写字中的 × = 清笔迹+候选，工具栏恢复
+                // （无组合可清）。写字中也成立——× 是让位态行内唯一
+                // 出口（#39-6 复发修复）。
+                if (this.mode === 'handwriting' &&
+                    ((this.inkCandidates || []).length || (this.inkStrokes || []).length)) {
                     this.inkReset();
                     return;
                 }
@@ -2535,6 +2543,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.inkMoved = false;
                 this.inkCurrent = [this.inkOrigin];
                 // 书写中撤未决识别：下一笔是新的字形，迟到候选会误导。
+                // 已在途的识别结果记 staleAfter 作废（不动 reqId 计数
+                // 语义——它锚定「每次请求 +1」），已显示的旧候选撤下：
+                // 写字期间行内只剩「手写」标识与 ×，旧候选词不再可点
+                // （短笔画窜上去误触旧词=误上屏）。
+                this.inkStaleAfter = this.inkReqId;
+                if ((this.inkCandidates || []).length) {
+                    this.inkCandidates = [];
+                    this.renderCandidates(this.lastEngineState || {});
+                }
+                // 落笔即让位（#39-6 复发修复）：不等识别回来，写字全程
+                // 工具栏整行让位、收起键隐藏，短笔画无按钮可触发。
+                this.applyInkBarChrome();
                 clearTimeout(this.inkTimer);
                 this.inkTimer = null;
                 clearTimeout(this.inkHoldTimer);
@@ -2600,6 +2620,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 残笔丢弃：不完整的一笔不进识别，也不撤销未决请求。
                 this.inkCurrent = null;
                 this.inkPaint();
+                // 中断后若既无笔迹也无候选，对账恢复工具栏（让位只跟
+                // 书写会话走，#39-6 复发修复）。
+                this.applyInkBarChrome();
             }, { passive: false });
         }
 
@@ -2729,6 +2752,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const tag = document.getElementById('inkTag');
                 if (tag) tag.hidden = true;
                 this.setToolbarYield(false);
+                this.inkBarActive = false;
             }
         }
 
@@ -2741,14 +2765,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** 手写候选态（wetype 形态，issue #28 round-2）：有识别候选=工具
-         * 栏整行让位（含 mic，仅留 × 与收起键），「手写」标识 + 候选横排
-         * 占满整行；无候选/清空后=工具栏原样。语音进行中不让位——mic 是
-         * stop 入口必须存活（与联想让位的守卫同一口径）。round-3：点选
-         * 上屏后的联想词同一条 bar 接手，让位语义与拼音态一致（× 由
-         * composeClear 的联想分支恢复），但「手写」标识只跟识别候选走。 */
+         * 栏整行让位（含 mic，仅留 ×），「手写」标识 + 候选横排占满整行；
+         * 无候选/清空后=工具栏原样。语音进行中不让位——mic 是 stop 入口
+         * 必须存活（与联想让位的守卫同一口径）。round-3：点选上屏后的
+         * 联想词同一条 bar 接手，让位语义与拼音态一致（× 由 composeClear
+         * 的联想分支恢复），但「手写」标识只跟识别候选走。
+         * #39-6 后续（复发）：让位提前到落笔——写字全程（笔迹进行中/
+         * 已有笔迹/有候选）整行让位。原实现等「候选回来」才让位，写字
+         * 与识别在途的窗口里按钮全在，短笔画（点/顿笔，位移小、约 0.1s
+         * 抬笔）与正常点按不可分，起笔稍高即误触（24px 守卫天然漏过）。
+         * 收起键一并隐藏（用户裁定：写字中行内只留标识与 ×；收键盘走
+         * 系统返回键/点输入框外）。 */
         applyInkBarChrome() {
             const active = this.mode === 'handwriting' &&
-                (this.inkCandidates || []).length > 0;
+                ((this.inkCandidates || []).length > 0 ||
+                 (this.inkStrokes || []).length > 0 ||
+                 this.inkTouchId !== null);
+            this.inkBarActive = active;
             const assocOnly = this.mode === 'handwriting' && !active &&
                 (this.assocWords || []).length > 0;
             const tag = document.getElementById('inkTag');
@@ -2756,11 +2789,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.voiceState === 'idle') {
                 this.setToolbarYield(active || assocOnly);
                 // mic 虽在让位清单里，但 updateComposing 的通用可见性行
-                // （非组合=可见）先于本调用执行，这里显式压回。
+                // （非组合=可见）先于本调用执行，这里显式压回。收起键双
+                // 向显式设置（恢复路径不经 updateComposing 时也得翻回）
+                // ——联想让位（assocOnly）不藏收起键，与拼音联想同口径。
                 if (active) {
                     const mic = document.getElementById('mic');
                     if (mic) mic.hidden = true;
                 }
+                const hideBtn = document.getElementById('hide');
+                if (hideBtn) hideBtn.hidden = active;
             }
             return active;
         }
@@ -2785,7 +2822,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onInkCandidates(payload) {
             if (this.mode !== 'handwriting') return;
             const reqId = Number(payload && payload.reqId);
-            if (reqId !== this.inkReqId) return;
+            // 落笔即作废在途结果（inkStaleAfter）：旧字形的迟到候选不得
+            // 在新笔画进行中复活（#39-6 复发修复配套）。
+            if (reqId !== this.inkReqId || reqId <= (this.inkStaleAfter || 0)) return;
             const error = payload && payload.error;
             if (error === 'unavailable') {
                 this.showToast(t("手写模型未就绪"));
@@ -8302,8 +8341,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Compose controls exist only while there is something to clear.
             // A live voice session hides them too: the × must not clear the
             // ASR partial that shares the editor span .
+            // 手写让位态（#39-6 复发修复）× 是行内唯一出口，通用规则
+            // 不得把它翻没（与收起键同款复核）。
             const voiceBusy = recording;
-            document.getElementById('composeClear').hidden = !this.composing || voiceBusy;
+            document.getElementById('composeClear').hidden =
+                (!this.composing &&
+                    !(this.mode === 'handwriting' && !!this.inkBarActive)) || voiceBusy;
             // T9 符号行 chrome 态：空闲刷新（onNativeState 回声、空引擎事
             // 件）不得把工具栏翻回来——× 是唯一取消入口（codex round-2
             // P2-4）。组合/语音中的可见性仍由上面的通用规则管。
@@ -8327,7 +8370,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // While composing the right side carries exactly two
             // buttons (× and ˅). The keyboard-dismiss chevron looks identical
             // to the expand arrow - hide it until the composition ends.
-            document.getElementById('hide').hidden = this.composing;
+            // 手写让位态（#39-6 复发修复）同样藏收起键：applyInkBarChrome
+            // 先行设置，此处按 inkBarActive 复核，防本行把让位翻回去。
+            document.getElementById('hide').hidden = this.composing ||
+                (this.mode === 'handwriting' && !!this.inkBarActive);
             // Collapse overlays only on the idle→composing transition, so a
             // stream of unrelated native events cannot close an open menu.
             // Typing INTO a panel input (phrase add/edit) must

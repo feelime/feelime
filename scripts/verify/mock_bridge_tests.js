@@ -7245,6 +7245,58 @@ test('handwriting: every stroke fires its own request (reqId mismatch drops stal
     equal(world.$('candidates').children[0].textContent, '新', 'current reqId rendered');
 });
 
+test('handwriting: pen-down yields the whole toolbar row including the dismiss chevron', {since: '3.73.16'}, () => {
+    // #39-6 复发修复：让位提前到落笔——写字全程（笔迹进行中/已有
+    // 笔迹/有候选）整行让位，收起键一并隐藏；短笔画窜进工具栏区
+    // 无按钮可触发。行内只留「手写」标识与 ×。
+    const world = handwritingWorld();
+    const pad = world.$('inkPad');
+    world.touchDown(pad, 20, 20);
+    equal(world.$('setupButton').hidden, true, 'F logo yields at pen-down');
+    equal(world.$('hide').hidden, true, 'dismiss chevron yields at pen-down');
+    equal(world.$('inkTag').hidden, false, 'handwriting tag shows while stroking');
+    equal(world.$('composeClear').hidden, false, 'clear (x) stays reachable');
+    world.touchUp(pad, 20, 20);
+    // 已有笔迹：让位维持（识别在途的窗口也不裸露按钮）。
+    equal(world.$('hide').hidden, true, 'yield holds while strokes remain');
+});
+
+test('handwriting: clearing strokes restores the toolbar with the dismiss chevron', {since: '3.73.16'}, () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.$('composeClear').click(); // × = 清空返回工具栏（写字中同样成立）
+    equal(world.$('setupButton').hidden, false, 'toolbar restored after clear');
+    equal(world.$('hide').hidden, false, 'dismiss chevron back after clear');
+    equal(world.$('inkTag').hidden, true, 'tag gone after clear');
+});
+
+test('handwriting: pen-down drops stale candidates and late echoes never revive them', {since: '3.73.16'}, () => {
+    // 下一笔是新字形：落笔撤旧候选（写字期间旧词不可误触），在途
+    // 旧结果用 staleAfter 作废——迟到回声不复活。
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    const reqId = world.context.window.Feelime.debugState().inkReqId;
+    world.context.window.Feelime.onInkCandidates({
+        reqId, candidates: [{ text: '旧', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children.length, 1, 'first glyph rendered');
+    const pad = world.$('inkPad');
+    world.touchDown(pad, 100, 20);
+    equal(world.$('candidates').children.length, 0, 'stale candidates dropped at pen-down');
+    world.context.window.Feelime.onInkCandidates({
+        reqId, candidates: [{ text: '旧', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children.length, 0, 'late echo dropped (staleAfter)');
+    // 新字形的请求照常工作。
+    world.touchUp(pad, 120, 30);
+    const reqId2 = world.context.window.Feelime.debugState().inkReqId;
+    world.context.window.Feelime.onInkCandidates({
+        reqId: reqId2, candidates: [{ text: '新', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children[0] && world.$('candidates').children[0].textContent, '新',
+        'fresh glyph renders after the new request');
+});
+
 test('handwriting: candidates render into the bar; picking commits and clears', {since: '3.59.0'}, () => {
     const world = handwritingWorld();
     inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
