@@ -3672,6 +3672,31 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.tap(w.$('toolbarEditCancel'));
 });
 
+test('toolbar edit: capacity rejection toast fires at the real cap (issue #47)', {since: '3.73.17'}, () => {
+    const w = fresh();
+    w.hello({});
+    const kb = () => w.context.window.Feelime.debugState();
+    w.touchDown(w.$('mic'));
+    w.clock.advance(400);
+    w.touchUp(w.$('mic'));
+    equal(kb().toolbarEdit, true, 'edit mode on');
+    // fake DOM 里 clientWidth=0 → toolbarCapacity 放宽到 8：默认 5 颗，
+    // 仓库点 3 颗到 8，第 4 颗触顶被拒。候选词与工具栏互斥（让位），
+    // 容量只扣 F 与收起键——不存在「给候选留底」的扣减（#47 复盘）。
+    ['toolTheme', 'toolVibrate', 'toolSound'].forEach(id => {
+        w.touchDown(w.$(id));
+        w.touchUp(w.$(id));
+    });
+    equal(kb().toolbarLeft.length + kb().toolbarRight.length, 8, 'filled to capacity');
+    w.touchDown(w.$('toolAssoc'));
+    w.touchUp(w.$('toolAssoc'));
+    equal(kb().toolbarLeft.length + kb().toolbarRight.length, 8, 'rejected add stays at 8');
+    equal(w.$('toolAssoc').classList.contains('editor-pool'), true,
+        'rejected tool stays in the pool');
+    equal(w.$('toast').textContent.includes('工具栏空间不够'), true,
+        'rejection toast fires at the physical cap');
+});
+
 test('toolbar audit: a lost tool is forced back into the pool (issue #15)', {since: '3.59.0'}, () => {
     const w = fresh();
     w.hello({});
@@ -6287,6 +6312,83 @@ test('assoc click routes through the real bridge (FeelimeNative)', {since: '3.33
     assert(!world.$('mic').hidden, 'mic restored after assoc pick');
 });
 
+test('assoc backspace: off by default, on = clears assoc like × (issue #46)', {since: '3.73.18'}, () => {
+    // 默认关：联想让位态退格照旧删字符（原生 backspace）。
+    const w1 = fresh({ mode: 'pinyin' });
+    w1.hello({});
+    w1.engineState({ phase: 'READY', mode: 'pinyin', revision: 1, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    w1.assoc(['的', '是']);
+    const bs1 = w1.document.querySelector('[data-role="backspace"]');
+    w1.tap(bs1);
+    const bsCalls1 = w1.native.of('backspace');
+    equal(bsCalls1.length, 1, 'default off: backspace reaches the native bridge');
+    equal(w1.$('candidates').children.length, 2, 'default off: assoc words stay');
+
+    // 开启：联想让位态退格 = 清联想恢复工具栏，不发原生删除。
+    const w2 = fresh({ mode: 'pinyin' });
+    w2.hello({ backspaceAssocOn: true });
+    w2.engineState({ phase: 'READY', mode: 'pinyin', revision: 1, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    w2.assoc(['的', '是']);
+    const bs2 = w2.document.querySelector('[data-role="backspace"]');
+    w2.tap(bs2);
+    equal(w2.$('candidates').children.length, 0, 'on: assoc words cleared');
+    assert(!w2.$('setupButton').hidden, 'on: toolbar restored');
+    assert(w2.$('composeClear').hidden, 'on: × retires with the yield');
+    equal(w2.native.of('backspace').length, 0, 'on: no native delete fired');
+
+    // 组合中不拦：退格是删拼音字母的常规通道。
+    w2.engineState({ phase: 'COMPOSING', mode: 'pinyin', revision: 2, composing: 'ni', rawInput: 'ni',
+        candidates: [{ text: '你' }], hasNextPage: false });
+    w2.tap(w2.document.querySelector('[data-role="backspace"]'));
+    equal(w2.native.of('backspace').length, 1, 'composing: backspace deletes as usual');
+});
+
+test('wx slash: off commits literally, on routes / into the engine (issue #45)', {since: '3.73.19'}, () => {
+    // 默认关：pinyin 下 s 键上滑 '/' 直发上屏（sendSymbol → commitText），
+    // 引擎收不到键——万象 /sj /ri 功能引导无法触发的用户实测根因。
+    const w1 = fresh({ mode: 'pinyin' });
+    const s1 = w1.key('s');
+    w1.touchDown(s1, 20, 20);
+    w1.move(s1, 20, -30);
+    w1.touchUp(s1);
+    w1.clock.advance(2);
+    equal(w1.native.of('commitText').slice(-1)[0].args[0], '/',
+        'off: / inserts literally');
+
+    // 开启：同一手势改走按键通道进引擎（空闲与组合中都进，/sj 引导
+    // 正是组合段）。wxSlashOn 只在 hello 里带（二次空 hello 会重置 mode）。
+    const w2 = fresh({ mode: 'pinyin', wxSlashOn: true });
+    const s2 = w2.key('s');
+    w2.touchDown(s2, 20, 20);
+    w2.move(s2, 20, -30);
+    w2.touchUp(s2);
+    w2.clock.advance(2);
+    equal(w2.native.of('key').slice(-1)[0].args[0], '/',
+        'on: / reaches the engine via key()');
+    equal(w2.native.of('commitText').filter(c => c.args[0] === '/').length, 0,
+        'on: no direct commit bypasses the engine');
+    w2.engineState({ phase: 'COMPOSING', mode: 'pinyin', revision: 2, composing: '/s', rawInput: '/s',
+        candidates: [], hasNextPage: false });
+    w2.touchDown(s2, 20, 20);
+    w2.move(s2, 20, -30);
+    w2.touchUp(s2);
+    w2.clock.advance(2);
+    equal(w2.native.of('key').slice(-1)[0].args[0], '/',
+        'on: composing / still feeds the engine (guide segment)');
+
+    // T9 不在生效列表：符号行照旧直发。
+    const w3 = fresh({ mode: 't9', wxSlashOn: true });
+    w3.tap(w3.key('1'));
+    const slash = [...w3.document.querySelectorAll('#candidates .candidate')]
+        .find(b => b.textContent === '/');
+    assert(slash, 'slash present in the t9 symbol row');
+    w3.tap(slash);
+    equal(w3.native.of('commitText').slice(-1)[0].args[0], '/',
+        't9: unaffected, still literal');
+});
+
 test('mode switch clears assoc words', {since: '3.33.0'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.engineState({ phase: 'READY', mode: 'pinyin', revision: 3, composing: '', rawInput: '',
@@ -7243,6 +7345,58 @@ test('handwriting: every stroke fires its own request (reqId mismatch drops stal
         reqId: 2, candidates: [{ text: '新', score: 1 }], error: null,
     });
     equal(world.$('candidates').children[0].textContent, '新', 'current reqId rendered');
+});
+
+test('handwriting: pen-down yields the whole toolbar row including the dismiss chevron', {since: '3.73.16'}, () => {
+    // #39-6 复发修复：让位提前到落笔——写字全程（笔迹进行中/已有
+    // 笔迹/有候选）整行让位，收起键一并隐藏；短笔画窜进工具栏区
+    // 无按钮可触发。行内只留「手写」标识与 ×。
+    const world = handwritingWorld();
+    const pad = world.$('inkPad');
+    world.touchDown(pad, 20, 20);
+    equal(world.$('setupButton').hidden, true, 'F logo yields at pen-down');
+    equal(world.$('hide').hidden, true, 'dismiss chevron yields at pen-down');
+    equal(world.$('inkTag').hidden, false, 'handwriting tag shows while stroking');
+    equal(world.$('composeClear').hidden, false, 'clear (x) stays reachable');
+    world.touchUp(pad, 20, 20);
+    // 已有笔迹：让位维持（识别在途的窗口也不裸露按钮）。
+    equal(world.$('hide').hidden, true, 'yield holds while strokes remain');
+});
+
+test('handwriting: clearing strokes restores the toolbar with the dismiss chevron', {since: '3.73.16'}, () => {
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    world.$('composeClear').click(); // × = 清空返回工具栏（写字中同样成立）
+    equal(world.$('setupButton').hidden, false, 'toolbar restored after clear');
+    equal(world.$('hide').hidden, false, 'dismiss chevron back after clear');
+    equal(world.$('inkTag').hidden, true, 'tag gone after clear');
+});
+
+test('handwriting: pen-down drops stale candidates and late echoes never revive them', {since: '3.73.16'}, () => {
+    // 下一笔是新字形：落笔撤旧候选（写字期间旧词不可误触），在途
+    // 旧结果用 staleAfter 作废——迟到回声不复活。
+    const world = handwritingWorld();
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]);
+    const reqId = world.context.window.Feelime.debugState().inkReqId;
+    world.context.window.Feelime.onInkCandidates({
+        reqId, candidates: [{ text: '旧', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children.length, 1, 'first glyph rendered');
+    const pad = world.$('inkPad');
+    world.touchDown(pad, 100, 20);
+    equal(world.$('candidates').children.length, 0, 'stale candidates dropped at pen-down');
+    world.context.window.Feelime.onInkCandidates({
+        reqId, candidates: [{ text: '旧', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children.length, 0, 'late echo dropped (staleAfter)');
+    // 新字形的请求照常工作。
+    world.touchUp(pad, 120, 30);
+    const reqId2 = world.context.window.Feelime.debugState().inkReqId;
+    world.context.window.Feelime.onInkCandidates({
+        reqId: reqId2, candidates: [{ text: '新', score: 1 }], error: null,
+    });
+    equal(world.$('candidates').children[0] && world.$('candidates').children[0].textContent, '新',
+        'fresh glyph renders after the new request');
 });
 
 test('handwriting: candidates render into the bar; picking commits and clears', {since: '3.59.0'}, () => {

@@ -3,6 +3,9 @@
 按主题组织。给 AI agent / 新贡献者的阅读顺序建议：
 根目录 [AGENTS.md](../AGENTS.md)（工程约定与命令）→ 本索引 → 按任务挑对应主题。
 
+沟通词汇（工具栏/快捷设置/让位等叫什么、指哪块）统一见
+[glossary.md](glossary.md)——写文档 / 记 issue 前先对齐口径。
+
 ## development/ — 构建与环境
 
 - [`development/building.md`](development/building.md) — **新机器 / 换环境**
