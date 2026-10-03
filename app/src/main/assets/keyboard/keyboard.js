@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.20';
+    const KEYBOARD_VERSION = '3.73.21';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1236,6 +1236,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.favoriteItems = [];
             this.popup = null;
             this.touchOrigin = null;
+            // 重叠双指（快速双手打字的常见窗口：B 落键时 A 还没抬）：
+            // 每根手指自己的按下点。touchOrigin 是首指所有权，owner 抬起
+            // 时凭这份记录把手势锚点移交给仍在场的手指，各自的起点各自
+            // 算位移——否则第二指的上滑被当点按、长按弹层的位移被钉到
+            // 首指位置上一动就出界「松手撤销」。
+            this.pressById = new Map();
             this.swiping = false;
             this.voiceHold = false;
             // #39-13 长按空格语音（默认开）：关=长按不触发+隐藏空格 mic
@@ -3478,6 +3484,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             let holdTimer = 0;
             let repeatTimer = 0;
             let longFired = false;
+            // 本键当前按压（touchstart 刷新）：滑离检查与长按弹层的相对
+            // 跟手都以它认手指——重叠双指下 event.touches[0] 可能是
+            // 别根手指，坐标张冠李戴。
+            let press = null;
             const clear = () => { clearTimeout(holdTimer); clearInterval(repeatTimer); holdTimer = repeatTimer = 0; };
             // Review: the flick layer cancels pending repeats when
             // a swipe takes over the gesture (the finger may stay on the key).
@@ -3496,26 +3506,43 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 else if (this.bubbleHideTimer) this.hideKeyBubble();
                 longFired = false;
                 const touch = event.changedTouches[0];
+                press = { x: touch.clientX, y: touch.clientY,
+                    id: touch.identifier, button };
+                this.pressById.set(press.id, press);
+                // 防御性重占：owner 手指已不在场（其 touchend 没被本层
+                // 看到，如按住中元素随布局更换被摘除）时锚点已是幽灵，
+                // 新手势不得对着它判定。
+                if (this.touchOrigin && !Array.from(event.touches).some(
+                    item => item.identifier === this.touchOrigin.id)) {
+                    this.touchOrigin = null;
+                }
                 if (!this.touchOrigin) {
-                    this.touchOrigin = { x: touch.clientX, y: touch.clientY,
-                        id: touch.identifier, button };
+                    this.touchOrigin = { x: press.x, y: press.y,
+                        id: press.id, button };
                 }
                 if (button.dataset.lp === 'repeat') {
                     holdTimer = setTimeout(() => { repeatTimer = setInterval(() => button.click(), 75); }, this.holdMs + 40);
                 } else if (button.dataset.lp === 'popup' && button.dataset.key) {
                     holdTimer = setTimeout(() => {
                         if (this.swiping) return;
+                        // 同键双指：闭包 press 只剩最后按下者，弹层锚点优先
+                        // 取手势 owner 的按压记录（owner 也在本键上时），
+                        // 否则退回本键最后一次按压。
+                        const ownerPress = this.touchOrigin &&
+                            this.touchOrigin.button === button
+                            ? this.pressById.get(this.touchOrigin.id) : null;
+                        const base = ownerPress || press;
                         // T9：长按=数字+字母组全后选（引擎通道）；1 键=
                         // 符号行并收起工具栏；qwerty 维持 accent 备选弹层。
                         if (this.mode === 't9') {
                             // 1 键没有长按态（单击即开符号行，用户定稿）；
                             // 其余数字键长按=数字+字母组全后选浮层。
-                            this.openT9HoldPopup(button);
+                            this.openT9HoldPopup(button, base);
                         } else if (this.mode === 'stroke') {
                             // 笔画：三格浮层（符号·数字·符号）。7 键（符号
                             // 组）不设 data-lp，不会走到这里。
-                            this.openStrokeHoldPopup(button);
-                        } else this.openPopup(button);
+                            this.openStrokeHoldPopup(button, base);
+                        } else this.openPopup(button, base);
                     }, this.holdMs);
                 } else if (button.dataset.lp === 'lock') {
                     holdTimer = setTimeout(() => {
@@ -3541,26 +3568,41 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // pending long-press/repeat (the press never becomes a popup or
             // auto-repeat while over some other key).
             button.addEventListener('touchmove', event => {
-                const touch = event.touches[0];
+                const touch = (press && Array.from(event.touches).find(
+                    item => item.identifier === press.id)) || event.touches[0];
+                if (!touch) return;
                 const at = document.elementFromPoint && document.elementFromPoint(touch.clientX, touch.clientY);
                 if (at !== button && !(at && button.contains(at))) clear();
             }, { passive: true });
             button.addEventListener('touchend', event => {
                 event.preventDefault();
+                // 按事件里实际结束的手指清按压记录（同键双指时闭包 press
+                // 只剩最后按下者，删它会删错人）。
+                for (const item of event.changedTouches || []) {
+                    this.pressById.delete(item.identifier);
+                }
                 if (!this.pressedKeys.has(button)) return;
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
                 this.scheduleHideBubble();
                 clear();
                 if (this.popup) {
-                    // 快速甩出时最终位置只出现在 changedTouches：相对跟手
-                    // 收尾先刷新一次选中再提交，否则按旧高亮落错格
-                    // （codex P2）。split 弹层保持既有语义不动。
-                    if (this.popup.relative) {
-                        const last = event.changedTouches && event.changedTouches[0];
-                        if (last) this.movePopup(last);
+                    // 弹层只认开它的那根手指：别指抬手不得替它终判/关层
+                    // （多指下 A 一抬会把 B 正在拖选的弹层当场收掉，B 松手
+                    // 落成键面点按）。fingerId 未知=旧弹层/mock 单指，放行。
+                    if (this.popupOwnsTouch(this.popup, event)) {
+                        // 快速甩出时最终位置只出现在 changedTouches：相对跟手
+                        // 收尾先刷新一次选中再提交，否则按旧高亮落错格
+                        // （codex P2）。split 弹层保持既有语义不动。
+                        if (this.popup.relative) {
+                            const last = event.changedTouches && event.changedTouches[0];
+                            if (last) this.movePopup(last);
+                        }
+                        this.closePopup(false);
+                    } else if (!longFired && !this.swiping && !options.skipClick) {
+                        // 别指的弹层开着：本指按自己的点按语义正常落键。
+                        button.click();
                     }
-                    this.closePopup(false);
                 }
                 else if (options.skipClick) { /* 空格键专用，非吞键 */ }
                 else if (longFired) this._diagNoClick.long += 1;
@@ -3568,12 +3610,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 else if (this.popup) this._diagNoClick.pop += 1;
                 else button.click();
             }, { passive: false });
-            button.addEventListener('touchcancel', () => {
+            button.addEventListener('touchcancel', event => {
+                for (const item of event.changedTouches || []) {
+                    this.pressById.delete(item.identifier);
+                }
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
                 this.scheduleHideBubble();
                 clear();
-                if (this.popup) this.closePopup(true);
+                if (this.popup && this.popupOwnsTouch(this.popup, event)) {
+                    this.closePopup(true);
+                }
                 // Review P3: a cancelled gesture never delivers the click
                 // that would consume _suppressClick  -
                 // clear it or the key's NEXT tap is swallowed.
@@ -3592,6 +3639,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.pressedKeys.clear();
             if (this.popup) this.closePopup(true);
             this.touchOrigin = null;
+            this.pressById.clear();
             this.scrubBase = null;
             this.scrubSteps = 0;
             // #34 手势会话随程序化取消一并复位（native 会话也要关——
@@ -3613,7 +3661,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             root.addEventListener('touchmove', event => {
                 if (this.popup) {
                     event.preventDefault();
-                    this.movePopup(event.touches[0]);
+                    // 跟手跟的是开弹层那根手指：重叠双指下 touches[0]
+                    // 可能是另一根静止手指，坐标一换算就「滑出边界」。
+                    const list = Array.from(event.touches);
+                    const own = list.find(item =>
+                        item.identifier === this.popup.fingerId);
+                    this.movePopup(own || list[0]);
                     return;
                 }
                 // The expanded candidate strip owns horizontal drags: a swipe
@@ -3626,18 +3679,38 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     (event.target.closest('#expandLayer') ||
                      event.target.closest('#candidates'))) return;
                 if (!this.touchOrigin) return;
-                const touch = Array.from(event.touches).find(item => item.identifier === this.touchOrigin.id);
+                let touch = Array.from(event.touches).find(item => item.identifier === this.touchOrigin.id);
                 if (!touch) return;
-                const dx = touch.clientX - this.touchOrigin.x;
-                const dy = touch.clientY - this.touchOrigin.y;
-                const originButton = this.touchOrigin.button;
-                const button = originButton.closest('.kb-key[data-key]');
+                let dx = touch.clientX - this.touchOrigin.x;
+                let dy = touch.clientY - this.touchOrigin.y;
+                let originButton = this.touchOrigin.button;
+                let button = originButton.closest('.kb-key[data-key]');
                 if (!this.swiping) {
                     // Flick/scrub recognition: the slop threshold gates the
                     // gesture start only - once swiping, the scrub below must
                     // keep tracking even when the finger crosses back over
                     // the origin (that is exactly how direction reverses).
-                    if (Math.hypot(dx, dy) < threshold) return;
+                    if (Math.hypot(dx, dy) < threshold) {
+                        // 次级仲裁（重叠双指）：owner 手指没动出阈，但另一
+                        // 根有按压记录的手指可能正在做手势——A 托底久于 B
+                        // 整个 flick 的窗口里，B 的位移也必须有人认领。
+                        // 就地把锚点移交给越阈的那根手指，按它的起点判向。
+                        const alt = Array.from(event.touches).find(item => {
+                            if (item.identifier === this.touchOrigin.id) return false;
+                            const p = this.pressById.get(item.identifier);
+                            return !!p && Math.hypot(
+                                item.clientX - p.x, item.clientY - p.y) >= threshold;
+                        });
+                        if (!alt) return;
+                        const heir = this.pressById.get(alt.identifier);
+                        this.touchOrigin = { x: heir.x, y: heir.y,
+                            id: heir.id, button: heir.button };
+                        touch = alt;
+                        dx = alt.clientX - heir.x;
+                        dy = alt.clientY - heir.y;
+                        originButton = heir.button;
+                        button = originButton.closest('.kb-key[data-key]');
+                    }
                     this.swiping = true;
                     // 滑动接管手势：只撤「挂起的」语音长按计时器（T9 mic
                     // 横滑 scrub 按住不放，350ms 计时器若不撤，光标移动
@@ -3693,7 +3766,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // 数字，mic 独占 scrub。false=落回通用分支（mic 横滑）。
                     // 笔画同走这里（只保留上滑=字面数字）。
                     if ((this.mode === 't9' || this.mode === 'stroke') &&
-                        this.t9Flick(originButton, dx, dy)) return;
+                        this.t9Flick(originButton, dx, dy, touch.clientX,
+                            touch.identifier)) return;
                     if (Math.abs(dy) >= Math.abs(dx) && button && button.dataset.key) {
                         // 手写空格挂 data-key 只为借横滑 scrub（round-4）：
                         // 垂直方向没有字面语义，落进下面的分支会把 0/大写
@@ -3822,6 +3896,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
                 this.bsVertical = 0;
                 this.touchOrigin = null;
+                // 重叠双指：owner 抬起时其余手指可能仍在手势中（快速双手
+                // 打字的第二指正要上滑）。锚点移交给剩下的、有自己按下点
+                // 的手指——各自起点各自算位移；没有候补才真正清空。
+                const rest = Array.from(event.touches || []);
+                const heir = rest.find(item => this.pressById.has(item.identifier));
+                if (heir) {
+                    const next = this.pressById.get(heir.identifier);
+                    this.touchOrigin = { x: next.x, y: next.y,
+                        id: next.id, button: next.button };
+                }
                 this.scrubBase = null;
                 this.scrubSteps = 0;
                 setTimeout(() => { this.swiping = false; }, 0);
@@ -3917,7 +4001,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** T9 手势仲裁（t9.md §3）。返回 true=已消费；false=落回通用
          * 分支（mic 的横滑 scrub 由通用代码处理——scrub 选择器认
          * .kb-key[data-key]，mic 在 T9 下挂 data-key=0）。 */
-        t9Flick(originButton, dx, dy) {
+        t9Flick(originButton, dx, dy, clientX, fingerId) {
             const button = originButton && originButton.closest('.kb-key[data-key]');
             if (!button) return false;
             const vertical = Math.abs(dy) >= Math.abs(dx);
@@ -3970,7 +4054,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // 半边判定选中，不再固定预选首格（codex round-3 P2）。
                     this.openT9Popup(button, T9_SPLIT[key], {
                         split: true,
-                        initialX: this.touchOrigin ? this.touchOrigin.x + dx : null,
+                        initialX: clientX != null ? clientX : null,
+                        fingerId,
                     });
                 } else {
                     // 下滑=中间字母进引擎（确认拼写，非 commitText）。
@@ -4011,7 +4096,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * ·数字·右符号、下行=大写。字母与符号都是 literal 直上屏
          * （commitText，大小写原样落）；数字格=通配，进引擎（与点按
          * 同义）。拼音里确认字母由下滑/横滑手势承担，不经弹层。 */
-        openT9HoldPopup(button) {
+        openT9HoldPopup(button, press) {
             this.hideKeyBubble();
             const key = button.dataset.key;
             const letters = (LAYOUTS.t9.alts[key] || '').split('');
@@ -4023,7 +4108,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 { char: syms[1], literal: true },
                 ...letters.map(ch => ({ char: ch.toUpperCase(), literal: true })),
             ].filter(cell => cell.char);
-            this.openT9Popup(button, cells, { grid: true });
+            this.openT9Popup(button, cells, { grid: true, press });
         }
 
         /** 笔画长按（issue #18，用户定稿 2026-09-19）：与 T9 同款三排——
@@ -4032,7 +4117,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 则同 T9：字母（含大写）与符号 literal 直上屏（commitText），中
          * 格数字=点按同义（发部件编码，send 字段），预选中格、相对跟手。
          * 1 键无字母组：退回单排 符号·数字·符号。 */
-        openStrokeHoldPopup(button) {
+        openStrokeHoldPopup(button, press) {
             this.hideKeyBubble();
             const key = button.dataset.key;
             const def = STROKE_KEYS[key] || {};
@@ -4048,7 +4133,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                    ...middle,
                    ...letters.map(ch => ({ char: ch.toUpperCase(), literal: true }))]
                 : middle;
-            this.openT9Popup(button, cells, letters.length ? { grid: true } : { middle: true });
+            this.openT9Popup(button, cells,
+                Object.assign(letters.length ? { grid: true } : { middle: true }, { press }));
         }
 
         /** T9 浮层：长按=三行大小写+符号弹层（opts.grid）；7/9 下滑=拆分
@@ -4119,20 +4205,37 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             selected.item.classList.add('sel');
             this.popup = { key: button.dataset.key, cells: items,
                 selected, cancelled: false, enginePath: true };
-            if (opts.split) this.popup.split = true;
-            if (opts.grid || opts.middle) this.attachRelativeTracking(popup, selected);
+            if (opts.split) {
+                this.popup.split = true;
+                // split 弹层不做相对跟手，但多指下终判/关层同样要认手
+                // （popupOwnsTouch），fingerId 从下滑手势的手指带上。
+                if (opts.fingerId !== undefined) this.popup.fingerId = opts.fingerId;
+            }
+            if (opts.grid || opts.middle) this.attachRelativeTracking(popup, selected, opts.press);
+        }
+
+        /** 弹层是否属于本次事件里变化的手指（多指仲裁）：键级 touchend/
+         *  touchcancel 只在归属成立时才终判/关层。fingerId 未知（未记录
+         *  的旧弹层、mock 无 identifier）恒真，保持单指既有语义。 */
+        popupOwnsTouch(popup, event) {
+            return popup.fingerId === undefined ||
+                Array.from(event.changedTouches || []).some(
+                    item => item.identifier === popup.fingerId);
         }
 
         /** 相对跟手选中（issue #9 定稿，qwerty accent 弹层同款）：高亮锚在
          * 预选格上，跟随手指「相对按下点」的位移同步移动——手指全程不必
          * 碰到浮层；虚拟光标滑出卡片边界 = 淡出 + 「松手撤销」，拖回恢复。
          * origin 拷贝自按下点：capture 收尾会清 touchOrigin，弹层必须自带
-         * 位移基准。 */
-        attachRelativeTracking(popup, anchor) {
+         * 位移基准。press=开弹层那根手指自己的按下点（重叠双指下全局
+         * touchOrigin 属于首指，拷它会把这根手指的位移钉到首指位置上，
+         * 一动就出卡片边界被当「松手撤销」）。 */
+        attachRelativeTracking(popup, anchor, press) {
             this.popup.relative = true;
             this.popup.anchor = anchor;
-            this.popup.origin = this.touchOrigin
-                ? { x: this.touchOrigin.x, y: this.touchOrigin.y } : null;
+            const base = press || this.touchOrigin;
+            this.popup.origin = base ? { x: base.x, y: base.y } : null;
+            this.popup.fingerId = base ? base.id : undefined;
             const card = popup.getBoundingClientRect();
             this.popup.cardRect = {
                 left: card.left, top: card.top,
@@ -4140,7 +4243,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             };
         }
 
-        openPopup(button) {
+        openPopup(button, press) {
             this.hideKeyBubble();
             const key = button.dataset.key;
             const upper = key.toUpperCase();
@@ -4184,7 +4287,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.popup = { key, cells, selected, cancelled: false };
             // qwerty accent 弹层与 T9 三行弹层同一套相对跟手（用户定稿）：
             // 高亮跟随手指位移，不要求手先滑上浮层。
-            this.attachRelativeTracking(popup, selected);
+            this.attachRelativeTracking(popup, selected, press);
         }
 
         /** 「松手撤销」提示（issue #9）：弹层滑出卡片边界时浮层淡出，
