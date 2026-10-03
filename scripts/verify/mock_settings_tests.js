@@ -546,6 +546,90 @@ test('保存定制 sends the JSON + switch; 插入模板 fills valid JSON withou
     equal(world.native.of('saveCustom').length, 1, 'template insert does not save');
 });
 
+test('custom templates: practical is the default, developer keeps full coverage (2026-10-03)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.$('btnCustomTemplate').click();
+    const practical = world.$('customJson').value;
+    // 实用模板：高频短语 + 常用快捷键 + [open:] + ⌫ 在最后一行行尾。
+    assert(practical.includes('谢谢') && practical.includes('收到'), 'everyday phrases');
+    assert(practical.includes('[ctrl+z]') && practical.includes('[ctrl+c]'), 'useful combos');
+    assert(practical.includes('[open:https://fanyi.baidu.com]'), 'open key present');
+    const rows = JSON.parse(practical).rows;
+    const last = rows[rows.length - 1];
+    equal(last[last.length - 1].tap, '[backspace]',
+        'backspace sits at the end of the last row');
+    world.$('btnCustomTemplateDev').click();
+    const dev = world.$('customJson').value;
+    // 开发者模板承载全覆盖验收：单键/混排/组合/功能键/光标/⌫/[open:]。
+    for (const token of ['[esc]', ':w[enter]', '[ctrl+s]', '[f5]', '[left]',
+        '[backspace]', '[open:https://fanyi.baidu.com]']) {
+        assert(dev.includes(token), 'dev template covers ' + token);
+    }
+});
+
+test('custom key editor: open type validates URI at apply time', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    });
+    g.ckEnter();
+    g.ckOpenNew(2);
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const tInput = g.document.getElementById('ckT');
+    tInput.value = '翻译'; fire(tInput, 'input');
+    const segBtn = container => text =>
+        [...world.doc.querySelectorAll(container + ' .ck-seg-btn')]
+            .find(el => el.textContent === text);
+    fire(segBtn('#ckMode')('打开应用'), 'click');
+    // 坏 URI：intent:// 走私被拦，确定按钮不落表（ckRows 是 let，不进
+    // vm 全局——经行 chips 断言，与既有测试同一口径）。
+    const uri = g.document.getElementById('ckOpenUri');
+    uri.value = 'intent://x#Intent;end'; fire(uri, 'input');
+    world.$('ckApply').click();
+    assert(world.$('ckEditNote').textContent.length > 0, 'bad uri rejected with a note');
+    assert(!g.document.getElementById('ckRowList').textContent.includes('翻译'),
+        'rejected key not added');
+    // 好 URI：落表为 [open:...]，行 chips 出现「翻译」。
+    uri.value = 'doubao://chat'; fire(uri, 'input');
+    world.$('ckApply').click();
+    assert(g.document.getElementById('ckRowList').textContent.includes('翻译'),
+        'open cell saved and rendered');
+    // 保存全部 → saveCustom 桥收到 [open:...] 的 tap。
+    world.$('ckSave').click();
+    const saved = world.lastCall('saveCustom').args[0];
+    assert(saved.includes('[open:doubao://chat]'), 'saveCustom carries the open tap');
+});
+
+test('custom key editor: long URIs are stopped at apply time (review P2-3)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    });
+    g.ckEnter();
+    g.ckOpenNew(0);
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const tInput = g.document.getElementById('ckT');
+    tInput.value = '长链'; fire(tInput, 'input');
+    const segBtn = container => text =>
+        [...world.doc.querySelectorAll(container + ' .ck-seg-btn')]
+            .find(el => el.textContent === text);
+    fire(segBtn('#ckMode')('打开应用'), 'click');
+    // 220 字符 URI：scheme 合法但 tap 会超 128——必须在确定时拦下
+    // （键盘侧整表拒收会让全部定制键静默消失）。
+    const uri = g.document.getElementById('ckOpenUri');
+    uri.value = 'https://example.com/' + 'a'.repeat(200); fire(uri, 'input');
+    world.$('ckApply').click();
+    assert(world.$('ckEditNote').textContent.includes('128'),
+        'over-limit tap length rejected with the limit named');
+    assert(!g.document.getElementById('ckRowList').textContent.includes('长链'),
+        'long-uri key not added');
+});
+
 test('hot-update card: 检查更新/下载安装/恢复内置 pass the field values', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE, update: { ...BASE_STATE.update, source: 'http://s/meta.json', url: 'http://s/kb.zip' } });
@@ -620,6 +704,13 @@ test('custom key editor: tap parse/build round-trips (#39-12)', () => {
     equal([...combo.mods].join(','), 'ctrl', 'combo mods');
     equal(g.ckTapParse('me@example.com').mode, 'text', 'plain text -> text');
     equal(g.ckTapParse('[esc]ggVGD').mode, 'advanced', 'macro -> advanced');
+    // [open:URI] 反猜为 open 型，且 URI 大小写保留（lowercase 之前识别）。
+    const open = g.ckTapParse('[open:https://X.COM/Search]');
+    equal(open.mode, 'open', '[open:..] -> open');
+    equal(open.open, 'https://X.COM/Search', 'uri keeps its case');
+    equal(g.ckTapFromDraft({ mode: 'open', open: 'doubao://chat' }),
+        '[open:doubao://chat]', 'open build');
+    equal(g.ckTapFromDraft({ mode: 'open', open: '  ' }), '', 'blank uri builds empty tap');
     // 构造：四型生成 tap 串。
     equal(g.ckTapFromDraft({ mode: 'text', text: ':w' }), ':w', 'text build');
     equal(g.ckTapFromDraft({ mode: 'single', single: 'f5' }), '[f5]', 'single build');

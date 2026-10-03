@@ -864,6 +864,10 @@ class MockNative {
         this._record('openSetup', [token]);
     }
 
+    openLink(uri, token) {
+        this._record('openLink', [uri, token]);
+    }
+
     openSetupPage(page, token) {
         this._record('openSetupPage', [page, token]);
     }

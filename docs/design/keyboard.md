@@ -416,7 +416,7 @@ JS→Native（全部 token 门控 + 输入校验；面板 id `[0-9a-f]{1,16}`、
 | 模式/浮层 | `selectMode`、`switchInputMethod`、`hideKeyboard`、`requestState`、`setOverlayOpen`（§2.5） |
 | 高度 | `setKeyboardHeight` |
 | 更新 | `reloadKeyboard`、`keyboardReady`（握手，§5.3/§8）（`restoreBuiltInKeyboard` 是设置页桥） |
-| 设置 | `openSetup`、`customKeys`、`setCustomKeys`、`setQuickPref`（§6.1）、`pushStores`/`getStores`（备份镜像，§4） |
+| 设置 | `openSetup`、`openLink`（定制按键 `[open:URI]`，§15）、`customKeys`、`setCustomKeys`、`setQuickPref`（§6.1）、`pushStores`/`getStores`（备份镜像，§4） |
 
 （`copyText` 属设置页 SettingsBridge，不在键盘 ImeBridge。）
 
@@ -1116,12 +1116,20 @@ TYPE_NULL 假 InputConnection 会对删除调用假成功——不做行为探�
     （长按提示，≤60 字符）。
   - `tap` DSL：括号外是原文 commitText；`[name]` 单键（esc/tab/enter/
     space/bs/del/方向/home/end/pgup/pgdn/f1..f12）；`[mod+…+key]` 组合
-    （ctrl/alt/shift/win）。大小写不敏感；未知记号保存时报错并指出位置；
+    （ctrl/alt/shift/win）；`[open:URI]` 外链（3.73.22：http(s) 或应用
+    自定义 scheme，经 `openLink` 桥 ACTION_VIEW 打开；URI 大小写敏感、
+    intent:// 等走私 scheme 双侧拒收——表单校验 + 桥再校验）。大小写
+    不敏感（`[open:…]` 除外）；未知记号保存时报错并指出位置；
     未闭合 `[` 报错不提交。
   - 上限：行 ≤3、键总数 ≤100（超限报错不截断）。
-- 渲染：符号层「定制」分类 = 三行横向滚动条带（键宽随内容、上限 96px），
-  右侧固定竖向 ⌫ 列；编辑在完整设置页 JSON 编辑器（textarea + 插入
-  模板 + 保存即校验）。
+- 渲染：符号层「定制」分类 = 三行横向滚动条带（键宽随内容、上限 96px）；
+  ⌫ 不再硬编码右列——tap 恰为 `[backspace]` 的 cell 渲染为专属退格键
+  （桥专用通道 + 长按连删），位置由表数据决定（样例放在最后一行行尾）。
+  编辑在完整设置页：点选编辑器（五型：文本/按键/组合键/打开应用/高级）
+  为主入口，JSON 编辑器（textarea + 双模板 + 保存即校验）兜底。
+- 模板双轨（2026-10-03 用户裁定）：「插入实用模板」与编辑器默认表
+  同源（高频短语 + 撤销/复制/粘贴/全选 + 翻译外链 + ⌫ 行尾）；「开发者
+  模板」承载全覆盖验收（单键/混排/组合键/功能键/光标/⌫/[open:]）。
 
 ## 16. 版本与发布
 

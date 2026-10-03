@@ -3061,6 +3061,43 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             }
         }
 
+        /** 定制按键 [open:URI]（§15）：点按打开外部应用/网页。只收
+         *  http(s) 或应用自定义 scheme 的 data URI——intent:// 能夹带
+         *  组件信息走私任意跳转，与 openDocs「不收任意 URL」同一安全
+         *  姿态，桥侧再校验一次（表单侧 parseTapDsl 已挡过）。键盘
+         *  正显示时进程有可见窗口，startActivity 不受 BAL 限制。 */
+        @JavascriptInterface
+        fun openLink(uri: String, token: String) = guarded(token, limited = false) {
+            val clean = uri.trim()
+            val scheme = clean.substringBefore(':', "").lowercase()
+            val schemeOk = !clean.contains('[') && !clean.contains(']') &&
+                (scheme == "http" || scheme == "https" ||
+                    (scheme.isNotEmpty() && scheme.matches(Regex("[a-z][a-z0-9+.\\-]*")) &&
+                        scheme !in OPEN_LINK_BLOCKED_SCHEMES))
+            if (!schemeOk) {
+                Diagnostics.log("route", "openLink rejected scheme=$scheme")
+                return@guarded
+            }
+            val launched = runCatching {
+                startActivity(
+                    android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(clean))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+            if (launched.isFailure) {
+                // 未安装目标应用 / 没有 Activity 认领该 scheme。
+                Diagnostics.log("route", "openLink no handler")
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(
+                        applicationContext, com.feelime.ime.R.string.open_link_failed,
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            } else {
+                Diagnostics.log("route", "openLink startActivity ok")
+            }
+        }
+
         /** design §15: the custom-keyboard table's native mirror (the
          * settings page edits the same store). Synchronous prefs read on the
          * bridge thread; empty string = unset, "disabled" = the settings
@@ -3799,6 +3836,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             "window.Feelime && window.Feelime.applyHeightNow && window.Feelime.applyHeightNow()"
         const val KEYBOARD_URL = "https://$LOCAL_HOST/keyboard/index.html"
         const val BRIDGE_NAME = "FeelimeNative"
+        /** [open:URI] 拒收的 scheme：能夹带组件/extras 走私跳转
+         *  （intent / android-app）、把标记塞给浏览器渲染（data /
+         *  javascript / blob）、或指向本机内容（file / content / about）。
+         *  允许面：http/https + 应用自定义 scheme。 */
+        val OPEN_LINK_BLOCKED_SCHEMES =
+            setOf("intent", "javascript", "file", "content", "about", "data", "android-app", "blob")
  // The control layer's palette - Esc/Tab/Home/End, the
         // four arrows, PgUp/PgDn, forward delete (Del) and '.' (Alt+.) / F4.
  // F1..F12 (Fn sticky layer + custom keys) and the physical

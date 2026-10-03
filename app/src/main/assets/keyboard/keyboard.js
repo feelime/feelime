@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.21';
+    const KEYBOARD_VERSION = '3.73.22';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -4978,10 +4978,40 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return null;
         }
 
+        /** [open:URI] 的表单校验（与 native openLink 桥同口径，桥侧
+         *  再校验一次兜底）：http(s) 网页地址或应用自定义 scheme；
+         *  intent://（点名组件）、data:（塞标记给浏览器）、android-app:
+         *  （点名任意包拉起）等能夹带信息走私跳转的形态一律拒绝。
+         *  方括号也拒：DSL 以 [..] 切步，含括号的 URI 会被静默截断
+         *  （IPv6 字面量同理，属可接受损失）。 */
+        validateOpenUri(uri) {
+            if (!uri) return { error: t("缺少链接") };
+            if (/[\s]/.test(uri)) return { error: t("链接里不能有空格") };
+            if (/[\[\]]/.test(uri)) return { error: t("链接里不能有方括号") };
+            const scheme = /^([a-z][a-z0-9+.\-]*):/i.exec(uri);
+            if (!scheme) return { error: t("必须是 http(s) 网页地址或应用链接（如 doubao://）") };
+            const name = scheme[1].toLowerCase();
+            const blocked = ['intent', 'javascript', 'file', 'content', 'about',
+                'data', 'android-app', 'blob'];
+            if (blocked.includes(name)) {
+                return { error: t("不支持 {0} 链接", name + ':') };
+            }
+            return { ok: true };
+        }
+
         /** Tap DSL -> execution steps. Text outside [..] commits
-         * literally; [name] presses a key; [mod+...+name] a combo. Returns
-         * {steps} or {error} (message names the offending token). */
+         * literally; [name] presses a key; [mod+...+name] a combo;
+         * [open:URI] opens an app/web page. Returns {steps} or
+         * {error} (message names the offending token). */
         parseTapDsl(tap) {
+            // 方括号 URI 前置拦截：`[open:https://[2001:db8::1]/]` 会被
+            // 下方的记号正则切成「[2001:db8::1] 键名不可用」这种费解报错
+            // （或更糟：`a]b]` 形态静默截断成文本步骤）。open 记号内部
+            // 不允许再出现任何方括号，直接给明确说法。
+            const trimmed = String(tap || '').trim();
+            if (/^\[open:/i.test(trimmed) && /[\[\]]/.test(trimmed.slice(1, -1))) {
+                return { error: t("链接里不能有方括号") };
+            }
             const steps = [];
             const re = /\[([^\[\]]*)\]/g;
             let index = 0;
@@ -4992,7 +5022,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             while ((match = re.exec(tap))) {
                 pushText(tap.slice(index, match.index));
                 index = match.index + match[0].length;
-                const body = match[1].trim().toLowerCase();
+                const raw = match[1].trim();
+                // [open:URI]：外链步骤（打开应用/网页）。URI 大小写敏感，
+                // 必须取原始串——下方 body 的 toLowerCase 只服务键名。
+                if (raw.toLowerCase().startsWith('open:')) {
+                    const uri = raw.slice(5).trim();
+                    const check = this.validateOpenUri(uri);
+                    if (check.error) return { error: t("「{0}」{1}", match[0], check.error) };
+                    steps.push({ open: uri });
+                    continue;
+                }
+                const body = raw.toLowerCase();
                 if (!body) return { error: t("出现空的 [] 记号") };
                 const mods = [];
                 let key = null;
@@ -5115,7 +5155,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 return;
             }
             for (const step of parsed.steps) {
-                if (step.text) this.sendSymbol(step.text);
+                if (step.open) {
+                    // 热更键盘（新 JS）跑在旧原生（无 openLink 桥）上时，
+                    // 点按应给出可读提示，而非 TypeError 静默吞掉（后续
+                    // 步骤一并中断）。能力探测是本仓库新桥方法的约定
+                    // （collectStores / height-ack 同款）。
+                    if (typeof Native.openLink !== 'function') {
+                        this.showToast(t("此按键需要升级 App 后使用（打开链接）"));
+                        return;
+                    }
+                    this.call(() => Native.openLink(step.open, this.token));
+                }
+                else if (step.text) this.sendSymbol(step.text);
                 else this.sendCombo(step.combo);
             }
         }

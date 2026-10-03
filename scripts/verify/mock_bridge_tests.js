@@ -2090,6 +2090,71 @@ test('custom keys: settings-page JSON editor round-trip (3.20.0 form)', {until: 
         'back on the custom sub-page, status updated');
 });
 
+test('custom [open:URI] steps: validate, execute, and mix with text', {since: '3.73.22'}, () => {
+    const world = fresh();
+    const save = text => world.context.window.Feelime.saveCustomJson(text);
+    // 合法：http(s) 与应用自定义 scheme；大小写保留（路径里的 Caps 不许洗）。
+    save(JSON.stringify({ version: 1, rows: [[
+        { t: '翻译', tap: '[open:https://fanyi.baidu.com]' },
+        { t: '豆包', tap: '[open:doubao://]' },
+        { t: '先打字再开', tap: '查[open:https://X.COM/Search]' },
+    ], [], []] }));
+    assert(world.$('toast').textContent.includes('已保存 3 个键'), 'valid open URIs saved');
+    // 非法 scheme（intent 走私 / 空白 / 无 scheme）逐个指名。
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[open:intent://x#Intent;end]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('不支持'), 'intent: rejected');
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[open:data:text/html,x]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('不支持'), 'data: rejected (review P2-1)');
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[open:android-app://com.foo/x]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('不支持'), 'android-app: rejected (review P2-1)');
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[open:https://[2001:db8::1]/]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('方括号'), 'bracketed URI rejected, not silently truncated (review P3-3)');
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[open:fanyi .baidu.com]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('空格'), 'inner whitespace rejected');
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[open:www.baidu.com]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('http(s)'), 'schemeless URI rejected');
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[open:]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('缺少链接'), 'empty URI rejected');
+    // 执行：点按走 openLink 桥；混排步骤按序（先 commitText 再开链接）。
+    save(JSON.stringify({ version: 1, rows: [[
+        { t: '翻译', tap: '[open:https://fanyi.baidu.com]' },
+        { t: '先打字再开', tap: '查[open:doubao://chat]' },
+    ], [], []] }));
+    world.tap(world.$('toolCustom'));
+    const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')]
+        .filter(el => el.dataset.role !== 'backspace');
+    world.tap(keys.find(el => el.textContent === '翻译'));
+    const calls = world.native.of('openLink');
+    equal(calls.length, 1, 'open key fires openLink once');
+    const token = world.native.of('keyboardReady')[0].args[3];
+    equal(calls[0].args.join('|'), 'https://fanyi.baidu.com|' + token, 'uri + token args');
+    world.native.reset();
+    world.tap(keys.find(el => el.textContent === '先打字再开'));
+    equal(world.native.of('openLink').length, 1, 'mixed step still opens');
+    equal(world.native.of('commitText').length, 1, 'text step commits via commitText');
+    // 落表 tap 原样保留 URI 大小写（评审缺口：混大小写不只看 toast）。
+    world.native.reset();
+    save(JSON.stringify({ version: 1, rows: [[
+        { t: '搜', tap: '[open:https://X.COM/Search?q=A]' },
+    ], [], []] }));
+    const pushed = world.native.of('setCustomKeys').slice(-1)[0];
+    assert(pushed && pushed.args[0].includes('[open:https://X.COM/Search?q=A]'),
+        'stored tap keeps URI case');
+    // 旧原生（无 openLink 桥）：点按给出可读 toast，不抛 TypeError
+    // 中断后续步骤（评审 P2-2：新 JS 跑旧壳的热更场景）。注意两点：
+    // harness 的桥方法在原型上，delete 无效，须阴影赋 undefined；
+    // toolCustom 是 toggle，收起再展开才重渲染新表。
+    world.context.window.FeelimeNative.openLink = undefined;
+    world.tap(world.$('toolCustom'));
+    world.tap(world.$('toolCustom'));
+    const key2 = [...world.document.querySelectorAll('#symGrid .sym-custom-key')]
+        .find(el => el.textContent === '搜');
+    world.tap(key2);
+    assert(world.$('toast').textContent.includes('升级 App'),
+        'missing bridge surfaces an upgrade hint');
+    delete world.context.window.FeelimeNative.openLink;
+});
+
 test('custom JSON validation: errors name the problem (3.20.0 form)', {until: '3.20.0'}, () => {
     const world = fresh();
     world.tap(world.$('setupButton'));

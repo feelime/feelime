@@ -645,11 +645,16 @@ async function build() {
     // glyphs), and String.replace would expand $-sequences in a string
     // replacement, corrupting the inlined script.
     const patched = html
-        .replace('<link rel="stylesheet" href="keyboard.css">', () => `<style>${css}</style>`)
+        // index.html 已把资产引用版本化（?v=__KB_VERSION__），字面量
+        // 匹配会静默漏内联——iframe 反而去拉相对路径的 tools/keyboard.js
+        // 404，键盘整页不初始化（无 Feelime、无样式）。按标签形状匹配
+        // 并吞掉查询串。
+        .replace(/<link rel="stylesheet" href="keyboard\.css(?:\?[^"]*)?">/,
+            () => `<style>${css}</style>`)
         // The escaped <\/script> in the LITERAL below matters: a plain
         // closing tag inside a string would terminate THIS page's script
         // block at HTML parse time (self-inflicted).
-        .replace('<script src="keyboard.js"><\/script>',
+        .replace(/<script src="keyboard\.js(?:\?[^"]*)?"><\/script>/,
             () => `${inject}<script>${js}<\/script>`)
         .replace('</head>', () => `<style>
 /* preview shell: 模拟原生侧的 IME 视图 —— 键盘贴底、上方是「宿主编辑器」；

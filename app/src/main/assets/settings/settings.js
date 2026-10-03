@@ -231,12 +231,17 @@ const I18N = {
         "ck.f.mode.single": "按键",
         "ck.f.mode.combo": "组合键",
         "ck.f.mode.advanced": "高级",
+        "ck.f.mode.open": "打开应用",
         "ck.f.text": "要输入的文本，如 :w 或 me@example.com",
         "ck.f.mods": "修饰键",
         "ck.f.key": "按键",
-        "ck.f.dsl": "DSL（如 [esc]ggVGD）",
+        "ck.f.open.uri": "链接地址",
+        "ck.f.open.placeholder": "如 doubao:// 或 https://fanyi.baidu.com",
+        "ck.f.open.presets": "常用预设",
+        "ck.f.open.hint": "支持应用专属链接（需已安装该应用）或网页地址；点击后切到目标应用、键盘收起。不支持 intent:// 等链接；需键盘 3.73.22+（App 1.3.4 后随热更/升级可用）。",
+        "ck.f.dsl": "DSL（如 [esc]ggVGD 或 [open:doubao://]）",
         "ck.help.aria": "DSL 说明",
-        "ck.help.dsl": "<b>点了这颗键会发生什么，按顺序写下来就行：</b><br>· 要打字，直接写：<code>:w</code>（输入 :w）、<code>me@example.com</code>（输入邮箱）<br>· 按一个键，套上方括号：<code>[esc]</code>（Esc）、<code>[f5]</code>（F5 刷新）、<code>[backspace]</code>（退格）<br>· 组合键：<code>[ctrl+s]</code>（保存）、<code>[alt+f4]</code>（关窗口）<br>· 连着来：<code>[esc]ggVGD</code> = Vim 删除全文（Esc，gg 回开头，VG 选到结尾，D 删除）<br>· 可用的键名：esc、tab、enter、space、backspace、del、left、right、up、down、home、end、pgup、pgdn、f1～f12、单字母、数字；组合键的修饰：ctrl、alt、shift、win。",
+        "ck.help.dsl": "<b>点了这颗键会发生什么，按顺序写下来就行：</b><br>· 要打字，直接写：<code>:w</code>（输入 :w）、<code>me@example.com</code>（输入邮箱）<br>· 按一个键，套上方括号：<code>[esc]</code>（Esc）、<code>[f5]</code>（F5 刷新）、<code>[backspace]</code>（退格）<br>· 组合键：<code>[ctrl+s]</code>（保存）、<code>[alt+f4]</code>（关窗口）<br>· 打开应用/网页：<code>[open:doubao://]</code>（豆包）、<code>[open:https://fanyi.baidu.com]</code>（网页翻译）<br>· 连着来：<code>[esc]ggVGD</code> = Vim 删除全文（Esc，gg 回开头，VG 选到结尾，D 删除）<br>· 可用的键名：esc、tab、enter、space、backspace、del、left、right、up、down、home、end、pgup、pgdn、f1～f12、单字母、数字；组合键的修饰：ctrl、alt、shift、win。",
         "ck.f.span": "宽度",
         "ck.f.color": "颜色",
         "ck.color.default": "默认",
@@ -251,6 +256,8 @@ const I18N = {
         "ck.common.hint": "选一颗直接填好，改改就能用",
         "ck.err.t": "键面不能为空",
         "ck.err.tap": "点击输出不能为空",
+        "ck.err.open": "链接需为 http(s) 网页地址或应用链接（如 doubao://），且不能含空格",
+        "ck.err.tapLong": "点击输出超过 128 字符（链接太长），请换短链接",
         "ck.note.saved": "已保存，键盘下次载入时生效",
         "ck.note.deleted": "已删除",
         "ck.row": "第 {n} 行",
@@ -284,7 +291,8 @@ const I18N = {
         "search.placeholder": "搜索设置：高度、气泡、双拼、词库…",
         "search.noResults": "没有匹配的设置项",
         "action.saveCustom": "保存定制",
-        "action.insertTemplate": "插入模板",
+        "action.insertTemplate": "插入实用模板",
+        "action.insertTemplateDev": "开发者模板",
         "action.viewDocs": "查看说明",
         "voice.models.title": "麦克风与语音模型",
         "voice.models.badge": "语音",
@@ -840,12 +848,17 @@ const I18N = {
         "ck.f.mode.single": "Key",
         "ck.f.mode.combo": "Combo",
         "ck.f.mode.advanced": "Adv",
+        "ck.f.mode.open": "Open app",
         "ck.f.text": "Text to type, e.g. :w or me@example.com",
         "ck.f.mods": "Mods",
         "ck.f.key": "Key",
-        "ck.f.dsl": "DSL (e.g. [esc]ggVGD)",
+        "ck.f.open.uri": "Link",
+        "ck.f.open.placeholder": "e.g. doubao:// or https://example.com",
+        "ck.f.open.presets": "Presets",
+        "ck.f.open.hint": "App deeplinks (app must be installed) or web addresses; tapping switches to the target app and hides the keyboard. intent:// etc. are not allowed; requires keyboard 3.73.22+.",
+        "ck.f.dsl": "DSL (e.g. [esc]ggVGD or [open:doubao://])",
         "ck.help.aria": "DSL help",
-        "ck.help.dsl": "<b>Write what should happen, in order:</b><br>· Type text: just write it, e.g. <code>:w</code>, <code>me@example.com</code><br>· One key: bracket it, e.g. <code>[esc]</code>, <code>[f5]</code>, <code>[backspace]</code><br>· Combos: <code>[ctrl+s]</code> (save), <code>[alt+f4]</code><br>· Sequences: <code>[esc]ggVGD</code> = Vim delete the whole file: <code>[esc]ggVGD</code><br>· Key names: esc, tab, enter, space, backspace, del, arrows, home, end, pgup, pgdn, f1-f12, letters, digits; modifiers: ctrl, alt, shift, win.",
+        "ck.help.dsl": "<b>Write what should happen, in order:</b><br>· Type text: just write it, e.g. <code>:w</code>, <code>me@example.com</code><br>· One key: bracket it, e.g. <code>[esc]</code>, <code>[f5]</code>, <code>[backspace]</code><br>· Combos: <code>[ctrl+s]</code> (save), <code>[alt+f4]</code><br>· Open an app/web page: <code>[open:doubao://]</code>, <code>[open:https://translate.google.com]</code><br>· Sequences: <code>[esc]ggVGD</code> = Vim delete the whole file: <code>[esc]ggVGD</code><br>· Key names: esc, tab, enter, space, backspace, del, arrows, home, end, pgup, pgdn, f1-f12, letters, digits; modifiers: ctrl, alt, shift, win.",
         "ck.f.span": "Width",
         "ck.f.color": "Color",
         "ck.color.default": "Default",
@@ -860,6 +873,8 @@ const I18N = {
         "ck.common.hint": "Pick one to prefill, tweak, apply",
         "ck.err.t": "Key face is required",
         "ck.err.tap": "Tap action is required",
+        "ck.err.open": "Link must be an http(s) web address or an app link like doubao://, with no spaces",
+        "ck.err.tapLong": "Tap action exceeds 128 characters (link too long) - please use a shorter link",
         "ck.note.saved": "Saved; applied the next time the keyboard loads",
         "ck.note.deleted": "Deleted",
         "ck.row": "Row {n}",
@@ -889,7 +904,8 @@ const I18N = {
         "search.placeholder": "Search settings: height, bubble, double-pinyin, lexicon…",
         "search.noResults": "No matching settings",
         "action.saveCustom": "Save custom layout",
-        "action.insertTemplate": "Insert template",
+        "action.insertTemplate": "Insert practical template",
+        "action.insertTemplateDev": "Developer template",
         "action.viewDocs": "View guide",
         "voice.models.title": "Microphone & voice models",
         "voice.models.badge": "Voice",
@@ -3275,9 +3291,16 @@ $("btnSaveCustom").addEventListener("click", () => {
 // 保存=从未落盘，重进被回读洗回「开」。
 $("customEnabled").addEventListener("change", event => call("setCustomEnabled", event.target.checked));
 
+// 模板双轨（用户裁定 2026-10-03）：「插入模板」给实用表（与编辑器
+// 默认表 CK_TEMPLATE 同源），「开发者模板」承载全覆盖验收（2026-09-24
+// 模板要覆盖每个特性——含单键/文本+键混排/组合键/功能键/光标/⌫/[open:]）。
 $("btnCustomTemplate").addEventListener("click", () => {
-    // 全功能示例（验收 2026-09-24：模板要覆盖每个特性）——三行各自一类：
-    // ①终端/Vim（单键、文本+键混排、组合键）②光标/编辑键 ③短语与符号。
+    $("customJson").value = CK_TEMPLATE;
+});
+
+$("btnCustomTemplateDev").addEventListener("click", () => {
+    // 全功能示例——三行各自一类：①终端/Vim（单键、文本+键混排、组合键）
+    // ②光标/编辑键（含 ⌫ 专属形态）③短语/符号/外链。
     $("customJson").value = JSON.stringify({
         version: 1,
         rows: [
@@ -3293,13 +3316,14 @@ $("btnCustomTemplate").addEventListener("click", () => {
                 { t: "行首", tap: "[home]" },
                 { t: "行尾", tap: "[end]" },
                 { t: "删字", tap: "[bs]" },
-                { t: "Tab", tap: "[tab]" },
+                { t: "⌫", tap: "[backspace]", note: "退格，长按连删" },
             ],
             [
                 { t: "邮箱", tap: "me@example.com", note: "整段文本" },
                 { t: "✓", tap: "好的" },
                 { t: "→", tap: "→ " },
                 { t: "￥", tap: "￥" },
+                { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开应用/网页" },
             ],
         ],
     }, null, 2);
@@ -3426,6 +3450,16 @@ const CK_QUICK = [
     { t: "剪切", tap: "[ctrl+x]" }, { t: "全选", tap: "[ctrl+a]" },
     { t: "撤销", tap: "[ctrl+z]" },
     { t: "邮箱", tap: "me@example.com", span: 2 },
+    { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },
+    { t: "豆包", tap: "[open:doubao://]", note: "打开豆包 App（需已安装）" },
+];
+/** 「打开应用/链接」型的预设（点选即填 URI；自定义 scheme 未安装会 toast）。 */
+const CK_OPEN_PRESETS = [
+    { t: "翻译", uri: "https://fanyi.baidu.com" },
+    { t: "谷歌翻译", uri: "https://translate.google.com" },
+    { t: "豆包", uri: "doubao://" },
+    { t: "有道词典", uri: "youdaodict://" },
+    { t: "搜索", uri: "https://www.baidu.com/s?wd=" },
 ];
 let ckRows = null;
 let ckSel = null;   // 正在编辑的位置 {r, c, isNew}
@@ -3458,6 +3492,9 @@ function ckCloseModal() {
 
 /** tap 反猜型别 + 拆字段（编辑已有键时回填表单）。 */
 function ckTapParse(tap) {
+    // [open:URI] 在 lowercase 之前识别：URI 大小写敏感。
+    const open = /^\[open:(.+)\]$/.exec(String(tap || "").trim());
+    if (open) return { mode: "open", open: open[1].trim() };
     const m = /^\[([a-z0-9+]+)\]$/.exec(String(tap || "").trim().toLowerCase());
     if (m) {
         const parts = m[1].split("+");
@@ -3478,6 +3515,10 @@ function ckTapParse(tap) {
 /** 表单草稿 → tap 串。 */
 function ckTapFromDraft(d) {
     if (d.mode === "text") return d.text || "";
+    if (d.mode === "open") {
+        const uri = (d.open || "").trim();
+        return uri ? "[open:" + uri + "]" : "";
+    }
     if (d.mode === "single") return d.single ? "[" + d.single + "]" : "";
     if (d.mode === "combo") {
         const mods = CK_MODS.filter(([name]) => d.mods.has(name)).map(([name]) => name);
@@ -3496,18 +3537,32 @@ function ckLoad() {
     ckRows = [0, 1, 2].map(i => Array.isArray(rows[i]) ? rows[i].slice() : []);
 }
 
+/** 编辑器默认表（用户裁定 2026-10-03）：样例必须「能当例子且大多数人
+ *  打开就能用」——高频短语/常用快捷键/常用链接，退格放最后一行行尾
+ *  （与主键盘位置习惯一致）。覆盖特性：整段文本、组合键、[open:]、
+ *  span、note、⌫ 专属形态；单键/文本+键混排等由「开发者模板」承载
+ *  （btnCustomTemplateDev，模板全覆盖验收 2026-09-24 归它管）。 */
 const CK_TEMPLATE = JSON.stringify({
     version: 1,
     rows: [
         [
-            { t: "Esc", tap: "[esc]", note: "Vim / 终端 Esc" },
-            { t: ":w", tap: ":w[enter]", note: "Vim 保存" },
-            { t: "整理", tap: "[esc]ggVGD", note: "Vim 删除全文" },
-            { t: "保存", tap: "[ctrl+s]", note: "常见保存快捷键", color: "blue" },
+            { t: "谢谢", tap: "谢谢", note: "点击直接上屏" },
+            { t: "好的", tap: "好的" },
+            { t: "收到", tap: "收到" },
+            { t: "辛苦了", tap: "辛苦了" },
+            { t: "不客气", tap: "不客气" },
+        ],
+        [
+            { t: "撤销", tap: "[ctrl+z]", note: "Ctrl+Z" },
+            { t: "复制", tap: "[ctrl+c]" },
+            { t: "粘贴", tap: "[ctrl+v]" },
+            { t: "全选", tap: "[ctrl+a]" },
+            { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },
+        ],
+        [
+            { t: "邮箱", tap: "me@example.com", span: 2, note: "改成你自己的邮箱" },
             { t: "⌫", tap: "[backspace]", note: "退格，长按连删" },
         ],
-        [{ t: "邮箱", tap: "me@example.com", span: 2 }],
-        [],
     ],
 }, null, 2);
 
@@ -3735,7 +3790,7 @@ function ckOpenChip(r, c) {
 function ckOpenNew(r) {
     ckSel = { r, c: ckRows[r].length, isNew: true };
     ckDraft = { t: "", mode: "single", single: "esc", text: "", comboKey: "s",
-        mods: new Set(["ctrl"]), dsl: "", color: "", note: "" };
+        mods: new Set(["ctrl"]), open: "", dsl: "", color: "", note: "" };
     ckBuildForm();
     ckOpenModal(true);
 }
@@ -3822,7 +3877,8 @@ function ckBuildForm() {
     body.append(ckField(t("ck.f.t"), tInput));
 
     const modeSeg = ckSegment([["text", t("ck.f.mode.text")], ["single", t("ck.f.mode.single")],
-        ["combo", t("ck.f.mode.combo")], ["advanced", t("ck.f.mode.advanced")]],
+        ["combo", t("ck.f.mode.combo")], ["open", t("ck.f.mode.open")],
+        ["advanced", t("ck.f.mode.advanced")]],
         d.mode, v => { d.mode = v; ckBuildForm(); });
     modeSeg.id = "ckMode";
     modeSeg.classList.add("ck-mode-seg");
@@ -3933,6 +3989,34 @@ function ckBuildAction(holder) {
             else d.comboKey = keySel.value;
         });
         holder.append(ckField(t("ck.f.key"), keySel));
+    } else if (d.mode === "open") {
+        // 打开应用/链接：URI 输入 + 常用预设（预设只填表单，仍可改）。
+        const input = document.createElement("input");
+        input.id = "ckOpenUri";
+        input.className = "ck-input";
+        input.value = d.open || "";
+        input.placeholder = t("ck.f.open.placeholder");
+        input.addEventListener("input", () => { d.open = input.value; });
+        holder.append(ckField(t("ck.f.open.uri"), input));
+        const presetRow = document.createElement("div");
+        presetRow.className = "ck-seg";
+        CK_OPEN_PRESETS.forEach(p => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "ck-seg-btn" + (d.open === p.uri ? " selected" : "");
+            chip.textContent = p.t;
+            chip.addEventListener("click", () => {
+                d.open = p.uri;
+                if (!d.t.trim()) d.t = p.t;
+                ckBuildForm();
+            });
+            presetRow.append(chip);
+        });
+        holder.append(ckField(t("ck.f.open.presets"), presetRow));
+        const hint = document.createElement("p");
+        hint.className = "hint";
+        hint.textContent = t("ck.f.open.hint");
+        holder.append(hint);
     } else {
         // 高级：标签 + ? 帮助（点开 DSL 速查）+ 输入框，行式对齐。
         const labelWrap = document.createElement("span");
@@ -3971,8 +4055,20 @@ function ckBuildAction(holder) {
 $("ckApply").addEventListener("click", () => {
     const d = ckDraft;
     if (!d.t.trim()) return setNote("ckEditNote", t("ck.err.t"));
+    // open 型先过本地校验（键盘侧 parseCustomKeys 是整表拒收，坏键
+    //  不该等保存才发现）：http(s) 或应用 scheme，拒绝空串/空白/方括号/
+    //  走私 scheme（与键盘 validateOpenUri、native openLink 同清单）。
+    if (d.mode === "open") {
+        const uri = (d.open || "").trim();
+        const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) &&
+            !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
+        if (!ok) return setNote("ckEditNote", t("ck.err.open"));
+    }
     const tap = ckTapFromDraft(d);
     if (!tap) return setNote("ckEditNote", t("ck.err.tap"));
+    // tap 长度与键盘侧 CUSTOM_LIMITS.tapChars 同限（128）：长链接是 open
+    //  型主用途，放行后键盘 hello 采纳时整表静默拒收=全部定制键消失。
+    if ([...tap].length > 128) return setNote("ckEditNote", t("ck.err.tapLong"));
     const cell = { t: d.t.trim(), tap, note: d.note || "" };
     if (d.color) cell.color = d.color;
     if (ckSel.isNew) ckRows[ckSel.r].push(cell);

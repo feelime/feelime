@@ -28,4 +28,5 @@
     <string name="keyboard_signature_bad_confirm">Import anyway</string>
     <string name="dict_compile_channel">Dictionary compilation</string>
     <string name="dict_compile_title">Compiling dictionary…</string>
+    <string name="open_link_failed">No app can open this link</string>
 </resources>

@@ -28,4 +28,5 @@
     <string name="keyboard_signature_bad_title">键盘包签名不符</string>
     <string name="keyboard_signature_bad_message">这个键盘包的签名与官方发布密钥不一致（可能是自改包或第三方包）。导入后将以“已确认签名不符”的状态运行，重启后仍生效。确认导入吗？</string>
     <string name="keyboard_signature_bad_confirm">仍要导入</string>
+    <string name="open_link_failed">未找到能打开此链接的应用</string>
 </resources>
