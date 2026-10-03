@@ -3580,12 +3580,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }, { passive: true });
             button.addEventListener('touchend', event => {
                 event.preventDefault();
+                // 归属判定必须在任何清理之前（1.3.4 回归根因）：同键双指下
+                // 非所属手指先松，旧序会先删掉整键共享的按压标记，所属
+                // 手指随后在下方早退，长按弹层永远到不了关闭分支。
+                const ownsPopup = !!(this.popup && this.popupOwnsTouch(this.popup, event));
+                const ownerPress = this.popup ? this.pressById.get(this.popup.fingerId) : null;
+                const sameKeyNonOwner = !!(this.popup && !ownsPopup
+                    && ownerPress && ownerPress.button === button);
                 // 按事件里实际结束的手指清按压记录（同键双指时闭包 press
                 // 只剩最后按下者，删它会删错人）。
                 for (const item of event.changedTouches || []) {
                     this.pressById.delete(item.identifier);
                 }
-                if (!this.pressedKeys.has(button)) return;
+                // 同键非所属手指的结束对弹层与本键都是无事件：不删共享
+                // 标记、不撤 active-touch、不清 owner 的计时器、不点按、
+                // 不收弹层。异键非所属仍走下方正常点按路径。
+                if (sameKeyNonOwner) return;
+                // 迟到 touchend 保护不变（收起/取消后不得再输入）；但弹层
+                // owner 的收尾不再依赖按键级标记——它可能已被同键他指删掉。
+                if (!this.pressedKeys.has(button) && !ownsPopup) return;
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
                 this.scheduleHideBubble();
@@ -3594,12 +3607,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // 弹层只认开它的那根手指：别指抬手不得替它终判/关层
                     // （多指下 A 一抬会把 B 正在拖选的弹层当场收掉，B 松手
                     // 落成键面点按）。fingerId 未知=旧弹层/mock 单指，放行。
-                    if (this.popupOwnsTouch(this.popup, event)) {
+                    if (ownsPopup) {
                         // 快速甩出时最终位置只出现在 changedTouches：相对跟手
                         // 收尾先刷新一次选中再提交，否则按旧高亮落错格
-                        // （codex P2）。split 弹层保持既有语义不动。
+                        // （codex P2）。同一事件可能同时结束两根手指，终判
+                        // 坐标只认 owner 那根，changedTouches[0] 可能是别人。
                         if (this.popup.relative) {
-                            const last = event.changedTouches && event.changedTouches[0];
+                            const last = event.changedTouches && Array.from(event.changedTouches)
+                                .find(item => item.identifier === this.popup.fingerId);
                             if (last) this.movePopup(last);
                         }
                         this.closePopup(false);
@@ -3615,14 +3630,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 else button.click();
             }, { passive: false });
             button.addEventListener('touchcancel', event => {
+                const ownsPopup = !!(this.popup && this.popupOwnsTouch(this.popup, event));
+                const ownerPress = this.popup ? this.pressById.get(this.popup.fingerId) : null;
+                const sameKeyNonOwner = !!(this.popup && !ownsPopup
+                    && ownerPress && ownerPress.button === button);
                 for (const item of event.changedTouches || []) {
                     this.pressById.delete(item.identifier);
+                }
+                // 同键非所属手指被系统取消：共享标记/计时器都属于还按着的
+                // owner，撤了会让 owner 随后的 touchend 早退（同 touchend
+                // 路径的残留）。只清本键的吞键标记。
+                if (sameKeyNonOwner) {
+                    button._suppressClick = false;
+                    return;
                 }
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
                 this.scheduleHideBubble();
                 clear();
-                if (this.popup && this.popupOwnsTouch(this.popup, event)) {
+                if (this.popup && ownsPopup) {
                     this.closePopup(true);
                 }
                 // Review P3: a cancelled gesture never delivers the click
@@ -3644,6 +3670,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.popup) this.closePopup(true);
             this.touchOrigin = null;
             this.pressById.clear();
+            // 未到期的工具栏长按计时一并掐掉（codex 2026-10-03 方案 §3）：
+            // 它们挂在按钮/候选条自己的 touchend/cancel 上，收起链走不到
+            // 那里——不清的话键盘已收、到点仍把编辑态拉起。不依赖
+            // pressedKeys（这套计时器没登记进去）。
+            const tbar = document.getElementById('candidateBar');
+            if (tbar) {
+                clearTimeout(tbar._barHold);
+                tbar._barHoldPos = null;
+                tbar.querySelectorAll('.tool').forEach(el => {
+                    clearTimeout(el._editHold);
+                    el._editHoldPos = null;
+                });
+            }
             this.scrubBase = null;
             this.scrubSteps = 0;
             // #34 手势会话随程序化取消一并复位（native 会话也要关——

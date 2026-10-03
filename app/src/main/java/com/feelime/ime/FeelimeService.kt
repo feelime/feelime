@@ -1152,8 +1152,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // 后上下文已断——不清的话同编辑器再弹出时联想词和工具栏让位态
         // 原样残留（device 复现 2026-09-20）。onStartInputView 再兜一次，
         // 覆盖此处 evaluate 因 WebView 正在 detach 而丢失的场合。
-        evaluate("window.Feelime && window.Feelime.cancelTouches && window.Feelime.cancelTouches()")
-        evaluate("window.Feelime && window.Feelime.cancelToolbarEdit && window.Feelime.cancelToolbarEdit()")
+        // 一段 evaluate 走完收起链（两段之间 WebView detach 会丢后半段，
+        // 残留浮层就是这一类）：cancelTouches 清手势/长按弹层/工具栏计时
+        // → resetToHome 收模式菜单/高度卡/快捷设置等全部独占层；旧热更
+        // 资产没有 resetToHome 时回退 cancelToolbarEdit（codex 方案 §3）。
+        evaluate("window.Feelime && window.Feelime.cancelTouches && window.Feelime.cancelTouches();" +
+            "window.Feelime && (window.Feelime.resetToHome ? window.Feelime.resetToHome() :" +
+            " (window.Feelime.cancelToolbarEdit && window.Feelime.cancelToolbarEdit()))")
         clearAssociation()
         super.onFinishInputView(finishingInput)
     }

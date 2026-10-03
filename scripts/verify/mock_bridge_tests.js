@@ -1060,6 +1060,116 @@ test("co-touch lifting mid-drag must not close the pressing finger's popup", {si
     equal(keys[1].args[0], 'E', 'popup still commits its preselect for B');
 });
 
+test('same-key second finger lifting first must not orphan the popup (1.3.4 regression)', {since: '3.73.22'}, () => {
+    const world = fresh();
+    const e = world.key('e');
+    // 同键双指：A(1) 先按下（touchOrigin owner，长按弹层属于 A），B(2)
+    // 后按下。B 先松不得删整键共享按压标记——旧序删了之后 A 的 touchend
+    // 在按键级早退，弹层残留（resetToHome 都救不回；d387007 引入）。
+    world.dispatch(e, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(1, 100, 20)], touches: [touchPoint(1, 100, 20)] });
+    world.dispatch(e, 'touchstart', 104, 20,
+        { changedTouches: [touchPoint(2, 104, 20)],
+          touches: [touchPoint(1, 100, 20), touchPoint(2, 104, 20)] });
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    world.dispatch(e, 'touchend', 104, 20,
+        { changedTouches: [touchPoint(2, 104, 20)], touches: [touchPoint(1, 100, 20)] });
+    assert(world.$('keyPopup').classList.contains('open'),
+        'B lifting first leaves the popup open');
+    assert(e.classList.contains('active-touch'), 'shared press state kept for A');
+    equal(world.native.of('key').length, 0, "B's lift commits nothing (no stray click)");
+    world.dispatch(e, 'touchend', 100, 20,
+        { changedTouches: [touchPoint(1, 100, 20)], touches: [] });
+    assert(!world.$('keyPopup').classList.contains('open'), 'A release closes the popup');
+    const keys = world.native.of('key');
+    equal(keys.length, 1, 'exactly the popup commit lands');
+    equal(keys[0].args[0], 'E', 'popup preselect commits for A');
+});
+
+test('same-key second finger: system cancel keeps the owner path alive', {since: '3.73.22'}, () => {
+    const world = fresh();
+    const e = world.key('e');
+    world.dispatch(e, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(1, 100, 20)], touches: [touchPoint(1, 100, 20)] });
+    world.dispatch(e, 'touchstart', 104, 20,
+        { changedTouches: [touchPoint(2, 104, 20)],
+          touches: [touchPoint(1, 100, 20), touchPoint(2, 104, 20)] });
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    // B 被系统取消：不得撤共享标记/计时器（撤了 A 的 touchend 早退残留，
+    // 与 touchend 路径同根）。
+    world.dispatch(e, 'touchcancel', 104, 20,
+        { changedTouches: [touchPoint(2, 104, 20)], touches: [touchPoint(1, 100, 20)] });
+    assert(world.$('keyPopup').classList.contains('open'), 'B cancel keeps the popup for A');
+    assert(e.classList.contains('active-touch'), 'press state survives B cancel');
+    world.dispatch(e, 'touchend', 100, 20,
+        { changedTouches: [touchPoint(1, 100, 20)], touches: [] });
+    assert(!world.$('keyPopup').classList.contains('open'), 'A closes it after B cancel');
+    equal(world.native.of('key').length, 1, 'one commit total');
+});
+
+test('same-key both fingers end in one event: the owner has the final say', {since: '3.73.22'}, () => {
+    const world = fresh();
+    const e = world.key('e');
+    world.dispatch(e, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(1, 100, 20)], touches: [touchPoint(1, 100, 20)] });
+    world.dispatch(e, 'touchstart', 104, 20,
+        { changedTouches: [touchPoint(2, 104, 20)],
+          touches: [touchPoint(1, 100, 20), touchPoint(2, 104, 20)] });
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    // 两指同一次 touchend 收尾、changedTouches 把 B 排在 A 前：终判坐标
+    // 只认 owner（A），changedTouches[0] 可能是 B。
+    world.dispatch(e, 'touchend', 100, 20,
+        { changedTouches: [touchPoint(2, 104, 20), touchPoint(1, 100, 20)], touches: [] });
+    assert(!world.$('keyPopup').classList.contains('open'), 'one event closes the popup');
+    const keys = world.native.of('key');
+    equal(keys.length, 1, 'single commit for the owner');
+    equal(keys[0].args[0], 'E', 'owner coordinate wins the final say');
+});
+
+test('hide chain collapses every exclusive layer and pending toolbar hold', {since: '3.73.22'}, () => {
+    // 原生 onFinishInputView 的合并 evaluate（cancelTouches→resetToHome）
+    // 的 JS 半段契约：模式菜单/快捷设置/长按弹层一次收干净，未到期的
+    // 工具栏长按计时被掐掉（收起后到点拉起编辑态的旧缺口）。
+    const world = fresh();
+    const w = world.context.window.Feelime;
+    // 长按弹层：按住 e 出层。
+    const e = world.key('e');
+    world.dispatch(e, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(1, 100, 20)], touches: [touchPoint(1, 100, 20)] });
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    // 模式菜单 + 快捷设置。
+    w.toggleModeMenu();
+    assert(world.$('modeMenu').classList.contains('open'), 'mode menu open');
+    // 收起链（与 Kotlin 合并 evaluate 同序）。
+    w.cancelTouches();
+    w.resetToHome();
+    assert(!world.$('keyPopup').classList.contains('open'), 'popup collapsed');
+    assert(!world.$('modeMenu').classList.contains('open'), 'mode menu collapsed');
+    // 工具栏长按计时：按下 100ms 后收起，再走 600ms 也不得进编辑态。
+    // 选择器带 [data-tool]——首个 .tool 是 setupButton，不在 TOOL_CATALOG、
+    // 从不挂 _editHold（评审 P2：选错元素会让这条断言静默选空）。
+    const tool = world.document.querySelector('#candidateBar .tool[data-tool]');
+    assert(tool, 'a catalog toolbar tool rendered');
+    world.dispatch(tool, 'touchstart', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
+    world.clock.advance(100);
+    assert(tool._editHold, 'hold timer armed before the hide chain');
+    w.cancelTouches();
+    w.resetToHome();
+    world.clock.advance(600);
+    assert(world.$('toolbarEditor').hidden, 'pending toolbar hold never opens the editor');
+    // 正常路径回归保护：收起后下一次点按照常输入。
+    world.dispatch(e, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(1, 100, 20)], touches: [touchPoint(1, 100, 20)] });
+    world.dispatch(e, 'touchend', 100, 20,
+        { changedTouches: [touchPoint(1, 100, 20)], touches: [] });
+    assert(world.native.of('key').length > 0, 'next tap still types');
+});
+
 test('second finger flicks entirely while the first still holds', {since: '3.73.21'}, () => {
     const world = fresh();
     const q = world.key('q');
