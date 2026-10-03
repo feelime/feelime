@@ -1085,6 +1085,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 定制键色板（cell.color 的合法值）：预设色名而非任意 CSS 色，
     // 零注入面；rgba 在亮/暗两种键底上都可辨。
     const CUSTOM_KEY_COLORS = ['blue', 'green', 'orange', 'red', 'purple'];
+    // 注记（2026-10-03）：面向用户的「实用样例」真相源在 settings.js 的
+    // CK_TEMPLATE；此处仅为 editorReturn 返回态的兜底残留，无直达入口
+    // （mock_bridge_tests 锁定其唯一引用路径），不与新样例同步。
     const CUSTOM_TEMPLATE = JSON.stringify({
         version: 1,
         rows: [

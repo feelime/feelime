@@ -2050,6 +2050,39 @@ test('custom JSON validation: limits and DSL errors name the problem', {since: '
     assert(world.$('toast').textContent.includes('已保存 1 个键'), 'valid save confirms');
 });
 
+test('custom keys: settings practical template passes keyboard-side validation', {since: '3.73.22'}, () => {
+    // 设置侧套件只断言模板文本结构；键盘 hello 采纳时 parseCustomKeys
+    // 整表拒收=全部定制键静默消失（评审 P3-3）。这里从 settings.js 源码
+    // 抓出三处常量喂真实键盘校验器，并锁住支付宝 scheme 三处同源——
+    // 删掉任何一处（模板/快捷库/预设）测试即红。
+    const vm = require('vm');
+    const src = fs.readFileSync(
+        path.resolve(__dirname, '../../app/src/main/assets/settings/settings.js'), 'utf8');
+    const grab = (name) => {
+        const m = new RegExp('const ' + name
+            + ' = (JSON\\.stringify\\(\\{[\\s\\S]*?\\}, null, 2\\)|\\[[\\s\\S]*?\\n\\]);')
+            .exec(src);
+        assert(m, name + ' found in settings.js source');
+        return vm.runInNewContext('(' + m[1] + ')');
+    };
+    const template = grab('CK_TEMPLATE');
+    const quick = grab('CK_QUICK');
+    const presets = grab('CK_OPEN_PRESETS');
+    const world = fresh();
+    // 走 saveCustomJson（门面已导出）：校验+采纳+toast 一条龙，整表拒收
+    // 会以错误 toast 暴露。
+    world.context.window.Feelime.saveCustomJson(template);
+    assert(world.$('toast').textContent.includes('已保存 18 个键'),
+        'practical template passes keyboard validation: ' + world.$('toast').textContent);
+    // 支付宝扫一扫/收付款官方 scheme：模板、快捷库、预设三处同源。
+    for (const uri of ['alipays://platformapi/startapp?saId=10000007',
+        'alipays://platformapi/startapp?saId=20000056']) {
+        assert(template.includes(uri), 'CK_TEMPLATE carries ' + uri);
+        assert(quick.some(k => (k.tap || '').includes(uri)), 'CK_QUICK carries ' + uri);
+        assert(presets.some(p => p.uri === uri), 'CK_OPEN_PRESETS carries ' + uri);
+    }
+});
+
 test('custom keys: settings-page JSON editor round-trip (3.20.0 form)', {until: '3.20.0'}, () => {
     // 3.20.0 has no Felime.saveCustomJson hook - the whole flow lives behind
     // the settings page (paste-JSON textarea in the editor strip).

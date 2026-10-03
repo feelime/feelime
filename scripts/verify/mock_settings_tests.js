@@ -643,6 +643,44 @@ test('custom key editor: long URIs are stopped at apply time (review P2-3)', () 
         'long-uri key not added');
 });
 
+test('custom key editor: span survives edit and quick-pick (review P3-4)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: '邮箱', tap: 'me@example.com', span: 2 }], [], []],
+    });
+    g.ckEnter();
+    // 编辑已有键：改名不改布局，span 必须保留（无独立控件，丢了就是
+    // 静默数据丢失——默认样例的邮箱 span2 引导用户「改成自己的」）。
+    g.ckOpenChip(0, 0);
+    const tInput = g.document.getElementById('ckT');
+    tInput.value = '我的邮箱'; fire(tInput, 'input');
+    g.document.getElementById('ckApply').click();
+    world.$('ckSave').click();
+    let rows = JSON.parse(world.lastCall('saveCustom').args[0]).rows;
+    equal(rows[0][0].t, '我的邮箱', 'edit applied');
+    equal(rows[0][0].span, 2, 'span kept through an edit');
+    // 快捷库的 span2 邮箱：选中即带入。
+    g.ckOpenNew(1);
+    const chip = [...world.doc.querySelectorAll('.ck-common-chip')]
+        .find(e => e.textContent === '邮箱');
+    assert(chip, 'quick-library email chip rendered');
+    fire(chip, 'click');
+    g.document.getElementById('ckApply').click();
+    // 新键（没选带 span 的条目）不带 span 字段。ckBuildForm 每次重建
+    // 表单：#ckT 必须重查，旧引用已 detach。
+    g.ckOpenNew(2);
+    const t2 = g.document.getElementById('ckT');
+    t2.value = 'A'; fire(t2, 'input');
+    g.document.getElementById('ckApply').click();
+    world.$('ckSave').click();
+    rows = JSON.parse(world.lastCall('saveCustom').args[0]).rows;
+    equal(rows[1][0].span, 2, 'quick-pick carries span');
+    equal(rows[2][0].span, undefined, 'fresh key has no span');
+});
+
 test('hot-update card: 检查更新/下载安装/恢复内置 pass the field values', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE, update: { ...BASE_STATE.update, source: 'http://s/meta.json', url: 'http://s/kb.zip' } });

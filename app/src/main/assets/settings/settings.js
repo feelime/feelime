@@ -3456,8 +3456,8 @@ const CK_QUICK = [
     { t: "收付款", tap: "[open:alipays://platformapi/startapp?saId=20000056]", color: "green", note: "打开支付宝收付款（需已安装）" },
 ];
 /** 「打开应用/链接」型的预设（点选即填 URI；自定义 scheme 未安装会 toast）。
- *  支付宝 saId 是官方公开 scheme；微信 8.0.69 起外部 scheme 全被封，
- *  不收录（真机实测 2026-10-03）。 */
+ *  支付宝 saId 是官方公开 scheme；微信 8.0.69 实测外部 scheme 不可用
+ *  （scanqrcode stub 自杀、dl/scan 落错误页，2026-10-03），不收录。 */
 const CK_OPEN_PRESETS = [
     { t: "扫一扫", uri: "alipays://platformapi/startapp?saId=10000007" },
     { t: "收付款", uri: "alipays://platformapi/startapp?saId=20000056" },
@@ -3546,12 +3546,13 @@ function ckLoad() {
 /** 编辑器默认表（用户裁定 2026-10-03 二轮）：三行填满、大多数人打开
  *  就能用、每颗键展示一种能力。行1 高频短语（text）；行2 编辑快捷键
  *  （combo + 单键）；行3 支付宝扫码/收款 + 网页链接（[open:]，color）
- *  + 邮箱（span2）+ ⌫ 行尾（与主键盘位置习惯一致）。行宽按最小主流
- *  屏（360dp）收敛：所有键（含行尾 ⌫）不折叠进横滚，打开即可见。
- *  微信 8.0.69 起外部 scheme 全被封（扫码/收款/主界面都落错误页，真
- *  机实测），故不放死链；支付宝 saId 是官方公开 scheme。单键/混排等
- *  由「开发者模板」承载（btnCustomTemplateDev，模板全覆盖验收
- *  2026-09-24 归它管）。 */
+ *  + 邮箱（span2）+ ⌫ 行尾（与主键盘位置习惯一致）。行宽以 390 级
+ *  主流屏填满为准（DOM 实测 97/100/88%）；更窄屏（360-375）行1/行2
+ *  尾键进横滚可拖出（横滚条设计内行为），⌫ 所在行3 全部主流屏完整
+ *  可见。微信 8.0.69 实测：scanqrcode stub 自杀无页面、dl/scan 与裸
+ *  scheme 落「页面无法访问」错误页（收款 scheme 未测），故不放微信
+ *  死链；支付宝 saId 是官方公开 scheme。单键/混排等由「开发者模板」
+ *  承载（btnCustomTemplateDev，模板全覆盖验收 2026-09-24 归它管）。 */
 const CK_TEMPLATE = JSON.stringify({
     version: 1,
     rows: [
@@ -3798,6 +3799,7 @@ function ckOpenChip(r, c) {
         ...ckTapParse(cell.tap),
         color: cell.color || "",
         note: cell.note || "",
+        span: cell.span === 2 || cell.span === 3 ? cell.span : 0,
     };
     ckBuildForm();
     ckOpenModal(false);
@@ -3806,7 +3808,7 @@ function ckOpenChip(r, c) {
 function ckOpenNew(r) {
     ckSel = { r, c: ckRows[r].length, isNew: true };
     ckDraft = { t: "", mode: "single", single: "esc", text: "", comboKey: "s",
-        mods: new Set(["ctrl"]), open: "", dsl: "", color: "", note: "" };
+        mods: new Set(["ctrl"]), open: "", dsl: "", color: "", note: "", span: 0 };
     ckBuildForm();
     ckOpenModal(true);
 }
@@ -3870,6 +3872,7 @@ function ckBuildForm() {
                 ckDraft.t = item.t;
                 ckDraft.note = item.note || "";
                 ckDraft.color = item.color || "";
+                ckDraft.span = item.span === 2 || item.span === 3 ? item.span : 0;
                 Object.assign(ckDraft, ckTapParse(item.tap));
                 ckBuildForm();
             });
@@ -4087,6 +4090,10 @@ $("ckApply").addEventListener("click", () => {
     if ([...tap].length > 128) return setNote("ckEditNote", t("ck.err.tapLong"));
     const cell = { t: d.t.trim(), tap, note: d.note || "" };
     if (d.color) cell.color = d.color;
+    // 宽键跨格（span）没有独立控件：编辑已有键时保留原值，误编辑不该
+    // 静默丢——默认样例的邮箱 span2 引导用户「改成自己的邮箱」（评审
+    // P3-4）；快捷库选中时从条目带入。
+    if (d.span === 2 || d.span === 3) cell.span = d.span;
     if (ckSel.isNew) ckRows[ckSel.r].push(cell);
     else ckRows[ckSel.r][ckSel.c] = cell;
     ckCloseModal();
