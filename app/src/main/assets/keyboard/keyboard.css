@@ -2464,6 +2464,11 @@ body[data-bg-image="on"] #settingsPanel { background: transparent; }
 .sym-custom-key.ck-purple { background: rgba(168, 85, 247, .30);  border-color: rgba(168, 85, 247, .55); }
 .sym-custom-key[data-span="2"] { min-width: 92px; max-width: 160px; }
 .sym-custom-key[data-span="3"] { min-width: 140px; max-width: 220px; }
+/* 行对齐（2026-10-03 用户需求）：行不满时整组左/中/右停靠。走首键的
+ * auto margin 而非 justify-content——overflow 容器里 justify 会把起点
+ * 方向的键裁进不可滚动区，auto margin 在溢出时归零、自然回落左满排。 */
+.sym-custom-row[data-align="center"] > .sym-custom-key:first-child { margin-left: auto; margin-right: auto; }
+.sym-custom-row[data-align="right"] > .sym-custom-key:first-child { margin-left: auto; }
 /* The shared strip's textarea form (custom-JSON editing). */
 .phrase-area {
     height: auto;

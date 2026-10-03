@@ -262,6 +262,10 @@ const I18N = {
         "ck.note.deleted": "已删除",
         "ck.row": "第 {n} 行",
         "ck.none": "（空行）",
+        "ck.align.aria": "行对齐",
+        "ck.align.left": "左",
+        "ck.align.center": "中",
+        "ck.align.right": "右",
         "ck.dirty": "有未保存的修改",
         "ck.newTitle": "新建按键",
         "ck.cancel": "取消",
@@ -879,6 +883,10 @@ const I18N = {
         "ck.note.deleted": "Deleted",
         "ck.row": "Row {n}",
         "ck.none": "(empty)",
+        "ck.align.aria": "Row alignment",
+        "ck.align.left": "L",
+        "ck.align.center": "C",
+        "ck.align.right": "R",
         "ck.dirty": "Unsaved changes",
         "ck.newTitle": "New key",
         "ck.cancel": "Cancel",
@@ -3546,13 +3554,14 @@ function ckLoad() {
 /** 编辑器默认表（用户裁定 2026-10-03 二轮）：三行填满、大多数人打开
  *  就能用、每颗键展示一种能力。行1 高频短语（text）；行2 编辑快捷键
  *  （combo + 单键）；行3 支付宝扫码/收款 + 网页链接（[open:]，color）
- *  + 邮箱（span2）+ ⌫ 行尾（与主键盘位置习惯一致）。行宽以 390 级
- *  主流屏填满为准（DOM 实测 97/100/88%）；更窄屏（360-375）行1/行2
- *  尾键进横滚可拖出（横滚条设计内行为），⌫ 所在行3 全部主流屏完整
- *  可见。微信 8.0.69 实测：scanqrcode stub 自杀无页面、dl/scan 与裸
- *  scheme 落「页面无法访问」错误页（收款 scheme 未测），故不放微信
- *  死链；支付宝 saId 是官方公开 scheme。单键/混排等由「开发者模板」
- *  承载（btnCustomTemplateDev，模板全覆盖验收 2026-09-24 归它管）。 */
+ *  + 邮箱（span2）+ ⌫ 行尾（与主键盘位置习惯一致），整行右对齐（行
+ *  对齐能力亮相，⌫ 贴右缘）。行宽以 390 级主流屏填满为准（DOM 实测
+ *  97/100/88%）；更窄屏（360-375）行1/行2 尾键进横滚可拖出（横滚条
+ *  设计内行为），⌫ 所在行3 全部主流屏完整可见。微信 8.0.69 实测：
+ *  scanqrcode stub 自杀无页面、dl/scan 与裸 scheme 落「页面无法访问」
+ *  错误页（收款 scheme 未测），故不放微信死链；支付宝 saId 是官方公
+ *  开 scheme。单键/混排等由「开发者模板」承载（btnCustomTemplateDev，
+ *  模板全覆盖验收 2026-09-24 归它管）。 */
 const CK_TEMPLATE = JSON.stringify({
     version: 1,
     rows: [
@@ -3574,7 +3583,7 @@ const CK_TEMPLATE = JSON.stringify({
             { t: "换行", tap: "[enter]" },
         ],
         [
-            { t: "扫一扫", tap: "[open:alipays://platformapi/startapp?saId=10000007]", color: "blue", note: "打开支付宝扫一扫（需已安装）" },
+            { t: "扫一扫", tap: "[open:alipays://platformapi/startapp?saId=10000007]", color: "blue", note: "打开支付宝扫一扫（需已安装）", align: "right" },
             { t: "收付款", tap: "[open:alipays://platformapi/startapp?saId=20000056]", color: "green", note: "打开支付宝收付款（需已安装）" },
             { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },
             { t: "邮箱", tap: "me@example.com", span: 2, note: "改成你自己的邮箱" },
@@ -3591,6 +3600,20 @@ function ckEnter() {
     ckCloseModal();
     ckRenderRows();
     ckRenderPreview();
+}
+
+/** 行对齐（2026-10-03 用户需求）：值挂在行内首键的 align 字段（键盘
+ *  渲染取行内第一个有效值）。挂 cell 而非改 rows 形状——旧版键盘校验
+ *  器忽略未知字段，热更错峰不炸整表。空行没有载体，不渲染控件。 */
+const CK_ALIGNS = ["left", "center", "right"];
+function ckRowAlign(row) {
+    const hit = (row || []).map(c => c && c.align).find(a => CK_ALIGNS.includes(a));
+    return hit || "left";
+}
+function ckSetRowAlign(r, align) {
+    const row = ckRows[r] || [];
+    row.forEach(c => { delete c.align; });
+    if (align !== "left" && row[0]) row[0].align = align;
 }
 
 function ckRenderRows() {
@@ -3646,6 +3669,26 @@ function ckRenderRows() {
         add.textContent = t("ck.add");
         add.addEventListener("click", () => ckOpenNew(r));
         strip.append(add);
+        if (row.length) {
+            const seg = document.createElement("div");
+            seg.className = "ck-align";
+            seg.setAttribute("aria-label", t("ck.align.aria"));
+            const cur = ckRowAlign(row);
+            for (const a of CK_ALIGNS) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "ck-align-btn" + (cur === a ? " on" : "");
+                b.textContent = t("ck.align." + a);
+                b.addEventListener("click", () => {
+                    ckSetRowAlign(r, a);
+                    ckRenderRows();
+                    ckRenderPreview();
+                    ckMarkDirty(true);
+                });
+                seg.append(b);
+            }
+            line.append(seg);
+        }
         line.append(strip);
         host.append(line);
     });
@@ -4094,6 +4137,9 @@ $("ckApply").addEventListener("click", () => {
     // 静默丢——默认样例的邮箱 span2 引导用户「改成自己的邮箱」（评审
     // P3-4）；快捷库选中时从条目带入。
     if (d.span === 2 || d.span === 3) cell.span = d.span;
+    // 行对齐标记（可能挂在这颗键上）：编辑重建时同样保留。
+    const prev = ckSel.isNew ? null : ckRows[ckSel.r][ckSel.c];
+    if (prev && CK_ALIGNS.includes(prev.align)) cell.align = prev.align;
     if (ckSel.isNew) ckRows[ckSel.r].push(cell);
     else ckRows[ckSel.r][ckSel.c] = cell;
     ckCloseModal();

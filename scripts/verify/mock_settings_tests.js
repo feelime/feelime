@@ -568,6 +568,7 @@ test('custom templates: practical is the default, developer keeps full coverage 
     const last = rows[rows.length - 1];
     equal(last[last.length - 1].tap, '[backspace]',
         'backspace sits at the end of the last row');
+    equal(last[0].align, 'right', 'row 3 is right-aligned (align showcase)');
     assert(last.some(k => k.span === 2), 'row 3 carries a span-2 key');
     assert(last.some(k => k.color === 'blue') && last.some(k => k.color === 'green'),
         'deeplink keys are color-coded');
@@ -679,6 +680,42 @@ test('custom key editor: span survives edit and quick-pick (review P3-4)', () =>
     rows = JSON.parse(world.lastCall('saveCustom').args[0]).rows;
     equal(rows[1][0].span, 2, 'quick-pick carries span');
     equal(rows[2][0].span, undefined, 'fresh key has no span');
+});
+
+test('custom key editor: row alignment control writes the marker cell (2026-10-03)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const lines = () => [...world.doc.querySelectorAll('#ckRowList .ck-row-line')];
+    const btns = r => lines()[r].querySelectorAll('.ck-align-btn');
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }, { t: 'B', tap: 'B' }], [], []],
+    });
+    g.ckEnter();
+    // 有键的行才有对齐控件（标记要挂 cell，空行没载体）；默认左。
+    equal(btns(0).length, 3, 'row 1 renders the 3-way align control');
+    equal(lines()[1].querySelector('.ck-align'), null, 'empty row has no align control');
+    equal(btns(0)[0].className.includes('on'), true, 'left (default) marked on');
+    // 点「右」：标记写进行内首键，其他 cell 不动。
+    fire(btns(0)[2], 'click');
+    world.$('ckSave').click();
+    let rows = JSON.parse(world.lastCall('saveCustom').args[0]).rows;
+    equal(rows[0][0].align, 'right', 'align marker on the first cell');
+    equal(rows[0][1].align, undefined, 'other cells untouched');
+    // 编辑首键（ckApply 重建 cell）：标记保留。
+    g.ckOpenChip(0, 0);
+    const tInput = g.document.getElementById('ckT');
+    tInput.value = 'A2'; fire(tInput, 'input');
+    g.document.getElementById('ckApply').click();
+    world.$('ckSave').click();
+    equal(JSON.parse(world.lastCall('saveCustom').args[0]).rows[0][0].align, 'right',
+        'align survives a key edit');
+    // 切回「左」：标记清除。
+    fire(btns(0)[0], 'click');
+    world.$('ckSave').click();
+    equal(JSON.parse(world.lastCall('saveCustom').args[0]).rows[0][0].align, undefined,
+        'left clears the marker');
 });
 
 test('hot-update card: 检查更新/下载安装/恢复内置 pass the field values', () => {

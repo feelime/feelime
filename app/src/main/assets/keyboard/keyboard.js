@@ -5122,12 +5122,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             return { error: t("「{0}」的 color 只能是：{1} 或自定义色调 h0-h359", label, CUSTOM_KEY_COLORS.join('/')) };
                         }
                     }
+                    // 行对齐（2026-10-03）：可选 align 挂在行内任意 cell 上，
+                    // 渲染取行内第一个有效值。挂 cell 而非改 rows 形状——
+                    // 旧版键盘校验器忽略未知字段，热更错峰不炸整表。
+                    if (cell.align != null && !['left', 'center', 'right'].includes(cell.align)) {
+                        return { error: t("「{0}」的 align 只能是：left/center/right", label) };
+                    }
                     if (++total > CUSTOM_LIMITS.keys) {
                         return { error: t("键总数超过 {0}", CUSTOM_LIMITS.keys) };
                     }
                     const clean = { t: label, tap, note };
                     if (cell.span === 2 || cell.span === 3) clean.span = cell.span;
                     if (cell.color != null) clean.color = cell.color;
+                    if (cell.align === 'left' || cell.align === 'center' || cell.align === 'right') {
+                        clean.align = cell.align;
+                    }
                     keys.push(clean);
                 }
                 rows.push(keys);
@@ -5218,6 +5227,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 rows.forEach(row => {
                     const strip = document.createElement('div');
                     strip.className = 'kb-row sym-custom-row';
+                    // 行对齐取行内第一个有效 align（settings 行控件写在
+                    // 首键上）；CSS 用首键 auto margin 停靠，溢出时归零
+                    // 不裁键（justify-content 在 overflow 容器会裁起点）。
+                    const align = (row || []).map(c => c && c.align)
+                        .find(a => a === 'left' || a === 'center' || a === 'right');
+                    if (align) strip.dataset.align = align;
                     (row || []).forEach(cell => {
                         // 退格也是表数据的一部分：tap 恰好是单个
                         // [backspace] 的 cell 渲染成specialKey 形态

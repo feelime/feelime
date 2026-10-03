@@ -1114,6 +1114,12 @@ TYPE_NULL 假 InputConnection 会对删除调用假成功——不做行为探�
 
   - `t` 键面（必填，≤12 字符）；`tap` 必填（≤128 字符）；`note` 可选
     （长按提示，≤60 字符）。
+  - `align` 可选（3.73.22）：行对齐 left/center/right，挂在行内任意
+    cell 上、渲染取行内第一个有效值（settings 行控件写在首键）。
+    挂 cell 而非改 rows 形状——旧版键盘校验器忽略未知字段，热更
+    错峰不炸整表；实现走首键 auto margin（overflow 容器里
+    justify-content 会裁掉起点方向的键，auto margin 溢出时归零回落
+    左满排）。
   - `tap` DSL：括号外是原文 commitText；`[name]` 单键（esc/tab/enter/
     space/bs/del/方向/home/end/pgup/pgdn/f1..f12）；`[mod+…+key]` 组合
     （ctrl/alt/shift/win）；`[open:URI]` 外链（3.73.22：http(s) 或应用
@@ -1131,7 +1137,8 @@ TYPE_NULL 假 InputConnection 会对删除调用假成功——不做行为探�
   同源，三行填满（行宽以 390 级屏填满为准，DOM 实测 97/100/88%；更窄
   屏 360-375 行1/行2 尾键进横滚可拖出，⌫ 所在行3 全部主流屏完整可见）：
   高频短语 / 编辑快捷键（撤销…保存/换行）/ 支付宝扫一扫+收付款（官方
-  saId scheme，色键）+ 翻译外链 + 邮箱（span2）+ ⌫ 行尾。微信 8.0.69
+  saId scheme，色键）+ 翻译外链 + 邮箱（span2）+ ⌫ 行尾（行3 整行
+  右对齐——align 能力亮相，⌫ 贴右缘）。微信 8.0.69
   实测外部 scheme 不可用（scanqrcode stub 自杀、dl/scan 与裸 scheme 落
   错误页，收款 scheme 未测），不放死链；「开发者模板」承载全覆盖验收
   （单键/混排/组合键/功能键/光标/⌫/[open:]）。

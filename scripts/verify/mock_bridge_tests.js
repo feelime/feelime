@@ -2083,6 +2083,25 @@ test('custom keys: settings practical template passes keyboard-side validation',
     }
 });
 
+test('custom keys: row alignment rides on a cell field (2026-10-03)', {since: '3.73.22'}, () => {
+    const world = fresh();
+    const save = text => world.context.window.Feelime.saveCustomJson(text);
+    save(JSON.stringify({ version: 1, rows: [[
+        { t: 'A', tap: 'A', align: 'right' }, { t: 'B', tap: 'B' }], [], []] }));
+    world.tap(world.$('toolCustom'));
+    let strip = world.document.querySelector('#symGrid .sym-custom-row');
+    equal(strip.dataset.align, 'right', 'row alignment lands on the strip');
+    // 坏值整表拒收（与 span/color 同严格度）。
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: 'A', align: 'middle' }]] }));
+    assert(world.$('toast').textContent.includes('align'), 'bad align value rejected');
+    // 无 align = 默认左；toolCustom 是 toggle，收起再展开才重渲染。
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []] }));
+    world.tap(world.$('toolCustom'));
+    world.tap(world.$('toolCustom'));
+    strip = world.document.querySelector('#symGrid .sym-custom-row');
+    equal(strip.dataset.align, undefined, 'no align field = default left');
+});
+
 test('custom keys: settings-page JSON editor round-trip (3.20.0 form)', {until: '3.20.0'}, () => {
     // 3.20.0 has no Felime.saveCustomJson hook - the whole flow lives behind
     // the settings page (paste-JSON textarea in the editor strip).
