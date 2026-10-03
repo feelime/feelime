@@ -3452,9 +3452,15 @@ const CK_QUICK = [
     { t: "邮箱", tap: "me@example.com", span: 2 },
     { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },
     { t: "豆包", tap: "[open:doubao://]", note: "打开豆包 App（需已安装）" },
+    { t: "扫一扫", tap: "[open:alipays://platformapi/startapp?saId=10000007]", color: "blue", note: "打开支付宝扫一扫（需已安装）" },
+    { t: "收付款", tap: "[open:alipays://platformapi/startapp?saId=20000056]", color: "green", note: "打开支付宝收付款（需已安装）" },
 ];
-/** 「打开应用/链接」型的预设（点选即填 URI；自定义 scheme 未安装会 toast）。 */
+/** 「打开应用/链接」型的预设（点选即填 URI；自定义 scheme 未安装会 toast）。
+ *  支付宝 saId 是官方公开 scheme；微信 8.0.69 起外部 scheme 全被封，
+ *  不收录（真机实测 2026-10-03）。 */
 const CK_OPEN_PRESETS = [
+    { t: "扫一扫", uri: "alipays://platformapi/startapp?saId=10000007" },
+    { t: "收付款", uri: "alipays://platformapi/startapp?saId=20000056" },
     { t: "翻译", uri: "https://fanyi.baidu.com" },
     { t: "谷歌翻译", uri: "https://translate.google.com" },
     { t: "豆包", uri: "doubao://" },
@@ -3537,29 +3543,39 @@ function ckLoad() {
     ckRows = [0, 1, 2].map(i => Array.isArray(rows[i]) ? rows[i].slice() : []);
 }
 
-/** 编辑器默认表（用户裁定 2026-10-03）：样例必须「能当例子且大多数人
- *  打开就能用」——高频短语/常用快捷键/常用链接，退格放最后一行行尾
- *  （与主键盘位置习惯一致）。覆盖特性：整段文本、组合键、[open:]、
- *  span、note、⌫ 专属形态；单键/文本+键混排等由「开发者模板」承载
- *  （btnCustomTemplateDev，模板全覆盖验收 2026-09-24 归它管）。 */
+/** 编辑器默认表（用户裁定 2026-10-03 二轮）：三行填满、大多数人打开
+ *  就能用、每颗键展示一种能力。行1 高频短语（text）；行2 编辑快捷键
+ *  （combo + 单键）；行3 支付宝扫码/收款 + 网页链接（[open:]，color）
+ *  + 邮箱（span2）+ ⌫ 行尾（与主键盘位置习惯一致）。行宽按最小主流
+ *  屏（360dp）收敛：所有键（含行尾 ⌫）不折叠进横滚，打开即可见。
+ *  微信 8.0.69 起外部 scheme 全被封（扫码/收款/主界面都落错误页，真
+ *  机实测），故不放死链；支付宝 saId 是官方公开 scheme。单键/混排等
+ *  由「开发者模板」承载（btnCustomTemplateDev，模板全覆盖验收
+ *  2026-09-24 归它管）。 */
 const CK_TEMPLATE = JSON.stringify({
     version: 1,
     rows: [
         [
-            { t: "谢谢", tap: "谢谢", note: "点击直接上屏" },
+            { t: "谢谢", tap: "谢谢", note: "点击直接上屏，可改成自己的高频用语" },
             { t: "好的", tap: "好的" },
             { t: "收到", tap: "收到" },
             { t: "辛苦了", tap: "辛苦了" },
             { t: "不客气", tap: "不客气" },
+            { t: "没问题", tap: "没问题" },
         ],
         [
-            { t: "撤销", tap: "[ctrl+z]", note: "Ctrl+Z" },
+            { t: "撤销", tap: "[ctrl+z]" },
             { t: "复制", tap: "[ctrl+c]" },
+            { t: "剪切", tap: "[ctrl+x]" },
             { t: "粘贴", tap: "[ctrl+v]" },
             { t: "全选", tap: "[ctrl+a]" },
-            { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },
+            { t: "保存", tap: "[ctrl+s]" },
+            { t: "换行", tap: "[enter]" },
         ],
         [
+            { t: "扫一扫", tap: "[open:alipays://platformapi/startapp?saId=10000007]", color: "blue", note: "打开支付宝扫一扫（需已安装）" },
+            { t: "收付款", tap: "[open:alipays://platformapi/startapp?saId=20000056]", color: "green", note: "打开支付宝收付款（需已安装）" },
+            { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },
             { t: "邮箱", tap: "me@example.com", span: 2, note: "改成你自己的邮箱" },
             { t: "⌫", tap: "[backspace]", note: "退格，长按连删" },
         ],

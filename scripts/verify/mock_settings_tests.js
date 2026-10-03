@@ -551,14 +551,27 @@ test('custom templates: practical is the default, developer keeps full coverage 
     world.push({ ...BASE_STATE });
     world.$('btnCustomTemplate').click();
     const practical = world.$('customJson').value;
-    // 实用模板：高频短语 + 常用快捷键 + [open:] + ⌫ 在最后一行行尾。
-    assert(practical.includes('谢谢') && practical.includes('收到'), 'everyday phrases');
-    assert(practical.includes('[ctrl+z]') && practical.includes('[ctrl+c]'), 'useful combos');
-    assert(practical.includes('[open:https://fanyi.baidu.com]'), 'open key present');
     const rows = JSON.parse(practical).rows;
+    // 三行填满（用户裁定 2026-10-03 二轮：不实用=不行）。
+    equal(rows.length, 3, 'three rows');
+    rows.forEach((row, i) => assert(row.length >= 5, `row ${i + 1} is filled`));
+    // 行1 高频短语；行2 组合键+单键；行3 [open:]/span/color/note/⌫。
+    assert(practical.includes('谢谢') && practical.includes('收到'), 'everyday phrases');
+    assert(practical.includes('[ctrl+z]') && practical.includes('[ctrl+c]')
+        && practical.includes('[ctrl+s]'), 'useful combos');
+    assert(practical.includes('[enter]'), 'single key present');
+    // 支付宝扫码/收付款官方 scheme（微信外部 scheme 被封，不收录）。
+    assert(practical.includes('[open:alipays://platformapi/startapp?saId=10000007]'),
+        'alipay scan deeplink');
+    assert(practical.includes('[open:alipays://platformapi/startapp?saId=20000056]'),
+        'alipay pay deeplink');
     const last = rows[rows.length - 1];
     equal(last[last.length - 1].tap, '[backspace]',
         'backspace sits at the end of the last row');
+    assert(last.some(k => k.span === 2), 'row 3 carries a span-2 key');
+    assert(last.some(k => k.color === 'blue') && last.some(k => k.color === 'green'),
+        'deeplink keys are color-coded');
+    assert(rows.flat().some(k => (k.note || '').length > 0), 'notes explain the keys');
     world.$('btnCustomTemplateDev').click();
     const dev = world.$('customJson').value;
     // 开发者模板承载全覆盖验收：单键/混排/组合/功能键/光标/⌫/[open:]。
