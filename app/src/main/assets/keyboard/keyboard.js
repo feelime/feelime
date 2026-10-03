@@ -1086,8 +1086,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 零注入面；rgba 在亮/暗两种键底上都可辨。
     const CUSTOM_KEY_COLORS = ['blue', 'green', 'orange', 'red', 'purple'];
     // 注记（2026-10-03）：面向用户的「实用样例」真相源在 settings.js 的
-    // CK_TEMPLATE；此处仅为 editorReturn 返回态的兜底残留，无直达入口
-    // （mock_bridge_tests 锁定其唯一引用路径），不与新样例同步。
+    // CK_TEMPLATE；此处仅为 editorReturn 返回态的兜底残留——入口现状
+    // 见 mock_bridge_tests「custom keys: backspace…」用例的注释推理，
+    // 并无机械断言锁住，不与新样例同步。
     const CUSTOM_TEMPLATE = JSON.stringify({
         version: 1,
         rows: [
@@ -7593,7 +7594,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 t("粘贴 JSON 定义符号键盘（最多 3 行，每行键数不限）：t=键面，") +
                 t("tap=单击行为（文本 / [esc] 单键 / [ctrl+s] 组合，可混排，如 [esc]ggVGD），") +
                 t("span=宽键倍数（1-3，可选），color=键面颜色（blue/green/orange/red/purple，可选），[backspace]=退格，") +
-                t("note=长按说明。超宽的行可以左右拖动查看。");
+                t("align=行对齐（left/center/right，可选，挂行内任意键）。note=长按说明。超宽的行可以左右拖动查看。");
             box.append(hint);
             const status = document.createElement('div');
             status.className = 'set-row';

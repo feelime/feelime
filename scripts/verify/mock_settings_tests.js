@@ -575,9 +575,9 @@ test('custom templates: practical is the default, developer keeps full coverage 
     assert(rows.flat().some(k => (k.note || '').length > 0), 'notes explain the keys');
     world.$('btnCustomTemplateDev').click();
     const dev = world.$('customJson').value;
-    // 开发者模板承载全覆盖验收：单键/混排/组合/功能键/光标/⌫/[open:]。
+    // 开发者模板承载全覆盖验收：单键/混排/组合/功能键/光标/⌫/[open:]/align。
     for (const token of ['[esc]', ':w[enter]', '[ctrl+s]', '[f5]', '[left]',
-        '[backspace]', '[open:https://fanyi.baidu.com]']) {
+        '[backspace]', '[open:https://fanyi.baidu.com]', 'align']) {
         assert(dev.includes(token), 'dev template covers ' + token);
     }
 });
@@ -716,6 +716,16 @@ test('custom key editor: row alignment control writes the marker cell (2026-10-0
     world.$('ckSave').click();
     equal(JSON.parse(world.lastCall('saveCustom').args[0]).rows[0][0].align, undefined,
         'left clears the marker');
+    // 重新设右后删掉载体键（× 删除）：标记转移给留下的新首键，行停靠
+    // 不静默回左（评审 P3-1）。
+    fire(btns(0)[2], 'click');
+    g.ckEnterEditMode([...world.doc.querySelectorAll('#ckRowList .ck-chip')][0]);
+    const xbtn = [...world.doc.querySelectorAll('#ckRowList .ck-x')][0];
+    xbtn.listeners.find(l => l.type === 'click').handler({ stopPropagation() {} });
+    world.$('ckSave').click();
+    const after = JSON.parse(world.lastCall('saveCustom').args[0]).rows[0];
+    equal(after.length, 1, 'marker key removed');
+    equal(after[0].align, 'right', 'align transferred to the new first key');
 });
 
 test('hot-update card: 检查更新/下载安装/恢复内置 pass the field values', () => {

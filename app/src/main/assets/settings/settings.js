@@ -3327,7 +3327,7 @@ $("btnCustomTemplateDev").addEventListener("click", () => {
                 { t: "⌫", tap: "[backspace]", note: "退格，长按连删" },
             ],
             [
-                { t: "邮箱", tap: "me@example.com", note: "整段文本" },
+                { t: "邮箱", tap: "me@example.com", note: "整段文本", align: "right" },
                 { t: "✓", tap: "好的" },
                 { t: "→", tap: "→ " },
                 { t: "￥", tap: "￥" },
@@ -3616,6 +3616,18 @@ function ckSetRowAlign(r, align) {
     if (align !== "left" && row[0]) row[0].align = align;
 }
 
+/** 载体键离行（× 删除/拖走去别的行）时保住行对齐：被移除的键带着
+ *  align 且行内没有其他标记 → 转移给留下的新首键，行停靠不静默回左
+ *  （评审 P3-1；空行没载体，只能随键消失）。 */
+function ckKeepRowAlign(r, removed) {
+    const row = ckRows[r] || [];
+    if (!CK_ALIGNS.includes(removed && removed.align)) return;
+    // 被移除的键此刻还在行里：查其他标记要排除它自己。
+    if (!row.some(c => c !== removed && c.align === removed.align) && row.length > 1) {
+        row.find(c => c !== removed).align = removed.align;
+    }
+}
+
 function ckRenderRows() {
     const host = $("ckRowList");
     host.textContent = "";
@@ -3651,6 +3663,7 @@ function ckRenderRows() {
                 x.textContent = "×";
                 x.addEventListener("click", event => {
                     event.stopPropagation();
+                    ckKeepRowAlign(r, ckRows[r][c]);
                     ckRows[r].splice(c, 1);
                     ckRenderRows();
                     ckRenderPreview();
@@ -3778,6 +3791,9 @@ function ckBindDrag(chip) {
             if (t.clientX < rect.left + rect.width / 2) { toC = Math.min(toC, i); }
         });
         if (toR === fromR && toC > fromC) toC -= 1;
+        // 拖走的是源行对齐载体时，标记随键去目标行（渲染扫行内第一个
+        // 有效值），源行若再无标记则转移给留下的新首键。
+        ckKeepRowAlign(fromR, cell);
         ckRows[fromR].splice(fromC, 1);
         ckRows[toR].splice(toC, 0, cell);
         ckMarkDirty(true);
@@ -3806,6 +3822,10 @@ function ckRenderPreview() {
     ckRows.forEach(row => {
         const strip = document.createElement("div");
         strip.className = "ck-prev-row";
+        // 对齐预览与键盘同一语义（行内第一个有效值），CSS 同款首键
+        // auto margin——点「中/右」当场看到停靠变化（评审 P3-2）。
+        const align = ckRowAlign(row);
+        if (align !== "left") strip.dataset.align = align;
         if (!row.length) {
             const none = document.createElement("span");
             none.className = "ck-none";

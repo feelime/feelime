@@ -904,7 +904,7 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
 .ck-row-line { margin: 0; padding: 8px 0; }
 .ck-row-line + .ck-row-line { border-top: 1px solid var(--border, #e7e7e7); }
 /* 行对齐（2026-10-03）：每行一个三段小控件，值写进行内首键的 align。 */
-.ck-align { display: inline-flex; gap: 0; margin-left: 10px; vertical-align: middle;
+.ck-align { display: inline-flex; gap: 0; margin-left: 10px;
     border: 1px solid var(--border, #ccc); border-radius: 8px; overflow: hidden; }
 .ck-align-btn { border: 0; background: var(--card, #fff); color: var(--muted, #999);
     font-size: 12px; padding: 3px 9px; cursor: pointer; }
@@ -915,6 +915,9 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
 .ck-prev-row { display: flex; gap: 4px; flex-wrap: nowrap; min-height: 30px;
     align-items: stretch; overflow-x: auto; scrollbar-width: none; }
 .ck-prev-row::-webkit-scrollbar { display: none; }
+/* 对齐预览：与键盘同款首键 auto margin（溢出归零不裁键）。 */
+.ck-prev-row[data-align="center"] > .ck-prev-key:first-child { margin-left: auto; margin-right: auto; }
+.ck-prev-row[data-align="right"] > .ck-prev-key:first-child { margin-left: auto; }
 .ck-prev-key {
     display: inline-flex; align-items: center; justify-content: center;
     flex: none; min-width: 32px; padding: 0 7px; height: 30px; border-radius: 7px;
