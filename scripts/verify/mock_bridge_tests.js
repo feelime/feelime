@@ -941,6 +941,189 @@ test('popup cancel commits nothing', () => {
     equal(world.native.of('key').length, 0, 'no commit on cancel');
 });
 
+// ---- 重叠双指（快速双手打字的常见时序：B 落键时 A 还没抬）----
+// 全局 touchOrigin 是首指所有权；B 落键不抢占。复现两组现网症状：
+// 上滑被当点按落小写、长按弹层一动就「松手撤销」。
+const touchPoint = (id, x, y) => ({ identifier: id, clientX: x, clientY: y });
+
+test('second finger keeps its flick after the first lifts', {since: '3.73.21'}, () => {
+    const world = fresh();
+    const q = world.key('q');
+    const a = world.key('a');
+    // A 按下 q（成为全局手势 origin）
+    world.dispatch(q, 'touchstart', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
+    // B 在 A 未抬时按下 a
+    world.dispatch(a, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(2, 100, 20)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 100, 20)] });
+    // A 抬起（B 仍按住）：手势所有权应移交 B，而不是把锚点清空
+    world.dispatch(q, 'touchend', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(2, 100, 20)] });
+    // B 上滑 50px：应发 alt（a → '-'），而不是落成点按小写
+    world.dispatch(a, 'touchmove', 100, -30,
+        { changedTouches: [touchPoint(2, 100, -30)], touches: [touchPoint(2, 100, -30)] });
+    world.dispatch(a, 'touchend', 100, -30,
+        { changedTouches: [touchPoint(2, 100, -30)], touches: [] });
+    world.clock.advance(2);
+    equal(world.native.of('key').slice(-1)[0].args[0], '-',
+        "second finger's up-flick sends the alt char, not the tap char");
+});
+
+test('long-press popup follows the pressing finger while a co-touch holds', {since: '3.73.21'}, () => {
+    const world = fresh();
+    const q = world.key('q');
+    const e = world.key('e');
+    // A 按住 q 不放；B 按下 e 长按出弹层
+    world.dispatch(q, 'touchstart', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
+    world.dispatch(e, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(2, 100, 20)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 100, 20)] });
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    const items = world.document.querySelectorAll('.kp-item');
+    // 目标=预选格（'e' 弹层 ['3','E','e'] 的中格 E，位移零）：零位移 +
+    // 松手终判 movePopup(changedTouches[0]) 区分修/坏——origin 钉在首指
+    // 上时，B 抬指瞬间的位移(≈80px)立即出界取消、零提交。非零位移的
+    // 换格拖选见下一条（mock 的 fake rect 按兄弟索引发牌，虚拟光标要
+    // 拖进卡片矩形 [108..152]×[94..138] 才算「卡内」，右下方向可达）。
+    const anchor0 = [...items].find(el => el.classList.contains('sel'));
+    const ar0 = anchor0.getBoundingClientRect();
+    const tr0 = items[1].getBoundingClientRect();
+    const mx = 100 + (tr0.left + tr0.width / 2) - (ar0.left + ar0.width / 2);
+    const my = 20 + (tr0.top + tr0.height / 2) - (ar0.top + ar0.height / 2);
+    world.dispatch(e, 'touchmove', mx, my,
+        { changedTouches: [touchPoint(2, mx, my)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, mx, my)] });
+    world.dispatch(e, 'touchend', mx, my,
+        { changedTouches: [touchPoint(2, mx, my)], touches: [touchPoint(1, 20, 20)] });
+    const keys = world.native.of('key');
+    equal(keys.length, 1, 'one commit from popup (A is still holding, never tapped)');
+    equal(keys[0].args[0], items[1].textContent,
+        'pressing finger drags select normally - no instant 松手撤销');
+});
+
+test('long-press popup origin survives the co-touch lifting first', {since: '3.73.21'}, () => {
+    const world = fresh();
+    const q = world.key('q');
+    const e = world.key('e');
+    // 同上，但 A 在弹层打开前先抬：弹层 origin 不能退到锚点格心兜底
+    // （手指在卡片下方，一动就出界=「松手撤销」）。
+    world.dispatch(q, 'touchstart', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
+    world.dispatch(e, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(2, 100, 20)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 100, 20)] });
+    world.dispatch(q, 'touchend', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(2, 100, 20)] });
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    const items = world.document.querySelectorAll('.kp-item');
+    const anchor0 = [...items].find(el => el.classList.contains('sel'));
+    const ar0 = anchor0.getBoundingClientRect();
+    const tr0 = items[1].getBoundingClientRect();
+    const mx = 100 + (tr0.left + tr0.width / 2) - (ar0.left + ar0.width / 2);
+    const my = 20 + (tr0.top + tr0.height / 2) - (ar0.top + ar0.height / 2);
+    world.dispatch(e, 'touchmove', mx, my,
+        { changedTouches: [touchPoint(2, mx, my)], touches: [touchPoint(2, mx, my)] });
+    world.dispatch(e, 'touchend', mx, my,
+        { changedTouches: [touchPoint(2, mx, my)], touches: [] });
+    const keys = world.native.of('key');
+    // A 抬手在弹层打开前：A 自己的点按合法落一笔，弹层选格是第二笔。
+    equal(keys.length, 2, "A's tap plus the popup commit");
+    equal(keys[1].args[0], items[1].textContent, 'selection anchored at the pressing finger');
+});
+
+test("co-touch lifting mid-drag must not close the pressing finger's popup", {since: '3.73.21'}, () => {
+    const world = fresh();
+    const q = world.key('q');
+    const e = world.key('e');
+    // A 按住 q；B 长按 e 出弹层；B 还没松手时 A 先抬——A 的 touchend
+    // 不得替 B 终判/关层（关了 B 再松手就落成键面点按小写）。
+    world.dispatch(q, 'touchstart', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
+    world.dispatch(e, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(2, 100, 20)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 100, 20)] });
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    world.dispatch(q, 'touchend', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(2, 100, 20)] });
+    assert(world.$('keyPopup').classList.contains('open'),
+        'co-touch lift leaves the popup open');
+    // B 零位移松手：按预选格提交
+    world.dispatch(e, 'touchend', 100, 20,
+        { changedTouches: [touchPoint(2, 100, 20)], touches: [] });
+    const keys = world.native.of('key');
+    equal(keys.length, 2, "A's tap plus the popup commit");
+    equal(keys[1].args[0], 'E', 'popup still commits its preselect for B');
+});
+
+test('second finger flicks entirely while the first still holds', {since: '3.73.21'}, () => {
+    const world = fresh();
+    const q = world.key('q');
+    const a = world.key('a');
+    // A 托底久于 B 的整个手势：B 上滑越阈+松手都在 A 未抬时完成。
+    world.dispatch(q, 'touchstart', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
+    world.dispatch(a, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(2, 100, 20)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 100, 20)] });
+    world.dispatch(a, 'touchmove', 100, -30,
+        { changedTouches: [touchPoint(2, 100, -30)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 100, -30)] });
+    world.dispatch(a, 'touchend', 100, -30,
+        { changedTouches: [touchPoint(2, 100, -30)], touches: [touchPoint(1, 20, 20)] });
+    world.clock.advance(2);
+    equal(world.native.of('key').slice(-1)[0].args[0], '-',
+        "B's flick lands its alt even while A still holds");
+    world.dispatch(q, 'touchend', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [] });
+    equal(world.native.of('key').slice(-1)[0].args[0], 'q',
+        "A's held tap still lands after B's flick");
+});
+
+test('long-press popup drags to a different cell with real displacement', {since: '3.73.21'}, () => {
+    const world = fresh();
+    const q = world.key('q');
+    const e = world.key('e');
+    // 非零位移换格：fake 几何下 'e' 弹层格子心在 x=28/62/96,y=24、卡片
+    // 矩形 [108,94,152,138]；锚(E)=62,24，B 从 (100,20) 拖到 (150,90) →
+    // 虚拟光标 (112,94) 入卡、最近格=末格 'e'。origin 若钉在首指 (20,20)
+    // 上，虚拟光标 (192,94) 出卡 → 取消零提交——正好钉死 origin 归属。
+    world.dispatch(q, 'touchstart', 20, 20,
+        { changedTouches: [touchPoint(1, 20, 20)], touches: [touchPoint(1, 20, 20)] });
+    world.dispatch(e, 'touchstart', 100, 20,
+        { changedTouches: [touchPoint(2, 100, 20)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 100, 20)] });
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    world.dispatch(e, 'touchmove', 150, 90,
+        { changedTouches: [touchPoint(2, 150, 90)],
+          touches: [touchPoint(1, 20, 20), touchPoint(2, 150, 90)] });
+    world.dispatch(e, 'touchend', 150, 90,
+        { changedTouches: [touchPoint(2, 150, 90)], touches: [touchPoint(1, 20, 20)] });
+    const keys = world.native.of('key');
+    equal(keys.length, 1, 'one commit from popup (A still holds)');
+    equal(keys[0].args[0], 'e', 'nonzero drag lands the last cell, origin at the pressing finger');
+});
+
+test('long-press popup dragged out of the card cancels with zero commit', {since: '3.73.21'}, () => {
+    const world = fresh();
+    const e = world.key('e');
+    // 单指长按后大幅左拖：虚拟光标出卡片 → 淡出 +「松手撤销」，松手
+    // 零提交（issue #9 的取消路径，即用户看到的症状形态）。
+    world.touchDown(e, 100, 20);
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    world.move(e, -40, 20);
+    assert(world.$('keyPopupCancelTip').classList.contains('show'),
+        'cancel tip visible once out of the card');
+    world.touchUp(e, -40, 20);
+    equal(world.native.of('key').length, 0, 'cancelled popup commits nothing');
+});
+
 test('flick up sends the small alt char, flick down uppercases', () => {
     const world = fresh();
     const q = world.key('q');
