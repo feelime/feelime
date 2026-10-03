@@ -229,15 +229,16 @@ const I18N = {
         "ck.f.mode": "类型",
         "ck.f.mode.text": "文本",
         "ck.f.mode.single": "按键",
-        "ck.f.mode.combo": "组合键",
+        "ck.f.mode.combo": "组合",
         "ck.f.mode.advanced": "高级",
-        "ck.f.mode.open": "打开应用",
+        "ck.f.mode.open": "打开",
         "ck.f.text": "要输入的文本，如 :w 或 me@example.com",
         "ck.f.mods": "修饰键",
         "ck.f.key": "按键",
         "ck.f.open.uri": "链接地址",
         "ck.f.open.placeholder": "如 doubao:// 或 https://fanyi.baidu.com",
         "ck.f.open.presets": "常用预设",
+        "ck.f.open.presetPick": "选择常用应用…",
         "ck.f.open.hint": "支持应用专属链接（需已安装该应用）或网页地址；点击后切到目标应用、键盘收起。不支持 intent:// 等链接；需键盘 3.73.22+（App 1.3.4 后随热更/升级可用）。",
         "ck.f.dsl": "DSL（如 [esc]ggVGD 或 [open:doubao://]）",
         "ck.help.aria": "DSL 说明",
@@ -263,6 +264,7 @@ const I18N = {
         "ck.row": "第 {n} 行",
         "ck.none": "（空行）",
         "ck.align.aria": "行对齐",
+        "ck.align.rowLabel": "第 {n} 行对齐方式：",
         "ck.align.left": "左",
         "ck.align.center": "中",
         "ck.align.right": "右",
@@ -852,13 +854,14 @@ const I18N = {
         "ck.f.mode.single": "Key",
         "ck.f.mode.combo": "Combo",
         "ck.f.mode.advanced": "Adv",
-        "ck.f.mode.open": "Open app",
+        "ck.f.mode.open": "Open",
         "ck.f.text": "Text to type, e.g. :w or me@example.com",
         "ck.f.mods": "Mods",
         "ck.f.key": "Key",
         "ck.f.open.uri": "Link",
         "ck.f.open.placeholder": "e.g. doubao:// or https://example.com",
         "ck.f.open.presets": "Presets",
+        "ck.f.open.presetPick": "Pick a preset…",
         "ck.f.open.hint": "App deeplinks (app must be installed) or web addresses; tapping switches to the target app and hides the keyboard. intent:// etc. are not allowed; requires keyboard 3.73.22+.",
         "ck.f.dsl": "DSL (e.g. [esc]ggVGD or [open:doubao://])",
         "ck.help.aria": "DSL help",
@@ -884,6 +887,7 @@ const I18N = {
         "ck.row": "Row {n}",
         "ck.none": "(empty)",
         "ck.align.aria": "Row alignment",
+        "ck.align.rowLabel": "Row {n} alignment:",
         "ck.align.left": "L",
         "ck.align.center": "C",
         "ck.align.right": "R",
@@ -3463,17 +3467,19 @@ const CK_QUICK = [
     { t: "扫一扫", tap: "[open:alipays://platformapi/startapp?saId=10000007]", color: "blue", note: "打开支付宝扫一扫（需已安装）" },
     { t: "收付款", tap: "[open:alipays://platformapi/startapp?saId=20000056]", color: "green", note: "打开支付宝收付款（需已安装）" },
 ];
-/** 「打开应用/链接」型的预设（点选即填 URI；自定义 scheme 未安装会 toast）。
- *  支付宝 saId 是官方公开 scheme；微信 8.0.69 实测外部 scheme 不可用
- *  （scanqrcode stub 自杀、dl/scan 落错误页，2026-10-03），不收录。 */
+/** 「打开应用/链接」型的预设（下拉选即填 URI；自定义 scheme 未安装会
+ *  toast）。label=下拉里的完整文案（2026-10-04 用户裁定：按钮改下拉、
+ *  文案要完整），t=选后预填的短键面（键面 ≤12 字）。支付宝 saId 是
+ *  官方公开 scheme；微信 8.0.69 实测外部 scheme 不可用（scanqrcode
+ *  stub 自杀、dl/scan 落错误页，2026-10-03），不收录。 */
 const CK_OPEN_PRESETS = [
-    { t: "扫一扫", uri: "alipays://platformapi/startapp?saId=10000007" },
-    { t: "收付款", uri: "alipays://platformapi/startapp?saId=20000056" },
-    { t: "翻译", uri: "https://fanyi.baidu.com" },
-    { t: "谷歌翻译", uri: "https://translate.google.com" },
-    { t: "豆包", uri: "doubao://" },
-    { t: "有道词典", uri: "youdaodict://" },
-    { t: "搜索", uri: "https://www.baidu.com/s?wd=" },
+    { label: "支付宝扫一扫", t: "扫一扫", uri: "alipays://platformapi/startapp?saId=10000007" },
+    { label: "支付宝收付款", t: "收付款", uri: "alipays://platformapi/startapp?saId=20000056" },
+    { label: "百度翻译", t: "翻译", uri: "https://fanyi.baidu.com" },
+    { label: "谷歌翻译", t: "翻译", uri: "https://translate.google.com" },
+    { label: "豆包", t: "豆包", uri: "doubao://" },
+    { label: "有道词典", t: "词典", uri: "youdaodict://" },
+    { label: "百度搜索", t: "搜索", uri: "https://www.baidu.com/s?wd=" },
 ];
 let ckRows = null;
 let ckSel = null;   // 正在编辑的位置 {r, c, isNew}
@@ -3628,16 +3634,39 @@ function ckKeepRowAlign(r, removed) {
     }
 }
 
+/** 行内容整体缩放（2026-10-04 用户需求）：超宽不折行，按需缩字号塞进
+ *  一行；两轮迭代补偿 min-width/padding 不随字缩的误差。缩到下限仍
+ *  放不下就交还横向滚动兜底（用户裁定那属于用户自己的问题）。测试
+ *  环境（jsdom）无布局，clientWidth=0 直接跳过。 */
+function ckFitStrip(strip, minPct) {
+    strip.style.fontSize = "";
+    const avail = strip.clientWidth;
+    if (!avail) return;
+    for (let round = 0; round < 3 && strip.scrollWidth > avail; round++) {
+        // 比例必须相对【当前字号】算（cur × avail / sw）：round 0 时
+        // cur=100 与绝对比值等价；之后 scrollWidth 已是缩小后的几何，
+        // avail/sw 是相对当前字号的倍率——直接当绝对百分比写会被单调
+        // 钳死，min-width/padding 不随字缩的残差永远补不掉（review P1，
+        // 实测 80% 仍溢出 19px 裁掉＋键）。min 只作 Math.round 抖动护栏。
+        const cur = parseInt(strip.style.fontSize, 10) || 100;
+        const pct = Math.round(cur * avail / strip.scrollWidth);
+        const clamped = Math.max(minPct, Math.min(pct, cur));
+        strip.style.fontSize = clamped + "%";
+        if (clamped <= minPct) break;
+    }
+}
+
 function ckRenderRows() {
     const host = $("ckRowList");
     host.textContent = "";
     const bar = document.getElementById("ckEditBar");
     if (bar) bar.hidden = !ckEditMode;
+    const fitted = [];
     ckRows.forEach((row, r) => {
         const line = document.createElement("div");
         line.className = "ck-row-line";
         const strip = document.createElement("div");
-        strip.className = "ck-chips";
+        strip.className = "ck-chips ck-row-strip";
         if (!row.length) {
             const none = document.createElement("span");
             none.className = "ck-none";
@@ -3683,6 +3712,12 @@ function ckRenderRows() {
         add.addEventListener("click", () => ckOpenNew(r));
         strip.append(add);
         if (row.length) {
+            // 前置说明（2026-10-04 用户验收）：「第 N 行对齐方式：」+
+            // 与键列留间隔，控件不再裸贴在 chips 上方。
+            const head = document.createElement("div");
+            head.className = "ck-row-head";
+            const label = document.createElement("span");
+            label.textContent = t("ck.align.rowLabel", { n: r + 1 });
             const seg = document.createElement("div");
             seg.className = "ck-align";
             seg.setAttribute("aria-label", t("ck.align.aria"));
@@ -3700,11 +3735,14 @@ function ckRenderRows() {
                 });
                 seg.append(b);
             }
-            line.append(seg);
+            head.append(label, seg);
+            line.append(head);
         }
         line.append(strip);
         host.append(line);
+        fitted.push(strip);
     });
+    fitted.forEach(s => ckFitStrip(s, 55));
 }
 
 /** 长按 = 进入可移动模式并拖起该键（键盘工具栏编辑同款形态：× 删除、
@@ -3819,6 +3857,7 @@ function ckBindDrag(chip) {
 function ckRenderPreview() {
     const host = $("ckPreview");
     host.textContent = "";
+    const fitted = [];
     ckRows.forEach(row => {
         const strip = document.createElement("div");
         strip.className = "ck-prev-row";
@@ -3846,7 +3885,11 @@ function ckRenderPreview() {
             strip.append(key);
         });
         host.append(strip);
+        // 预览同步缩放（2026-10-04 用户验收）：编辑行缩了，预览也缩，
+        // 用户看到的就是实际效果（宽度方向同尺）。
+        fitted.push(strip);
     });
+    fitted.forEach(s => ckFitStrip(s, 55));
 }
 
 /** 编辑卡：isNew 时空白表单；否则按 cell 回填（tap 反猜型别）。 */
@@ -4072,7 +4115,8 @@ function ckBuildAction(holder) {
         });
         holder.append(ckField(t("ck.f.key"), keySel));
     } else if (d.mode === "open") {
-        // 打开应用/链接：URI 输入 + 常用预设（预设只填表单，仍可改）。
+        // 打开应用/链接：URI 输入 + 常用预设下拉（2026-10-04 用户裁定：
+        // 一排按钮太挤改下拉，下拉文案要完整如「支付宝扫一扫」）。
         const input = document.createElement("input");
         input.id = "ckOpenUri";
         input.className = "ck-input";
@@ -4080,21 +4124,27 @@ function ckBuildAction(holder) {
         input.placeholder = t("ck.f.open.placeholder");
         input.addEventListener("input", () => { d.open = input.value; });
         holder.append(ckField(t("ck.f.open.uri"), input));
-        const presetRow = document.createElement("div");
-        presetRow.className = "ck-seg";
-        CK_OPEN_PRESETS.forEach(p => {
-            const chip = document.createElement("button");
-            chip.type = "button";
-            chip.className = "ck-seg-btn" + (d.open === p.uri ? " selected" : "");
-            chip.textContent = p.t;
-            chip.addEventListener("click", () => {
-                d.open = p.uri;
-                if (!d.t.trim()) d.t = p.t;
-                ckBuildForm();
-            });
-            presetRow.append(chip);
+        const presetSel = document.createElement("select");
+        presetSel.id = "ckOpenPreset";
+        const mkOpt = (text, value) => {
+            const opt = document.createElement("option");
+            opt.textContent = text;
+            opt.value = value;
+            return opt;
+        };
+        presetSel.append(mkOpt(t("ck.f.open.presetPick"), ""));
+        CK_OPEN_PRESETS.forEach(p => presetSel.append(mkOpt(p.label, p.uri)));
+        presetSel.value = CK_OPEN_PRESETS.some(p => p.uri === (d.open || ""))
+            ? d.open : "";
+        presetSel.addEventListener("change", () => {
+            if (!presetSel.value) return;
+            d.open = presetSel.value;
+            if (!d.t.trim()) {
+                d.t = (CK_OPEN_PRESETS.find(p => p.uri === presetSel.value) || {}).t || "";
+            }
+            ckBuildForm();
         });
-        holder.append(ckField(t("ck.f.open.presets"), presetRow));
+        holder.append(ckField(t("ck.f.open.presets"), presetSel));
         const hint = document.createElement("p");
         hint.className = "hint";
         hint.textContent = t("ck.f.open.hint");

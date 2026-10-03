@@ -597,7 +597,7 @@ test('custom key editor: open type validates URI at apply time', () => {
     const segBtn = container => text =>
         [...world.doc.querySelectorAll(container + ' .ck-seg-btn')]
             .find(el => el.textContent === text);
-    fire(segBtn('#ckMode')('打开应用'), 'click');
+    fire(segBtn('#ckMode')('打开'), 'click');
     // 坏 URI：intent:// 走私被拦，确定按钮不落表（ckRows 是 let，不进
     // vm 全局——经行 chips 断言，与既有测试同一口径）。
     const uri = g.document.getElementById('ckOpenUri');
@@ -632,7 +632,7 @@ test('custom key editor: long URIs are stopped at apply time (review P2-3)', () 
     const segBtn = container => text =>
         [...world.doc.querySelectorAll(container + ' .ck-seg-btn')]
             .find(el => el.textContent === text);
-    fire(segBtn('#ckMode')('打开应用'), 'click');
+    fire(segBtn('#ckMode')('打开'), 'click');
     // 220 字符 URI：scheme 合法但 tap 会超 128——必须在确定时拦下
     // （键盘侧整表拒收会让全部定制键静默消失）。
     const uri = g.document.getElementById('ckOpenUri');
@@ -726,6 +726,102 @@ test('custom key editor: row alignment control writes the marker cell (2026-10-0
     const after = JSON.parse(world.lastCall('saveCustom').args[0]).rows[0];
     equal(after.length, 1, 'marker key removed');
     equal(after[0].align, 'right', 'align transferred to the new first key');
+});
+
+test('custom key editor: align control carries a per-row label (2026-10-04)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [{ t: 'B', tap: 'B' }], []],
+    });
+    g.ckEnter();
+    const heads = [...world.doc.querySelectorAll('#ckRowList .ck-row-head')];
+    equal(heads.length, 2, 'one head per non-empty row');
+    equal(heads[0].textContent.includes('第 1 行对齐方式'), true, 'row 1 label names its number');
+    equal(heads[1].textContent.includes('第 2 行对齐方式'), true, 'row 2 label names its number');
+    // 控件在说明行里，间隔由 .ck-row-head 的 margin 承担（CSS 断言在
+    // 预览截图核验），空行无 head。
+    equal(heads[0].querySelector('.ck-align-btn') !== null, true, 'control lives inside the labeled head');
+});
+
+test('custom key editor: overwide rows scale their font instead of wrapping (2026-10-04)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    });
+    g.ckEnter();
+    // ckFitStrip 直测：jsdom 无布局（clientWidth=0 渲染路径自动跳过，
+    // 不炸即可），几何用仿射模型模拟——固定部分（min-width/padding/
+    // gap）不随字缩，可变部分（字面宽）随 fontSize 线性缩。静态
+    // getter 测不出多轮收敛（review P1：第二轮比例是相对当前字号的）。
+    const el = world.doc.createElement('div');
+    const affine = (fixed, base) => {
+        Object.defineProperty(el, 'clientWidth', { get: () => 320, configurable: true });
+        Object.defineProperty(el, 'scrollWidth', {
+            get: () => Math.round(fixed + base * (parseInt(el.style.fontSize, 10) || 100) / 100),
+            configurable: true,
+        });
+    };
+    // fixed=60 base=340：100% 宽 400 → 一轮 80% 仍 332 → 乘法精化到
+    // 77%（残差 2px 是 Math.round 粒度）。一轮算法在 parent 上会停在
+    // 80% 溢出，锁住多轮收敛。
+    affine(60, 340);
+    g.ckFitStrip(el, 55);
+    equal(el.style.fontSize, '77%', 'successive rounds refine past the first estimate');
+    // 重跑从自然尺寸重新算（fontSize 先清空）。
+    affine(60, 340);
+    g.ckFitStrip(el, 55);
+    equal(el.style.fontSize, '77%', 'fit is recomputed from scratch each render');
+    // 极端溢出：钳在下限，不做蚂蚁字（放不下交还滚动兜底）。
+    affine(200, 700);
+    g.ckFitStrip(el, 55);
+    equal(el.style.fontSize, '55%', 'extreme overflow clamps at the floor, not ant text');
+    // 刚好放得下：保持自然字号。
+    affine(100, 200);
+    g.ckFitStrip(el, 55);
+    equal(el.style.fontSize, '', 'fitting rows keep the natural size');
+    // 渲染路径冒烟：行 strip 挂了 nowrap 类（预览行同步缩放）。
+    const strip = world.doc.querySelector('#ckRowList .ck-row-strip');
+    equal(strip !== null, true, 'row strip carries the no-wrap scaling class');
+    const prev = world.doc.querySelector('#ckPreview .ck-prev-row');
+    equal(prev !== null, true, 'preview rows render for the same data');
+});
+
+test('custom key editor: open presets are a dropdown with full labels (2026-10-04)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    });
+    g.ckEnter();
+    g.ckOpenNew(2);
+    const tInput = g.document.getElementById('ckT');
+    const segBtn = text =>
+        [...world.doc.querySelectorAll('#ckMode .ck-seg-btn')].find(el => el.textContent === text);
+    fire(segBtn('打开'), 'click');
+    const sel = g.document.getElementById('ckOpenPreset');
+    assert(sel, 'preset dropdown rendered');
+    const labels = [...sel.querySelectorAll('option')].map(o => o.textContent);
+    equal(labels.includes('支付宝扫一扫'), true, 'dropdown shows the full label');
+    equal(labels[0], '选择常用应用…', 'placeholder option first');
+    // 预设按钮不再有（挤）；选「支付宝扫一扫」→ URI 与短键面预填。
+    equal(world.doc.querySelectorAll('#ckActionHolder .ck-seg-btn').length, 0,
+        'preset buttons replaced by the dropdown');
+    sel.value = 'alipays://platformapi/startapp?saId=10000007';
+    fire(sel, 'change');
+    equal(g.document.getElementById('ckOpenUri').value,
+        'alipays://platformapi/startapp?saId=10000007', 'picking fills the URI field');
+    equal(g.document.getElementById('ckT').value, '扫一扫', 'keycap prefilled with the short name');
+    g.document.getElementById('ckApply').click();
+    world.$('ckSave').click();
+    const saved = world.lastCall('saveCustom').args[0];
+    assert(saved.includes('[open:alipays://platformapi/startapp?saId=10000007]'),
+        'preset round-trips into the saved tap');
 });
 
 test('hot-update card: 检查更新/下载安装/恢复内置 pass the field values', () => {
@@ -841,7 +937,7 @@ test('custom key editor: new key -> apply -> save rides the saveCustom bridge (#
     const segBtn = container => text =>
         [...world.doc.querySelectorAll(container + ' .ck-seg-btn')]
             .find(el => el.textContent === text);
-    fire(segBtn('#ckMode')('组合键'), 'click');
+    fire(segBtn('#ckMode')('组合'), 'click');
     const keySel = g.document.getElementById('ckKey');
     keySel.value = 's'; fire(keySel, 'change');
     // 颜色：切「自定义」展开 hue 滑块，设 120。

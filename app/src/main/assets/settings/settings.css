@@ -21,6 +21,13 @@
     --line: #484b55;
     --focus-ring: #8ce8c9;
     --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    /* 别名：定制按键段（#39-12）沿用的旧 var 名。此前从未定义，全部
+     * 回落到亮色硬编码 fallback——暗色下弹层白底配亮字/浅字配浅底，
+     * 基本不可读（2026-10-04 用户暗色实录）。别名指向主 token，三个
+     * 主题块同补。 */
+    --card: var(--card-bg);
+    --border: var(--line);
+    --card-line: var(--line);
 }
 
 html.theme-light {
@@ -43,6 +50,9 @@ html.theme-light {
     --card-sub: #5c616b;
     --line: #c9cdd6;
     --focus-ring: #08764f;
+    --card: var(--card-bg);
+    --border: var(--line);
+    --card-line: var(--line);
 }
 
 @media (prefers-color-scheme: light) {
@@ -66,6 +76,9 @@ html.theme-light {
         --card-sub: #5c616b;
         --line: #c9cdd6;
         --focus-ring: #08764f;
+        --card: var(--card-bg);
+        --border: var(--line);
+        --card-line: var(--line);
     }
 }
 
@@ -892,10 +905,24 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
 .ck-chip {
     border: 1px solid var(--border, #ccc); border-radius: 10px;
     height: 38px; padding: 0 14px; background: var(--card, #fff); color: inherit;
-    font-size: 14px; cursor: pointer; min-width: 40px; text-align: center;
+    /* em 化：行内容超宽时 ckFitStrip 缩 strip 的 font-size，chip 字号
+     * 跟着走（px 定死就缩不动，2026-10-04 用户需求：整行缩到放得下）。 */
+    font-size: 0.93em; cursor: pointer; min-width: 40px; text-align: center;
     display: inline-flex; align-items: center; justify-content: center;
     transition: border-color .12s, background .12s;
 }
+/* 行内键列不折行：超宽靠缩字号塞进一行（ckFitStrip），缩到下限仍
+ * 放不下再横向滚动兜底（用户裁定：那属于用户自己的问题）。chip 必须
+ * flex:none——默认 flex-shrink 会把键压进容器宽，scrollWidth 永不超
+ * clientWidth，缩放永远不触发（预览 .ck-prev-key 同款教训）。 */
+/* 纵向 padding 抵消滚动容器对 × 删除徽章（top:-7px）的裁顶（review
+ * P2 像素实测：无此补偿徽章顶部 7px 被 scrollport 切掉）；负 margin
+ * 保持行距视觉不变。纵向量不进 clientWidth/scrollWidth，ckFitStrip
+ * 数学不受影响。 */
+.ck-row-strip { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    padding-top: 7px; margin-top: -7px; }
+.ck-row-strip::-webkit-scrollbar { display: none; }
+.ck-row-strip .ck-chip { flex: none; }
 .ck-chip.selected { border-color: var(--accent, #3b82f6); box-shadow: 0 0 0 1px var(--accent, #3b82f6); }
 .ck-chip[data-span="2"] { min-width: 72px; }
 .ck-chip[data-span="3"] { min-width: 108px; }
@@ -903,13 +930,17 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
 .ck-none { color: var(--muted, #999); font-size: 12px; padding: 2px; }
 .ck-row-line { margin: 0; padding: 8px 0; }
 .ck-row-line + .ck-row-line { border-top: 1px solid var(--border, #e7e7e7); }
-/* 行对齐（2026-10-03）：每行一个三段小控件，值写进行内首键的 align。 */
-.ck-align { display: inline-flex; gap: 0; margin-left: 10px;
+/* 行对齐（2026-10-03）：每行一个三段小控件，值写进行内首键的 align。
+ * 2026-10-04 用户验收：前置「第 N 行对齐方式：」说明，并与键列留间隔
+ * （此前控件与 chips 黏在一起）。 */
+.ck-row-head { display: flex; align-items: center; gap: 8px;
+    margin: 2px 0 7px; font-size: 12px; color: var(--muted, #999); }
+.ck-align { display: inline-flex; gap: 0;
     border: 1px solid var(--border, #ccc); border-radius: 8px; overflow: hidden; }
 .ck-align-btn { border: 0; background: var(--card, #fff); color: var(--muted, #999);
     font-size: 12px; padding: 3px 9px; cursor: pointer; }
 .ck-align-btn + .ck-align-btn { border-left: 1px solid var(--border, #e7e7e7); }
-.ck-align-btn.on { background: var(--accent, #3b82f6); color: #fff; }
+.ck-align-btn.on { background: var(--accent, #3b82f6); color: var(--accent-ink, #fff); }
 .ck-preview { display: flex; flex-direction: column; gap: 4px; padding: 8px;
     background: var(--bg, #f5f5f5); border-radius: 10px; }
 .ck-prev-row { display: flex; gap: 4px; flex-wrap: nowrap; min-height: 30px;
@@ -922,7 +953,7 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
     display: inline-flex; align-items: center; justify-content: center;
     flex: none; min-width: 32px; padding: 0 7px; height: 30px; border-radius: 7px;
     background: var(--card, #fff); border: 1px solid var(--border, #ccc);
-    font-size: 13px; font-weight: 550; white-space: nowrap;
+    font-size: 0.87em; font-weight: 550; white-space: nowrap;
 }
 .ck-prev-key[data-span="2"] { min-width: 92px; }
 .ck-prev-key[data-span="3"] { min-width: 140px; }
@@ -980,7 +1011,7 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
 .ck-modal-foot .save-note { position: absolute; left: 16px; right: 16px;
     bottom: calc(66px + env(safe-area-inset-bottom)); text-align: center; }
 #ckModal { overflow: visible; }
-.ck-btn-danger { color: #dc2626; border-color: rgba(220, 38, 38, .45); background: transparent; }
+.ck-btn-danger { color: var(--danger, #dc2626); border-color: color-mix(in srgb, var(--danger, #dc2626) 45%, transparent); background: transparent; }
 .ck-save-bar {
     flex: none; display: flex; flex-direction: column; gap: 7px;
     padding: 10px 0 2px; margin-top: 8px;
@@ -989,7 +1020,7 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
 }
 .ck-save-bar #ckSave { width: 100%; height: 50px; border-radius: 13px;
     font-size: 16px; font-weight: 600; }
-.ck-dirty-hint { color: #d97706; font-size: 13px; text-align: center; }
+.ck-dirty-hint { color: var(--warning, #d97706); font-size: 13px; text-align: center; }
 #ckSave.ck-save-dirty {
     background: linear-gradient(135deg, #3b82f6, #2563eb); border-color: transparent;
     color: #fff; box-shadow: 0 4px 14px rgba(37, 99, 235, .45);
@@ -1032,7 +1063,7 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
     transition: border-color .12s, background .12s, color .12s;
 }
 .ck-seg-btn.selected { border-color: var(--accent, #3b82f6);
-    background: var(--accent, #3b82f6); color: #fff; font-weight: 600; }
+    background: var(--accent, #3b82f6); color: var(--accent-ink, #fff); font-weight: 600; }
 .ck-seg-btn.ck-blue   { background: rgba(59, 130, 246, .32); border-color: rgba(59, 130, 246, .60); }
 .ck-seg-btn.ck-blue.selected   { background: rgba(59, 130, 246, .85); color: #fff; }
 .ck-seg-btn.ck-green.selected  { background: rgba(34, 197, 94, .85); color: #fff; }
