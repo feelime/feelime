@@ -928,6 +928,12 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
  * 打断拖动。touch-action:none 从手势判定层面排除浏览器接管；click
  * 照常合成（× 删除不受影响）。非编辑态不设——行横滚兜底要用。 */
 body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
+/* 长按上下文菜单禁用（2026-10-05 AVD input swipe/真手指级取证）：系
+ * 统长按 ~500ms 触发 WebView 文本选择/callout，事件流被直接终止
+ * （touchend/touchcancel 都不再发给 JS）——拖影冻结、会话悬挂的根
+ * 因；touch-action:none 管不到它。配合 JS 层 contextmenu preventDefault
+ * 双保险。 */
+#ckRowList { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .ck-row-strip.ck-fitting .ck-x { display: none; }
 .ck-row-strip::-webkit-scrollbar { display: none; }
 .ck-row-strip .ck-chip { flex: none; }

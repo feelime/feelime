@@ -3907,6 +3907,10 @@ function ckExitEditMode() {
 }
 
 function ckBindChipTouch(chip) {
+    // Android WebView 长按 ~500ms 弹文本选择/callout 菜单，事件流直接
+    // 终止（无 touchend/cancel）——拖动会话悬挂、拖影冻结（AVD 系统
+    // 级注入取证，CDP 注入不复现）。contextmenu 拦掉 + CSS callout 禁用。
+    chip.addEventListener("contextmenu", event => event.preventDefault());
     chip.addEventListener("touchstart", event => {
         // × 徽章上的按下是删除意图：不起拖（ghost 闪现无意义）。
         if (event.target && event.target.closest && event.target.closest(".ck-x")) return;
