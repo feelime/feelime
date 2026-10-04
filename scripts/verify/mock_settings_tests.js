@@ -1157,6 +1157,38 @@ test('custom key editor: move mode (×/drag) + popup slimmed (#39-12)', () => {
     assert(world.doc.querySelector('#ckRowList .ck-row-strip').children[0] === chip,
         'live reorder retains the original touch target');
     g.ckEndDragSession();
+    // 编辑态再按一颗键 = 按下即拖（2026-10-04 用户操作模型：进编辑态
+    // 后往往已松手，再按想拖——此前 touchstart 对编辑态直接短路）。
+    // 断言必须设防（review P1）：先收掉进编辑态自动武装的会话清基线，
+    // 且 chipB 要在重渲后重新取（旧引用已脱离文档）。
+    g.ckEnterEditMode(chip);
+    g.ckEndDragSession();
+    equal(world.doc.querySelectorAll('.ck-ghost').length, 0, 'baseline: no ghost after release');
+    const stripNow = world.doc.querySelector('#ckRowList .ck-row-strip');
+    const chipB = [...stripNow.querySelectorAll('.ck-chip')][0];
+    chipB.listeners.find(l => l.type === 'touchstart')
+        .handler({ touches: [{ clientX: 120, clientY: 300 }], target: chipB });
+    assert(chipB.classList.contains('ck-dragging'), 'pressing a key in edit mode starts a drag');
+    assert(world.doc.querySelectorAll('.ck-ghost').length, 1, 'drag ghost armed');
+    equal(chipB.listeners.filter(l => l.type === 'touchmove').length, 2,
+        'drag touchmove listener bound on the press target');
+    // 多指二按让位（review P2）：第一拖动未松手时第二指按下另一颗键，
+    // 旧 ghost 必须被收掉（恒 1），松手后归零。
+    const chipC = [...world.doc.querySelector('#ckRowList .ck-row-strip').querySelectorAll('.ck-chip')][1]
+        || chipB;
+    chipC.listeners.find(l => l.type === 'touchstart')
+        .handler({ touches: [{ clientX: 130, clientY: 320 }], target: chipC });
+    equal(world.doc.querySelectorAll('.ck-ghost').length, 1, 'second press yields, no orphan ghost');
+    g.ckEndDragSession();
+    equal(world.doc.querySelectorAll('.ck-ghost').length, 0, 'release clears the ghost');
+    // × 徽章上的按下是删除意图：不起拖。
+    const xSpan = chipC.querySelector('.ck-x') || world.doc.querySelector('#ckRowList .ck-x');
+    if (xSpan) {
+        chipC.listeners.find(l => l.type === 'touchstart')
+            .handler({ touches: [{ clientX: 130, clientY: 320 }], target: xSpan });
+        equal(world.doc.querySelectorAll('.ck-ghost').length, 0, 'press on the × badge never drags');
+    }
+    g.ckExitEditMode();
 });
 
 test('navigation: home starts as the only visible page; showPage swaps and reports', () => {

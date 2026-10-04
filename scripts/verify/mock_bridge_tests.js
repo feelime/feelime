@@ -1086,6 +1086,35 @@ test('same-key staggered presses leave no orphaned long-press popup', {since: '3
     }
 });
 
+test('custom key note popup dismisses on release (2026-10-04)', {since: '3.73.25'}, () => {
+    const world = fresh();
+    world.context.window.Feelime.saveCustomJson(JSON.stringify({
+        version: 1,
+        rows: [[{ t: '扫一扫', tap: '[open:alipays://x]', note: '打开支付宝' }], [], []],
+    }));
+    world.tap(world.$('toolCustom'));
+    const key = [...world.document.querySelectorAll('#symGrid .sym-custom-key')]
+        .find(el => el.textContent === '扫一扫');
+    assert(key, 'custom key with a note rendered');
+    // 长按 380ms → note 浮层出现。
+    world.dispatch(key, 'touchstart', 60, 400,
+        { changedTouches: [touchPoint(1, 60, 400)], touches: [touchPoint(1, 60, 400)] });
+    world.clock.advance(380);
+    assert(world.document.getElementById('keyNote'), 'note popup appears on long press');
+    // 松手即收：不赌 1600ms 定时器（真机冻结窗口丢 timer 前科）。
+    world.dispatch(key, 'touchend', 60, 400,
+        { changedTouches: [touchPoint(1, 60, 400)], touches: [] });
+    assert(!world.document.getElementById('keyNote'), 'release dismisses the note');
+    // touchcancel 路径同款。
+    world.dispatch(key, 'touchstart', 60, 400,
+        { changedTouches: [touchPoint(1, 60, 400)], touches: [touchPoint(1, 60, 400)] });
+    world.clock.advance(380);
+    assert(world.document.getElementById('keyNote'), 'note reappears on a second hold');
+    world.dispatch(key, 'touchcancel', 60, 400,
+        { changedTouches: [touchPoint(1, 60, 400)], touches: [] });
+    assert(!world.document.getElementById('keyNote'), 'cancel dismisses the note');
+});
+
 test('same-key second finger lifting first must not orphan the popup (1.3.4 regression)', {since: '3.73.22'}, () => {
     const world = fresh();
     const e = world.key('e');

@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.24';
+    const KEYBOARD_VERSION = '3.73.25';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -5341,8 +5341,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         button.textContent = cell.t;
                         button.addEventListener('click', () => this.runCustomCell(cell));
                         if (cell.note) {
-                            this.bindItemLongPress(button, () =>
-                                this.showKeyNote(button, cell.note));
+                            this.bindItemLongPress(button, () => {
+                                this.showKeyNote(button, cell.note);
+                                // 松手即收（用户语义，2026-10-04 真机实录
+                                // "松手不消失"）：note 的存活绑定本次触摸
+                                // 会话。不能只赌 showKeyNote 里的 1600ms
+                                // 定时器——IME WebView 冻结窗口整批丢
+                                // timer 是本项目有前科的平台行为，丢了
+                                // 浮层就无人能收。
+                                const dismiss = () => {
+                                    const tip = document.getElementById('keyNote');
+                                    if (tip) tip.remove();
+                                    button.removeEventListener('touchend', dismiss);
+                                    button.removeEventListener('touchcancel', dismiss);
+                                };
+                                button.addEventListener('touchend', dismiss, { passive: true });
+                                button.addEventListener('touchcancel', dismiss, { passive: true });
+                            });
                         }
                         strip.append(button);
                     });

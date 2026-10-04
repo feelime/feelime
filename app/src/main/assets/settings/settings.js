@@ -3901,8 +3901,23 @@ function ckExitEditMode() {
 
 function ckBindChipTouch(chip) {
     chip.addEventListener("touchstart", event => {
-        if (ckEditMode || !ckRows) return;
+        // × 徽章上的按下是删除意图：不起拖（ghost 闪现无意义）。
+        if (event.target && event.target.closest && event.target.closest(".ck-x")) return;
+        if (!ckRows) return;
+        // 后按让位（review P2）：上一拖动会话还活着（拖住不放时第二指
+        // 又按下一颗键）就直接覆盖了 ckDrag——旧 ghost 挂 body 无人清，
+        // 残屏到本页会话结束。与 keyboard.js 3.73.21 所有权移交同方向。
+        if (ckDrag) ckEndDragSession();
         const t = event.touches[0];
+        if (ckEditMode) {
+            // 编辑态按下即拖（用户真实操作模型：长按进编辑态后往往已
+            // 松手，再长按另一颗键想拖——此前这里直接 return 短路，
+            // "进编辑态后不能拖动"的根因）。
+            ckDrag = { timer: null, dragging: false,
+                startX: t.clientX, startY: t.clientY, chip };
+            ckBindDrag(chip);
+            return;
+        }
         ckDrag = { timer: null, dragging: false,
             startX: t.clientX, startY: t.clientY, chip };
         ckDrag.timer = setTimeout(() => {
