@@ -923,6 +923,11 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
     padding-top: 7px; margin-top: -7px;
     /* 与顶部同样给删除徽章留空间，右对齐时也不裁掉 ×。 */
     padding-right: 7px; margin-right: -7px; }
+/* 编辑态 = 拖动独占手势（2026-10-04 真机"拖两下就断"根因）：浏览器
+ * 把首位移判给页面/行滚动后，后续 touchmove 变成滚动 + touchcancel
+ * 打断拖动。touch-action:none 从手势判定层面排除浏览器接管；click
+ * 照常合成（× 删除不受影响）。非编辑态不设——行横滚兜底要用。 */
+body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
 .ck-row-strip.ck-fitting .ck-x { display: none; }
 .ck-row-strip::-webkit-scrollbar { display: none; }
 .ck-row-strip .ck-chip { flex: none; }

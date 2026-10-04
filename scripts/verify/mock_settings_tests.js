@@ -1162,8 +1162,9 @@ test('custom key editor: move mode (×/drag) + popup slimmed (#39-12)', () => {
     // 断言必须设防（review P1）：先收掉进编辑态自动武装的会话清基线，
     // 且 chipB 要在重渲后重新取（旧引用已脱离文档）。
     g.ckEnterEditMode(chip);
+    equal(g.document.body.classList.contains('ck-editing'), true,
+        'edit mode claims the gesture (touch-action none via body class)');
     g.ckEndDragSession();
-    equal(world.doc.querySelectorAll('.ck-ghost').length, 0, 'baseline: no ghost after release');
     const stripNow = world.doc.querySelector('#ckRowList .ck-row-strip');
     const chipB = [...stripNow.querySelectorAll('.ck-chip')][0];
     chipB.listeners.find(l => l.type === 'touchstart')

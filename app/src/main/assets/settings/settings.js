@@ -1591,6 +1591,7 @@ function showPage(name) {
     // 一语义，并即时上报壳侧。
     if (wasCustomkeys && name !== "customkeys" && typeof ckEditMode !== "undefined" && ckEditMode) {
         ckEditMode = false;
+        document.body.classList.remove("ck-editing");
         // 拖动会话一并收掉：‹ 离开时手指可能还按着，ghost 残留会冻在
         // 屏上（真机实录 review 取证 ghostGone=false）。
         if (typeof ckEndDragSession === "function") ckEndDragSession();
@@ -3870,6 +3871,11 @@ function ckEndDragSession() {
 function ckEnterEditMode(firstChip) {
     ckEditMode = true;
     document.getElementById("ckEditBar").hidden = false;
+    // 编辑态下浏览器不得把手势判给页面/行滚动（touch-action:none）：
+    // 否则拖动一启动 touchmove 就被滚动接管、发 touchcancel 打断——
+    // 真机"能起拖但拖两下就断"的根因（mock/chromium 桌面无手势判
+    // 定，测不出）。
+    document.body.classList.add("ck-editing");
     // 先记 (r,c) 再重渲：真实触摸复用原节点；直调时按坐标找回活键，
     // 避免对已脱离文档的 chip 量到 0×0，导致拖影尺寸和抓取点错误。
     let anchor = null;
@@ -3895,6 +3901,7 @@ function ckEnterEditMode(firstChip) {
 function ckExitEditMode() {
     ckEditMode = false;
     document.getElementById("ckEditBar").hidden = true;
+    document.body.classList.remove("ck-editing");
     ckRenderRows();
     ckReportState();
 }
