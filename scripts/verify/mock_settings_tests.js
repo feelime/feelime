@@ -149,6 +149,7 @@ class SettingsWorld {
             // Keep this suite deterministic even when Node runs under an
             // English host locale; the production fallback is navigator.language.
             navigator: { language: 'zh-CN' },
+            getComputedStyle: el => ({ fontSize: el.style.fontSize || '13.05px' }),
             // 搜索/锚定（验收 2026-09-24 二改）：rAF 同步执行让断言无需等
             // 帧；flashAnchor 的清理 setTimeout 只入队不跑（flushTimers 手动
             // 冲洗）；location.hash 由 focusSetting 写入，断言直达锚。
@@ -749,6 +750,7 @@ test('custom key editor: back key asks before leaving edit mode / dirty state (2
     const ghost = g.document.querySelector('.ck-ghost') || [...g.document.body.children]
         .find(el => el.className === 'ck-ghost');
     equal(ghost && ghost.textContent, 'A', 'drag ghost mirrors the held key');
+    equal(ghost.style.fontSize, '13.05px', 'body ghost preserves the fitted chip font');
     // BACK：编辑态弹确认，放弃=退出编辑态（改动保留为脏）。
     world.FeelimeSettings().backPressed();
     equal(g.document.getElementById('ckBackModal').hidden, false, 'back asks in edit mode');
@@ -837,7 +839,9 @@ test('custom key editor: overwide rows scale their font instead of wrapping (202
     const affine = (fixed, base) => {
         Object.defineProperty(el, 'clientWidth', { get: () => 320, configurable: true });
         Object.defineProperty(el, 'scrollWidth', {
-            get: () => Math.round(fixed + base * (parseInt(el.style.fontSize, 10) || 100) / 100),
+            // 右对齐徽章的固定溢出不随字缩；fit 必须排除它。
+            get: () => Math.round(fixed + base * (parseInt(el.style.fontSize, 10) || 100) / 100)
+                + (el.classList.contains('ck-fitting') ? 0 : 7),
             configurable: true,
         });
     };
@@ -859,9 +863,21 @@ test('custom key editor: overwide rows scale their font instead of wrapping (202
     affine(100, 200);
     g.ckFitStrip(el, 55);
     equal(el.style.fontSize, '', 'fitting rows keep the natural size');
+    // 右对齐的末键徽章多出 7px，不能让它参与键帽缩放测量。
+    Object.defineProperty(el, 'scrollWidth', {
+        get: () => el.classList.contains('ck-fitting') ? 320 : 327,
+        configurable: true,
+    });
+    g.ckFitStrip(el, 55);
+    equal(el.style.fontSize, '', 'delete badge overflow does not shrink a fitting row');
+    equal(el.classList.contains('ck-fitting'), false, 'badges return after measurement');
     // 渲染路径冒烟：行 strip 挂了 nowrap 类（定制即预览合并视图）。
     const strip = world.doc.querySelector('#ckRowList .ck-row-strip');
     equal(strip !== null, true, 'row strip carries the no-wrap scaling class');
+    strip.style.fontSize = '72%';
+    g.ckRenderRows(true);
+    equal(world.doc.querySelector('#ckRowList .ck-row-strip').style.fontSize, '72%',
+        'drag reorder preserves the fitted row size without measuring again');
 });
 
 test('custom key editor: open presets are a dropdown with full labels (2026-10-04)', () => {
@@ -1095,7 +1111,13 @@ test('custom key editor: move mode (×/drag) + popup slimmed (#39-12)', () => {
     // 可移动模式：× 徽章 + × 删除 + dirty。
     const chipA = () => [...world.doc.querySelectorAll('#ckRowList .ck-chip')]
         .find(e => e.textContent.replace('×','') === 'A');
-    g.ckEnterEditMode(chipA());
+    const heldChip = chipA();
+    heldChip.listeners.find(l => l.type === 'touchstart').handler({
+        touches: [{ clientX: 10, clientY: 10 }],
+    });
+    g.ckEnterEditMode(heldChip);
+    equal(heldChip.listeners.filter(l => l.type === 'touchmove').length, 2,
+        'drag listens on the original touch target across edit-mode rendering');
     equal(g.document.getElementById('ckEditBar').hidden, false, 'edit bar visible');
     const x = (chipA().children || []).find(c => c.className === 'ck-x')
         || [...world.doc.querySelectorAll('#ckRowList .ck-x')][0];
@@ -1112,6 +1134,9 @@ test('custom key editor: move mode (×/drag) + popup slimmed (#39-12)', () => {
         'removal marks dirty');
     g.ckExitEditMode();
     equal(g.document.getElementById('ckEditBar').hidden, true, 'done hides the bar');
+    g.ckEndDragSession();
+    equal(heldChip.listeners.filter(l => l.type === 'touchmove').length, 1,
+        'session cleanup removes the detached target drag listener');
     // 长按链：touchstart 起定时器（不等待，仅验证接线不抛错）+ 位移取消。
     // ＋ 已挪进行头（2026-10-04），行内键从 strip 里取（fake DOM 不支持
     // 双类后代选择器，分两段查）。
@@ -1124,6 +1149,14 @@ test('custom key editor: move mode (×/drag) + popup slimmed (#39-12)', () => {
     chip.listeners.find(l => l.type === 'touchend').handler({});
     equal(g.document.getElementById('ckEditBar').hidden, true,
         'a scroll-sized move cancels the hold (no edit mode)');
+    ts.handler({ touches: [{ clientX: 10, clientY: 10 }] });
+    g.ckEnterEditMode(chip);
+    assert(world.doc.querySelector('#ckRowList .ck-row-strip').children[0] === chip,
+        'entering edit mode retains the original touch target');
+    g.ckRenderRows(true);
+    assert(world.doc.querySelector('#ckRowList .ck-row-strip').children[0] === chip,
+        'live reorder retains the original touch target');
+    g.ckEndDragSession();
 });
 
 test('navigation: home starts as the only visible page; showPage swaps and reports', () => {

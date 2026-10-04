@@ -3697,6 +3697,9 @@ function ckFitStrip(strip, minPct) {
     strip.style.fontSize = "";
     const avail = strip.clientWidth;
     if (!avail) return;
+    // fit 只量键帽。绝对定位的 × 也计入 scrollWidth；右对齐时它始终
+    // 超出末键，缩字号无法消除，残差循环会误把整行缩到下限。
+    strip.classList.add("ck-fitting");
     for (let round = 0; round < 3 && strip.scrollWidth > avail; round++) {
         // 比例必须相对【当前字号】算（cur × avail / sw）：round 0 时
         // cur=100 与绝对比值等价；之后 scrollWidth 已是缩小后的几何，
@@ -3717,10 +3720,14 @@ function ckFitStrip(strip, minPct) {
         cur = Math.max(minPct, cur - 1);
         strip.style.fontSize = cur + "%";
     }
+    strip.classList.remove("ck-fitting");
 }
 
 function ckRenderRows(skipFit) {
     const host = $("ckRowList");
+    // 拖动重渲不重新量布局，但要保留各行已经算出的字号。
+    const fontSizes = skipFit ? [...host.querySelectorAll(".ck-row-strip")]
+        .map(strip => strip.style.fontSize) : [];
     host.textContent = "";
     const bar = document.getElementById("ckEditBar");
     if (bar) bar.hidden = !ckEditMode;
@@ -3767,6 +3774,7 @@ function ckRenderRows(skipFit) {
         line.append(head);
         const strip = document.createElement("div");
         strip.className = "ck-chips ck-row-strip";
+        if (skipFit) strip.style.fontSize = fontSizes[r] || "";
         const align = ckRowAlign(row);
         if (row.length && align !== "left") strip.dataset.align = align;
         if (!row.length) {
@@ -3777,7 +3785,9 @@ function ckRenderRows(skipFit) {
         }
         strip.dataset.ckRow = String(r);
         row.forEach((cell, c) => {
-            const chip = document.createElement("button");
+            // 触摸后续事件仍发给 touchstart 的原节点，重渲必须复用它。
+            const held = ckDrag && ckDrag.cell === cell && ckDrag.chip;
+            const chip = held || document.createElement("button");
             chip.type = "button";
             const isHue = /^h\d+$/.test(cell.color || "");
             chip.className = "ck-chip" + (!isHue && cell.color ? " ck-" + cell.color : "");
@@ -3800,9 +3810,11 @@ function ckRenderRows(skipFit) {
                 });
                 chip.append(x);
             } else {
-                chip.addEventListener("click", () => ckOpenChip(r, c));
+                if (!held) chip.addEventListener("click", () => {
+                    if (!ckEditMode) ckOpenChip(r, c);
+                });
             }
-            ckBindChipTouch(chip);
+            if (!held) ckBindChipTouch(chip);
             strip.append(chip);
         });
         line.append(strip);
@@ -3829,16 +3841,16 @@ function ckConfirmDelete(cell) {
     modal.hidden = false;
 }
 let ckDrag = null;   // {timer, fromR, fromC, dragging, startX, startY}
-// 拖动会话的 document 级监听（全局唯一一套）：live reorder 每轮重渲
+// 拖动会话监听（全局唯一一套）：live reorder 每轮重渲
 // 都会重绑目标 chip——不先移除旧监听就是 N 套 handler 叠跑，同一颗键
 // 被 splice N 次（真机实录：一次拖动后行里冒出 4 个退格）。
 let ckDragHandlers = null;
 
 function ckUnbindDrag() {
     if (!ckDragHandlers) return;
-    document.removeEventListener("touchmove", ckDragHandlers.move);
-    document.removeEventListener("touchend", ckDragHandlers.end);
-    document.removeEventListener("touchcancel", ckDragHandlers.end);
+    ckDragHandlers.target.removeEventListener("touchmove", ckDragHandlers.move);
+    ckDragHandlers.target.removeEventListener("touchend", ckDragHandlers.end);
+    ckDragHandlers.target.removeEventListener("touchcancel", ckDragHandlers.end);
     ckDragHandlers = null;
 }
 
@@ -3858,9 +3870,8 @@ function ckEndDragSession() {
 function ckEnterEditMode(firstChip) {
     ckEditMode = true;
     document.getElementById("ckEditBar").hidden = false;
-    // 先记 (r,c) 再重渲：ckRenderRows 整树重建后传入的 chip 脱离文档，
-    // getBoundingClientRect 全零——ghost 会变成 0×0 裸文字、抓取点错位
-    // （review P1-1）。重渲后按坐标找回同位活元素再起拖。
+    // 先记 (r,c) 再重渲：真实触摸复用原节点；直调时按坐标找回活键，
+    // 避免对已脱离文档的 chip 量到 0×0，导致拖影尺寸和抓取点错误。
     let anchor = null;
     if (firstChip && firstChip.parentElement &&
             firstChip.parentElement.dataset && firstChip.parentElement.dataset.ckRow != null) {
@@ -3869,6 +3880,7 @@ function ckEnterEditMode(firstChip) {
             c: [...firstChip.parentElement.children].indexOf(firstChip),
         };
     }
+    if (anchor && ckDrag) ckDrag.cell = ckRows[anchor.r][anchor.c];
     ckRenderRows();
     ckReportState();
     let chip = firstChip;
@@ -3925,19 +3937,20 @@ function ckBindDrag(chip) {
     const fromC = [...strip.children].indexOf(chip);
     const cell = ckRows[fromR] && ckRows[fromR][fromC];
     if (!cell) return;
-    chip.classList.add("ck-dragging");
     let lastX = 0;
     let lastY = 0;
     let rafPending = false;
-    const handlers = { move: null, end: null };
+    const handlers = { target: null, move: null, end: null };
     // 真实链上 ckDrag 由 touchstart 先建；直调（测试/异常时序）兜底：
     // 以键中心为抓取点，读 startX 前不炸。
-    if (!ckDrag) ckDrag = { timer: null, dragging: false,
-        startX: 0, startY: 0, chip };
+    if (!ckDrag) ckDrag = { timer: null, dragging: false, chip };
+    ckDrag.cell = cell;
+    ckDrag.chip = chip;
     if (!ckDrag.ghost) {
         // 拖影从被拖键克隆（同尺寸同键色），固定在抓取点下方。
         const rect = chip.getBoundingClientRect();
-        if (!Number.isFinite(ckDrag.startX) || (!ckDrag.startX && !ckDrag.startY)) {
+        const fontSize = getComputedStyle(chip).fontSize;
+        if (!Number.isFinite(ckDrag.startX) || !Number.isFinite(ckDrag.startY)) {
             ckDrag.startX = rect.left + rect.width / 2;
             ckDrag.startY = rect.top + rect.height / 2;
         }
@@ -3954,6 +3967,7 @@ function ckBindDrag(chip) {
         if (cell.span === 2 || cell.span === 3) ghost.style.minWidth = rect.width + "px";
         ghost.style.width = rect.width + "px";
         ghost.style.height = rect.height + "px";
+        ghost.style.fontSize = fontSize;
         ckDrag.ghost = ghost;
         ckDrag.grabX = ckDrag.startX - rect.left;
         ckDrag.grabY = ckDrag.startY - rect.top;
@@ -3964,6 +3978,8 @@ function ckBindDrag(chip) {
         // 之后每帧只写合成器属性，不触发布局。
         ghost.style.transform = "translate(0px,0px) scale(1.06)";
     }
+    // 量尺寸之后再缩占位键，避免把 scale(.94) 的尺寸带进拖影。
+    chip.classList.add("ck-dragging");
     const onMove = event => {
         // 编辑态已被别的路径收掉（BACK 放弃编辑等多指边缘）却还有触摸在
         // 走：按松手收场，防止陈旧 handler 拿旧坐标继续重排（review P2-1）。
@@ -4019,7 +4035,7 @@ function ckBindDrag(chip) {
         ckMarkDirty(true);
         ckRenderRows(true);
         // 重渲后继续拖：新的同位键重新接管。
-        const stripNow = [...document.querySelectorAll("#ckRowList .ck-chips[data-ckRow]")]
+        const stripNow = [...document.querySelectorAll("#ckRowList .ck-chips[data-ck-row]")]
             .find(st => Number(st.dataset.ckRow) === toR);
         const chipNow = stripNow && [...stripNow.children][toC];
         if (chipNow) ckBindDrag(chipNow);
@@ -4031,12 +4047,15 @@ function ckBindDrag(chip) {
     };
     handlers.move = onMove;
     handlers.end = onEnd;
-    document.addEventListener("touchmove", onMove, { passive: false });
-    document.addEventListener("touchend", onEnd, { passive: true });
+    // touch 的目标在整段手势里固定不变，直接监听本次触摸目标，
+    // 不依赖重渲期间它向 document 冒泡。
+    handlers.target = ckDrag.chip;
+    handlers.target.addEventListener("touchmove", onMove, { passive: false });
+    handlers.target.addEventListener("touchend", onEnd, { passive: true });
     // 系统手势打断（边缘滑/下拉通知栏）只发 touchcancel：不挂的话
-    // ghost 冻在指尖永久残留，document 级 onMove 还会被后续滚动触发
+    // ghost 冻在指尖永久残留，onMove 还会被后续滚动触发
     // 拿旧坐标乱重排（review P2-1）。
-    document.addEventListener("touchcancel", onEnd, { passive: true });
+    handlers.target.addEventListener("touchcancel", onEnd, { passive: true });
     ckDragHandlers = handlers;
 }
 

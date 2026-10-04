@@ -920,7 +920,10 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
  * 保持行距视觉不变。纵向量不进 clientWidth/scrollWidth，ckFitStrip
  * 数学不受影响。 */
 .ck-row-strip { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
-    padding-top: 7px; margin-top: -7px; }
+    padding-top: 7px; margin-top: -7px;
+    /* 与顶部同样给删除徽章留空间，右对齐时也不裁掉 ×。 */
+    padding-right: 7px; margin-right: -7px; }
+.ck-row-strip.ck-fitting .ck-x { display: none; }
 .ck-row-strip::-webkit-scrollbar { display: none; }
 .ck-row-strip .ck-chip { flex: none; }
 /* 对齐停靠（定制即预览合并版，2026-10-04）：与键盘同款首键 auto
