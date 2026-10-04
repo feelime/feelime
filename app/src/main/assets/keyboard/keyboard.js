@@ -5218,6 +5218,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 strip.style.fontSize = clamped + '%';
                 if (clamped <= 55) break;
             }
+            // 收敛残差（用户三轮实录"还有一点在容器外"）：乘法精化卡在
+            // Math.round 粒度时逐 1% 下调收尾；键的 min-width/padding 已
+            // em 化跟着缩，能收干净。放不下到下限则交还横向滚动。
+            let cur = parseInt(strip.style.fontSize, 10) || 100;
+            while (strip.scrollWidth > avail && cur > 55) {
+                cur = Math.max(55, cur - 1);
+                strip.style.fontSize = cur + '%';
+            }
         }
 
         customCellIsBackspace(cell) {

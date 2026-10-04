@@ -2241,7 +2241,7 @@ test('custom keys: overwide keyboard rows scale to fit (2026-10-04)', {since: '3
     assert(typeof fit === 'function', 'fitCustomRow exposed on the facade');
     affine(60, 340);
     fit(el);
-    equal(el.style.fontSize, '77%', 'successive rounds refine past the first estimate');
+    equal(el.style.fontSize, '76%', 'successive rounds refine past the first estimate');
     affine(200, 700);
     fit(el);
     equal(el.style.fontSize, '55%', 'extreme overflow clamps at the floor');

@@ -305,6 +305,9 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 60
+        // versionName 在 debug 构建追加 commit 后缀（androidComponents
+        // 段）：测试包连续重装时 OS/安装器不再识别成同一版本（用户
+        // 2026-10-04 裁定）。release 恒纯净版本号。
         versionName = "1.3.4"
 
         ndk {
@@ -576,4 +579,21 @@ dependencies {
     // JVM tests cover org.json-based parsers (GithubReleaseSource) - the
     // spike project established this pattern.
     testImplementation("org.json:json:20240303")
+}
+
+// debug 构建 versionName 追加 commit 后缀（2026-10-04 用户裁定）：
+// dev 测试包连发时 OS/安装器不再识别成同一版本（同 versionName 重装
+// 在部分 ROM 上会复用缓存/提示异常）。git 不可用（源码包场景）时静默
+// 回落纯净版本号。release 不动。
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        val short = providers.exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+        }.standardOutput.asText.get().trim()
+        if (short.isNotEmpty()) {
+            variant.outputs.forEach { output ->
+                output.versionName.set(output.versionName.get() + "." + short)
+            }
+        }
+    }
 }

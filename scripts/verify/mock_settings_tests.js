@@ -842,15 +842,15 @@ test('custom key editor: overwide rows scale their font instead of wrapping (202
         });
     };
     // fixed=60 base=340：100% 宽 400 → 一轮 80% 仍 332 → 乘法精化到
-    // 77%（残差 2px 是 Math.round 粒度）。一轮算法在 parent 上会停在
-    // 80% 溢出，锁住多轮收敛。
+    // 76%（残差循环逐 1% 收净，sw≤avail）。一轮算法在 parent 上会停在
+    // 80% 溢出，锁住多轮收敛+残差收尾。
     affine(60, 340);
     g.ckFitStrip(el, 55);
-    equal(el.style.fontSize, '77%', 'successive rounds refine past the first estimate');
+    equal(el.style.fontSize, '76%', 'successive rounds refine past the first estimate');
     // 重跑从自然尺寸重新算（fontSize 先清空）。
     affine(60, 340);
     g.ckFitStrip(el, 55);
-    equal(el.style.fontSize, '77%', 'fit is recomputed from scratch each render');
+    equal(el.style.fontSize, '76%', 'fit is recomputed from scratch each render');
     // 极端溢出：钳在下限，不做蚂蚁字（放不下交还滚动兜底）。
     affine(200, 700);
     g.ckFitStrip(el, 55);

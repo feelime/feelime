@@ -929,13 +929,16 @@ html[lang="en"] .preset-swatch.follow::after { content: "F"; }
 .ck-row-strip[data-align="right"] > .ck-chip:first-child { margin-left: auto; }
 /* 合并行键帽 = 旧预览键同款（2026-10-04 定制即预览）：min-width 32 而
  * 非 chip 的 40——40px×N 会先于字号触顶，字号缩了行仍溢出，缩放形同
- * 虚设（真机实录：模板第 2 行 7 键在 360dp 上 55% 后仍溢出 77px）。 */
+ * 虚设（真机实录：模板第 2 行 7 键在 360dp 上 55% 后仍溢出 77px）。
+ * min-width/padding 必须 em 化：px 定死不随 strip 字号缩，是"缩放没到
+ * 位、行还剩一点在容器外"的第二元凶（用户三轮实录）。相对 chip 字号
+ * （0.87em@100%≈13px）：32px≈2.45em、7px≈0.54em。 */
 .ck-row-strip .ck-chip {
-    min-width: 32px; height: 30px; padding: 0 7px; border-radius: 7px;
+    min-width: 2.45em; height: 30px; padding: 0 0.54em; border-radius: 7px;
     font-size: 0.87em; font-weight: 550; white-space: nowrap;
 }
-.ck-row-strip .ck-chip[data-span="2"] { min-width: 92px; }
-.ck-row-strip .ck-chip[data-span="3"] { min-width: 140px; }
+.ck-row-strip .ck-chip[data-span="2"] { min-width: 7.05em; }
+.ck-row-strip .ck-chip[data-span="3"] { min-width: 10.7em; }
 .ck-chip.selected { border-color: var(--accent, #3b82f6); box-shadow: 0 0 0 1px var(--accent, #3b82f6); }
 .ck-chip[data-span="2"] { min-width: 72px; }
 .ck-chip[data-span="3"] { min-width: 108px; }
@@ -1092,13 +1095,14 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
 .ck-chip { position: relative; }
 .ck-chip.ck-dragging { opacity: .45; transform: scale(.94); }
 /* 跟手拖影（2026-10-04 用户验收"没跟手"）：克隆被拖键、固定定位跟
- * 手指，不参与布局/命中；流内那颗保持 .ck-dragging 半透明落位预览。 */
+ * 手指，不参与布局/命中；位移由 JS 写 transform（合成器属性），
+ * left/top 只在创建时定位一次。 */
 .ck-ghost {
     position: fixed; z-index: 50; pointer-events: none;
     display: inline-flex; align-items: center; justify-content: center;
     border-radius: 7px; font-size: 0.87em; font-weight: 550; white-space: nowrap;
     background: var(--card, #fff); border: 1px solid var(--border, #ccc);
-    color: inherit; opacity: .95; transform: scale(1.06);
+    color: inherit; opacity: .95; will-change: transform;
     box-shadow: 0 10px 26px rgba(0, 0, 0, .30);
 }
 /* 行头「＋」（2026-10-04 用户裁定：与对齐钮同行、靠右）。 */
