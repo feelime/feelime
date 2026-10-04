@@ -2444,10 +2444,16 @@ body[data-bg-image="on"] #settingsPanel { background: transparent; }
 .sym-custom-key {
     flex: none;
     width: auto;
-    min-width: 44px;
-    max-width: 96px;
-    padding: 0 10px;
-    font-size: 15px;
+    /* em 化（2026-10-04 行缩放）：min-width/padding/字号随行 strip 的
+     * font-size 等比缩（fitCustomRow 写 strip.style.fontSize 百分比）。
+     * 注意 em 相对【本键】font-size：0.94em×16≈15px，则 2.75em≈41px、
+     * 0.625em≈9.4px、6em≈90px（span2/3 同理 ≈86/132px）——比旧 px 值
+     * 整体小 ~6%，等比语义不变。px 定死时字号缩了 min-width 先触顶，
+     * 缩放形同虚设。 */
+    min-width: 2.75em;
+    max-width: 6em;
+    padding: 0 0.625em;
+    font-size: 0.94em;
     white-space: nowrap;
     overflow: hidden;
     /* : keys inherit .kb-key's none gesture policy,
@@ -2462,8 +2468,8 @@ body[data-bg-image="on"] #settingsPanel { background: transparent; }
 .sym-custom-key.ck-orange { background: rgba(249, 115, 22, .32);  border-color: rgba(249, 115, 22, .55); }
 .sym-custom-key.ck-red    { background: rgba(239, 68, 68, .30);   border-color: rgba(239, 68, 68, .55); }
 .sym-custom-key.ck-purple { background: rgba(168, 85, 247, .30);  border-color: rgba(168, 85, 247, .55); }
-.sym-custom-key[data-span="2"] { min-width: 92px; max-width: 160px; }
-.sym-custom-key[data-span="3"] { min-width: 140px; max-width: 220px; }
+.sym-custom-key[data-span="2"] { min-width: 5.75em; max-width: 10em; }
+.sym-custom-key[data-span="3"] { min-width: 8.75em; max-width: 13.75em; }
 /* 行对齐（2026-10-03 用户需求）：行不满时整组左/中/右停靠。走首键的
  * auto margin 而非 justify-content——overflow 容器里 justify 会把起点
  * 方向的键裁进不可滚动区，auto margin 在溢出时归零、自然回落左满排。 */

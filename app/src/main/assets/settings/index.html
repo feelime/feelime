@@ -1046,17 +1046,13 @@
       </div>
       <p class="hint" data-i18n="input.custom.note">保存在本机，键盘下次载入时生效。</p>
     </section>
-    <section class="card" aria-labelledby="ckPrevHead">
-      <div class="section-heading"><h2 id="ckPrevHead" data-i18n="ck.preview.title">预览</h2></div>
-      <div id="ckPreview" class="ck-preview" aria-live="polite"></div>
-    </section>
     <section class="card" aria-labelledby="ckRowsHead">
       <div class="section-heading"><h2 id="ckRowsHead" data-i18n="ck.rows.title">按键（第 1/2/3 行）</h2></div>
       <div id="ckEditBar" class="ck-edit-bar" hidden>
         <span data-i18n="ck.editBar.hint">拖动排序 · 点 × 删除 · 长按按键开始</span>
         <button class="btn" id="ckEditDone" type="button" data-i18n="ck.editBar.done">完成</button>
       </div>
-      <div id="ckRowList"></div>
+      <div id="ckRowList" aria-live="polite"></div>
       <p class="hint" data-i18n="ck.quick.title.hint">先点一行里的「＋」，或在下面常用键里一键添加。</p>
     </section>
     <!-- 脏态离开确认（页内实现：confirm 依赖 WebChromeClient，不支持时

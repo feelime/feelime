@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.22';
+    const KEYBOARD_VERSION = '3.73.23';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1682,6 +1682,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.applyHeight();
                     // 单手让位是屏宽百分比：旋转后重算。
                     if ((this.oneHand || 0) !== 0) this.applyOneHand();
+                    // 自定义行缩放随视口宽度变（2026-10-04）：旋转/让位
+                    // 后行宽变了要重拟合（幂等；非 custom 态查不到行，空转）。
+                    document.querySelectorAll('.sym-custom-row')
+                        .forEach(strip => this.fitCustomRow(strip));
                 });
             }
             // Native height changes land after setKeyboardHeight returns.
@@ -1695,7 +1699,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Hidden-window resizes produce no layout (and no observer
             // callback); re-derive when the page becomes visible again.
             document.addEventListener('visibilitychange', () => {
-                if (!document.hidden) this.applyHeight();
+                if (!document.hidden) {
+                    this.applyHeight();
+                    // 隐藏窗口里的 resize 产不出布局（fitCustomRow 量到
+                    // clientWidth=0 静默跳过），恢复可见后重拟合定制行
+                    // （review P3：否则行滞留自然字号、无人重渲）。
+                    document.querySelectorAll('.sym-custom-row')
+                        .forEach(strip => this.fitCustomRow(strip));
+                }
             });
             // Candidate compose controls : × aborts the composition
             // and restores the toolbar; ˅ expands the candidate area over the
@@ -5191,6 +5202,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * edited out-of-band re-validates defensively. */
         /** #39-12：cell 的 tap 恰好是单个裸 Backspace（无文本/无修饰）
          *  → 退格专属渲染（specialKey + 长按连删）。 */
+        /** 自定义行按需缩放（2026-10-04）：比例相对【当前字号】算
+         *  （cur × avail / sw），多轮精化补 min-width/padding 不随字缩
+         *  的残差；下限 55%，放不下交还横向滚动。resize/旋转后幂等重跑
+         *  （行几何随视口变），无布局环境（mock/隐藏）clientWidth=0
+         *  自动跳过。 */
+        fitCustomRow(strip) {
+            strip.style.fontSize = '';
+            const avail = strip.clientWidth;
+            if (!avail) return;
+            for (let round = 0; round < 3 && strip.scrollWidth > avail; round++) {
+                const cur = parseInt(strip.style.fontSize, 10) || 100;
+                const pct = Math.round(cur * avail / strip.scrollWidth);
+                const clamped = Math.max(55, Math.min(pct, cur));
+                strip.style.fontSize = clamped + '%';
+                if (clamped <= 55) break;
+            }
+        }
+
         customCellIsBackspace(cell) {
             const parsed = this.parseTapDsl(cell.tap);
             if (parsed.error) return false;
@@ -5310,6 +5339,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 });
                 wrap.append(rowsBox);
                 grid.append(wrap);
+                // 行内键超宽整体缩放（2026-10-04 用户需求）：与设置页
+                // 「定制即预览」同款语义——按行缩字号塞进一行，min-width/
+                // padding 已 em 化随字号等比缩；缩到下限仍放不下交还
+                // .sym-custom-row 的横向滚动。mock 环境无布局（clientWidth
+                // =0）自动跳过。
+                [...rowsBox.children].forEach(strip => this.fitCustomRow(strip));
                 return;
             }
 
@@ -5830,6 +5865,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             // 让位宽度变了，候选条容量随之变化：重算溢出隐藏。
             this.pruneOverflowTools();
+            // 让位收窄也不触发 window resize/ResizeObserver（border-box
+            // 不含 padding 变化，review P3）：定制行宽度变了要重拟合，
+            // 否则滞留旧宽度的字号。
+            document.querySelectorAll('.sym-custom-row')
+                .forEach(strip => this.fitCustomRow(strip));
         }
 
         /** 背景图片（亮/暗两组，issue #15）：铺满整个键盘区域（工具条
@@ -10221,6 +10261,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onEditorInfo: payload => keyboard.onEditorInfo(payload),
         cancelTouches: () => keyboard.cancelTouches(),
         cancelToolbarEdit: () => keyboard.cancelToolbarEdit(),
+        // 工具位（debugState 同类）：自定义行缩放器，mock/预览直调锁数值。
+        fitCustomRow: strip => keyboard.fitCustomRow(strip),
         onClipboard: payload => keyboard.onClipboard(payload),
         onFavorites: payload => keyboard.onFavorites(payload),
         onStoresRestored: stores => keyboard.onStoresRestored(stores),

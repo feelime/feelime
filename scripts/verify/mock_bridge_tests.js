@@ -2212,6 +2212,44 @@ test('custom keys: row alignment rides on a cell field (2026-10-03)', {since: '3
     equal(strip.dataset.align, undefined, 'no align field = default left');
 });
 
+test('custom keys: overwide keyboard rows scale to fit (2026-10-04)', {since: '3.73.23'}, () => {
+    const world = fresh();
+    const save = text => world.context.window.Feelime.saveCustomJson(text);
+    save(JSON.stringify({ version: 1, rows: [[
+        { t: '撤销', tap: '[ctrl+z]' }, { t: '复制', tap: '[ctrl+c]' },
+        { t: '剪切', tap: '[ctrl+x]' }, { t: '粘贴', tap: '[ctrl+v]' },
+        { t: '全选', tap: '[ctrl+a]' }, { t: '保存', tap: '[ctrl+s]' },
+        { t: '换行', tap: '[enter]' }], [], []] }));
+    world.tap(world.$('toolCustom'));
+    const strip = world.document.querySelector('#symGrid .sym-custom-row');
+    assert(strip, 'custom row rendered');
+    // 渲染路径：无布局环境（mock clientWidth=0）fit 跳过、不炸、不写字号。
+    equal(strip.style.fontSize, '', 'layout-less render skips the fit silently');
+    // fitCustomRow 数值逻辑直测（与设置页 ckFitStrip 同款收敛）：仿射
+    // 模型 fixed + base×字号%，锁多轮乘法精化——一轮算法（相对当前
+    // 字号的比值当绝对百分比）会停在 80% 溢出。
+    
+    const el = world.document.createElement('div');
+    const affine = (fixed, base) => {
+        Object.defineProperty(el, 'clientWidth', { get: () => 320, configurable: true });
+        Object.defineProperty(el, 'scrollWidth', {
+            get: () => Math.round(fixed + base * (parseInt(el.style.fontSize, 10) || 100) / 100),
+            configurable: true,
+        });
+    };
+    const fit = world.context.window.Feelime.fitCustomRow;
+    assert(typeof fit === 'function', 'fitCustomRow exposed on the facade');
+    affine(60, 340);
+    fit(el);
+    equal(el.style.fontSize, '77%', 'successive rounds refine past the first estimate');
+    affine(200, 700);
+    fit(el);
+    equal(el.style.fontSize, '55%', 'extreme overflow clamps at the floor');
+    affine(100, 200);
+    fit(el);
+    equal(el.style.fontSize, '', 'fitting rows keep the natural size');
+});
+
 test('custom keys: settings-page JSON editor round-trip (3.20.0 form)', {until: '3.20.0'}, () => {
     // 3.20.0 has no Felime.saveCustomJson hook - the whole flow lives behind
     // the settings page (paste-JSON textarea in the editor strip).

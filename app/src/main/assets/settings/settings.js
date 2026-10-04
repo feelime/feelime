@@ -215,10 +215,9 @@ const I18N = {
         "ck.openEditor.hint": "点选创建按键，不用写代码",
         "ck.json.title": "JSON（兜底）",
         "ck.json.hint": "编辑器够用的日常不需要动这里；批量导入/导出或高级玩法可直接粘贴 JSON。",
-        "ck.preview.title": "预览",
         "ck.rows.title": "按键（第 1/2/3 行）",
         "ck.quick.title": "常用键，一键加",
-        "ck.quick.title.hint": "先点一行里的「＋」，或在下面常用键里一键添加。",
+        "ck.quick.title.hint": "点按键改内容，长按调整位置；点「＋」添加新按键。",
         "ck.edit.title": "编辑按键",
         "ck.apply": "确定",
         "ck.save": "保存全部",
@@ -264,7 +263,6 @@ const I18N = {
         "ck.row": "第 {n} 行",
         "ck.none": "（空行）",
         "ck.align.aria": "行对齐",
-        "ck.align.rowLabel": "第 {n} 行对齐方式：",
         "ck.align.left": "左",
         "ck.align.center": "中",
         "ck.align.right": "右",
@@ -838,10 +836,9 @@ const I18N = {
         "ck.openEditor.hint": "Build keys by tapping - no code needed",
         "ck.json.title": "JSON (fallback)",
         "ck.json.hint": "The editor covers everyday needs; use JSON for bulk import/export or advanced tricks.",
-        "ck.preview.title": "Preview",
         "ck.rows.title": "Keys (rows 1/2/3)",
         "ck.quick.title": "Quick add",
-        "ck.quick.title.hint": "Tap ＋ in a row, or one-tap add from the common keys below.",
+        "ck.quick.title.hint": "Tap a key to edit it, hold to rearrange; tap ＋ to add.",
         "ck.edit.title": "Edit key",
         "ck.apply": "Apply",
         "ck.save": "Save all",
@@ -887,7 +884,6 @@ const I18N = {
         "ck.row": "Row {n}",
         "ck.none": "(empty)",
         "ck.align.aria": "Row alignment",
-        "ck.align.rowLabel": "Row {n} alignment:",
         "ck.align.left": "L",
         "ck.align.center": "C",
         "ck.align.right": "R",
@@ -3605,7 +3601,6 @@ function ckEnter() {
     document.getElementById("ckEditBar").hidden = true;
     ckCloseModal();
     ckRenderRows();
-    ckRenderPreview();
 }
 
 /** 行对齐（2026-10-03 用户需求）：值挂在行内首键的 align 字段（键盘
@@ -3665,8 +3660,38 @@ function ckRenderRows() {
     ckRows.forEach((row, r) => {
         const line = document.createElement("div");
         line.className = "ck-row-line";
+        // 定制即预览（2026-10-04 用户裁定：预览与编辑合并）：行头常驻
+        // 行号；有键的行挂对齐按钮；strip 即预览键帽（data-align 停靠
+        // 与键盘同款 auto margin），缩放走 ckFitStrip。
+        const head = document.createElement("div");
+        head.className = "ck-row-head";
+        const label = document.createElement("span");
+        label.textContent = t("ck.row", { n: r + 1 });
+        head.append(label);
+        if (row.length) {
+            const seg = document.createElement("div");
+            seg.className = "ck-align";
+            seg.setAttribute("aria-label", t("ck.align.aria"));
+            const cur = ckRowAlign(row);
+            for (const a of CK_ALIGNS) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "ck-align-btn" + (cur === a ? " on" : "");
+                b.textContent = t("ck.align." + a);
+                b.addEventListener("click", () => {
+                    ckSetRowAlign(r, a);
+                    ckRenderRows();
+                    ckMarkDirty(true);
+                });
+                seg.append(b);
+            }
+            head.append(seg);
+        }
+        line.append(head);
         const strip = document.createElement("div");
         strip.className = "ck-chips ck-row-strip";
+        const align = ckRowAlign(row);
+        if (row.length && align !== "left") strip.dataset.align = align;
         if (!row.length) {
             const none = document.createElement("span");
             none.className = "ck-none";
@@ -3679,6 +3704,7 @@ function ckRenderRows() {
             chip.type = "button";
             const isHue = /^h\d+$/.test(cell.color || "");
             chip.className = "ck-chip" + (!isHue && cell.color ? " ck-" + cell.color : "");
+            if (cell.span === 2 || cell.span === 3) chip.dataset.span = String(cell.span);
             if (isHue) {
                 chip.style.background = "hsl(" + cell.color.slice(1) + ", 65%, 45%)";
                 chip.style.borderColor = "hsl(" + cell.color.slice(1) + ", 65%, 35%)";
@@ -3695,14 +3721,13 @@ function ckRenderRows() {
                     ckKeepRowAlign(r, ckRows[r][c]);
                     ckRows[r].splice(c, 1);
                     ckRenderRows();
-                    ckRenderPreview();
                     ckMarkDirty(true);
                 });
                 chip.append(x);
             } else {
                 chip.addEventListener("click", () => ckOpenChip(r, c));
             }
-            ckBindChipTouch(chip, r);
+            ckBindChipTouch(chip);
             strip.append(chip);
         });
         const add = document.createElement("button");
@@ -3711,33 +3736,6 @@ function ckRenderRows() {
         add.textContent = t("ck.add");
         add.addEventListener("click", () => ckOpenNew(r));
         strip.append(add);
-        if (row.length) {
-            // 前置说明（2026-10-04 用户验收）：「第 N 行对齐方式：」+
-            // 与键列留间隔，控件不再裸贴在 chips 上方。
-            const head = document.createElement("div");
-            head.className = "ck-row-head";
-            const label = document.createElement("span");
-            label.textContent = t("ck.align.rowLabel", { n: r + 1 });
-            const seg = document.createElement("div");
-            seg.className = "ck-align";
-            seg.setAttribute("aria-label", t("ck.align.aria"));
-            const cur = ckRowAlign(row);
-            for (const a of CK_ALIGNS) {
-                const b = document.createElement("button");
-                b.type = "button";
-                b.className = "ck-align-btn" + (cur === a ? " on" : "");
-                b.textContent = t("ck.align." + a);
-                b.addEventListener("click", () => {
-                    ckSetRowAlign(r, a);
-                    ckRenderRows();
-                    ckRenderPreview();
-                    ckMarkDirty(true);
-                });
-                seg.append(b);
-            }
-            head.append(label, seg);
-            line.append(head);
-        }
         line.append(strip);
         host.append(line);
         fitted.push(strip);
@@ -3847,49 +3845,10 @@ function ckBindDrag(chip) {
         const dragging = document.querySelector(".ck-dragging");
         if (dragging) dragging.classList.remove("ck-dragging");
         ckRenderRows();
-        ckRenderPreview();
     };
     document.addEventListener("touchmove", onMove, { passive: true });
     document.addEventListener("touchend", onEnd, { passive: true });
     ckDragHandlers = { move: onMove, end: onEnd };
-}
-
-function ckRenderPreview() {
-    const host = $("ckPreview");
-    host.textContent = "";
-    const fitted = [];
-    ckRows.forEach(row => {
-        const strip = document.createElement("div");
-        strip.className = "ck-prev-row";
-        // 对齐预览与键盘同一语义（行内第一个有效值），CSS 同款首键
-        // auto margin——点「中/右」当场看到停靠变化（评审 P3-2）。
-        const align = ckRowAlign(row);
-        if (align !== "left") strip.dataset.align = align;
-        if (!row.length) {
-            const none = document.createElement("span");
-            none.className = "ck-none";
-            none.textContent = t("ck.none");
-            strip.append(none);
-        }
-        row.forEach(cell => {
-            const key = document.createElement("span");
-            const isHue = /^h\d+$/.test(cell.color || "");
-            key.className = "ck-prev-key" + (!isHue && cell.color ? " ck-" + cell.color : "");
-            if (isHue) {
-                key.style.background = "hsl(" + cell.color.slice(1) + ", 65%, 45%)";
-                key.style.borderColor = "hsl(" + cell.color.slice(1) + ", 65%, 35%)";
-                key.style.color = "#fff";
-            }
-            key.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
-            if (cell.note) key.title = cell.note;
-            strip.append(key);
-        });
-        host.append(strip);
-        // 预览同步缩放（2026-10-04 用户验收）：编辑行缩了，预览也缩，
-        // 用户看到的就是实际效果（宽度方向同尺）。
-        fitted.push(strip);
-    });
-    fitted.forEach(s => ckFitStrip(s, 55));
 }
 
 /** 编辑卡：isNew 时空白表单；否则按 cell 回填（tap 反猜型别）。 */
@@ -4213,9 +4172,8 @@ $("ckApply").addEventListener("click", () => {
     if (ckSel.isNew) ckRows[ckSel.r].push(cell);
     else ckRows[ckSel.r][ckSel.c] = cell;
     ckCloseModal();
-    // 动作带来的变化必须在当前屏可见：列表+预览立即刷新，脏态亮起。
+    // 动作带来的变化必须在当前屏可见：合并视图立即刷新，脏态亮起。
     ckRenderRows();
-    ckRenderPreview();
     ckMarkDirty(true);
 });
 

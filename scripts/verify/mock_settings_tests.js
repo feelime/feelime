@@ -728,7 +728,7 @@ test('custom key editor: row alignment control writes the marker cell (2026-10-0
     equal(after[0].align, 'right', 'align transferred to the new first key');
 });
 
-test('custom key editor: align control carries a per-row label (2026-10-04)', () => {
+test('custom key editor: merged rows carry a row-number head (2026-10-04)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     const g = world.sandbox;
@@ -736,13 +736,21 @@ test('custom key editor: align control carries a per-row label (2026-10-04)', ()
         version: 1, rows: [[{ t: 'A', tap: 'A' }], [{ t: 'B', tap: 'B' }], []],
     });
     g.ckEnter();
+    // 定制即预览：每行行头常驻行号（空行也有），对齐按钮仅挂有键的行
+    // （align 标记需要 cell 载体）；独立预览区已删。
     const heads = [...world.doc.querySelectorAll('#ckRowList .ck-row-head')];
-    equal(heads.length, 2, 'one head per non-empty row');
-    equal(heads[0].textContent.includes('第 1 行对齐方式'), true, 'row 1 label names its number');
-    equal(heads[1].textContent.includes('第 2 行对齐方式'), true, 'row 2 label names its number');
-    // 控件在说明行里，间隔由 .ck-row-head 的 margin 承担（CSS 断言在
-    // 预览截图核验），空行无 head。
-    equal(heads[0].querySelector('.ck-align-btn') !== null, true, 'control lives inside the labeled head');
+    equal(heads.length, 3, 'every row (incl. empty) has a numbered head');
+    equal(heads[0].textContent.includes('第 1 行'), true, 'row 1 head names its number');
+    equal(heads[2].querySelector('.ck-align-btn'), null, 'empty row shows no align control');
+    equal(heads[0].querySelector('.ck-align-btn') !== null, true, 'keyed row has the align control');
+    equal(world.doc.querySelectorAll('#ckRowList .ck-row-strip').length, 3,
+        'merged view renders one strip per row');
+    // 合并行就是对齐预览本体：data-align 停靠标记挂上（CSS 首键
+    // auto margin，与键盘同款）。
+    g.ckSetRowAlign(0, 'right');
+    g.ckRenderRows();
+    equal(world.doc.querySelectorAll('#ckRowList .ck-row-strip')[0].dataset.align, 'right',
+        'merged strip carries the align attribute');
 });
 
 test('custom key editor: overwide rows scale their font instead of wrapping (2026-10-04)', () => {
@@ -783,11 +791,9 @@ test('custom key editor: overwide rows scale their font instead of wrapping (202
     affine(100, 200);
     g.ckFitStrip(el, 55);
     equal(el.style.fontSize, '', 'fitting rows keep the natural size');
-    // 渲染路径冒烟：行 strip 挂了 nowrap 类（预览行同步缩放）。
+    // 渲染路径冒烟：行 strip 挂了 nowrap 类（定制即预览合并视图）。
     const strip = world.doc.querySelector('#ckRowList .ck-row-strip');
     equal(strip !== null, true, 'row strip carries the no-wrap scaling class');
-    const prev = world.doc.querySelector('#ckPreview .ck-prev-row');
-    equal(prev !== null, true, 'preview rows render for the same data');
 });
 
 test('custom key editor: open presets are a dropdown with full labels (2026-10-04)', () => {
@@ -922,11 +928,9 @@ test('custom key editor: new key -> apply -> save rides the saveCustom bridge (#
         version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
     });
     g.ckEnter();
-    // 行 chips 与预览都从 textarea 载入。
+    // 行 chips 从 textarea 载入（定制即预览：合并视图就是唯一呈现）。
     equal(g.document.getElementById('ckRowList').textContent.includes('A'), true,
         'existing key rendered as chip');
-    equal(g.document.getElementById('ckPreview').textContent.includes('A'), true,
-        'preview mirrors the table');
     // 新建一颗组合键：走表单控件的 listener 链（ckDraft 是 let，不进
     // vm 全局——只能从 UI 路径驱动，这本身也断言了接线）。
     g.ckOpenNew(1);
