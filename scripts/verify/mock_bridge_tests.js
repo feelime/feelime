@@ -3912,6 +3912,27 @@ test('key bubble stays off by default; hello arms it per press', {since: '3.60.0
     equal(bubble.hidden, true, 'linger 0 hides instantly on release');
 });
 
+test('key bubble never outlives the keyboard-hide chain (2026-10-04)', {since: '3.73.26'}, () => {
+    const world = fresh();
+    const bubble = world.$('keyBubble');
+    const key = world.key('h');
+    world.hello({ keyBubble: true });
+    world.touchDown(key);
+    equal(bubble.hidden, false, 'bubble showing mid-press');
+    // 收起/取消链（native onFinishInputView → cancelTouches）必须【立即】
+    // 收掉气泡：真机实录「键盘已收、单字气泡冻在屏上」——原实现走
+    // linger 定时器，冻结窗口整批丢 timer 后无人能收。不推进时钟断言。
+    world.context.window.Feelime.cancelTouches();
+    equal(bubble.hidden, true, 'cancelTouches hides the bubble immediately (no linger)');
+    // 迟到 touchend（收起后到达）走早退分支，也不复活气泡、不再依赖
+    // 早退外的收起点。
+    world.touchDown(key);
+    equal(bubble.hidden, false, 'bubble back on a fresh press');
+    world.context.window.Feelime.cancelTouches();
+    world.touchUp(key);
+    equal(bubble.hidden, true, 'late touchend keeps the bubble hidden');
+});
+
 test('key bubble yields to the long-press popup; space never bubbles', {since: '3.60.0'}, () => {
     const world = fresh();
     const bubble = world.$('keyBubble');

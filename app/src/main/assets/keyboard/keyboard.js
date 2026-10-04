@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.25';
+    const KEYBOARD_VERSION = '3.73.26';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3612,7 +3612,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (sameKeyNonOwner) return;
                 // 迟到 touchend 保护不变（收起/取消后不得再输入）；但弹层
                 // owner 的收尾不再依赖按键级标记——它可能已被同键他指删掉。
-                if (!this.pressedKeys.has(button) && !ownsPopup) return;
+                if (!this.pressedKeys.has(button) && !ownsPopup) {
+                    // 早退也要收按键气泡：owner 已不在任何键上，气泡再无
+                    // 别的收起点（真机实录残留路径之一）。
+                    this.scheduleHideBubble();
+                    return;
+                }
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
                 this.scheduleHideBubble();
@@ -3674,7 +3679,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         cancelTouches() {
             this.inkCancelTouch();
-            this.scheduleHideBubble();
+            // 键盘收起/取消链立即收气泡（2026-10-04 用户真机实录「键盘
+            // 已收、单字气泡冻在屏上」）：不能走 scheduleHideBubble 的
+            // linger 定时器——键盘都收走了气泡没有理由再停 400ms，且
+            // 冻结窗口整批丢 timer 的前科会让它永远挂着。
+            this.hideKeyBubble();
             for (const button of this.pressedKeys) {
                 button.classList.remove('active-touch');
                 if (button._cancelPress) button._cancelPress();
