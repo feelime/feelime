@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.23';
+    const KEYBOARD_VERSION = '3.73.24';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3514,6 +3514,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             };
             button.addEventListener('touchstart', event => {
                 event.preventDefault();
+                // 同键再次按下会重挂长按/连发；先清上一轮，避免覆盖 timer
+                // 后松手只能清新 timer，旧 timer 在松手后弹出无人能收的层。
+                clear();
                 this.pressedKeys.add(button);
                 button.classList.add('active-touch');
                 this.nativeKeyFeedback();

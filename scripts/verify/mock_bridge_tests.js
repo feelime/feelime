@@ -1060,6 +1060,32 @@ test("co-touch lifting mid-drag must not close the pressing finger's popup", {si
     equal(keys[1].args[0], 'E', 'popup still commits its preselect for B');
 });
 
+test('same-key staggered presses leave no orphaned long-press popup', {since: '3.73.24'}, () => {
+    for (const ending of ['touchend', 'touchcancel', 'hide']) {
+        for (const held of [100, 360]) {
+            const world = fresh();
+            const m = world.key('m');
+            world.dispatch(m, 'touchstart', 100, 20,
+                { changedTouches: [touchPoint(1, 100, 20)], touches: [touchPoint(1, 100, 20)] });
+            world.clock.advance(100);
+            world.dispatch(m, 'touchstart', 104, 20,
+                { changedTouches: [touchPoint(2, 104, 20)],
+                  touches: [touchPoint(1, 100, 20), touchPoint(2, 104, 20)] });
+            world.clock.advance(held);
+            if (held === 360) {
+                assert(world.$('keyPopup').classList.contains('open'), 'long press opens the popup');
+            }
+            // 提前松手时，旧实现只清第二个 timer，首个 timer 在松手后弹层。
+            if (ending === 'hide') world.context.window.Feelime.cancelTouches();
+            else world.dispatch(m, ending, 100, 20,
+                { changedTouches: [touchPoint(1, 100, 20), touchPoint(2, 104, 20)], touches: [] });
+            assert(!world.$('keyPopup').classList.contains('open'), ending + ' closes the popup');
+            world.clock.advance(500);
+            assert(!world.$('keyPopup').classList.contains('open'), ending + ' leaves no late popup');
+        }
+    }
+});
+
 test('same-key second finger lifting first must not orphan the popup (1.3.4 regression)', {since: '3.73.22'}, () => {
     const world = fresh();
     const e = world.key('e');
