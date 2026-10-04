@@ -2518,6 +2518,18 @@ class SettingsBridge(
         onSubPage = page != "home" && page.isNotBlank()
     }
 
+    /** 定制按键编辑态/脏态（2026-10-04 用户裁定）：BACK 键在这两个态下
+     *  不直接翻页——壳侧转给页面弹确认框（放弃编辑/继续、丢弃/留下），
+     *  用户选择由页面自行收口。变化点即时上报，离开页面自然回落 false。 */
+    @Volatile var ckEditing: Boolean = false
+    @Volatile var ckDirty: Boolean = false
+
+    @JavascriptInterface
+    fun reportCkState(editing: Boolean, dirty: Boolean, token: String) = guarded(token) {
+        ckEditing = editing
+        ckDirty = dirty
+    }
+
     /** The about page's one-tap version report. The clip is
      * flagged sensitive on API 33+ so the keyboard's clipboard history does
      * not absorb it; older releases just copy (flag unknown, never throws). */

@@ -1091,6 +1091,19 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
     line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
 .ck-chip { position: relative; }
 .ck-chip.ck-dragging { opacity: .45; transform: scale(.94); }
+/* 跟手拖影（2026-10-04 用户验收"没跟手"）：克隆被拖键、固定定位跟
+ * 手指，不参与布局/命中；流内那颗保持 .ck-dragging 半透明落位预览。 */
+.ck-ghost {
+    position: fixed; z-index: 50; pointer-events: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 7px; font-size: 0.87em; font-weight: 550; white-space: nowrap;
+    background: var(--card, #fff); border: 1px solid var(--border, #ccc);
+    color: inherit; opacity: .95; transform: scale(1.06);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .30);
+}
+/* 行头「＋」（2026-10-04 用户裁定：与对齐钮同行、靠右）。 */
+.ck-head-add { margin-left: auto; flex: none; height: 26px; min-width: 26px;
+    padding: 0 9px; border-radius: 7px; font-size: 0.8em; }
 
 /* 长按 chips 不触发文字选择/呼出菜单（用户实录）：交互元素禁选，
  * JSON textarea/input 保持可选可输。 */

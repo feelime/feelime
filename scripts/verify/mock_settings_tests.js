@@ -102,6 +102,7 @@ class MockSettingsNative {
     // /R8: page reporting (BACK returns home first) + about-page
     // one-tap copy.
     reportPage(...a) { this._rec('reportPage', a); }
+    reportCkState(...a) { this._rec('reportCkState', a); }
     setThemeMode(...a) { this._rec('setThemeMode', a); }
     setThemePreset(...a) { this._rec('setThemePreset', a); }
     setThemeHue(...a) { this._rec('setThemeHue', a); }
@@ -717,15 +718,82 @@ test('custom key editor: row alignment control writes the marker cell (2026-10-0
     equal(JSON.parse(world.lastCall('saveCustom').args[0]).rows[0][0].align, undefined,
         'left clears the marker');
     // 重新设右后删掉载体键（× 删除）：标记转移给留下的新首键，行停靠
-    // 不静默回左（评审 P3-1）。
+    // 不静默回左（评审 P3-1）。× 现在先弹二次确认（2026-10-04），确认
+    // 才真删。
     fire(btns(0)[2], 'click');
-    g.ckEnterEditMode([...world.doc.querySelectorAll('#ckRowList .ck-chip')][0]);
+    g.ckEnterEditMode([...world.doc.querySelector('#ckRowList .ck-row-strip').querySelectorAll('.ck-chip')][0]);
     const xbtn = [...world.doc.querySelectorAll('#ckRowList .ck-x')][0];
     xbtn.listeners.find(l => l.type === 'click').handler({ stopPropagation() {} });
+    equal(g.document.getElementById('ckDelModal').hidden, false, 'delete asks first');
+    equal(g.document.getElementById('ckDelText').textContent.includes('A'), true,
+        'confirm dialog names the key');
+    g.document.getElementById('ckDelGo').listeners.find(l => l.type === 'click').handler();
     world.$('ckSave').click();
     const after = JSON.parse(world.lastCall('saveCustom').args[0]).rows[0];
     equal(after.length, 1, 'marker key removed');
     equal(after[0].align, 'right', 'align transferred to the new first key');
+});
+
+test('custom key editor: back key asks before leaving edit mode / dirty state (2026-10-04)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    });
+    // backPressed 只在 customkeys 页响应（防误伤其他页的 back）。
+    world.FeelimeSettings().showPage('customkeys');
+    const strip0 = world.doc.querySelector('#ckRowList .ck-row-strip');
+    g.ckEnterEditMode([...strip0.querySelectorAll('.ck-chip')][0]);
+    // 编辑态 + 跟手拖影：ghost 克隆被拖键挂在 body 上。
+    const ghost = g.document.querySelector('.ck-ghost') || [...g.document.body.children]
+        .find(el => el.className === 'ck-ghost');
+    equal(ghost && ghost.textContent, 'A', 'drag ghost mirrors the held key');
+    // BACK：编辑态弹确认，放弃=退出编辑态（改动保留为脏）。
+    world.FeelimeSettings().backPressed();
+    equal(g.document.getElementById('ckBackModal').hidden, false, 'back asks in edit mode');
+    g.document.getElementById('ckBackGo').listeners.find(l => l.type === 'click').handler();
+    equal(g.document.getElementById('ckBackModal').hidden, true, 'choice closes the dialog');
+    equal(g.document.getElementById('ckEditBar').hidden, true, 'discard exits edit mode');
+    // 状态上报随变化点走：值序列锁住（进编辑 [true,false]、退出
+    // [false,false]）——只数条数锁不住残留 bug（review P1-2）。
+    const reports = world.native.of('reportCkState').map(r => r.args.slice(0, 2));
+    equal(JSON.stringify(reports[reports.length - 2]), JSON.stringify([true, false]),
+        'entering edit mode reports [editing=true]');
+    equal(JSON.stringify(reports[reports.length - 1]), JSON.stringify([false, false]),
+        'discard reports both false');
+    // 编辑态下从页内 ‹ 离开：编辑态必须回落并上报，否则壳侧 BACK 分流
+    // 键残留 true，其他页的返回被吞（review P1-2 真机可达路径）。
+    g.ckEnterEditMode([...world.doc.querySelector('#ckRowList .ck-row-strip').querySelectorAll('.ck-chip')][0]);
+    world.FeelimeSettings().showPage('home');
+    const last = world.native.of('reportCkState').pop().args;
+    equal(JSON.stringify(last.slice(0, 2)), JSON.stringify([false, false]),
+        'page-leave mirrors the state down to the shell');
+    // 脏态下的 BACK 复用离开确认。
+    world.FeelimeSettings().showPage('customkeys');
+    g.ckMarkDirty(true);
+    world.FeelimeSettings().backPressed();
+    equal(g.document.getElementById('ckLeaveModal').hidden, false, 'dirty back reuses leave confirm');
+});
+
+test('custom key editor: head carries the add button, strip stays preview-pure (2026-10-04)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    g.document.getElementById('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: 'A', tap: 'A' }], [], []],
+    });
+    g.ckEnter();
+    // ＋ 在行头（空行也有——否则空行无法加键），strip 不再有虚线加号。
+    // （fake DOM 不支持 :not()——恒空断言守不住门，用总数+归属断言。）
+    equal(world.doc.querySelectorAll('#ckRowList .ck-head-add').length, 3, 'one add per row head');
+    const allAdds = [...world.doc.querySelectorAll('#ckRowList .ck-add-chip')];
+    equal(allAdds.length, 3, 'no add chips outside the heads');
+    equal(allAdds.every(el => el.parentElement.className.includes('ck-row-head')), true,
+        'every add chip lives in a row head');
+    const emptyHead = [...world.doc.querySelectorAll('#ckRowList .ck-row-head')][1];
+    equal(emptyHead.querySelectorAll('.ck-head-add').length, 1, 'empty row head still offers ＋');
+    equal(emptyHead.querySelectorAll('.ck-align-btn').length, 0, 'empty row has no align buttons');
 });
 
 test('custom key editor: merged rows carry a row-number head (2026-10-04)', () => {
@@ -1032,6 +1100,9 @@ test('custom key editor: move mode (×/drag) + popup slimmed (#39-12)', () => {
     const x = (chipA().children || []).find(c => c.className === 'ck-x')
         || [...world.doc.querySelectorAll('#ckRowList .ck-x')][0];
     x.listeners.find(l => l.type === 'click').handler({ stopPropagation() {} });
+    // 二次确认（2026-10-04）：× 只弹框，确认才删。
+    equal(g.document.getElementById('ckDelModal').hidden, false, 'delete confirmation opens');
+    g.document.getElementById('ckDelGo').listeners.find(l => l.type === 'click').handler();
     const rowTexts = [...world.doc.querySelectorAll('#ckRowList .ck-chips[data-ck-row]')]
         .map(st => [...st.children].filter(e => e.classList.contains('ck-chip')
             && !e.classList.contains('ck-add-chip'))
@@ -1042,7 +1113,10 @@ test('custom key editor: move mode (×/drag) + popup slimmed (#39-12)', () => {
     g.ckExitEditMode();
     equal(g.document.getElementById('ckEditBar').hidden, true, 'done hides the bar');
     // 长按链：touchstart 起定时器（不等待，仅验证接线不抛错）+ 位移取消。
-    const chip = [...world.doc.querySelectorAll('#ckRowList .ck-chip')][0];
+    // ＋ 已挪进行头（2026-10-04），行内键从 strip 里取（fake DOM 不支持
+    // 双类后代选择器，分两段查）。
+    const strip0 = world.doc.querySelector('#ckRowList .ck-row-strip');
+    const chip = strip0 && [...strip0.querySelectorAll('.ck-chip')][0];
     const ts = chip.listeners.find(l => l.type === 'touchstart');
     ts.handler({ touches: [{ clientX: 10, clientY: 10 }] });
     chip.listeners.find(l => l.type === 'touchmove')

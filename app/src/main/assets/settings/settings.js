@@ -213,9 +213,9 @@ const I18N = {
         "ck.status.title": "定制按键",
         "ck.openEditor": "打开编辑器",
         "ck.openEditor.hint": "点选创建按键，不用写代码",
-        "ck.json.title": "JSON（兜底）",
+        "ck.json.title": "高级",
         "ck.json.hint": "编辑器够用的日常不需要动这里；批量导入/导出或高级玩法可直接粘贴 JSON。",
-        "ck.rows.title": "按键（第 1/2/3 行）",
+        "ck.rows.title": "按键：点按修改，长按可移动/删除",
         "ck.quick.title": "常用键，一键加",
         "ck.quick.title.hint": "点按键改内容，长按调整位置；点「＋」添加新按键。",
         "ck.edit.title": "编辑按键",
@@ -250,8 +250,7 @@ const I18N = {
         "ck.color.sat": "饱和度",
         "ck.f.note": "备注",
         "ck.f.note.hint": "长按键面时显示",
-        "ck.editBar.hint": "拖动排序 · 点 × 删除 · 长按按键开始",
-        "ck.editBar.done": "完成",
+        "ck.editBar.done": "拖动移动，点x删除",
         "ck.common": "常用",
         "ck.common.hint": "选一颗直接填好，改改就能用",
         "ck.err.t": "键面不能为空",
@@ -267,6 +266,15 @@ const I18N = {
         "ck.align.center": "中",
         "ck.align.right": "右",
         "ck.dirty": "有未保存的修改",
+        "ck.back.title": "正在编辑按键",
+        "ck.back.text": "还在编辑模式（拖动移动、点x删除）。放弃编辑还是继续？",
+        "ck.back.go": "放弃编辑",
+        "ck.back.stay": "继续编辑",
+        "ck.del.title": "删除按键",
+        "ck.del.confirm": "确定删除「{t}」吗？",
+        "ck.del.go": "删除",
+        "ck.del.cancel": "取消",
+        "ck.add.aria": "第 {n} 行添加按键",
         "ck.newTitle": "新建按键",
         "ck.cancel": "取消",
         "ck.confirmLeave": "有未保存的修改，离开将丢失。仍要离开吗？",
@@ -834,9 +842,9 @@ const I18N = {
         "ck.status.title": "Custom keys",
         "ck.openEditor": "Open editor",
         "ck.openEditor.hint": "Build keys by tapping - no code needed",
-        "ck.json.title": "JSON (fallback)",
+        "ck.json.title": "Advanced",
         "ck.json.hint": "The editor covers everyday needs; use JSON for bulk import/export or advanced tricks.",
-        "ck.rows.title": "Keys (rows 1/2/3)",
+        "ck.rows.title": "Keys: tap to edit, hold to move/delete",
         "ck.quick.title": "Quick add",
         "ck.quick.title.hint": "Tap a key to edit it, hold to rearrange; tap ＋ to add.",
         "ck.edit.title": "Edit key",
@@ -871,8 +879,7 @@ const I18N = {
         "ck.color.sat": "Saturation",
         "ck.f.note": "Note",
         "ck.f.note.hint": "Shown on long-press",
-        "ck.editBar.hint": "Drag to reorder · × removes · long-press a key to start",
-        "ck.editBar.done": "Done",
+        "ck.editBar.done": "Drag to move, tap × to delete",
         "ck.common": "Common",
         "ck.common.hint": "Pick one to prefill, tweak, apply",
         "ck.err.t": "Key face is required",
@@ -888,6 +895,15 @@ const I18N = {
         "ck.align.center": "C",
         "ck.align.right": "R",
         "ck.dirty": "Unsaved changes",
+        "ck.back.title": "Editing keys",
+        "ck.back.text": "Still in edit mode (drag to move, tap × to delete). Discard editing or continue?",
+        "ck.back.go": "Discard editing",
+        "ck.back.stay": "Keep editing",
+        "ck.del.title": "Delete key",
+        "ck.del.confirm": "Delete \"{t}\"?",
+        "ck.del.go": "Delete",
+        "ck.del.cancel": "Cancel",
+        "ck.add.aria": "Add a key to row {n}",
         "ck.newTitle": "New key",
         "ck.cancel": "Cancel",
         "ck.confirmLeave": "You have unsaved changes. Leave anyway?",
@@ -1410,6 +1426,30 @@ function eventText(event, fallbackKey, values) {
 /* --- event channel ----------------------------------------------------- */
 
 window.FeelimeSettings = {
+    /** 系统 BACK 键入口（2026-10-04 用户裁定）：编辑态/脏态时壳侧转进
+     *  这里，页面弹框问用户——放弃编辑（退出编辑态，改动保留为脏）/继
+     *  继续编辑；脏态复用既有离开确认。普通翻页壳侧自理（onSubPage 逐
+     *  级返回），不经此路。 */
+    backPressed() {
+        if (typeof ckEditMode === "undefined" || currentPage !== "customkeys") return;
+        // Android 惯例：BACK 先收最上层已开的对话框（ckDelModal/ckModal
+        // 等开着时直接进编辑态确认会两框同屏，review P3-3）。
+        const openModal = [...document.querySelectorAll(".ck-modal")]
+            .find(el => !el.hidden);
+        if (openModal && openModal.id !== "ckBackModal" && openModal.id !== "ckLeaveModal") {
+            openModal.hidden = true;
+            return;
+        }
+        if (ckEditMode) {
+            document.getElementById("ckBackModal").hidden = false;
+            return;
+        }
+        if (typeof ckDirty !== "undefined" && ckDirty) {
+            const back = document.querySelector('.page[data-page="customkeys"] .page-back');
+            ckLeaveTarget = back?.dataset?.back || "input";
+            document.getElementById("ckLeaveModal").hidden = false;
+        }
+    },
     onBridgeHello(payload) {
         payload = payload || {};
         token = payload.token || "";
@@ -1543,6 +1583,17 @@ function showPage(name) {
     // 页内深链会再次 showPage(本页)：customkeys 此时不能 ckMarkDirty(false)
     // ——脏标被清、内存编辑还在，离开不再确认，改动静默丢失（评审 P3-11）。
     const wasCustomkeys = currentPage === "customkeys";
+    // 离开定制页时编辑态镜像回落（review P1-2）：页内 ‹ 不经编辑态出口
+    // 直接翻页，ckEditMode 残留 true 会把壳侧 BACK 键分流成静默 no-op
+    // （backPressed 只在本页响应）。与重进页 ckEnter() 强制 false 同
+    // 一语义，并即时上报壳侧。
+    if (wasCustomkeys && name !== "customkeys" && typeof ckEditMode !== "undefined" && ckEditMode) {
+        ckEditMode = false;
+        // 拖动会话一并收掉：‹ 离开时手指可能还按着，ghost 残留会冻在
+        // 屏上（真机实录 review 取证 ghostGone=false）。
+        if (typeof ckEndDragSession === "function") ckEndDragSession();
+        if (typeof ckReportState === "function") ckReportState();
+    }
     currentPage = name;
     document.querySelectorAll("[data-page]").forEach(node => {
         node.hidden = node.dataset.page !== name;
@@ -3485,8 +3536,15 @@ let ckLeaveTarget = null;   // 脏态离开确认的目标页
 
 /** 脏态驱动的保存条：变更必须让用户看得见（用户验收实录）。
  *  dirty 时按钮高亮 + 提示文案；保存后回落。 */
+/** 编辑态/脏态上报壳侧（BACK 键分流用，2026-10-04）：变化点即时推，
+ *  壳侧桥字段只作 back 分支判断，不参与页面导航。 */
+function ckReportState() {
+    call("reportCkState", !!ckEditMode, !!ckDirty);
+}
+
 function ckMarkDirty(dirty) {
     ckDirty = dirty;
+    ckReportState();
     const bar = document.getElementById("ckSaveBar");
     if (!bar) return;
     document.getElementById("ckSave").classList.toggle("ck-save-dirty", dirty);
@@ -3687,6 +3745,15 @@ function ckRenderRows() {
             }
             head.append(seg);
         }
+        // 「＋」挂行头靠右（2026-10-04 用户裁定）：空行也能加键（无 strip
+        // 占位键），行尾不再挤一颗虚线键干扰预览观感。
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "ck-chip ck-add-chip ck-head-add";
+        add.textContent = t("ck.add");
+        add.setAttribute("aria-label", t("ck.add.aria", { n: r + 1 }));
+        add.addEventListener("click", () => ckOpenNew(r));
+        head.append(add);
         line.append(head);
         const strip = document.createElement("div");
         strip.className = "ck-chips ck-row-strip";
@@ -3712,16 +3779,14 @@ function ckRenderRows() {
             }
             chip.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
             if (ckEditMode) {
-                // 长按编辑态：× 删除；chip 本体被拖动接管（单击无动作）。
+                // 长按编辑态：× 删除（二次确认，2026-10-04 用户裁定——
+                // 误触即真删太狠）；chip 本体被拖动接管（单击无动作）。
                 const x = document.createElement("span");
                 x.className = "ck-x";
                 x.textContent = "×";
                 x.addEventListener("click", event => {
                     event.stopPropagation();
-                    ckKeepRowAlign(r, ckRows[r][c]);
-                    ckRows[r].splice(c, 1);
-                    ckRenderRows();
-                    ckMarkDirty(true);
+                    ckConfirmDelete(cell);
                 });
                 chip.append(x);
             } else {
@@ -3730,12 +3795,6 @@ function ckRenderRows() {
             ckBindChipTouch(chip);
             strip.append(chip);
         });
-        const add = document.createElement("button");
-        add.type = "button";
-        add.className = "ck-chip ck-add-chip";
-        add.textContent = t("ck.add");
-        add.addEventListener("click", () => ckOpenNew(r));
-        strip.append(add);
         line.append(strip);
         host.append(line);
         fitted.push(strip);
@@ -3746,6 +3805,16 @@ function ckRenderRows() {
 /** 长按 = 进入可移动模式并拖起该键（键盘工具栏编辑同款形态：× 删除、
  *  跨行拖动排序；popup 只管属性——用户裁定）。 */
 let ckEditMode = false;
+/** 删除确认（2026-10-04）：× 点击先弹框，确认才真删。待删存 cell
+ *  引用而非坐标——确认期间行可能因拖动重排，引用稳定。 */
+let ckPendingDelete = null;
+function ckConfirmDelete(cell) {
+    ckPendingDelete = cell;
+    const modal = document.getElementById("ckDelModal");
+    const label = cell.t || (cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : "");
+    document.getElementById("ckDelText").textContent = t("ck.del.confirm", { t: label });
+    modal.hidden = false;
+}
 let ckDrag = null;   // {timer, fromR, fromC, dragging, startX, startY}
 // 拖动会话的 document 级监听（全局唯一一套）：live reorder 每轮重渲
 // 都会重绑目标 chip——不先移除旧监听就是 N 套 handler 叠跑，同一颗键
@@ -3756,20 +3825,53 @@ function ckUnbindDrag() {
     if (!ckDragHandlers) return;
     document.removeEventListener("touchmove", ckDragHandlers.move);
     document.removeEventListener("touchend", ckDragHandlers.end);
+    document.removeEventListener("touchcancel", ckDragHandlers.end);
     ckDragHandlers = null;
+}
+
+/** 拖动会话收尾（松手/touchcancel/离开页面共用）：解绑、拖影清除、
+ *  会话状态清空。页面切换路径不重渲（目标页自己会渲）。 */
+function ckEndDragSession() {
+    ckUnbindDrag();
+    const dragging = document.querySelector(".ck-dragging");
+    if (dragging) dragging.classList.remove("ck-dragging");
+    if (ckDrag && ckDrag.ghost) {
+        ckDrag.ghost.remove();
+        ckDrag.ghost = null;
+    }
+    ckDrag = null;
 }
 
 function ckEnterEditMode(firstChip) {
     ckEditMode = true;
     document.getElementById("ckEditBar").hidden = false;
+    // 先记 (r,c) 再重渲：ckRenderRows 整树重建后传入的 chip 脱离文档，
+    // getBoundingClientRect 全零——ghost 会变成 0×0 裸文字、抓取点错位
+    // （review P1-1）。重渲后按坐标找回同位活元素再起拖。
+    let anchor = null;
+    if (firstChip && firstChip.parentElement &&
+            firstChip.parentElement.dataset && firstChip.parentElement.dataset.ckRow != null) {
+        anchor = {
+            r: Number(firstChip.parentElement.dataset.ckRow),
+            c: [...firstChip.parentElement.children].indexOf(firstChip),
+        };
+    }
     ckRenderRows();
-    if (firstChip) ckBindDrag(firstChip);
+    ckReportState();
+    let chip = firstChip;
+    if (anchor && ckRows[anchor.r] && ckRows[anchor.r][anchor.c] != null) {
+        const st = [...document.querySelectorAll("#ckRowList .ck-chips[data-ck-row]")]
+            .find(s => Number(s.dataset.ckRow) === anchor.r);
+        chip = (st && [...st.children][anchor.c]) || chip;
+    }
+    if (chip) ckBindDrag(chip);
 }
 
 function ckExitEditMode() {
     ckEditMode = false;
     document.getElementById("ckEditBar").hidden = true;
     ckRenderRows();
+    ckReportState();
 }
 
 function ckBindChipTouch(chip) {
@@ -3796,7 +3898,12 @@ function ckBindChipTouch(chip) {
     }, { passive: true });
 }
 
-/** 编辑态拖动：live reorder——move 时按落点行/列把键 splice 到位。 */
+/** 编辑态拖动（2026-10-04 跟手重做）：跟手拖影（ghost 跟手指，固定定
+ *  位、不参与布局）+ live reorder（落点行/列 splice 到位，流内那颗半
+ *  透明实时预览落位）。重渲换位后重绑 handlers，ghost 挂 body 存活到
+ *  松手——此前没有跟手元素，手指移、chip 在格位间跳，观感"没跟手"。
+ *  move 改 non-passive + 拖动中 preventDefault：拖动起手在 chip 上，
+ *  不拦会把页面竖滚带走。 */
 function ckBindDrag(chip) {
     ckUnbindDrag();
     const strip = chip.parentElement;
@@ -3806,9 +3913,48 @@ function ckBindDrag(chip) {
     const cell = ckRows[fromR] && ckRows[fromR][fromC];
     if (!cell) return;
     chip.classList.add("ck-dragging");
+    // 真实链上 ckDrag 由 touchstart 先建；直调（测试/异常时序）兜底：
+    // 以键中心为抓取点，读 startX 前不炸。
+    if (!ckDrag) ckDrag = { timer: null, dragging: false,
+        startX: 0, startY: 0, chip };
+    if (!ckDrag.ghost) {
+        // 拖影从被拖键克隆（同尺寸同键色），固定在抓取点下方。
+        const rect = chip.getBoundingClientRect();
+        if (!Number.isFinite(ckDrag.startX) || (!ckDrag.startX && !ckDrag.startY)) {
+            ckDrag.startX = rect.left + rect.width / 2;
+            ckDrag.startY = rect.top + rect.height / 2;
+        }
+        const ghost = document.createElement("div");
+        ghost.className = "ck-ghost";
+        ghost.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
+        const isHue = /^h\d+$/.test(cell.color || "");
+        if (!isHue && cell.color) ghost.classList.add("ck-" + cell.color);
+        else if (isHue) {
+            ghost.style.background = "hsl(" + cell.color.slice(1) + ", 65%, 45%)";
+            ghost.style.borderColor = "hsl(" + cell.color.slice(1) + ", 65%, 35%)";
+            ghost.style.color = "#fff";
+        }
+        if (cell.span === 2 || cell.span === 3) ghost.style.minWidth = rect.width + "px";
+        ghost.style.width = rect.width + "px";
+        ghost.style.height = rect.height + "px";
+        ckDrag.ghost = ghost;
+        ckDrag.grabX = ckDrag.startX - rect.left;
+        ckDrag.grabY = ckDrag.startY - rect.top;
+        document.body.append(ghost);
+        ghost.style.left = (ckDrag.startX - ckDrag.grabX) + "px";
+        ghost.style.top = (ckDrag.startY - ckDrag.grabY) + "px";
+    }
     const onMove = event => {
+        // 编辑态已被别的路径收掉（BACK 放弃编辑等多指边缘）却还有触摸在
+        // 走：按松手收场，防止陈旧 handler 拿旧坐标继续重排（review P2-1）。
+        if (!ckEditMode) { onEnd(); return; }
         const t = event.touches[0];
         ckDrag.dragging = true;
+        if (ckDrag.ghost) {
+            ckDrag.ghost.style.left = (t.clientX - ckDrag.grabX) + "px";
+            ckDrag.ghost.style.top = (t.clientY - ckDrag.grabY) + "px";
+        }
+        if (event.cancelable) event.preventDefault();
         const strips = [...document.querySelectorAll("#ckRowList .ck-chips[data-ck-row]")];
         let toR = fromR;
         for (const st of strips) {
@@ -3827,6 +3973,7 @@ function ckBindDrag(chip) {
             if (t.clientX < rect.left + rect.width / 2) { toC = Math.min(toC, i); }
         });
         if (toR === fromR && toC > fromC) toC -= 1;
+        if (toR === fromR && toC === fromC) return;
         // 拖走的是源行对齐载体时，标记随键去目标行（渲染扫行内第一个
         // 有效值），源行若再无标记则转移给留下的新首键。
         ckKeepRowAlign(fromR, cell);
@@ -3835,19 +3982,21 @@ function ckBindDrag(chip) {
         ckMarkDirty(true);
         ckRenderRows();
         // 重渲后继续拖：新的同位键重新接管。
-        const stripNow = [...document.querySelectorAll("#ckRowList .ck-chips[data-ck-row]")]
+        const stripNow = [...document.querySelectorAll("#ckRowList .ck-chips[data-ckRow]")]
             .find(st => Number(st.dataset.ckRow) === toR);
         const chipNow = stripNow && [...stripNow.children][toC];
         if (chipNow) ckBindDrag(chipNow);
     };
     const onEnd = () => {
-        ckUnbindDrag();
-        const dragging = document.querySelector(".ck-dragging");
-        if (dragging) dragging.classList.remove("ck-dragging");
+        ckEndDragSession();
         ckRenderRows();
     };
-    document.addEventListener("touchmove", onMove, { passive: true });
+    document.addEventListener("touchmove", onMove, { passive: false });
     document.addEventListener("touchend", onEnd, { passive: true });
+    // 系统手势打断（边缘滑/下拉通知栏）只发 touchcancel：不挂的话
+    // ghost 冻在指尖永久残留，document 级 onMove 还会被后续滚动触发
+    // 拿旧坐标乱重排（review P2-1）。
+    document.addEventListener("touchcancel", onEnd, { passive: true });
     ckDragHandlers = { move: onMove, end: onEnd };
 }
 
@@ -4178,6 +4327,35 @@ $("ckApply").addEventListener("click", () => {
 });
 
 $("ckEditDone").addEventListener("click", () => ckExitEditMode());
+$("ckBackGo").addEventListener("click", () => {
+    document.getElementById("ckBackModal").hidden = true;
+    if (ckEditMode) ckExitEditMode();
+});
+$("ckBackStay").addEventListener("click", () => {
+    document.getElementById("ckBackModal").hidden = true;
+});
+$("ckBackModalMask").addEventListener("click", () => $("ckBackStay").click());
+$("ckDelCancel").addEventListener("click", () => {
+    ckPendingDelete = null;
+    document.getElementById("ckDelModal").hidden = true;
+});
+$("ckDelGo").addEventListener("click", () => {
+    document.getElementById("ckDelModal").hidden = true;
+    const cell = ckPendingDelete;
+    ckPendingDelete = null;
+    if (!cell || !ckRows) return;
+    // 引用定位：确认期间可能重排。找不到=已被别的路径删掉，静默收场。
+    for (let r = 0; r < ckRows.length; r++) {
+        const c = ckRows[r].indexOf(cell);
+        if (c < 0) continue;
+        ckKeepRowAlign(r, cell);
+        ckRows[r].splice(c, 1);
+        ckRenderRows();
+        ckMarkDirty(true);
+        return;
+    }
+});
+$("ckDelModalMask").addEventListener("click", () => $("ckDelCancel").click());
 $("ckModalCancel").addEventListener("click", () => ckCloseModal());
 $("ckModalMask").addEventListener("click", () => ckCloseModal());
 

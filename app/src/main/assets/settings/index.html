@@ -1047,10 +1047,9 @@
       <p class="hint" data-i18n="input.custom.note">保存在本机，键盘下次载入时生效。</p>
     </section>
     <section class="card" aria-labelledby="ckRowsHead">
-      <div class="section-heading"><h2 id="ckRowsHead" data-i18n="ck.rows.title">按键（第 1/2/3 行）</h2></div>
+      <div class="section-heading"><h2 id="ckRowsHead" data-i18n="ck.rows.title">按键：点按修改，长按可移动/删除</h2></div>
       <div id="ckEditBar" class="ck-edit-bar" hidden>
-        <span data-i18n="ck.editBar.hint">拖动排序 · 点 × 删除 · 长按按键开始</span>
-        <button class="btn" id="ckEditDone" type="button" data-i18n="ck.editBar.done">完成</button>
+        <button class="btn" id="ckEditDone" type="button" data-i18n="ck.editBar.done">拖动移动，点x删除</button>
       </div>
       <div id="ckRowList" aria-live="polite"></div>
       <p class="hint" data-i18n="ck.quick.title.hint">先点一行里的「＋」，或在下面常用键里一键添加。</p>
@@ -1065,6 +1064,33 @@
         <div class="ck-modal-foot">
           <button id="ckLeaveGo" type="button" class="btn ck-btn-danger" data-i18n="ck.leaveGo">丢弃并离开</button>
           <button id="ckLeaveStay" type="button" class="btn primary" data-i18n="ck.leaveStay">留下</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑态系统 BACK 确认（2026-10-04 用户裁定）：放弃编辑（退出编辑
+         态，已做改动保留为脏态）/继续编辑。 -->
+    <div id="ckBackModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="ckBackModalMask"></div>
+      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
+        <div class="ck-modal-head"><span data-i18n="ck.back.title">正在编辑按键</span></div>
+        <p class="ck-leave-text" data-i18n="ck.back.text">还在编辑模式（拖动移动、点 x 删除）。放弃编辑还是继续？</p>
+        <div class="ck-modal-foot">
+          <button id="ckBackGo" type="button" class="btn ck-btn-danger" data-i18n="ck.back.go">放弃编辑</button>
+          <button id="ckBackStay" type="button" class="btn primary" data-i18n="ck.back.stay">继续编辑</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- × 删除二次确认（2026-10-04 用户裁定：误触即真删太狠）。 -->
+    <div id="ckDelModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="ckDelModalMask"></div>
+      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
+        <div class="ck-modal-head"><span data-i18n="ck.del.title">删除按键</span></div>
+        <p class="ck-leave-text" id="ckDelText">确定删除吗？</p>
+        <div class="ck-modal-foot">
+          <button id="ckDelGo" type="button" class="btn ck-btn-danger" data-i18n="ck.del.go">删除</button>
+          <button id="ckDelCancel" type="button" class="btn primary" data-i18n="ck.del.cancel">取消</button>
         </div>
       </div>
     </div>
@@ -1086,7 +1112,7 @@
       </div>
     </div>
     <details class="card ck-json-fold">
-      <summary data-i18n="ck.json.title">JSON（兜底）</summary>
+      <summary data-i18n="ck.json.title">高级</summary>
       <p class="hint" data-i18n="ck.json.hint">编辑器够用的日常不需要动这里；批量导入/导出或高级玩法可直接粘贴 JSON。</p>
       <label class="field-label" for="customJson" data-i18n="input.custom.jsonLabel">定制 JSON（{"version":1,"rows":[[{"t":"键面","tap":"点击输出","note":"备注"}]]}）</label>
       <textarea id="customJson" rows="6" spellcheck="false" data-i18n-placeholder="input.custom.jsonPlaceholder" placeholder="粘贴定制 JSON"></textarea>

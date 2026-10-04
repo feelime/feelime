@@ -333,6 +333,19 @@ class SetupActivity : AppCompatActivity() {
         updateSetupLaunchMarker(intent)
         takeSetupTarget(intent)
         onBackPressedDispatcher.addCallback(this) {
+            // 定制按键编辑态/脏态（2026-10-04 用户裁定）：BACK 先问页面——
+            // 弹确认框（放弃编辑/继续、丢弃/留下），用户选择由页面收口，
+            // 本次 BACK 不翻页不退出。必须同页才转（review P1-2）：字段由
+            // JS 变化点上报，页内 ‹ 离开不走编辑态出口时可能残留 true——
+            // 无 subPageName 门闸的话 BACK 在任意页被吞、finish() 永远
+            // 走不到。subPageName 由 reportPage 维护，对残留状态免疫。
+            if ((bridge.ckEditing || bridge.ckDirty) && bridge.subPageName == "customkeys") {
+                bridge.evaluate(
+                    "window.FeelimeSettings && window.FeelimeSettings.backPressed" +
+                        " && window.FeelimeSettings.backPressed()",
+                )
+                return@addCallback
+            }
             // A sub-page is open - the first BACK returns home
             // (design §6.2). The flag is also cleared here because the
             // evaluateJavascript round-trip is async; a fast second tap must
