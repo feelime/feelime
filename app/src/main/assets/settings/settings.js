@@ -103,7 +103,7 @@ const I18N = {
         "nav.backDict": "返回词库",
         "dict.base.title": "基底词库",
         "dict.base.badge": "基底",
-        "dict.base.hint": "换装整个词库：选择 rime 词库文件（.dict.yaml，如 rime-ice 的词典；万象拼音请选去声调的 Lite 版 zip 整包），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。",
+        "dict.base.hint": "换装整个词库：选择 zip 整包（雾凇 rime-ice 选整包 zip、万象拼音选去声调的 Lite 版 zip；单个 .dict.yaml 只适合自带词条行的词典，只含 import_tables 引用的伞表主文件单独导入必失败），在本机重新编译（几分钟），模糊音/双拼/T9 一起重建；可随时恢复内置。",
         "dict.base.pick": "选择词库文件换装",
         "dict.base.revert": "恢复内置词库",
         "dict.slot.delete": "删除",
@@ -294,7 +294,7 @@ const I18N = {
         "input.english.enable": "英文词直出",
         "input.english.hint": "拼音组合里直接敲 github、ios、android 这类英文词出候选，不用切英文模式；全拼和双拼通用。",
         "input.phrases.wxSlash": "万象 / 键功能引导",
-        "input.phrases.wxSlashHint": "换装万象拼音方案后，开启可在拼音/双拼下用 / 进入功能引导（如 /sj 出时间、/ri 出日期）；关闭则 / 直接上屏。其它键盘不受影响。",
+        "input.phrases.wxSlashHint": "换装万象拼音方案后，开启可在全拼/双拼键盘用 / 进入符号引导（如 /sj 出时间类字符、/rq 出日期类字符，来自内置静态符号表，不是万象方案的动态时间）；音形、九宫、手写、英文键盘不支持，/ 在这些键盘直接上屏；关闭则 / 直接上屏。",
         "input.keyboards.pairA": "快捷切换 · 第一个",
         "input.keyboards.pairB": "快捷切换 · 第二个",
         "input.keyboards.pairHint": "点切换键在两个键盘之间往返；选最常用的两个。",
@@ -492,6 +492,17 @@ const I18N = {
         "input.feel.badge": "微调",
 
         "input.feel.padHint": "键盘下方的空白高度，0 保持贴底（终端场景），补偿全面屏手势条或系统元素。",
+        "page.landscape": "横屏显示",
+        "input.landscape.title": "横屏显示",
+        "input.landscape.badge": "横屏",
+        "entry.landscape.title": "横屏显示",
+        "entry.landscape.subtitle": "挖孔安全区 · 高度上限 · 透明度",
+        "input.landscape.safeArea": "左右留安全区",
+        "input.landscape.safeAreaHint": "键盘背景铺满含挖孔的整条短边，但按键区避开挖孔侧；关闭后按键也铺满。",
+        "input.landscape.ceil": "高度上限",
+        "input.landscape.ceilHint": "横屏键盘最高可占屏幕高度的百分比（40%–100%）。",
+        "input.landscape.opacity": "整体不透明度",
+        "input.landscape.opacityHint": "横屏时键盘整层（含背景）的透明程度，调低可看到被键盘盖住的内容。",
         "input.feel.padPortrait": "底部留白 · 竖屏",
         "input.feel.padLandscape": "底部留白 · 横屏",
         "input.feel.padLandscapeHint": "横屏单独保存，互不影响。",
@@ -728,7 +739,7 @@ const I18N = {
         "nav.backDict": "Back to dictionary",
         "dict.base.title": "Base dictionary",
         "dict.base.badge": "Base",
-        "dict.base.hint": "Swap the whole lexicon: pick a rime dictionary file (.dict.yaml, e.g. from rime-ice; for wanxiang use the tone-free Lite zip) and it recompiles on this device (a few minutes); fuzzy/double-pinyin/T9 rebuild with it. Built-in can be restored anytime.",
+        "dict.base.hint": "Swap the whole lexicon: pick a zip bundle (rime-ice: the whole zip; wanxiang: the tone-free Lite zip; a lone .dict.yaml only works when it carries its own entries — umbrella files with just import_tables always fail), recompiles on this device (a few minutes); fuzzy/double-pinyin/T9 rebuild with it. Built-in can be restored anytime.",
         "dict.base.pick": "Pick a dictionary file",
         "dict.base.revert": "Restore built-in",
         "dict.slot.delete": "Delete",
@@ -791,7 +802,7 @@ const I18N = {
         "input.english.enable": "English word candidates",
         "input.english.hint": "Type english words like github, ios or android right inside Pinyin composing — no mode switch; works in full and double Pinyin.",
         "input.phrases.wxSlash": "wanxiang / feature guide",
-        "input.phrases.wxSlashHint": "After installing the wanxiang Pinyin schema, enable to route / into the engine in Pinyin modes (/sj types the time, /ri the date); off = / commits directly. Other keyboards are unaffected.",
+        "input.phrases.wxSlashHint": "After installing the wanxiang Pinyin schema, enable to route / into the engine on the full/double-Pinyin keyboards (/sj offers time characters, /rq date characters — from the built-in static tables, not wanxiang's dynamic time); the shape-code, T9, handwriting and English keyboards are not supported — / commits directly there, as it does when off.",
         "input.phrases.manage": "Manage entries",
         "input.phrases.importHint": "Entries from a rime dictionary join the candidates as an overlay (the built-in lexicon stays; original frequencies are not carried). Importing again replaces the previous import.",
         "input.phrases.importBtn": "Pick a file",
@@ -1118,6 +1129,17 @@ const I18N = {
         "input.feel.badge": "Tuning",
         "input.feel.pad": "Bottom padding",
         "input.feel.padHint": "Blank strip under the keys; 0 keeps the keyboard flush with the screen (terminal use). Saved per orientation to compensate gesture bars or OEM IME buttons.",
+        "page.landscape": "Landscape display",
+        "input.landscape.title": "Landscape display",
+        "input.landscape.badge": "Landscape",
+        "entry.landscape.title": "Landscape display",
+        "entry.landscape.subtitle": "Cutout safe area · height ceiling · opacity",
+        "input.landscape.safeArea": "Keep side safe areas",
+        "input.landscape.safeAreaHint": "The keyboard background fills the full short edge including the cutout, while the keys avoid it; off lets keys fill it too.",
+        "input.landscape.ceil": "Height ceiling",
+        "input.landscape.ceilHint": "Maximum share of the screen height the landscape keyboard may take (40%–100%).",
+        "input.landscape.opacity": "Overall opacity",
+        "input.landscape.opacityHint": "Opacity of the whole landscape keyboard (background included); lower it to see the content underneath.",
         "input.feel.padPortrait": "Bottom padding · Portrait",
         "input.feel.padLandscape": "Bottom padding · Landscape",
         "input.feel.padLandscapeHint": "Saved separately from portrait.",
@@ -1286,7 +1308,7 @@ const I18N = {
 };
 
 // #39-12：customkeys（二级）与 customkeys-editor（三级）。
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -1658,6 +1680,7 @@ function render(state) {
     renderIme(state);
     renderDoublePinyin(state);
     renderFeel(state);
+    renderLandscape(state);
     renderVoice(state);
     renderAsr(state);
     renderCustom(state);
@@ -1668,6 +1691,25 @@ function render(state) {
     renderFlypy(state);
     renderUpdate(state);
     renderAbout(state);
+}
+
+/** #39 横屏三级页：安全区开关 + 高度上限/不透明度滑杆（滑杆拖动
+ *  即写 pref，回显容错野值）。 */
+function renderLandscape(state) {
+    const safe = $("landscapeSafeArea");
+    if (safe && document.activeElement !== safe) safe.checked = state.landscapeSafeArea !== 0;
+    const ceil = $("landscapeCeil");
+    const ceilOut = $("landscapeCeilOut");
+    const ceilVal = Number(state.landscapeCeil);
+    if (ceil && Number.isFinite(ceilVal) && ceilVal >= 40 && ceilVal <= 100
+        && document.activeElement !== ceil) ceil.value = String(ceilVal);
+    if (ceilOut) ceilOut.textContent = Math.round(Number(ceil && ceil.value)) + "%";
+    const op = $("landscapeOpacity");
+    const opOut = $("landscapeOpacityOut");
+    const opVal = Number(state.landscapeOpacity);
+    if (op && Number.isFinite(opVal) && opVal >= 10 && opVal <= 100
+        && document.activeElement !== op) op.value = String(opVal);
+    if (opOut) opOut.textContent = Math.round(Number(op && op.value)) + "%";
 }
 
 /** 键盘手感（mode-fallback §3/§4）：底部留白 + 长按/滑动/光标微调。
@@ -3212,6 +3254,22 @@ function submitFeelOptions() {
     );
 }
 $("bottomPadPortrait").addEventListener("change", event => call("setBottomPadPortrait", parseInt(event.target.value, 10)));
+
+// #39 横屏三级页：入口 + 开关 + 双滑杆（input 事件实时写，拖动即生效）。
+$("landscapeSafeArea").addEventListener("change", event =>
+    call("setLandscapeSafeArea", event.target.checked));
+const landscapeCeilInput = $("landscapeCeil");
+landscapeCeilInput.addEventListener("input", () => {
+    $("landscapeCeilOut").textContent = landscapeCeilInput.value + "%";
+});
+landscapeCeilInput.addEventListener("change", () =>
+    call("setLandscapeCeil", parseInt(landscapeCeilInput.value, 10)));
+const landscapeOpacityInput = $("landscapeOpacity");
+landscapeOpacityInput.addEventListener("input", () => {
+    $("landscapeOpacityOut").textContent = landscapeOpacityInput.value + "%";
+});
+landscapeOpacityInput.addEventListener("change", () =>
+    call("setLandscapeOpacity", parseInt(landscapeOpacityInput.value, 10)));
 $("bottomPadLandscape").addEventListener("change", event => call("setBottomPadLandscape", parseInt(event.target.value, 10)));
 $("candidateFont").addEventListener("change", event => call("setCandidateFont", parseInt(event.target.value, 10)));
 $("preeditFont").addEventListener("change", event => call("setPreeditFont", parseInt(event.target.value, 10)));

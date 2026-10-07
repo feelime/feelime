@@ -2,6 +2,11 @@ package com.feelime.ime
 
 import android.content.Context
 import android.os.SystemClock
+import java.io.File
+import java.io.FileOutputStream
+import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
  * 诊断记录（用户报告：双拼下按键字母直接上屏，A/B 聊天窗口可复现）。
@@ -19,10 +24,19 @@ import android.os.SystemClock
  *     双通道心跳与触摸到达计数。信号矩阵：心跳停=WebView 渲染死；
  *     native down 有而 JS touch=0=事件丢在 native→JS 边界；两者皆无=
  *     窗口层没收（看 insets/焦点行）。
+ *   - 键盘收起取证（用户录屏：手写中键盘 13 秒收起 3 次，两次紧跟长
+ *     笔画——旧采集只记 touchDown 汇总，收起瞬间的「谁干的」无从对
+ *     账）：touchUp 计数、touchCancel 即时行（含屏幕三边距离——判
+ *     系统手势条抢断）、二指即时行（平板防误触对账）、requestHideSelf
+ *     两个调用点带 src、windowHidden 带 down/up/cancel 相对毫秒、
+ *     service 生命周期（create/destroy/config 变更）、JS inkCancel。
  *
  * 默认关闭；关闭时 log() 直接返回（调用方不做判断也近乎零开销）。
- * 环形缓冲 400 条、单条截断 220 字符，只进内存，不落盘、不进备份。
- * 心跳类事件导出时折叠（见 snapshot），不冲刷其它事件。
+ * 环形缓冲 400 条、单条截断 220 字符。事件同时镜像追加到 noBackup
+ * 目录的文本文件（跨进程死亡存活——进程被杀/重启即清空环形缓冲，
+ * 正是「莫名收起」最需要现场的时刻证据自毁；文件不进云备份）。
+ * 心跳行落盘降频（每 12 条落 1 条 ≈ 30s），文件容量给非心跳事件让路。
+ * 导出时文件尾部与内存环合并去重后再做心跳折叠（见 snapshot）。
  */
 object Diagnostics {
     private const val PREFS = "feelime_diagnostics"
@@ -32,6 +46,14 @@ object Diagnostics {
     /** snapshot() 对心跳行保留的尾部条数（issue #13 v3）。 */
     private const val KEEP_BEATS = 10 // #12 复发取证：最近 25s 心跳（含 touch/noClick 计数）全保留
 
+    // ---- 落盘镜像（键盘收起取证）----
+    private const val MAX_FILE_LINES = 4000
+    private const val FILE_TRIM_TO = 2000
+    /** 导出时从文件并入的尾部行数上限（含早于内存环窗口的历史会话）。 */
+    private const val EXPORT_FILE_TAIL = 900
+    /** 心跳行每 N 条落 1 条：空闲期文件覆盖从 ~2.8h 拉到 ~33h。 */
+    private const val BEAT_FILE_EVERY = 12
+
     private val lock = Any()
     private val events = ArrayDeque<String>()
     // @Volatile：#12 帧探针（choreoTick/uiSampler）每帧/每拍读取此标志，
@@ -39,6 +61,8 @@ object Diagnostics {
     @Volatile private var recording = false
     private var startedAt = 0L
     private var seq = 0L
+    private var sink: DiagSink? = null
+    private var beatCount = 0
 
     /** 当前引擎/编辑器状态行（导出头用），由 service 在 hello 推送时刷新。 */
     @Volatile
@@ -52,11 +76,18 @@ object Diagnostics {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_ENABLED, false)
 
-    /** 进程启动时恢复记录状态（service onCreate 调用）。 */
+    /** 进程启动时恢复记录状态（service onCreate 调用）。落盘文件随进程
+     *  初始化；开启录制时写进程分节行——相对时间戳跨会话归零，分节行
+     *  （含墙钟与 pid）是导出里区分会话边界的唯一标记。 */
     fun refresh(context: Context) {
         synchronized(lock) {
+            if (sink == null) sink = DiagSink(File(context.noBackupFilesDir, "diag-events.log"))
             recording = enabled(context)
-            if (recording && startedAt == 0L) startedAt = SystemClock.elapsedRealtime()
+            if (recording && startedAt == 0L) {
+                startedAt = SystemClock.elapsedRealtime()
+                logLocked("diag",
+                    "--- process start ${wallClock()} pid=${android.os.Process.myPid()} app=${BuildConfig.VERSION_NAME} ---")
+            }
         }
     }
 
@@ -64,25 +95,35 @@ object Diagnostics {
         synchronized(lock) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putBoolean(KEY_ENABLED, on).commit()
+            if (!on && recording) logLocked("diag", "recording stopped")
             recording = on
             events.clear()
             seq = 0
             startedAt = if (on) SystemClock.elapsedRealtime() else 0L
+            beatCount = 0
+            if (on) logLocked("diag", "recording started")
         }
-        if (on) log("diag", "recording started")
     }
 
     fun log(tag: String, detail: String = "") {
-        synchronized(lock) {
-            if (!recording) return
-            seq += 1
-            val seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000.0
-            var line = String.format(java.util.Locale.US, "%.3f #%d %s %s",
-                seconds, seq, tag, detail).trim()
-            if (line.length > MAX_EVENT_CHARS) line = line.take(MAX_EVENT_CHARS - 1) + "…"
-            if (events.size >= MAX_EVENTS) events.removeFirst()
-            events.addLast(line)
-        }
+        // recording 判定收进锁内（codex 评审 P3）：关闭与并发 log 竞争时，
+        // 锁外判定会放进一条迟到事件。
+        synchronized(lock) { if (recording) logLocked(tag, detail) }
+    }
+
+    /** 调用方已持 [lock]。 */
+    private fun logLocked(tag: String, detail: String) {
+        seq += 1
+        val seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000.0
+        var line = String.format(java.util.Locale.US, "%.3f #%d %s %s",
+            seconds, seq, tag, detail).trim()
+        if (line.length > MAX_EVENT_CHARS) line = line.take(MAX_EVENT_CHARS - 1) + "…"
+        if (events.size >= MAX_EVENTS) events.removeFirst()
+        events.addLast(line)
+        // 心跳降频落盘：内存环照单全收（实时性），文件只留抽样（容量）。
+        val isBeat = detail.startsWith("heartbeat ")
+        if (!isBeat || beatCount % BEAT_FILE_EVERY == 0) sink?.append(line)
+        if (isBeat) beatCount += 1
     }
 
     /** service 刷新导出头里的实时状态（mode / degrade / 最后编辑器）。 */
@@ -100,10 +141,17 @@ object Diagnostics {
      *  编号空洞对得上号）——心跳「持续存在」由计数与最后一条的时间戳
      *  共同证明，卡死现场则是心跳行戛然而止。 */
     fun snapshot(): List<String> = synchronized(lock) {
-        val all = events.toList()
+        val live = events.toList()
+        val liveSet = live.toHashSet()
+        val persisted = sink?.readTail(EXPORT_FILE_TAIL).orEmpty()
+            .filterNot { it in liveSet }
+        foldBeats(if (persisted.isEmpty()) live else persisted + live)
+    }
+
+    private fun foldBeats(all: List<String>): List<String> {
         val isBeat: (String) -> Boolean = { it.contains(" js heartbeat ") }
         val beats = all.count(isBeat)
-        if (beats <= KEEP_BEATS + 1) {
+        return if (beats <= KEEP_BEATS + 1) {
             all
         } else {
             val out = ArrayList<String>(all.size - beats + KEEP_BEATS + 2)
@@ -131,6 +179,9 @@ object Diagnostics {
         }
     }
 
+    private fun wallClock(): String =
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
+
     /** 行文本里的序号（"#N "），解析失败给 0。 */
     private fun seqOf(line: String): Int =
         Regex("""#(\d+)""").find(line)?.groupValues?.get(1)?.toIntOrNull() ?: 0
@@ -152,5 +203,90 @@ object Diagnostics {
         }
         parts.add(if (start == prev) "$start" else "$start-$prev")
         return parts.joinToString(",")
+    }
+
+    /**
+     * 落盘镜像：单线程串行追加，逐行 flush（进程被杀时最后一条已完整
+     * 到内核即不丢）。队列有界，积压溢出静默丢——诊断写盘永不允许
+     * 反压主线程。超量旋转：保留尾部 [FILE_TRIM_TO] 行重写。
+     */
+    private class DiagSink(private val file: File) {
+        private val executor = Executors.newSingleThreadExecutor { r ->
+            Thread(r, "feelime-diag").apply { isDaemon = true }
+        }
+        private val queue = LinkedBlockingQueue<String>(512)
+        // 文件互斥（写/裁剪/导出读）：见 writeBatch 注释。
+        private val fileLock = java.util.concurrent.locks.ReentrantLock()
+        @Volatile private var lines = -1 // -1 = 未统计（懒计数）
+        private var started = false
+
+        fun append(line: String) {
+            if (!started) {
+                started = true
+                executor.execute { drainLoop() }
+            }
+            queue.offer(line) // 满即丢：见类注释的反压策略
+        }
+
+        private fun drainLoop() {
+            while (true) {
+                // 首行阻塞等待，随后一把抓走积压（至多 64 条）合并一次写盘
+                val first = try {
+                    queue.poll(5, TimeUnit.SECONDS)
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return
+                } ?: continue
+                val batch = ArrayList<String>(32).apply {
+                    add(first)
+                    queue.drainTo(this, 64)
+                }
+                runCatching { writeBatch(batch) }
+            }
+        }
+
+        private fun writeBatch(batch: List<String>) {
+            // 目录创建与既有行数统计都在 executor 线程做（append 的调用方
+            // 是主线程，只入队不碰盘）。文件读写（写/裁剪/导出读）一律持
+            // fileLock：导出读不能撞上半截写入或裁剪重写（codex 评审 P2
+            // 的并发读撕裂）。
+            fileLock.lock()
+            try {
+                file.parentFile?.mkdirs()
+                if (lines < 0) lines = if (file.exists()) file.readLines().size else 0
+                FileOutputStream(file, true).use { out ->
+                    out.write(batch.joinToString("\n", postfix = "\n").toByteArray())
+                    out.flush()
+                }
+                lines += batch.size
+                if (lines > MAX_FILE_LINES) trimLocked()
+            } finally {
+                fileLock.unlock()
+            }
+        }
+
+        private fun trimLocked() {
+            // 保留行按行分隔拼回（codex 评审 P1：分隔符为空会把 2000 条
+            // 拼成一条巨行——readTail 的按行截尾、心跳折叠、后续裁剪的
+            // 行数口径全毁）。
+            val kept = file.readLines().takeLast(FILE_TRIM_TO)
+            file.writeText(kept.joinToString("\n", postfix = "\n"))
+            lines = kept.size
+        }
+
+        /** 导出路径调用：读尾部 [n] 行。不做排空——尚未落盘的事件必在
+         *  调用方（snapshot）并集的内存环里（logLocked 先进环再入队），
+         *  等在途写落盘是白等；原先 submit 空任务排在永不返回的
+         *  drainLoop 之后，导出每次干等 2s 超时且读数可能撞上裁剪重写
+         *  （codex 评审 P2）。持 fileLock 与写线程互斥，读到的一定是
+         *  完整文件。 */
+        fun readTail(n: Int): List<String> {
+            fileLock.lock()
+            try {
+                return file.takeIf { it.exists() }?.readLines()?.takeLast(n).orEmpty()
+            } finally {
+                fileLock.unlock()
+            }
+        }
     }
 }

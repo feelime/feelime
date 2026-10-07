@@ -152,7 +152,21 @@ body {
     font-family: system-ui, "Noto Sans CJK SC", sans-serif;
     user-select: none;
     -webkit-user-select: none;
+    /* 长按浮层不收起（#7）：系统长按 ~500ms 触发 WebView 文本选择/
+     * callout 菜单时触摸流被直接终止（touchend/cancel 都不再发），
+     * 长按弹层拿不到收场事件就悬挂。设置页同款防线（2940168 AVD
+     * 双通道取证）补到键盘页；user-select 管不到 callout，须此项。
+     * JS 层 contextmenu preventDefault 双保险（keyboard.js）。 */
+    -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
+}
+
+/* #7 配套：面板里的可编辑目标要系统长按菜单（粘贴），恢复默认
+ * callout——body 级 none 会连它们一起压掉（codex 评审 P2）。 */
+body textarea,
+body input,
+body [contenteditable] {
+    -webkit-touch-callout: default;
 }
 button { font: inherit; }
 
@@ -191,7 +205,19 @@ button { font: inherit; }
 /* D: --safe-bottom (native gesture-nav inset, CSS px) lifts the
  * rows above the gesture strip in both orientations; the keyboard background
  * fills the gap. */
-body.landscape #softKeyboard { padding: 4px 4px calc(4px + var(--safe-bottom, 0px) + var(--kb-bottom-pad, 0px)); }
+/* #39 挖孔安全区：padding 落在 #softKeyboard 上（背景默认铺满 padding 区，
+ * 同单手模式语义）——键区给挖孔侧让位，背景仍铺到屏幕边。开关关闭时
+ * JS 侧把 --safe-side-* 清 0，键也铺满。 */
+body.landscape #softKeyboard {
+    padding: 4px calc(4px + var(--safe-side-r, 0px))
+        calc(4px + var(--safe-bottom, 0px) + var(--kb-bottom-pad, 0px))
+        calc(4px + var(--safe-side-l, 0px));
+}
+
+/* #39 横屏整体不透明度：含背景在内的整层透明（想看被盖住的内容时用）。
+ * 仅横屏选择器生效；窗口涂层（导航栏/底部条）由 native applyChromeColor
+ * 同步转透明。 */
+body.landscape #softKeyboard { opacity: var(--kb-landscape-opacity, 1); }
 
 /* Engine lifecycle notice (mode-fallback §2.3): fills the candidate
  * slot while the engine warms up ("正在准备语言数据…") or a degrade

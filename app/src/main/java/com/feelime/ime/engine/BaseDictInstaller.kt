@@ -1485,6 +1485,14 @@ object BaseDictInstaller {
                     }
                 }
                 if (overLimit || total == 0L) return StageOutcome(null)
+                // 用户实测必败路径（2026-10-05 反馈）：按旧文案选了 rime-ice
+                // 的单个 .dict.yaml——主文件是纯伞表（import_tables 引用、
+                // 零词条行），子词典不在手上，走到编译必 BASE_DICT_EMPTY。
+                // zip 分支有伞表处理，单文件分支没有；前置识别给出可行动
+                // 的指引（改选 zip 整包），报错不再说「没有词条」。
+                if (isPureUmbrellaFile(target)) {
+                    return StageOutcome(null, "BASE_DICT_UMBRELLA")
+                }
                 return StageOutcome(Staged(joinHex(digest.digest()), listOf(target)))
             }
 
@@ -1830,6 +1838,7 @@ object BaseDictInstaller {
             "BASE_DICT_SLOT_NOT_FOUND" to "该词库槽不存在（可能已被删除），稍后刷新列表再试",
             "BASE_DICT_READ_FAILED" to "读取文件失败或超过 150MB 上限",
             "BASE_DICT_EMPTY" to "文件里没有词条（需要「词<TAB>码」行）",
+            "BASE_DICT_UMBRELLA" to "这个文件是「伞表」主文件：只有对子词典的 import_tables 引用、没有词条行，单独导入编译不出词库。请改选包含全部子词典的 zip 整包（雾凇选 rime-ice 整包 zip，万象选去声调 Lite 版 zip）",
             "BASE_DICT_MEMORY_LOW" to "本机可用内存不足以编译此词库（大词库编译需要约几 GB 空闲内存），请关闭其他应用后重试或换用更小的词库",
             "BASE_DICT_DUPLICATE" to "包内有同名词表（不同目录下的同名 .dict.yaml），无法确定用哪个，请整理后重试",
             "BASE_DICT_ENGINE_NOT_READY" to "引擎数据还没准备好，稍后再试",
@@ -1848,6 +1857,7 @@ object BaseDictInstaller {
             "BASE_DICT_SLOT_NOT_FOUND" to "That slot no longer exists (it may have been deleted); the list refreshes shortly",
             "BASE_DICT_READ_FAILED" to "Read failed or file exceeds the 150MB cap",
             "BASE_DICT_EMPTY" to "No entries found (needs word<TAB>code lines)",
+            "BASE_DICT_UMBRELLA" to "This file is an umbrella table: only import_tables references to sub-dictionaries, no entries — it cannot compile alone. Pick the full zip bundle instead (rime-ice: the whole zip; wanxiang: the tone-free Lite zip)",
             "BASE_DICT_DUPLICATE" to "Duplicate table names in the package (same .dict.yaml basename in different folders); reorganize and retry",
             "BASE_DICT_ENGINE_NOT_READY" to "Engine data not ready yet, try later",
             "BASE_DICT_MAINTENANCE_START_FAILED" to "Failed to start the compile thread",

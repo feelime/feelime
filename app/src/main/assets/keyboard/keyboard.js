@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.26';
+    const KEYBOARD_VERSION = '3.73.33';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1274,6 +1274,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this._inkViewport = '';
             // 手写候选态的整行互斥位（setToolbarYield 的初值）。
             this.toolbarYield = false;
+            // #48 定制宏串行链（codex 评审 P1×2）：双击定制键时第二条
+            // 宏排队，不插进第一条的 300ms 台阶窗口（其首个键步会把
+            // 第一条的文本掐死）；编辑器换代/键盘收起时整链作废——延迟
+            // 键步不能发进新输入框（#34 手势会话同款代际语义）。台阶
+            // 判据是「距最后一次文本步发送的时间窗」而非结构相邻：
+            // 跨宏/跨点击的 text→key 相邻同样会掐死文本，几秒后的
+            // 新点击则不垫冤枉台阶。
+            this.customChainQueue = [];
+            this.customChainActive = false;
+            this.customChainLastTextAt = 0;
+            this.customChainTimer = 0;
             this.pressedKeys = new Set();
             this.lastRevision = 0;
             this.toastTimer = null;
@@ -1339,6 +1350,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.bgImageDark = '';
             // 键帽不透明度（0-100，默认 100=不透明）。
             this.keyOpacity = 100;
+            // #39 横屏三项（默认=铺满+避让安全区、上限 60%、不透明）。
+            this.landscapeSafeArea = true;
+            this.safeSideL = 0;
+            this.safeSideR = 0;
+            this.landscapeOpacity = 100;
             // 按键气泡（issue #30-1，默认关）：真相源是 native pref
             // key_bubble，外观页开关经 hello 下发；开着才在按下时放大
             // 预览所按字符。
@@ -1417,6 +1433,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this._diagRafAt = 0;
             this._diagCallBlocked = 0;
             this._diagNoClick = { swipe: 0, pop: 0, long: 0 };
+            // 键盘收起取证：触摸流被抢断时 JS 收到的是 touchcancel/
+            // pointercancel（不是 end）。心跳带 cancel 计数，与 native
+            // 侧 touchCancel 行（屏幕坐标+手势条距离）双通道对账。
+            this._diagCancel = 0;
             if (window.FeelimeNative && typeof window.setInterval === 'function') {
                 if (typeof requestAnimationFrame === 'function') {
                     const diagRafLoop = () => {
@@ -1428,6 +1448,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 window.addEventListener(
                     'pointerdown', () => { this._diagTouch += 1; },
                     { capture: true, passive: true });
+                const onDiagCancel = () => { this._diagCancel += 1; };
+                window.addEventListener('touchcancel', onDiagCancel, { capture: true, passive: true });
+                window.addEventListener('pointercancel', onDiagCancel, { capture: true, passive: true });
                 // rAF 探针盲区修正（codex 六期 review）：2600ms 窗口会被
                 // 隐藏前的旧回调污染（弹出后首条心跳假 raf=1）——可见性
                 // 恢复时清零时间戳，逼下一条心跳如实反映当前帧源状态。
@@ -1443,16 +1466,29 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const pl = document.getElementById('preeditLine');
                     const ds = window.Feelime.debugState();
                     const err = window.__diagErr || '';
+                    // 长按浮层取证（修 6 轮仍复发）：弹层/气泡/按压卡在
+                    // 心跳里持续可见——悬挂现场导出即知「哪层开了多久、
+                    // owner 是谁、还有几根手指被记在案」。pop=0 关闭；
+                    // 1/key@finger/秒数；bub=按键气泡可见；press=未收
+                    // 的按压键数（>0 且无活动触摸=触摸流被抢的指纹）。
+                    const p = this.popup;
+                    const bubEl = document.getElementById('keyBubble');
+                    const popStr = !p ? '0' :
+                        `1/${p.key || '?'}@${p.fingerId === undefined ? 'x' : p.fingerId}` +
+                        `/${p.openedAt ? Math.round((Date.now() - p.openedAt) / 100) / 10 : '?'}s`;
                     Native.diagEvent(
                         `heartbeat raf=${rafAlive ? 1 : 0} touch=${this._diagTouch}` +
+                        ` cancel=${this._diagCancel}` +
                         ` blocked=${this._diagCallBlocked}` +
                         ` noClick=${this._diagNoClick.swipe}/${this._diagNoClick.pop}/${this._diagNoClick.long}` +
+                        ` pop=${popStr} bub=${bubEl && !bubEl.hidden ? 1 : 0} press=${this.pressedKeys.size}` +
                         ` states=${window.__diagStates || 0} preedit=${pl ? pl.textContent.length : -1}` +
                         ` vr=${ds.vr} warm=${ds.warm} comp=${ds.comp}` +
                         ` vis=${document.hidden ? 'h' : 'v'} rev=${window.__diagRev || 0}` +
                         (err ? ` err=${err}` : ''),
                         this.token);
                     this._diagTouch = 0;
+                    this._diagCancel = 0;
                     this._diagCallBlocked = 0;
                     this._diagNoClick = { swipe: 0, pop: 0, long: 0 };
                     window.__diagStates = 0;
@@ -1479,6 +1515,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     });
                 }
             }, { capture: true, passive: true });
+            // 长按浮层不收起（#7）：系统级长按 ~500ms 触发 WebView 文本
+            // 选择/callout 菜单，触摸流被直接终止（touchend/cancel 都不再
+            // 发给 JS），弹层悬挂。键盘整页无任何需要右键菜单的场景，
+            // 文档级拦掉；CSS touch-callout 双保险（keyboard.css body）。
+            // 设置页同款防线 2940168（AVD 双通道取证：CDP 注入不复现、
+            // input swipe/真手指复现）。
+            document.addEventListener('contextmenu', event => {
+                // 键盘内的合法可编辑目标（定制 JSON / 常用语 textarea）
+                // 依赖系统长按菜单做粘贴——放行，只拦按键区（codex 评审
+                // P2：整页一刀切会砍掉面板输入的粘贴通道）。
+                const t = event.target;
+                if (t && t.closest &&
+                    t.closest('textarea, input, [contenteditable=""], [contenteditable="true"]')) {
+                    return;
+                }
+                event.preventDefault();
+            });
             translateStaticUi();
             this.renderMode();
             this.renderSymbols();
@@ -2664,6 +2717,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             pad.addEventListener('touchcancel', event => {
                 const stroke = release(event);
                 if (stroke === null) return;
+                // 键盘收起取证：真机录屏 13s 内收起 3 次、两次紧跟长
+                // 笔画——cancel 即触摸流被系统（导航手势条一类）抢走的
+                // 现场信号。上报诊断与 native touchCancel 行对照（坐标
+                // 为 pad 内 CSS px，native 侧另有屏幕坐标与三边距离）。
+                if (this.token && window.FeelimeNative && typeof Native.diagEvent === 'function') {
+                    const last = stroke && stroke.length ? stroke[stroke.length - 1] : null;
+                    Native.diagEvent(
+                        `inkCancel pts=${stroke ? stroke.length : 0}` +
+                        (last ? ` x=${Math.round(last.x)} y=${Math.round(last.y)}` : ''),
+                        this.token);
+                }
                 // 残笔丢弃：不完整的一笔不进识别，也不撤销未决请求。
                 this.inkCurrent = null;
                 this.inkPaint();
@@ -3679,6 +3743,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         cancelTouches() {
             this.inkCancelTouch();
+            // 在途定制宏链一并作废（#48 双击/换代防线）：键盘都收走了，
+            // 台阶里的延迟键步没有合法去处。
+            this.cancelCustomChain();
             // 键盘收起/取消链立即收气泡（2026-10-04 用户真机实录「键盘
             // 已收、单字气泡冻在屏上」）：不能走 scheduleHideBubble 的
             // linger 定时器——键盘都收走了气泡没有理由再停 400ms，且
@@ -4270,7 +4337,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             selected.item.classList.add('sel');
             this.popup = { key: button.dataset.key, cells: items,
-                selected, cancelled: false, enginePath: true };
+                selected, cancelled: false, enginePath: true,
+                // 长按浮层取证：心跳捎带 open 时长——悬挂现场直接读出
+                // 「弹层开了多久没人收」。
+                openedAt: Date.now() };
             if (opts.split) {
                 this.popup.split = true;
                 // split 弹层不做相对跟手，但多指下终判/关层同样要认手
@@ -4350,7 +4420,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             const selected = cells.find(cell => cell.char === upper) || cells[0];
             selected.item.classList.add('sel');
-            this.popup = { key, cells, selected, cancelled: false };
+            this.popup = { key, cells, selected, cancelled: false,
+                openedAt: Date.now() }; // 长按浮层取证：见另一赋值点注释
             // qwerty accent 弹层与 T9 三行弹层同一套相对跟手（用户定稿）：
             // 高亮跟随手指位移，不要求手先滑上浮层。
             this.attachRelativeTracking(popup, selected, press);
@@ -5249,13 +5320,57 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 && steps[0].combo[0] === 'Backspace';
         }
 
+        // #48（omt vim 退不出）：xterm.js 宿主里 commitText 的落地是
+        // 异步的 composition 流，紧跟其后的 keyEvent 会把它掐死——
+        // 定制键序列 [esc]:wq[enter] 实测 onData 只有 \x1b 和 \r，:wq
+        // 蒸发，vim 收到 ESC 退出插入模式后光标下移一行，不保存退出。
+        // 方向实测（真机 xterm+onData 矩阵）：键→文本 0ms 安全；文本→
+        // 键 0ms 致死、150ms 起全通（取 300ms 余量）。故只在文本步后面
+        // 还跟键步时垫台阶。Termux 等原生终端视图无此坑，垫了也无感。
+        // 同步跑到台阶点、余下步骤 setTimeout 续跑（纯定时器，假时钟可测）。
         runCustomCell(cell) {
             const parsed = this.parseTapDsl(cell.tap);
             if (parsed.error) {
                 this.showToast(t("按键无效：{0}", parsed.error));
                 return;
             }
-            for (const step of parsed.steps) {
+            // 双击交错防线（codex 评审 P1）：宏入队串行，不与在途宏的
+            // 300ms 台阶重叠。
+            this.customChainQueue.push(parsed.steps);
+            this.pumpCustomChain();
+        }
+
+        /** 队列泵：上一条宏跑完（或整链作废）才起下一条。衔接处的
+         *  text→key 间距由 customChainLastTextAt 时间窗统一裁决——跨宏/
+         *  跨点击的相邻与宏内同罪同罚，几秒后的新点击不垫冤枉台阶。 */
+        pumpCustomChain() {
+            if (this.customChainActive) return;
+            const steps = this.customChainQueue.shift();
+            if (!steps) return;
+            this.customChainActive = true;
+            this.runCustomStepsFrom(steps, 0);
+        }
+
+        /** 作废在途宏链：native onStartInput（编辑器换代，经
+         *  Feelime.cancelCustomChain 钩子）与收起链（cancelTouches）
+         *  触发——台阶里的延迟键步不能发进新输入框，队列整段丢弃。 */
+        cancelCustomChain() {
+            this.customChainQueue.length = 0;
+            if (this.customChainTimer) {
+                clearTimeout(this.customChainTimer);
+                this.customChainTimer = 0;
+            }
+            this.customChainActive = false;
+            this.customChainLastTextAt = 0;
+        }
+
+        /** #48：DSL 步骤执行器。文本步→键步的通道切换处垫台阶到
+         *  距最后一次文本发送满 300ms（见 runCustomCell 上方注释）；
+         *  同步跑到台阶点，余下步骤 setTimeout 续跑（无 async，假时钟
+         *  可测——harness 的 Date 已接 FakeClock）。 */
+        runCustomStepsFrom(steps, index) {
+            for (let i = index; i < steps.length; i++) {
+                const step = steps[i];
                 if (step.open) {
                     // 热更键盘（新 JS）跑在旧原生（无 openLink 桥）上时，
                     // 点按应给出可读提示，而非 TypeError 静默吞掉（后续
@@ -5263,15 +5378,35 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // （collectStores / height-ack 同款）。
                     if (typeof Native.openLink !== 'function') {
                         this.showToast(t("此按键需要升级 App 后使用（打开链接）"));
+                        this.cancelCustomChain();
                         return;
                     }
                     this.call(() => Native.openLink(step.open, this.token));
                 }
-                else if (step.text) this.sendSymbol(step.text);
-                else this.sendCombo(step.combo);
+                else if (step.text) {
+                    this.sendSymbol(step.text);
+                    this.customChainLastTextAt = Date.now();
+                }
+                else {
+                    const sinceText = Date.now() - this.customChainLastTextAt;
+                    if (sinceText < 300) {
+                        // 只等剩余时间；回调里链已作废则丢弃（编辑器
+                        // 代换/收起的竞态兜底）。
+                        this.customChainTimer = setTimeout(() => {
+                            this.customChainTimer = 0;
+                            if (!this.customChainActive) return;
+                            this.sendCombo(step.combo);
+                            this.runCustomStepsFrom(steps, i + 1);
+                        }, 300 - sinceText);
+                        return;
+                    }
+                    this.sendCombo(step.combo);
+                }
             }
+            // 本宏执行完毕：放下一条（衔接间距由时间窗裁决）。
+            this.customChainActive = false;
+            this.pumpCustomChain();
         }
-
         symbolCategoryValues() {
             // 中/En paired tables (常用/引号) pick rows by variant.
             if (VARIANT_TABLES[this.symbolCat]) {
@@ -5942,6 +6077,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const pct = Math.max(0, Math.min(100, Number(this.keyOpacity) || 0));
             document.documentElement.style.setProperty(
                 '--key-alpha', String(Math.max(0.05, pct / 100)));
+        }
+
+        /** #39 横屏三项：挖孔安全区（键区 padding 让位，背景仍铺满——
+         *  同单手模式的 padding 语义）与整体不透明度（含背景，窗口涂层
+         *  由 native 侧同步转透明）。只写 CSS 变量；竖屏选择器不生效，
+         *  变量残留无害。 */
+        applyLandscapeChrome() {
+            const root = document.documentElement.style;
+            const safe = this.landscapeSafeArea !== false;
+            const l = safe ? Math.max(0, Number(this.safeSideL) || 0) : 0;
+            const r = safe ? Math.max(0, Number(this.safeSideR) || 0) : 0;
+            root.setProperty('--safe-side-l', l + 'px');
+            root.setProperty('--safe-side-r', r + 'px');
+            const pct = Math.max(10, Math.min(100, Number(this.landscapeOpacity ?? 100)));
+            root.setProperty('--kb-landscape-opacity', String(pct / 100));
         }
 
         // ---- 工具栏编辑模式（issue #15）----
@@ -8027,8 +8177,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 });
             }
             // Accent variants: accented alts of the composition's first char.
+            // 仅首字符（用户 2026-10-07 反馈）：选拼重音的快捷条只在刚打
+            // 完第一个字母时有意义，组合一长就被引擎折叠候选覆盖，留着
+            // 只是挤占词格。
             const variants = [];
-            if (raw) {
+            if (raw && raw.length === 1) {
                 const layout = LAYOUTS[MODES[this.mode] && MODES[this.mode].layout];
                 const alts = layout && layout.alts[raw[0]];
                 if (Array.isArray(alts)) {
@@ -9547,12 +9700,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof payload.bgImageDark === 'string') this.bgImageDark = payload.bgImageDark;
             const opacity = Number(payload.keyOpacity);
             if (opacity >= 0 && opacity <= 100) this.keyOpacity = opacity;
+            // #39 横屏：安全区开关/挖孔 insets/整体不透明度。
+            if (typeof payload.landscapeSafeArea === 'boolean') {
+                this.landscapeSafeArea = payload.landscapeSafeArea;
+            }
+            this.safeSideL = Math.max(0, Number(payload.safeSideL) || 0);
+            this.safeSideR = Math.max(0, Number(payload.safeSideR) || 0);
+            const landOpacity = Number(payload.landscapeOpacity);
+            if (landOpacity >= 10 && landOpacity <= 100) this.landscapeOpacity = landOpacity;
             if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
             const lingerMs = Number(payload.bubbleLinger);
             if (lingerMs >= 0) this.bubbleLinger = lingerMs;
             this.applyOneHand();
             this.applyBackground();
             this.applyKeyOpacity();
+            this.applyLandscapeChrome();
             // #31 预置色调：native pref 经 hello 下发，html[data-preset]
             // 驱动 CSS 覆盖（classic = 清掉 dataset 回默认绿）。
             {
@@ -10295,6 +10457,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onInkCandidates: payload => keyboard.onInkCandidates(payload),
         onEditorInfo: payload => keyboard.onEditorInfo(payload),
         cancelTouches: () => keyboard.cancelTouches(),
+        // #48 编辑器换代作废在途定制宏链（native onStartInput 驱动）。
+        cancelCustomChain: () => keyboard.cancelCustomChain(),
         cancelToolbarEdit: () => keyboard.cancelToolbarEdit(),
         // 工具位（debugState 同类）：自定义行缩放器，mock/预览直调锁数值。
         fitCustomRow: strip => keyboard.fitCustomRow(strip),

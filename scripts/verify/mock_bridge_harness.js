@@ -922,6 +922,17 @@ class KeyboardWorld {
     build() {
         const doc = loadDocument(this.html);
         const world = this;
+        // #48 定制宏的 text→key 时间窗用 Date.now 裁决（#6 定罪：文本步
+        // 后 300ms 内的键步会被 xterm 掐死）：sandbox 的 Date 接假时钟，
+        // 否则两次 click 之间真实毫秒≈0，时间窗判据在 mock 里失真。
+        const clock = this.clock;
+        class FakeDate extends Date {
+            constructor(...args) {
+                if (args.length === 0) super(clock.now);
+                else super(...args);
+            }
+            static now() { return clock.now; }
+        }
         const sandbox = {
             console: { log() {}, error() {} },
             document: doc,
@@ -951,7 +962,7 @@ class KeyboardWorld {
             JSON,
             Math,
             RegExp,
-            Date,
+            Date: FakeDate,
             Object,
             Array,
             String,

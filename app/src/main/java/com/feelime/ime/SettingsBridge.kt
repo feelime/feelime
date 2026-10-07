@@ -207,6 +207,28 @@ fun readKeyOpacity(context: Context): Int =
         .getInt(PREF_KEY_OPACITY, 100)
         .let { if (it in 0..100) it else 100 }
 
+/** #39 横屏三项（设置三级页「横屏」）：挖孔安全区 / 高度上限% /
+ *  整体不透明度%。默认=上轮定案行为（留安全区、上限 60%、不透明）。 */
+const val PREF_LANDSCAPE_SAFE_AREA = "landscape_safe_area"
+const val PREF_LANDSCAPE_CEIL_PCT = "landscape_ceil_pct"
+const val PREF_LANDSCAPE_OPACITY = "landscape_opacity_pct"
+val LANDSCAPE_CEIL_RANGE = 40..100
+val LANDSCAPE_OPACITY_RANGE = 10..100
+
+fun readLandscapeSafeArea(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_LANDSCAPE_SAFE_AREA, true)
+
+fun readLandscapeCeilPct(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_LANDSCAPE_CEIL_PCT, 60)
+        .let { if (it in LANDSCAPE_CEIL_RANGE) it else 60 }
+
+fun readLandscapeOpacity(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_LANDSCAPE_OPACITY, 100)
+        .let { if (it in LANDSCAPE_OPACITY_RANGE) it else 100 }
+
 fun readKeyBubble(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_KEY_BUBBLE, false)
@@ -755,6 +777,9 @@ class SettingsBridge(
             .put("bgImageLightSource", readBgImageSource(context, "light"))
             .put("bgImageDarkSource", readBgImageSource(context, "dark"))
             .put("keyOpacity", readKeyOpacity(context))
+            .put("landscapeSafeArea", if (readLandscapeSafeArea(context)) 1 else 0)
+            .put("landscapeCeil", readLandscapeCeilPct(context))
+            .put("landscapeOpacity", readLandscapeOpacity(context))
             .put("keyBubble", readKeyBubble(context))
             .put("bubbleLinger", readBubbleLinger(context))
             // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
@@ -1185,6 +1210,41 @@ class SettingsBridge(
     @JavascriptInterface
     fun setBottomPadLandscape(dp: Int, token: String) =
         setBottomPadFor(PREF_BOTTOM_PAD_DP_LANDSCAPE, dp, token)
+
+    /** #39 横屏三级页三项：安全区开关 / 高度上限% / 整体不透明度%。
+     *  非法值静默拒绝；写完广播 ACTION_KEYBOARD_PREFS_CHANGED 让 IME
+     *  重读（钳制上限/窗口涂层/键区 CSS 同步换装）。 */
+    @JavascriptInterface
+    fun setLandscapeSafeArea(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_LANDSCAPE_SAFE_AREA, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    @JavascriptInterface
+    fun setLandscapeCeil(pct: Int, token: String) = guarded(token) {
+        if (pct !in LANDSCAPE_CEIL_RANGE) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_LANDSCAPE_CEIL_PCT, pct).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    @JavascriptInterface
+    fun setLandscapeOpacity(pct: Int, token: String) = guarded(token) {
+        if (pct !in LANDSCAPE_OPACITY_RANGE) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_LANDSCAPE_OPACITY, pct).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
 
     private fun setBottomPadFor(key: String, dp: Int, token: String) = guarded(token) {
         if (dp !in BOTTOM_PAD_STEPS) {
