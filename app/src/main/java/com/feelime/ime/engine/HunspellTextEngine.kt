@@ -22,6 +22,11 @@ class HunspellTextEngine(
 
     /** 重音折叠索引（ca→ça、etre→être）：无调形 → 带调词列表。 */
     private var accentFold: Map<String, List<String>>? = null
+
+    /** 重音折叠【前缀】索引（用户 2026-10-07：eclate 也要出 éclater/
+     *  éclatement…）：fold(word) 为键排序二分、值为原词——原 PrefixIndex
+     *  的 startsWith 匹配不上 é 开头的词。 */
+    private var foldPrefix: FoldPrefixIndex? = null
     private var composing = ""
     private var allCandidates: List<Candidate> = emptyList()
     private var page = 0
@@ -41,6 +46,9 @@ class HunspellTextEngine(
             }
             prefixIndex = PrefixIndex.load(File(dir, "$locale.prefix.txt"))
             accentFold = buildAccentFold(prefixIndex?.allWords().orEmpty())
+            if (locale.startsWith("fr")) {
+                foldPrefix = buildFoldPrefixIndex(prefixIndex?.allWords().orEmpty())
+            }
         }
     }
 
@@ -134,6 +142,11 @@ class HunspellTextEngine(
         val suggested = NativeSmoke.hunspellSuggest(handle, composing)
             .lineSequence().filter { it.isNotEmpty() }.toMutableList()
         suggested += prefixIndex?.find(composing, PAGE_SIZE * 3).orEmpty()
+        // 重音折叠前缀（eclate → éclater/éclatement…，长度升序取近者）：
+        // 原 prefix 索引的 startsWith 吃 é≠e 匹配不上带调词。
+        if (locale.startsWith("fr")) {
+            foldPrefix?.find(composing.lowercase(), 8)?.let { suggested += it }
+        }
         // 法语省音恢复（用户实录 cetait → c'était）：插在 suggest 之前、
         // 原样拼对词之后（用户打了完整词时原样仍排第一）。
         if (locale.startsWith("fr")) suggested.addAll(0, elisionCandidates())
@@ -142,6 +155,34 @@ class HunspellTextEngine(
         // startsWith 语义也带不进 ça（ç≠c）。
         accentFold?.get(composing.lowercase())?.let { folds ->
             suggested.addAll(0, folds)
+        }
+        // 屈折形折叠（用户实录 eclate 要 éclaté）：折叠表只收词典
+        // headword，SFX/PFX 派生形（éclaté/mangée/âgés…）永远查不到，
+        // suggest 的 REP 建议只做单次重音替换也够不到多处重音。这里
+        // 对无调形枚举重音组合、逐个过词典拼对即收——覆盖全部屈折形，
+        // 排序同折叠表口径（重音少者优先）。插在折叠表结果之后、省音
+        // 之前（headword 同形优先）。
+        if (locale.startsWith("fr")) {
+            // 凑满 4 个即停（codex 评审 P3）：filter 全量跑完才 take 会做
+            // 最坏 624 次拼写 JNI；重音少者优先的排序惰性遍历不破坏。
+            val seen = suggested.toHashSet()
+            val variants = ArrayList<String>(4)
+            var formsProbed = 0
+            for (form in accentVariantForms(composing.lowercase())) {
+                formsProbed += 1
+                if (form !in seen && NativeSmoke.hunspellSpell(handle, form) == 1) {
+                    variants.add(form)
+                    if (variants.size == 4) break
+                }
+            }
+            // #4 复发取证（真机 éclaté 仍缺失 2026-10-07）：forms=0 是
+            // 生成上限早退；forms>0 且 variants 空=spell 全拒。
+            android.util.Log.d("FeelimeFr",
+                "variants word=${composing.lowercase()} forms=$formsProbed out=$variants")
+            if (variants.isNotEmpty()) {
+                val at = accentFold?.get(composing.lowercase())?.size ?: 0
+                suggested.addAll(at, variants)
+            }
         }
         if (NativeSmoke.hunspellSpell(handle, composing) == 1) suggested.add(0, composing)
         allCandidates = suggested.distinct().mapIndexed { index, value ->
@@ -253,6 +294,93 @@ class HunspellTextEngine(
             val sb = StringBuilder(word.length)
             for (ch in word) sb.append(ACCENT_FOLD_MAP[ch] ?: ch)
             return sb.toString()
+        }
+
+        /** 无调形的重音组合枚举（éclaté/mangée——带调屈折形，折叠表
+         *  只收 headword 覆盖不到）：对每个可折叠字符位（ACCENT_FOLD
+         *  的 a/e/i/o/u/c）做「原字符×重音族」笛卡尔积，剔除原形，按
+         *  「重音少者优先、同数词典序」排（与折叠表同口径）。上限：
+         *  折叠位 ≤4、乘积 ≤625（法语词重音位几乎不超 3-4），越界返
+         *  空（不枚举）。词典拼对过滤在 rebuild 侧（需 native）。 */
+        /** 重音折叠前缀索引（fr）：fold(word) 键排序二分、值=原词、
+         *  同键段内长度升序（更接近输入长度的排前）。只收 fold 后有
+         *  变化的词——纯词由原 PrefixIndex 覆盖，免重复。纯 JVM 可测。 */
+        internal class FoldPrefixIndex internal constructor(
+            private val keys: Array<String>,
+            private val words: Array<String>,
+        ) {
+            fun find(prefix: String, limit: Int): List<String> {
+                if (prefix.isEmpty()) return emptyList()
+                var low = 0
+                var high = keys.size
+                while (low < high) {
+                    val middle = (low + high) ushr 1
+                    if (keys[middle] < prefix) low = middle + 1 else high = middle
+                }
+                // 段内取「词长最短」的 top-K（用户直觉：éclater 比
+                // éclatement 更接近输入长度）——键序只保证段连续，段内
+                // 长度序要边扫边维护（短前缀的段上千词，不能全收）。
+                val best = ArrayList<String>(minOf(limit, 16))
+                var i = low
+                while (i < keys.size && keys[i].startsWith(prefix)) {
+                    val word = words[i]
+                    var j = best.size
+                    while (j > 0 &&
+                        (best[j - 1].length > word.length ||
+                            (best[j - 1].length == word.length && best[j - 1] > word))
+                    ) j -= 1
+                    if (j < limit) {
+                        best.add(j, word)
+                        if (best.size > limit) best.removeAt(best.size - 1)
+                    }
+                    i += 1
+                }
+                return best
+            }
+        }
+
+        internal fun buildFoldPrefixIndex(words: List<String>): FoldPrefixIndex? {
+            val pairs = ArrayList<Pair<String, String>>(words.size / 3)
+            for (word in words) {
+                val key = foldAccents(word)
+                if (key != word) pairs.add(key to word)
+            }
+            if (pairs.isEmpty()) return null
+            pairs.sortWith(compareBy({ it.first }, { it.second.length }, { it.second }))
+            return FoldPrefixIndex(
+                Array(pairs.size) { i -> pairs[i].first },
+                Array(pairs.size) { i -> pairs[i].second },
+            )
+        }
+
+        internal fun accentVariantForms(word: String): List<String> {
+            if (word.length < 2) return emptyList()
+            val positions = ArrayList<Int>()
+            word.forEachIndexed { i, ch -> if (ACCENT_FOLD.containsKey(ch)) positions += i }
+            if (positions.isEmpty() || positions.size > 4) return emptyList()
+            var product = 1
+            positions.forEach { product *= 1 + ACCENT_FOLD.getValue(word[it]).size }
+            if (product > 625) return emptyList()
+            val forms = ArrayList<String>(product)
+            val chars = word.toCharArray()
+            fun walk(depth: Int) {
+                if (depth == positions.size) {
+                    forms += String(chars)
+                    return
+                }
+                val pos = positions[depth]
+                val orig = word[pos]
+                walk(depth + 1) // 该位保持原字符
+                for (variant in ACCENT_FOLD.getValue(orig)) {
+                    chars[pos] = variant
+                    walk(depth + 1)
+                }
+                chars[pos] = orig
+            }
+            walk(0)
+            forms.remove(word)
+            forms.sortWith(compareBy({ w -> w.count { it in ACCENT_CHARS } }, { it }))
+            return forms
         }
 
         private const val ACCENT_CHARS = "àâçéèêëîïôùûёÀÂÇÉÈÊËÎÏÔÙÛЁ"

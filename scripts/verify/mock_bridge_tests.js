@@ -2851,6 +2851,9 @@ test('custom key taps: DSL executes text, keys and combos', () => {
     const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')];
     keys[0].click();
     equal(world.native.of('commitText').slice(-1)[0].args[0], '哈哈', 'text commits literally');
+    // #48 时间窗语义：真实用户两次点击相隔数秒，mock 里拨过时间窗
+    // （3.20.0 fixture 无链逻辑，advance 对它是无害空转）。
+    world.clock.advance(400);
     keys[1].click();
     equal(world.native.of('keyEvent').slice(-1)[0].args[0], 111, 'esc = keycode 111');
     keys[2].click();
@@ -2862,6 +2865,103 @@ test('custom key taps: DSL executes text, keys and combos', () => {
     equal(calls[esc].args[0], 111, 'macro fires esc first');
     const commits = world.native.of('commitText');
     equal(commits[commits.length - 1].args[0], 'ggVGD', 'macro text after the key');
+});
+
+// #48（omt vim 退不出）：xterm 宿主里 commitText 的落地是异步
+// composition 流，紧跟其后的 keyEvent 会把它掐死。文本步后面跟键步
+// 时垫 300ms 台阶（方向实测：键→文本 0ms 安全，文本→键 0ms 致死）。
+test('custom key macro: a key step after text waits out the xterm settle', { since: '3.73.29' }, () => {
+    const world = fresh();
+    world.storage.set('feelime_custom_keys_v2', JSON.stringify({
+        version: 1,
+        rows: [[{ t: 'wq', tap: ':wq[enter]' }], [], []],
+    }));
+    if (world.$('toolCustom')) {
+        world.tap(world.$('toolCustom'));
+    } else {
+        const key123 = [...world.document.querySelectorAll('.kb-key')]
+            .find(el => el.textContent === '123');
+        world.tap(key123);
+        [...world.document.querySelectorAll('.sym-cat')]
+            .find(el => el.textContent === '定制').click();
+    }
+    const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')];
+    keys[0].click();
+    // 文本立即上桥；紧随的键步还在台阶里
+    equal(world.native.of('commitText').slice(-1)[0].args[0], ':wq', 'text commits immediately');
+    const enters = world.native.calls.filter(c => c.method === 'keyEvent' && c.args[0] === 66);
+    assert(enters.length === 0, 'enter waits out the settle step');
+    world.clock.advance(400);
+    const enters2 = world.native.calls.filter(c => c.method === 'keyEvent' && c.args[0] === 66);
+    equal(enters2.length, 1, 'enter fires exactly once after the settle');
+});
+
+// codex 评审 P1×2（#48 续）：双击定制键不得让第二条宏插进第一条的
+// 300ms 台阶窗口（其首个键步会把第一条的文本掐死）；编辑器换代/收起
+// 时在途宏链整体作废，延迟键步不发进新输入框。
+test('custom key macro: a second tap queues behind the in-flight macro', { since: '3.73.29' }, () => {
+    const world = fresh();
+    world.storage.set('feelime_custom_keys_v2', JSON.stringify({
+        version: 1,
+        rows: [[{ t: 'wq', tap: ':wq[enter]' }], [], []],
+    }));
+    if (world.$('toolCustom')) {
+        world.tap(world.$('toolCustom'));
+    } else {
+        const key123 = [...world.document.querySelectorAll('.kb-key')]
+            .find(el => el.textContent === '123');
+        world.tap(key123);
+        [...world.document.querySelectorAll('.sym-cat')]
+            .find(el => el.textContent === '定制').click();
+    }
+    const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')];
+    keys[0].click();
+    world.clock.advance(100);
+    keys[0].click();
+    // 台阶窗口内二次点击：只许已排队的第一次文本在桥上，键步一个没发
+    const texts = world.native.of('commitText').map(c => c.args[0]);
+    equal(texts.length, 1, 'second macro has not started inside the settle window');
+    const enters = world.native.calls.filter(c => c.method === 'keyEvent' && c.args[0] === 66);
+    equal(enters.length, 0, 'no enter fired yet');
+    world.clock.advance(250);
+    // t=350：第一条宏的 enter 已发、第二条宏的文本紧跟（键→文本 0ms 安全）
+    const texts2 = world.native.of('commitText').map(c => c.args[0]);
+    equal(texts2.length, 2, 'second macro text follows the first enter');
+    const enterAt350 = world.native.calls.filter(c => c.method === 'keyEvent' && c.args[0] === 66).length;
+    equal(enterAt350, 1, 'first macro enter fired once');
+    const order = world.native.calls
+        .filter(c => c.method === 'commitText' || (c.method === 'keyEvent' && c.args[0] === 66))
+        .map(c => c.method === 'commitText' ? 'T' : 'E');
+    equal(order.join(''), 'TET', 'no interleaving: text, enter, then the queued macro');
+    // 第二条宏自己的台阶也要走完
+    world.clock.advance(400);
+    equal(world.native.calls.filter(c => c.method === 'keyEvent' && c.args[0] === 66).length, 2,
+        'queued macro enter fires after its own settle');
+});
+
+test('custom key macro: editor switch aborts the pending settle step', { since: '3.73.29' }, () => {
+    const world = fresh();
+    world.storage.set('feelime_custom_keys_v2', JSON.stringify({
+        version: 1,
+        rows: [[{ t: 'wq', tap: ':wq[enter]' }], [], []],
+    }));
+    if (world.$('toolCustom')) {
+        world.tap(world.$('toolCustom'));
+    } else {
+        const key123 = [...world.document.querySelectorAll('.kb-key')]
+            .find(el => el.textContent === '123');
+        world.tap(key123);
+        [...world.document.querySelectorAll('.sym-cat')]
+            .find(el => el.textContent === '定制').click();
+    }
+    const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')];
+    keys[0].click();
+    equal(world.native.of('commitText').length, 1, 'text committed');
+    // native onStartInput 的换代作废钩子（FeelimeService evaluate）
+    world.context.window.Feelime.cancelCustomChain();
+    world.clock.advance(400);
+    equal(world.native.calls.filter(c => c.method === 'keyEvent' && c.args[0] === 66).length, 0,
+        'aborted chain never delivers the delayed key step');
 });
 
 test('legacy comma tables migrate into the v2 JSON store', () => {
@@ -3485,8 +3585,10 @@ test('typing stats: tile opens the keyboard-layer panel with the bridge data (is
 test('french: shift cycles candidate case, pick commits the cased text', {since: '3.73.6'}, () => {
     const w = fresh({ mode: 'french' });
     // 组合态 + 引擎候选（c'était 等）。
+    // 3.73.33 起重音快捷条只在单字符组合注入（用户反馈：长组合无意义），
+    // 构造用单字符保持「引擎候选 + 重音 overlay」混池语义。
     w.engineState({ phase: 'READY', revision: 1, mode: 'french', composing: true,
-        rawInput: 'cetait', candidates: [
+        rawInput: 'c', candidates: [
             { id: 'e0', text: "c'était" }, { id: 'e1', text: 'était' }] });
     const barText = () => [...w.document.querySelectorAll('#candidates .candidate')]
         .map(b => b.textContent).join('|');
@@ -3868,6 +3970,24 @@ test('one-handed mode rides hello into the side pad (issue #15)', {since: '3.43.
     world.hello({oneHand: 7, sideContent: 9});
     equal(world.document.body.dataset.oneHand, 'off', 'off-whitelist oneHand ignored');
     equal(world.document.body.dataset.sideContent, 'blank', 'off-whitelist sideContent ignored');
+});
+
+// #39 横屏三项：hello（安全区开关/挖孔 insets/不透明度）驱动 CSS 变量，
+// 键区让位与整层透明都只在 body.landscape 选择器下生效。
+test('landscape safe-side and opacity ride hello into CSS vars', {since: '3.73.31'}, () => {
+    const world = fresh();
+    const v = name => world.document.documentElement.style.getPropertyValue(name);
+    world.hello({});
+    equal(v('--kb-landscape-opacity'), '1', 'default hello keeps full opacity');
+    world.hello({ landscapeSafeArea: false, safeSideL: 42, safeSideR: 9, landscapeOpacity: 40 });
+    equal(v('--safe-side-l'), '0px', 'safe-area off zeroes the inset');
+    equal(v('--safe-side-r'), '0px', 'safe-area off zeroes the inset (right)');
+    equal(v('--kb-landscape-opacity'), '0.4', 'opacity pct becomes a fraction');
+    world.hello({ landscapeSafeArea: true, safeSideL: 42, safeSideR: 9 });
+    equal(v('--safe-side-l'), '42px', 'safe-area on passes insets through');
+    equal(v('--safe-side-r'), '9px', 'safe-area on passes insets through (right)');
+    world.hello({ landscapeOpacity: 5 });
+    equal(v('--kb-landscape-opacity'), '0.4', 'out-of-range opacity is rejected at intake, keeps the last value');
 });
 
 test('one-handed pad percent drives --side-pad-w (shrink tiers)', {since: '3.45.3'}, () => {
@@ -4486,7 +4606,7 @@ test('a and o carry the full French accent set', {since: '3.21.2'}, () => {
     }
 });
 
-test('accent variants ride the candidate pool after the engine head', {since: '3.21.2'}, () => {
+test('accent variants ride the candidate pool after the engine head', {since: '3.21.2', until: '3.73.32'}, () => {
     const world = fresh({ mode: 'french' });
     world.hello();
     // Composition "ete": the engine echoes candidates; the overlay must add
@@ -4519,11 +4639,40 @@ test('accent variants ride the candidate pool after the engine head', {since: '3
     equal(pick && pick.args[1], 'c0', 'space confirms the ENGINE entry, not a variant');
 });
 
+// 3.73.33 起（用户 2026-10-07）：重音快捷条只在单字符组合注入——
+// 长组合时引擎折叠/前缀候选已覆盖选拼需求，快捷条只剩挤占词格。
+test('accent shortcut bar only injects for a single-char composition', {since: '3.73.33'}, () => {
+    const world = fresh({ mode: 'french' });
+    world.hello();
+    // 单字符：注入 + 选择仍走 setComposition 换首字符。
+    world.engineState({ mode: 'french', revision: 1, composing: 'e', rawInput: 'e',
+        candidates: [{ id: 'c0', text: 'e' }], hasNextPage: false });
+    let bar = [...world.$('candidates').querySelectorAll('.candidate')].map(b => b.textContent);
+    for (const accent of ['é', 'è', 'ê', 'ë']) {
+        assert(bar.includes(accent), `variant ${accent} injected at one char`);
+    }
+    [...world.$('candidates').querySelectorAll('.candidate')]
+        .find(b => b.textContent === 'ê').click();
+    const setCalls = world.native.of('setComposition');
+    equal(setCalls.length, 1, 'one atomic setComposition');
+    equal(setCalls[0].args[0], 'ê', 'first char swapped');
+    // 多字符：不再注入（独立 world，避免点击后状态链干扰）。
+    const w2 = fresh({ mode: 'french' });
+    w2.hello();
+    w2.engineState({ mode: 'french', revision: 1, composing: 'eclate', rawInput: 'eclate',
+        candidates: [{ id: 'c0', text: 'éclate' }, { id: 'c1', text: 'éclaté' }], hasNextPage: false });
+    bar = [...w2.$('candidates').querySelectorAll('.candidate')].map(b => b.textContent);
+    for (const accent of ['é', 'è', 'ê', 'ë']) {
+        assert(!bar.includes(accent), `no bare accent cell ${accent} for long composition`);
+    }
+    equal(bar.join('|'), 'éclate|éclaté', 'engine pool renders bare');
+});
+
 test('accent selection preserves collapsed and expanded candidate views', {since: '3.22.0'}, () => {
     for (const expanded of [false, true]) {
         const world = fresh({mode: 'french'});
-        world.engineState({mode: 'french', revision: 1, composing: 'ete', rawInput: 'ete',
-            candidates: [{id: 'c0', text: 'ete'}], hasNextPage: false});
+        world.engineState({mode: 'french', revision: 1, composing: 'e', rawInput: 'e',
+            candidates: [{id: 'c0', text: 'e'}], hasNextPage: false});
         if (expanded) world.tap(world.$('composeExpand'));
         const button = [...world.$('candidates').querySelectorAll('.candidate')]
             .find(b => b.textContent === 'é');
@@ -4536,7 +4685,7 @@ test('accent selection preserves collapsed and expanded candidate views', {since
 
 test('space commits unknown French word when pool contains only accents', {since: '3.22.0'}, () => {
     const world = fresh({mode: 'french'});
-    world.engineState({mode: 'french', revision: 1, composing: 'azzzzz', rawInput: 'azzzzz',
+    world.engineState({mode: 'french', revision: 1, composing: 'a', rawInput: 'a',
         candidates: [], hasNextPage: false});
     assert(world.$('candidates').querySelectorAll('.candidate').length > 0, 'accents available');
     world.tap(world.$('spaceKey'));

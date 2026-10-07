@@ -284,6 +284,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private var overlayOpen = false
     // Last notified bottom safe area; never used as the current measurement.
     private var lastSafeBottom = -1
+    // #39：最近一次已采纳的挖孔侧安全区（onBottomInsetChanged 比较键之一）。
+    private var lastSafeSides = 0 to 0
     // Last bottom inset observed while the keyboard view was actually laid
     // out; the hidden-state fallback reports this instead of guessing.
     private var lastShownSafeBottom = 0
@@ -449,6 +451,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                         val shown = requestShowSelf(0)
                         android.util.Log.i("FeelimeBridge", "requestShowSelf -> $shown")
                     } else {
+                        Diagnostics.log("ui", "hideRequest src=preview")
                         requestHideSelf(0)
                     }
                 }
@@ -461,6 +464,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 // 内存 override 只有旋转/启动才重读。
                 keyboardHeightOverride = storedKeyboardHeight()
                 (keyboardView?.parent as? View)?.requestLayout()
+                // #39 横屏透明度改窗口涂层，pref 变更即重涂。
+                applyChromeColor()
                 pushBridgeHello()
                 if (readAssociation(this@FeelimeService)) {
                     com.feelime.ime.engine.AssociationStore.prewarm(this@FeelimeService)
@@ -581,7 +586,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
      * 保持透明，条带高度跟 navBottomInset() 动态取。 */
     private fun applyChromeColor() {
         getWindow()?.window?.let { w ->
-            val color = chromeColor ?: Color.TRANSPARENT
+            var color = chromeColor ?: Color.TRANSPARENT
+            // #39 横屏整体透明度：<100% 时窗口涂层一并透明——涂层（导航
+            // 栏色/底部条）画在半透键盘下面会挡住要透视的宿主内容。
+            if (landscapeOpacityPct() < 100) color = Color.TRANSPARENT
             w.navigationBarColor = color
             w.setBackgroundDrawable(object : android.graphics.drawable.Drawable() {
                 private val paint = android.graphics.Paint()
@@ -602,6 +610,40 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
     }
 
+    /** #39 横屏隐藏系统导航条（用户 puff-browser 同款实证）：小白条/
+     *  导航条画在 IME 窗口之上压末行，靠 insetsController.hide 藏掉
+     *  （BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE，上滑 transient 恢复），
+     *  键盘铺满屏幕底。竖屏恢复 show。ROM 偷恢复/吞首次 hide（puff
+     *  实录：焦点变化后恢复）→ onWindowShown 重放 + 600ms 后查仍
+     *  可见再补一刀。 */
+    private fun applyLandscapeNavBars() {
+        val w = window?.window ?: return
+        val ctrl = androidx.core.view.WindowCompat.getInsetsController(w, w.decorView)
+        if (resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        ) {
+            ctrl.systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            ctrl.hide(android.view.WindowInsets.Type.navigationBars())
+        } else {
+            ctrl.show(android.view.WindowInsets.Type.navigationBars())
+        }
+    }
+
+    /** puff 同款的补刀：ROM 吞掉首次 hide 时，600ms 后仍可见就再来一次。 */
+    private val navRetryHide = Runnable {
+        val w = window?.window ?: return@Runnable
+        if (resources.configuration.orientation !=
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        ) return@Runnable
+        val insets = w.decorView.rootWindowInsets ?: return@Runnable
+        if (android.os.Build.VERSION.SDK_INT >= 30 &&
+            insets.isVisible(android.view.WindowInsets.Type.navigationBars())
+        ) {
+            applyLandscapeNavBars()
+        }
+    }
+
     /** 桥侧颜色解析：#RGB/#RRGGBB/#AARRGGBB、rgb()/rgba()、transparent。
      * 无法解析返回 null（调用方丢弃，保持旧值）。 */
     override fun onCreate() {
@@ -616,8 +658,25 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         getWindow()?.window?.let { w ->
             w.navigationBarColor = Color.TRANSPARENT
             if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
+            // #39（XYNEXT）：横屏挖孔区铺满——IME 窗口默认 cutout 模式
+            // 在横屏下让开挖孔短边，屏幕左/右整条黑边（真机 2400x1080
+            // 左侧 ~1/4 黑；宿主 app 的「全面屏显示」开关管不到 IME
+            // 自己的窗口）。SHORT_EDGES 让窗口延伸进挖孔区，键盘才能
+            // 铺满短边；挖孔只是小孔，周边仍是可点屏幕。
+            if (Build.VERSION.SDK_INT >= 28) {
+                w.attributes = w.attributes.apply {
+                    layoutInDisplayCutoutMode =
+                        android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+            // #39：横屏藏导航条（onWindowShown 会重放，这里只是尽早）。
+            applyLandscapeNavBars()
         }
         Diagnostics.refresh(this)
+        // 收起取证：refresh 的进程分节行只在进程首建时写一次，service
+        // 同进程内销毁重建（IMS 回收输入法实例）也要留痕——与 destroy
+        // 行配对，区分「service 重建」与「进程重启」两档中断。
+        Diagnostics.log("svc", "create pid=${android.os.Process.myPid()}")
         // P1-5：上次基底词库编译若被进程中断（installing 标记残留），
         // 在任何引擎初始化之前回滚到内置——半截产物不能进运行时。
         com.feelime.ime.engine.BaseDictInstaller.sweepPending(this)
@@ -958,6 +1017,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         super.onWindowShown()
         Diagnostics.log("ui", "windowShown")
         armUiProbes()
+        // #39 横屏导航条隐藏重放（ROM 焦点变化后会偷恢复）+ 双档补刀
+        // （600ms/2500ms——ColorOS 实测在弹出后 1-3s 才把导航条恢复回来，
+        // 单档 600ms 检查时还藏着，真机 t0 截图 pill 复实录）。
+        applyLandscapeNavBars()
+        window?.window?.decorView?.let { decor ->
+            decor.removeCallbacks(navRetryHide)
+            decor.postDelayed(navRetryHide, 600)
+            decor.postDelayed(navRetryHide, 2500)
+        }
         // issue #12 根因修复（codex 联合评审定稿）：IMS hideWindow() 会直接
         // dispatchWindowVisibilityChanged(GONE)（只进回调、不改 getter）；
         // 快速重弹时 ViewRoot 未必派发配对的 VISIBLE——Chromium M133 按回调
@@ -987,9 +1055,22 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     override fun onWindowHidden() {
         super.onWindowHidden()
-        Diagnostics.log("ui", "windowHidden")
+        // 键盘收起取证（录屏 13s 收起 3 次）：hide 不是孤立事件，归因看
+        // 它前面紧贴着什么——收起前 <1s 有 touchCancel = 系统手势条
+        // 抢断触摸流（返回/主页手势）；只有 touchUp = 正常收笔后收起
+        // （换挡/按键逻辑嫌疑）；两者都老远 = 应用侧/系统直接 hide
+        // （焦点丢失、hideSoftInputFromWindow）。三类路径在此一行对账。
+        Diagnostics.log("ui", "windowHidden sinceDownMs=${diagSince(diagLastDownAt)} " +
+            "sinceUpMs=${diagSince(diagLastUpAt)} sinceCancelMs=${diagSince(diagLastCancelAt)}")
         showGeneration += 1 // 在途 repair 任务随之失效（快速 show/hide 归属不乱）
     }
+
+    /** 收起取证：距上次触摸事件的毫秒数（-1=从未，事件在 DiagWebView 记）。 */
+    private var diagLastDownAt = 0L
+    private var diagLastUpAt = 0L
+    private var diagLastCancelAt = 0L
+    private fun diagSince(at: Long): Long =
+        if (at == 0L) -1 else android.os.SystemClock.elapsedRealtime() - at
 
     /**
      * The input view is keyboard + float band (transparent strip
@@ -1037,7 +1118,77 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         val landscape =
             resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val budget = if (landscape) realHeightPixels() * 30 else metrics.heightPixels * 40
-        return minOf(dp(200), budget / 100)
+        // #39 上限 100% 时（codex 评审 P2）：内容+安全区+留白已占满真屏，
+        // 带再叠上去会把窗口顶出屏外（首行键被裁、弹层全灭）。带按屏幕
+        // 余量收缩，地板 0——用户把高度拉满的代价是弹层带变窄，而不是
+        // 布局爆掉。竖屏 45% 上限恒有余量，此收紧永远不触发。余量同样
+        // 扣系统预留 dp(32)（见 landscapeCeilPx：ColorOS 的窗口硬钳）。
+        val room = (realHeightPixels() - dp(32) - contentHeightPx(dp(272))).coerceAtLeast(0)
+        return minOf(dp(200), budget / 100, room)
+    }
+
+    /** onMeasure 与 floatBandPx 共用的内容高度（键区+安全区+底部留白，
+     *  不含弹层带）：用户高度（或默认）按方向上限钳制后叠加安全区/留白，
+     *  整体再以真屏高封顶——100% 上限 + 留白/安全区时键区宁可少几像素，
+     *  不能把窗口量得比屏幕还高。 */
+    private fun contentHeightPx(desiredHeightPx: Int): Int {
+        val screenH = resources.displayMetrics.heightPixels
+        val landscape =
+            resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val base = if (keyboardHeightOverride > 0) keyboardHeightOverride else desiredHeightPx
+        val height = when {
+            landscape && screenH > 0 ->
+                minOf(base, landscapeCeilPx()) + safeBottomSnapshot() + bottomPadPx()
+            // round-8: 竖屏同样按真屏 45%（screenH 是 app-space，会把
+            // 上限压到 340css——与 setKeyboardHeight 的钳制口径不一致，
+            // 调高了也会在这里被量回去）。见 setKeyboardHeight 注释。
+            screenH > 0 -> minOf(base, (realHeightPixels() * 45) / 100) + safeBottomSnapshot() + bottomPadPx()
+            else -> base + safeBottomSnapshot() + bottomPadPx()
+        }
+        // 统一扣系统预留 dp(32)（见 landscapeCeilPx 注释：ColorOS 窗口硬
+        // 钳，超限=顶部被裁末行沉底）；竖屏 45% 上限恒不触及。
+        return minOf(height, realHeightPixels() - dp(32))
+    }
+
+    /** #39：横屏高度上限（真屏 × 设置百分比，默认 60%、上限 100%）。
+     *  三处钳制（setKeyboardHeight / hello ceil / onMeasure）共用本函数，
+     *  漏一处=滑杆调高又被量回去。
+     *  100% 也要给系统留 dp(32)：ColorOS 横屏把 IME 窗口硬钳到「屏高-
+     *  32dp」（ace 实测 frame=[0,96][2412,1080]@density3.0），请求超限
+     *  窗口不缩反被【顶部裁掉】——WebView 对裁剪无感知，布局仍按请求
+     *  高度排，末行沉入屏底（Chrome 横屏实录）。各 ROM 统一扣 32dp：
+     *  无此钳制的设备 100% 少 32dp（视觉无差），有的设备保住末行。 */
+    private fun landscapeCeilPx(): Int =
+        minOf(
+            realHeightPixels() * com.feelime.ime.readLandscapeCeilPct(this) / 100,
+            realHeightPixels() - dp(32),
+        )
+
+    /** #39：横屏挖孔侧安全区（css px；竖屏或无挖孔=0）。窗口 SHORT_EDGES
+     *  铺进挖孔区后，键盘页用这组值给键区让位（背景仍铺满）。
+     *  左右取挖孔最大侧【对称】下发（用户拍板）：只让挖孔侧会让键区
+     *  整体偏一侧，非对称留白难看；对称后左右翻转旋转值也不变。 */
+    private fun safeSideInsetsCss(): Pair<Int, Int> {
+        val landscape =
+            resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        if (!landscape) return 0 to 0
+        // minSdk=26：getDisplayCutout() 是 API 28 加入的，安全调用 ?. 只挡
+        // null 不挡缺方法——26/27 上横屏推 hello 就 NoSuchMethodError 杀进程
+        // （codex 评审 P1）。挖孔概念本身 28 才有，低版本恒无侧安全区。
+        if (Build.VERSION.SDK_INT < 28) return 0 to 0
+        val cutout = window?.window?.decorView?.rootWindowInsets?.displayCutout ?: return 0 to 0
+        val density = resources.displayMetrics.density
+        val side = (maxOf(cutout.safeInsetLeft, cutout.safeInsetRight) / density).toInt()
+        return side to side
+    }
+
+    /** #39：横屏整体不透明度（%）。<100 时窗口涂层（导航栏/窗口背景）
+     *  也要透明，否则涂层挡在半透键盘下面白搭。 */
+    private fun landscapeOpacityPct(): Int {
+        if (resources.configuration.orientation !=
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        ) return 100
+        return com.feelime.ime.readLandscapeOpacity(this)
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
@@ -1046,6 +1197,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // #34：连接已换（含同编辑器重启），手势会话作废——旧基线/延迟
         // 删除不得进新连接（codex 评审 P1-1 的代际收口）。
         endBackspaceGestureSession(executeQueued = false)
+        // #48 定制宏的 300ms 台阶键不能落进新编辑器（codex 评审 P1）：
+        // 编辑器换代即作废在途宏链（与 #34 同款代际语义）。restarting=
+        // true 是同编辑器重启，不打断在途宏；旧键盘 JS 无该钩子则跳过。
+        if (!restarting) {
+            evaluate("window.Feelime && window.Feelime.cancelCustomChain && window.Feelime.cancelCustomChain()")
+        }
         invalidatePendingVoiceStartOnEditorChange()
         cursorQueryGeneration += 1
         pendingCursorDeltas.clear()
@@ -1205,6 +1362,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     }
 
     override fun onDestroy() {
+        // 收起取证：service 销毁落一行——导出里「onDestroy 之后又见
+        // process start」= 进程被系统回收/重启（环形缓冲清空的元凶）。
+        Diagnostics.log("svc", "destroy")
         acceptAsrResults = false
         // #41 二轮：击键是内存累加、搭便车落盘，服务销毁时刷一次。
         InputStats.flush(applicationContext)
@@ -1778,10 +1938,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+        // 收起取证：旋转/分屏/折叠态变化会走窗口重建路径，先留痕再重建。
+        Diagnostics.log("ui", "configChange ori=${newConfig.orientation} " +
+            "screenLayout=${newConfig.screenLayout and android.content.res.Configuration.SCREENLAYOUT_SIZE_MASK}")
         main.post {
  // Each orientation keeps its own height.
             keyboardHeightOverride = storedKeyboardHeight()
             (keyboardView?.parent as? View)?.requestLayout()
+            // #39 旋转切换导航条隐藏/恢复。
+            applyLandscapeNavBars()
             pushBridgeHello()
             pushState()
         }
@@ -1807,7 +1972,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("safeBottom", (safeBottomSnapshot() / resources.displayMetrics.density).toInt())
  // The transparent popup band above the keyboard.
             .put("floatBand", (floatBandPx() / resources.displayMetrics.density).toInt())
-            .put("heightDefault", (minOf(dp(272), if (landscape) realHeightPixels() / 2
+            .put("heightDefault", (minOf(dp(272), if (landscape) landscapeCeilPx()
                 else (realHeightPixels() * 45) / 100) /
                 resources.displayMetrics.density).toInt())
             // 高度真相源（round-6）：native pref 是唯一事实，hello 下发
@@ -1833,7 +1998,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 "heightCeil",
                 (
                     (
-                        if (landscape) realHeightPixels() / 2
+                        if (landscape) landscapeCeilPx()
                         else (realHeightPixels() * 45) / 100
                     ) / resources.displayMetrics.density
                 ).toInt(),
@@ -1869,6 +2034,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("keyOpacity", readKeyOpacity(this))
             .put("keyBubble", readKeyBubble(this))
             .put("bubbleLinger", readBubbleLinger(this))
+            // #39 横屏三级页三项 + 挖孔安全区实测值（css px，竖屏恒 0）。
+            // safeSide 只有横屏需要（SHORT_EDGES 铺进挖孔区后键区让位用），
+            // 与安全区开关分开下发：开关管要不要让，insets 管让多少。
+            .put("landscapeSafeArea", com.feelime.ime.readLandscapeSafeArea(this))
+            .put("landscapeCeil", com.feelime.ime.readLandscapeCeilPct(this))
+            .put("landscapeOpacity", com.feelime.ime.readLandscapeOpacity(this))
+            .apply {
+                val sides = safeSideInsetsCss()
+                put("safeSideL", sides.first)
+                put("safeSideR", sides.second)
+            }
             .put("themeMode", readThemeMode(this))
             .put("themePreset", readThemePreset(this))
             .put("themeHue", readThemeHue(this))
@@ -2986,7 +3162,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // 页滑杆按真屏给到 361，这里会把回推值钳回 340 并 debounce 写
             // 回 pref，滑杆 360/键盘 340 的「调节不生效」就是这么来的
             // （真机实录：361 落盘 1083 被回写 1020 覆盖）。
-            val max = if (landscape) realHeightPixels() / 2 else (realHeightPixels() * 45) / 100
+            val max = if (landscape) landscapeCeilPx() else (realHeightPixels() * 45) / 100
             val clamped = physical.coerceIn(min, maxOf(min, max))
             if (clamped != keyboardHeightOverride) {
                 keyboardHeightOverride = clamped
@@ -3030,7 +3206,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
 
         @JavascriptInterface
-        fun hideKeyboard(token: String) = guarded(token, limited = false) { onMain { requestHideSelf(0) } }
+        fun hideKeyboard(token: String) = guarded(token, limited = false) { onMain {
+            Diagnostics.log("ui", "hideRequest src=jsKey")
+            requestHideSelf(0)
+        } }
 
         @JavascriptInterface
         fun openSetup(token: String) = onMain { openSetup() }
@@ -3567,6 +3746,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             val floor = oplusInsetFloor()
             val reserved = maxOf(metrics.windowInsets.getInsets(types).bottom, floor)
             if (reserved == 0) return 0
+            // #39 横屏底部【恢复】safe area（用户 2026-10-07 复核拍板）：
+            // 导航条可见性跟随宿主 app，第三方 app 里 IME 的 hide 藏不掉
+            // 小白条——末行贴底会被小白条遮挡、底部手势区还会吞按键
+            // 触摸。保留预留让小白条浮在背景带上（applyLandscapeNavBars
+            // 的 hide 仍保留：自家 app 场景能藏则更干净，藏不掉也无害）。
             if (reserved > 0) {
                 // Decor insets may already be consumed by InputMethodService.
                 // Reserve only the part our actual WebView overlaps; windows
@@ -3677,6 +3861,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         val decor = window?.window?.decorView ?: return
         insetWatcherInstalled = true
         decor.setOnApplyWindowInsetsListener { view, insets ->
+            // #39 ColorOS 偷恢复补刀：SystemUI 在键盘弹出后 1-3s 把导航
+            // 条显示回来（真机实录），insets 重派发是能感知到的最早时刻
+            // ——横屏且导航条可见即刻再藏。hide 后 visible 变 false 不再
+            // 触发本分支，无循环。
+            if (android.os.Build.VERSION.SDK_INT >= 30 &&
+                resources.configuration.orientation ==
+                android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+                insets.isVisible(android.view.WindowInsets.Type.navigationBars())
+            ) {
+                applyLandscapeNavBars()
+            }
             view.post { onBottomInsetChanged() }
             view.onApplyWindowInsets(insets)
         }
@@ -3684,7 +3879,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     }
 
     private fun onBottomInsetChanged() {
-        if (navBottomInset() == lastSafeBottom) return
+        // #39：挖孔侧 inset 也进比较键——横屏首帧 insets 未到/左右翻转
+        // 挖孔换边时 bottom 可能不变，只比 bottom 会直接 return，safeSideL/R
+        // 停在旧值（codex 评审 P2）。
+        if (navBottomInset() == lastSafeBottom && safeSideInsetsCss() == lastSafeSides) return
         // 变化后 300ms 采【实测值】采纳（debounce：持续变化只重置计时）。
         // 原实现的「标志位+递归」是空转死循环：延迟任务先清标志再递归，
         // 递归永远走等待分支，lastSafeBottom 永不更新——真机全靠 300ms
@@ -3696,8 +3894,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         val task = Runnable {
             insetSettleTask = null
             val settled = navBottomInset()
-            if (settled == lastSafeBottom) return@Runnable
+            val sides = safeSideInsetsCss()
+            if (settled == lastSafeBottom && sides == lastSafeSides) return@Runnable
             lastSafeBottom = settled
+            lastSafeSides = sides
             (keyboardView?.parent as? View)?.requestLayout()
             pushBridgeHello()
         }
@@ -3720,6 +3920,34 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             diagTouchCount = 0
             diagTouchFlushAt = now
         }
+    }
+
+    // 收起取证：收笔也走 1s 聚合（与 down 对称——stroke 只在 up 后才
+    // 进识别，收起夹在 up 与识别之间的场合要靠这对计数钉死时序）。
+    private var diagTouchUpCount = 0
+    private var diagTouchUpFlushAt = 0L
+
+    private fun noteTouchUp() {
+        diagTouchUpCount += 1
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - diagTouchUpFlushAt >= 1000L) {
+            Diagnostics.log("ui", "touchUp webview n=$diagTouchUpCount")
+            diagTouchUpCount = 0
+            diagTouchUpFlushAt = now
+        }
+    }
+
+    /** 收起取证的核心一行：ACTION_CANCEL 不聚合、带屏幕坐标即时落
+     *  诊断——事件被系统抢走（返回/主页手势条、来电、窗口失焦）时
+     *  WebView 收到的就是 CANCEL 而非 UP。三边距离进入手势条范围
+     *  （左/右 ~20dp、底部 ~16dp 起）即可定罪导航手势抢断。rawX/Y
+     *  本就是屏幕坐标（真机 1080x2412 一类直接对得上）。 */
+    private fun noteTouchCancel(event: android.view.MotionEvent) {
+        val w = resources.displayMetrics.widthPixels
+        val h = realHeightPixels()
+        Diagnostics.log("ui",
+            "touchCancel webview rawX=${event.rawX.toInt()} rawY=${event.rawY.toInt()} " +
+                "edgeL=${event.rawX.toInt()} edgeR=${(w - event.rawX).toInt()} edgeB=${(h - event.rawY).toInt()}")
     }
 
     private inner class DiagWebView(context: android.content.Context) : WebView(context) {
@@ -3752,7 +3980,32 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             visDiag("vis=${if (visibility == android.view.View.VISIBLE) "V" else "G"}")
         }
         override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
-            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) noteTouchDown()
+            // 收起取证：down/up 聚合计数 + cancel 即时带坐标（见各 note
+            //  的注释）。多指也即时落行——平板（PJC110 一类）手写手掌
+            //  误触第二指是收起的另一候选路径，聚合计数看不到指头数。
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    diagLastDownAt = android.os.SystemClock.elapsedRealtime()
+                    noteTouchDown()
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_POINTER_UP -> {
+                    diagLastUpAt = android.os.SystemClock.elapsedRealtime()
+                    noteTouchUp()
+                }
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    diagLastCancelAt = android.os.SystemClock.elapsedRealtime()
+                    noteTouchCancel(event)
+                }
+                android.view.MotionEvent.ACTION_POINTER_DOWN ->
+                    if (event.pointerCount == 2) {
+                        // rawX/rawY 只报 pointer 0：借 view 原点偏移换算成屏幕坐标
+                        val offX = event.rawX - event.x
+                        val offY = event.rawY - event.y
+                        Diagnostics.log("ui",
+                            "touchMulti pc=2 rawX=${(event.getX(1) + offX).toInt()} " +
+                                "rawY=${(event.getY(1) + offY).toInt()}")
+                    }
+            }
             return super.dispatchTouchEvent(event)
         }
         // 窗口焦点通道两轮真机验证均不触发（ViewTreeObserver 与 View
@@ -3763,48 +4016,20 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     private inner class FixedHeightInputView(private val desiredHeight: Int) : FrameLayout(this) {
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
- // A user-dragged height wins when set; landscape
-            // must never cover a third of the screen - the host editor above
-            // stays usable. Portrait keeps the 272dp design budget unless
-            // the user adjusted it.
-            //
-            // The height must come from STABLE quantities
-            // only. Deriving it from the incoming measure spec bakes in the
-            // transient height ColorOS reports while the IME window is still
-            // animating in (~120px spec -> 40px view) and nothing re-measures
-            // once the window settles at its real 360px - the keyboard stayed
-            // a 40px sliver, reproducible on every landscape show. The window
-            // wraps this view, so it settles at exactly the height measured
-            // here; the display metrics do not fluctuate mid-animation.
-            val landscape =
-                resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-            val base = if (keyboardHeightOverride > 0) keyboardHeightOverride else desiredHeight
-            val screenH = resources.displayMetrics.heightPixels
- // Review Mirror setKeyboardHeight's clamps here so a
-            // pref carried to a smaller screen (backup restore, freeform)
-            // cannot push the keyboard past its budget either.
- // the landscape ceiling mirrors the real-screen
-            // fraction (see setKeyboardHeight) - app-space heightPixels sits
-            // below the content minimum and clipped the bottom row. The view
-            // is bottom-anchored to the SCREEN, so the gesture-nav strip
-            // (lastSafeBottom) overlaps it: the keyboard's own budget must
-            // grow by the inset or the JS row floor (32css) overflows and
-            // the bottom row lands under the strip.
-            val height = when {
- // Review P2-6: navBottomInset resolves the -1
-                // "not observed yet" sentinel through the fallback chain;
-                // the raw field could subtract a pixel from the first frame.
-                // bottomPad rides OUTSIDE the content clamp (mode-fallback
-                // §3): the user's bottom blank strip adds on top of the
-                // clamped content height in every branch.
-                landscape && screenH > 0 ->
-                    minOf(base, realHeightPixels() / 2) + safeBottomSnapshot() + bottomPadPx()
-                // round-8: 竖屏同样按真屏 45%（screenH 是 app-space，会把
-                // 上限压到 340css——与 setKeyboardHeight 的钳制口径不一致，
-                // 调高了也会在这里被量回去）。见 setKeyboardHeight 注释。
-                screenH > 0 -> minOf(base, (realHeightPixels() * 45) / 100) + safeBottomSnapshot() + bottomPadPx()
-                else -> base + safeBottomSnapshot() + bottomPadPx()
-            }
+            // The height must come from STABLE quantities only. Deriving it
+            // from the incoming measure spec bakes in the transient height
+            // ColorOS reports while the IME window is still animating in
+            // (~120px spec -> 40px view) and nothing re-measures once the
+            // window settles at its real 360px - the keyboard stayed a 40px
+            // sliver, reproducible on every landscape show. The window wraps
+            // this view, so it settles at exactly the height measured here;
+            // the display metrics do not fluctuate mid-animation.
+            // 口径统一在 contentHeightPx：用户高度（或默认）按方向上限钳制
+            // （横屏=设置百分比、竖屏=真屏 45%，与 setKeyboardHeight 同源），
+            // 叠加手势条安全区与底部留白（pad 在钳制之外，mode-fallback §3），
+            // 整体以真屏高封顶——100% 上限 + 留白时键区少几像素，不能把
+            // 窗口量得比屏幕还高。
+            val height = contentHeightPx(desiredHeight)
  // The view carries the transparent popup band on
             // top; onComputeInsets keeps the app sized to the keyboard
             // alone (contentTopInsets = band).

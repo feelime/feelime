@@ -145,6 +145,13 @@
       <small data-i18n="entry.skin.subtitle">色调 · 饱和度 · 背景图</small></span>
       <span class="entry-chevron" aria-hidden="true">›</span>
     </button>
+    <!-- #39 横屏三项（挖孔安全区/高度上限/透明度）归外观（用户拍板：
+         显示形态类设置，不与模糊音等输入设置混排）。 -->
+    <button class="entry" type="button" data-target="landscape" data-keywords="横屏 landscape 挖孔 安全区 高度 上限 透明度 铺满">
+      <span class="entry-label"><span data-i18n="entry.landscape.title">横屏显示</span>
+      <small data-i18n="entry.landscape.subtitle">挖孔安全区 · 高度上限 · 透明度</small></span>
+      <span class="entry-chevron" aria-hidden="true">›</span>
+    </button>
     <label class="row switch-row" for="keyBubble">
       <span class="row-label">
         <span data-i18n="input.feel.keyBubble">按键气泡</span>
@@ -644,6 +651,36 @@
         <span class="row-label"><span data-i18n="input.fuzzy.g.nasal">前后鼻音</span><small data-i18n="input.fuzzy.g.nasal.hint">an/ang、en/eng、in/ing：打 zang 也能出「张」，打 zhon 也能出「中」。</small></span>
         <input type="checkbox" id="fuzzyBit16" class="toggle" data-fuzzy-bit="16">
       </label>
+    </section>
+  </main>
+</div>
+
+<!-- 横屏显示（#39）：挖孔安全区 / 高度上限 / 整体透明度——三项都是
+     横屏专属，收进一个三级页。 -->
+<div class="page" data-page="landscape" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="appearance" data-i18n-aria="nav.backAppearance" aria-label="返回外观">‹</button>
+    <h2 class="page-title" data-i18n="page.landscape">横屏显示</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-landscape" aria-labelledby="landscapeTitle">
+      <div class="section-heading"><h2 id="landscapeTitle" data-keywords="横屏 挖孔 安全区 高度 上限 透明度 铺满 landscape" data-i18n="input.landscape.title">横屏显示</h2><span class="eyebrow" data-i18n="input.landscape.badge">横屏</span></div>
+      <label class="row switch-row" for="landscapeSafeArea">
+        <span class="row-label"><span data-i18n="input.landscape.safeArea">左右留安全区</span><small data-i18n="input.landscape.safeAreaHint">键盘背景铺满含挖孔的整条短边，但按键区避开挖孔侧；关闭后按键也铺满。</small></span>
+        <input type="checkbox" id="landscapeSafeArea" class="toggle">
+      </label>
+      <div class="row">
+        <label class="row-label" for="landscapeCeil"><span data-i18n="input.landscape.ceil">高度上限</span><small data-i18n="input.landscape.ceilHint">横屏键盘最高可占屏幕高度的百分比（40%–100%）。</small></label>
+        <output id="landscapeCeilOut" for="landscapeCeil" class="range-out">60%</output>
+      </div>
+      <input type="range" id="landscapeCeil" min="40" max="100" step="5" value="60"
+             class="slider" aria-label="横屏高度上限" data-i18n-aria="input.landscape.ceil" data-keywords="横屏 高度 上限 百分比">
+      <div class="row">
+        <label class="row-label" for="landscapeOpacity"><span data-i18n="input.landscape.opacity">整体不透明度</span><small data-i18n="input.landscape.opacityHint">横屏时键盘整层（含背景）的透明程度，调低可看到被键盘盖住的内容。</small></label>
+        <output id="landscapeOpacityOut" for="landscapeOpacity" class="range-out">100%</output>
+      </div>
+      <input type="range" id="landscapeOpacity" min="10" max="100" step="5" value="100"
+             class="slider" aria-label="横屏整体不透明度" data-i18n-aria="input.landscape.opacity" data-keywords="横屏 透明 半透明 opacity">
     </section>
   </main>
 </div>
