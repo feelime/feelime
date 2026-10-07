@@ -647,6 +647,8 @@ details summary {
 /* #39 横屏三级页：滑杆读数（右对齐、等宽、弱化）。 */
 .range-out { font-variant-numeric: tabular-nums; color: var(--muted, #8a8f98);
     font-size: 13px; min-width: 44px; text-align: right; }
+/* #42 行内滑杆组合：读数 + 滑杆横向并排（候选字号）。 */
+.range-group { display: flex; align-items: center; gap: 10px; flex: none; }
 .slider { flex: none; width: 150px; accent-color: var(--accent, #18ad7c); }
 .slider-with-action { display: flex; align-items: center; gap: 8px; flex: none; }
 .slider-with-action .slider { width: 120px; }

@@ -231,10 +231,12 @@ const I18N = {
         "ck.f.mode.combo": "组合",
         "ck.f.mode.advanced": "高级",
         "ck.f.mode.open": "打开",
+        "ck.f.mode.setting": "设置",
         "ck.f.text": "要输入的文本，如 :w 或 me@example.com",
         "ck.f.mods": "修饰键",
         "ck.f.key": "按键",
         "ck.f.open.uri": "链接地址",
+        "ck.f.setting.pick": "要打开的设置项",
         "ck.f.open.placeholder": "如 doubao:// 或 https://fanyi.baidu.com",
         "ck.f.open.presets": "常用预设",
         "ck.f.open.presetPick": "选择常用应用…",
@@ -257,6 +259,7 @@ const I18N = {
         "ck.err.t": "键面不能为空",
         "ck.err.tap": "点击输出不能为空",
         "ck.err.open": "链接需为 http(s) 网页地址或应用链接（如 doubao://），且不能含空格",
+        "ck.err.setting": "请选择要打开的设置项",
         "ck.err.tapLong": "点击输出超过 128 字符（链接太长），请换短链接",
         "ck.note.saved": "已保存，键盘下次载入时生效",
         "ck.note.deleted": "已删除",
@@ -507,7 +510,7 @@ const I18N = {
         "input.feel.padLandscape": "底部留白 · 横屏",
         "input.feel.padLandscapeHint": "横屏单独保存，互不影响。",
         "input.feel.candFont": "候选字号",
-        "input.feel.candFontHint": "候选词文字的大小，不改变键盘行高。",
+        "input.feel.candFontHint": "候选词文字的大小（80%-150%），不改变键盘行高。",
         "input.feel.preeditFont": "拼音字号",
         "input.feel.preeditFontHint": "打字时拼音字母的大小；特大档会占一行更多高度。",
         "input.feel.preeditBold": "拼音加粗",
@@ -872,10 +875,12 @@ const I18N = {
         "ck.f.mode.combo": "Combo",
         "ck.f.mode.advanced": "Adv",
         "ck.f.mode.open": "Open",
+        "ck.f.mode.setting": "Settings",
         "ck.f.text": "Text to type, e.g. :w or me@example.com",
         "ck.f.mods": "Mods",
         "ck.f.key": "Key",
         "ck.f.open.uri": "Link",
+        "ck.f.setting.pick": "Setting to open",
         "ck.f.open.placeholder": "e.g. doubao:// or https://example.com",
         "ck.f.open.presets": "Presets",
         "ck.f.open.presetPick": "Pick a preset…",
@@ -898,6 +903,7 @@ const I18N = {
         "ck.err.t": "Key face is required",
         "ck.err.tap": "Tap action is required",
         "ck.err.open": "Link must be an http(s) web address or an app link like doubao://, with no spaces",
+        "ck.err.setting": "Pick a setting first",
         "ck.err.tapLong": "Tap action exceeds 128 characters (link too long) - please use a shorter link",
         "ck.note.saved": "Saved; applied the next time the keyboard loads",
         "ck.note.deleted": "Deleted",
@@ -1144,7 +1150,7 @@ const I18N = {
         "input.feel.padLandscape": "Bottom padding · Landscape",
         "input.feel.padLandscapeHint": "Saved separately from portrait.",
         "input.feel.candFont": "Candidate text size",
-        "input.feel.candFontHint": "Size of the candidate words; keyboard row height is unchanged.",
+        "input.feel.candFontHint": "Size of the candidate words (80%-150%); keyboard row height is unchanged.",
         "input.feel.preeditFont": "Pinyin text size",
         "input.feel.preeditFontHint": "Size of the pinyin letters while typing; the largest level takes extra band height.",
         "input.feel.preeditBold": "Bold pinyin",
@@ -1450,6 +1456,9 @@ function eventText(event, fallbackKey, values) {
 /* --- event channel ----------------------------------------------------- */
 
 window.FeelimeSettings = {
+    // #51 定制按键 setting 型的纯函数出口（自动化/表单回填测试用）。
+    ckTapFromDraft,
+    ckTapParse,
     /** 系统 BACK 键入口（2026-10-04 用户裁定）：编辑态/脏态时壳侧转进
      *  这里，页面弹框问用户——放弃编辑（退出编辑态，改动保留为脏）/继
      *  继续编辑；脏态复用既有离开确认。普通翻页壳侧自理（onSubPage 逐
@@ -1591,6 +1600,10 @@ window.FeelimeSettings = {
 
 let currentPage = "home";
 
+// #51 各页滚动位置备忘：全文档共享一个 scroller（window），hidden 切换
+// 会把 scrollY 钳到 0——离开页记下、返回页恢复，深层设置不再每次回顶。
+const pageScrolls = {};
+
 function showPage(name) {
     if (!PAGES.includes(name)) return;
     // #39-12 定制按键页：脏态离开先弹页内确认（改完退出没保存都不
@@ -1619,11 +1632,19 @@ function showPage(name) {
         if (typeof ckEndDragSession === "function") ckEndDragSession();
         if (typeof ckReportState === "function") ckReportState();
     }
+    // #51 离开页记滚动（早退分支没动 currentPage，无需记账）。
+    if (typeof window.scrollTo === "function") pageScrolls[currentPage] = window.scrollY;
     currentPage = name;
     document.querySelectorAll("[data-page]").forEach(node => {
         node.hidden = node.dataset.page !== name;
     });
-    if (typeof window.scrollTo === "function") window.scrollTo(0, 0);
+    // #51 返回已知页恢复原位，新访问从顶部开始。focusSetting 随后的
+    // scrollIntoView 会覆盖恢复值，深链行为不受影响。
+    if (typeof window.scrollTo === "function") {
+        const memo = pageScrolls[name];
+        if (typeof memo === "number" && memo > 0) window.scrollTo(0, memo);
+        else window.scrollTo(0, 0);
+    }
     // 外观页预览：真实键盘在屏幕底部弹出、本页窗口被压缩；离开时收起。
     // 皮肤页（从外观拆出）同样要真实键盘预览：调色时看得见效果——进出
     // 两个预览页（appearance↔skin）不收键盘（codex P1：隐藏条件要与
@@ -1724,7 +1745,19 @@ function renderFeel(state) {
     };
     setSelect("bottomPadPortrait", state.bottomPadPortrait ?? 0, ["0", "12", "24", "36", "48"]);
     setSelect("bottomPadLandscape", state.bottomPadLandscape ?? 0, ["0", "12", "24", "36", "48"]);
-    setSelect("candidateFont", state.candidateFont ?? 0, ["0", "1", "2"]);
+    // #42 候选字号滑杆（80-150）：拖动中不被 state 回显打断；state
+    //  未带该键时回落 100%（老 bridge 推送）。
+    {
+        const cand = $("candidateFont");
+        const candVal = Number(state.candidateFont ?? 100);
+        if (Number.isFinite(candVal) && candVal >= 80 && candVal <= 150 &&
+            document.activeElement !== cand) {
+            cand.value = String(candVal);
+        }
+        const shown = parseInt(cand.value, 10);
+        $("candidateFontOut").textContent =
+            `${Number.isFinite(shown) ? shown : 100}%`;
+    }
     setSelect("preeditFont", state.preeditFont ?? 0, ["0", "1", "2"]);
     setSelect("oneHand", state.oneHand ?? 0, ["0", "1", "2"]);
     setSelect("oneHandPad", state.oneHandPad ?? 0, ["0", "15", "25", "35"]);
@@ -2405,8 +2438,22 @@ function focusSetting(id) {
     }
     flashAnchor(row);
     // 显式带 #：不依赖浏览器对 hash 赋值的规范化（fake DOM/自动化同口径）。
-    if (window.location) window.location.hash = "#" + id;
+    // #51 hashtag 直达：写入即消费（lastAppliedHash 挡 hashchange 回环）。
+    if (window.location) {
+        lastAppliedHash = "#" + id;
+        window.location.hash = lastAppliedHash;
+    }
     return true;
+}
+
+// #51 hashtag 直达：设置项锚 #<element-id>。启动消费一次；外部改写
+// （地址栏/automation）经 hashchange 重新聚焦。focusSetting 自己写回的
+// hash 不再回环。
+let lastAppliedHash = "";
+function applyLocationHash() {
+    const hash = (window.location && window.location.hash) || "";
+    if (!hash || hash === lastAppliedHash) return;
+    focusSetting(hash.slice(1));
 }
 
 function runSettingsSearch(query) {
@@ -3271,6 +3318,10 @@ landscapeOpacityInput.addEventListener("input", () => {
 landscapeOpacityInput.addEventListener("change", () =>
     call("setLandscapeOpacity", parseInt(landscapeOpacityInput.value, 10)));
 $("bottomPadLandscape").addEventListener("change", event => call("setBottomPadLandscape", parseInt(event.target.value, 10)));
+// #42 拖动实时刷新读数，松手才落盘一次（照抄 keyOpacity/landscapeCeil）。
+$("candidateFont").addEventListener("input", event => {
+    $("candidateFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
+});
 $("candidateFont").addEventListener("change", event => call("setCandidateFont", parseInt(event.target.value, 10)));
 $("preeditFont").addEventListener("change", event => call("setPreeditFont", parseInt(event.target.value, 10)));
 $("preeditBold").addEventListener("change", event => call("setPreeditBold", event.target.checked));
@@ -3625,11 +3676,35 @@ function ckCloseModal() {
     ckSel = null;
 }
 
+/** #51 定制按键「打开设置项」的锚点清单：遍历各页设置行，取行内首
+ *  个带 id 的控件（或行自身 id）作锚，label 带页名前缀便于长下拉里
+ *  找到。与 focusSetting 的 getElementById 口径一致。 */
+function ckSettingAnchors() {
+    const out = [];
+    document.querySelectorAll("[data-page]").forEach(page => {
+        const pageName = page.dataset.page;
+        const pageTitle = (page.querySelector("h2, .page-title")?.textContent || pageName).trim().slice(0, 10);
+        page.querySelectorAll(".row, label.row").forEach(row => {
+            const control = row.querySelector("select[id], input[id]:not([type=hidden]), button[id], [id]");
+            const id = (control && control.id) || row.id;
+            if (!id) return;
+            const label = (row.querySelector(".row-label span:not(small), .row-label")?.childNodes[0]?.textContent ||
+                row.getAttribute("aria-label") || id).trim().slice(0, 16);
+            if (!label) return;
+            out.push([id, `${pageTitle} · ${label}`]);
+        });
+    });
+    return out;
+}
+
 /** tap 反猜型别 + 拆字段（编辑已有键时回填表单）。 */
 function ckTapParse(tap) {
     // [open:URI] 在 lowercase 之前识别：URI 大小写敏感。
     const open = /^\[open:(.+)\]$/.exec(String(tap || "").trim());
     if (open) return { mode: "open", open: open[1].trim() };
+    // [setting:id]（#51 定制按键绑定设置项）在 lowercase 之前识别。
+    const setting = /^\[setting:([\w-]{1,64})\]$/.exec(String(tap || "").trim());
+    if (setting) return { mode: "setting", setting: setting[1] };
     const m = /^\[([a-z0-9+]+)\]$/.exec(String(tap || "").trim().toLowerCase());
     if (m) {
         const parts = m[1].split("+");
@@ -3653,6 +3728,10 @@ function ckTapFromDraft(d) {
     if (d.mode === "open") {
         const uri = (d.open || "").trim();
         return uri ? "[open:" + uri + "]" : "";
+    }
+    if (d.mode === "setting") {
+        const id = (d.setting || "").trim();
+        return id ? "[setting:" + id + "]" : "";
     }
     if (d.mode === "single") return d.single ? "[" + d.single + "]" : "";
     if (d.mode === "combo") {
@@ -4254,7 +4333,7 @@ function ckBuildForm() {
 
     const modeSeg = ckSegment([["text", t("ck.f.mode.text")], ["single", t("ck.f.mode.single")],
         ["combo", t("ck.f.mode.combo")], ["open", t("ck.f.mode.open")],
-        ["advanced", t("ck.f.mode.advanced")]],
+        ["setting", t("ck.f.mode.setting")], ["advanced", t("ck.f.mode.advanced")]],
         d.mode, v => { d.mode = v; ckBuildForm(); });
     modeSeg.id = "ckMode";
     modeSeg.classList.add("ck-mode-seg");
@@ -4400,6 +4479,31 @@ function ckBuildAction(holder) {
         hint.className = "hint";
         hint.textContent = t("ck.f.open.hint");
         holder.append(hint);
+    } else if (d.mode === "setting") {
+        // 打开设置项（#51）：从当前页面动态收集可直达的设置行锚点，
+        // 跳转经 openSetupPage（与键盘 tile 深链同通道）。
+        const sel = document.createElement("select");
+        sel.id = "ckSettingPick";
+        const anchors = ckSettingAnchors();
+        const placeholder = document.createElement("option");
+        placeholder.textContent = t("ck.f.setting.pick");
+        placeholder.value = "";
+        sel.append(placeholder);
+        anchors.forEach(([id, label]) => {
+            const opt = document.createElement("option");
+            opt.textContent = label;
+            opt.value = id;
+            sel.append(opt);
+        });
+        sel.value = anchors.some(([id]) => id === d.setting) ? d.setting : "";
+        sel.addEventListener("change", () => {
+            d.setting = sel.value;
+            if (!d.t.trim()) {
+                const found = anchors.find(([id]) => id === sel.value);
+                if (found) d.t = found[1].slice(0, 6);
+            }
+        });
+        holder.append(ckField(t("ck.f.setting.pick"), sel));
     } else {
         // 高级：标签 + ? 帮助（点开 DSL 速查）+ 输入框，行式对齐。
         const labelWrap = document.createElement("span");
@@ -4446,6 +4550,14 @@ $("ckApply").addEventListener("click", () => {
         const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) &&
             !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
         if (!ok) return setNote("ckEditNote", t("ck.err.open"));
+    }
+    // setting 型（#51）：锚 id 白名单字符 + 存在性（表单收集不到的
+    // 手输 id 直接拒，跳转必落空）。
+    if (d.mode === "setting") {
+        const id = (d.setting || "").trim();
+        if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
+            return setNote("ckEditNote", t("ck.err.setting"));
+        }
     }
     const tap = ckTapFromDraft(d);
     if (!tap) return setNote("ckEditNote", t("ck.err.tap"));
@@ -4605,6 +4717,9 @@ $("btnCopyAbout").addEventListener("click", () => {
 document.querySelectorAll("[data-target]").forEach(entry => {
     entry.addEventListener("click", () => showPage(entry.dataset.target));
 });
+// #51 hashtag 直达：启动消费当前锚 + 外部改写监听。
+window.addEventListener("hashchange", applyLocationHash);
+applyLocationHash();
 
 document.querySelectorAll("[data-back]").forEach(back => {
     back.addEventListener("click", () => showPage(back.dataset.back || "home"));

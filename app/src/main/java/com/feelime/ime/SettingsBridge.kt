@@ -399,12 +399,22 @@ fun readFeelPopupSnap(context: Context): Int =
         .takeIf { it in 0..2 }
         ?: 1
 
-/** 候选字号档位：0=正常 1=大 2=更大（issue #2）。 */
+/** 候选字号：80-150 连续百分比滑杆（issue #42）。旧档位 0/1/2
+ *  读侧一次性映射（100/120/135），无数据迁移。 */
+val CANDIDATE_FONT_RANGE = 80..150
+
 fun readCandidateFont(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getInt(PREF_CANDIDATE_FONT, 0)
-        .takeIf { it in 0..2 }
-        ?: 0
+        .getInt(PREF_CANDIDATE_FONT, 100)
+        .let {
+            when (it) {
+                0 -> 100
+                1 -> 120
+                2 -> 135
+                in CANDIDATE_FONT_RANGE -> it
+                else -> 100
+            }
+        }
 
 /** 中文联想开关（docs/design/association.md）：默认关。 */
 const val PREF_ASSOCIATION = "association_on"
@@ -1268,7 +1278,7 @@ class SettingsBridge(
     /** 候选字号档位（issue #2）：0=正常 1=大 2=更大。 */
     @JavascriptInterface
     fun setCandidateFont(size: Int, token: String) = guarded(token) {
-        if (size !in 0..2) {
+        if (size !in CANDIDATE_FONT_RANGE) {
             pushEvent(
                 JSONObject()
                     .put("type", "candidateFontError")

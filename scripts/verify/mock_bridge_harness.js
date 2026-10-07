@@ -795,6 +795,9 @@ class MockNative {
     commitText(text, token) {
         this._record('commitText', [text, token]);
     }
+    pasteText(text, token) {
+        this._record('pasteText', [text, token]);
+    }
     clearComposing(token) {
         this._record('clearComposing', [token]);
     }

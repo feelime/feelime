@@ -6,6 +6,9 @@ interface EditorPort {
     fun finishComposing()
     fun setComposing(text: String)
     fun commitText(text: String)
+    /** Commit without feeding #41 stats - external text the user did not
+     * type (panel paste, issue #44). Default tracks like commitText. */
+    fun commitTextUntracked(text: String) = commitText(text)
     /** Re-mark exactly the most recent owned commit as editable text. */
     fun reopenComposing(start: Int, end: Int, word: String): Boolean = false
     fun selectedText(): String?

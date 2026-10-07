@@ -453,13 +453,12 @@
       <div class="row language-row">
         <span class="row-label">
           <span data-i18n="input.feel.candFont">候选字号</span>
-          <small data-i18n="input.feel.candFontHint">候选词文字的大小，不改变键盘行高。</small>
+          <small data-i18n="input.feel.candFontHint">候选词文字的大小（80-150%），不改变键盘行高。</small>
         </span>
-        <select id="candidateFont" class="select" aria-label="候选字号" data-i18n-aria="input.feel.candFont">
-          <option value="0">100%</option>
-          <option value="1">120%</option>
-          <option value="2">135%</option>
-        </select>
+        <span class="range-group">
+          <output id="candidateFontOut" for="candidateFont" class="range-out">100%</output>
+          <input type="range" id="candidateFont" class="slider" min="80" max="150" step="5" value="100" aria-label="候选字号" data-i18n-aria="input.feel.candFont" data-keywords="候选 大小 字号 百分比">
+        </span>
       </div>
       <div class="row language-row">
         <span class="row-label">

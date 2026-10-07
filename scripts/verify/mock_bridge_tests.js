@@ -1164,6 +1164,101 @@ test('same-key second finger: system cancel keeps the owner path alive', {since:
     equal(world.native.of('key').length, 1, 'one commit total');
 });
 
+test('page cancel ends only the popup owner, including pointercancel', {since: '3.73.34'}, () => {
+    for (const type of ['touchcancel', 'pointercancel']) {
+        const world = new KeyboardWorld();
+        world.js = world.js.replace('const keyboard = new FeelimeKeyboard();',
+            'const keyboard = window.testKeyboard = new FeelimeKeyboard();');
+        world.build();
+        world.hello({ keyBubble: true });
+        const kb = world.context.window.testKeyboard;
+        const e = world.key('e');
+        const a = touchPoint(1, 100, 20);
+        const b = touchPoint(2, 104, 20);
+        // Pointer IDs deliberately differ from Touch identifiers.
+        world.dispatch(e, 'pointerdown', 100, 20,
+            { pointerType: 'touch', pointerId: 41, clientX: 100, clientY: 20 });
+        world.dispatch(e, 'touchstart', 100, 20, { changedTouches: [a], touches: [a] });
+        world.clock.advance(360);
+        equal(kb.popup.fingerId, 1, 'A owns the popup');
+        world.dispatch(e, 'pointerdown', 104, 20,
+            { pointerType: 'touch', pointerId: 42, clientX: 104, clientY: 20 });
+        world.dispatch(e, 'touchstart', 104, 20, { changedTouches: [b], touches: [a, b] });
+        const cancel = (touch, pointerId, rest) => world.dispatch(world.document,
+            type, touch.clientX, touch.clientY, { changedTouches: [touch], touches: rest,
+                pointerType: 'touch', pointerId });
+        // 事件只经过 document，故意绕开键级处理；次指取消不能收 owner。
+        cancel(b, 42, [a]);
+        equal(kb.popup.fingerId, 1, 'B cancel preserves the owner');
+        assert(e.classList.contains('active-touch'), 'A press survives');
+        cancel(a, 41, []);
+        equal(kb.popup, null, 'owner cancel destroys popup state');
+        assert(!world.$('keyPopup').classList.contains('open'), 'popup DOM closed');
+        equal(kb.pressedKeys.size, 0, 'pressed keys cleared');
+        equal(kb.pressById.size, 0, 'finger ledger cleared');
+        equal(kb.touchOrigin, null, 'gesture owner cleared');
+        assert(!e.classList.contains('active-touch'), 'highlight cleared');
+        assert(world.$('keyBubble').hidden, 'bubble cleared immediately');
+        world.clock.advance(500);
+        equal(kb.popup, null, 'cancelled timer cannot reopen popup');
+        equal(world.native.of('key').length, 0, 'cancel commits nothing');
+        // 浏览器随后补发 touchcancel 也必须幂等。
+        world.dispatch(e, 'touchcancel', 100, 20, { changedTouches: [a], touches: [] });
+        equal(world.native.of('key').length, 0, 'duplicate cancel commits nothing');
+    }
+});
+
+test('new tap works after page-level popup cancel', {since: '3.73.34'}, () => {
+    const world = fresh();
+    const e = world.key('e');
+    const a = touchPoint(1, 100, 20);
+    world.dispatch(e, 'touchstart', 100, 20, { changedTouches: [a], touches: [a] });
+    world.clock.advance(360);
+    world.dispatch(world.document, 'touchcancel', 100, 20,
+        { changedTouches: [a], touches: [] });
+    assert(!world.$('keyPopup').classList.contains('open'), 'cancel closes popup');
+    world.tap(e);
+    equal(world.native.of('key').length, 1, 'new sequence delivers one key');
+    equal(world.native.of('key')[0].args[0], 'e', 'new tap is not swallowed');
+});
+
+test('owner cancel preserves the other finger and its next flick', {since: '3.73.34'}, () => {
+    const world = fresh();
+    const e = world.key('e');
+    const q = world.key('q');
+    const a = touchPoint(1, 100, 20);
+    const b = touchPoint(2, 20, 20);
+    world.dispatch(e, 'touchstart', 100, 20, { changedTouches: [a], touches: [a] });
+    world.clock.advance(360);
+    world.dispatch(q, 'touchstart', 20, 20, { changedTouches: [b], touches: [a, b] });
+    world.dispatch(world.document, 'touchcancel', 100, 20,
+        { changedTouches: [a], touches: [b] });
+    assert(!world.$('keyPopup').classList.contains('open'), 'owner popup closes mid-sequence');
+    assert(!e.classList.contains('active-touch'), 'cancelled key released');
+    assert(q.classList.contains('active-touch'), 'other key remains pressed');
+    world.clock.advance(1);
+    world.dispatch(q, 'touchmove', 20, -40,
+        { changedTouches: [touchPoint(2, 20, -40)], touches: [touchPoint(2, 20, -40)] });
+    world.dispatch(q, 'touchend', 20, -40,
+        { changedTouches: [touchPoint(2, 20, -40)], touches: [] });
+    equal(world.native.of('key').length, 1, 'remaining finger still commits');
+    equal(world.native.of('key')[0].args[0], '1', 'remaining finger inherits flick ownership');
+});
+
+test('page cancel clears a live bubble and pending long press', {since: '3.73.34'}, () => {
+    const world = fresh({ keyBubble: true });
+    const e = world.key('e');
+    const a = touchPoint(1, 100, 20);
+    world.dispatch(e, 'touchstart', 100, 20, { changedTouches: [a], touches: [a] });
+    assert(!world.$('keyBubble').hidden, 'bubble visible before cancellation');
+    world.dispatch(world.document, 'touchcancel', 100, 20,
+        { changedTouches: [a], touches: [] });
+    assert(world.$('keyBubble').hidden, 'cancel skips bubble linger');
+    world.clock.advance(500);
+    assert(!world.$('keyPopup').classList.contains('open'), 'pending hold cannot open a popup');
+    equal(world.native.of('key').length, 0, 'cancel commits nothing');
+});
+
 test('same-key both fingers end in one event: the owner has the final say', {since: '3.73.22'}, () => {
     const world = fresh();
     const e = world.key('e');
@@ -1696,14 +1791,18 @@ test('quote tab toggles zh/en; en side supplies ascii brackets', {since: '3.28.0
     const quoteTab = () => [...world.document.querySelectorAll('[data-sym-cat]')]
         .find(el => el.dataset.symCat === 'quote');
     world.tap(quoteTab());
-    equal(quoteTab().querySelector('.cat-sub').textContent, '中',
-        'quote defaults to the zh table');
+    equal(quoteTab().querySelector('.cat-sub').textContent, 'En',
+        'quote defaults to the en table, following the mode (issue #48)');
+    equal([...world.$('symGrid').children[0].children].map(k => k.textContent).join(''),
+        '[]{}()<>\'"', 'en quote rows lead with ascii brackets');
+    world.tap(quoteTab());
+    equal(quoteTab().querySelector('.cat-sub').textContent, '中', 'badge flips');
     equal([...world.$('symGrid').children[0].children].map(k => k.textContent).join(''),
         '“”‘’„‟«»‹›', 'zh quote rows');
+    // Flip back to en before committing from it (the literal-commit probe
+    // needs the ascii bracket cell on screen).
     world.tap(quoteTab());
-    equal(quoteTab().querySelector('.cat-sub').textContent, 'En', 'badge flips');
-    equal([...world.$('symGrid').children[0].children].map(k => k.textContent).join(''),
-        '[]{}()<>\'"', 'en quote table leads with ascii brackets');
+    equal(quoteTab().querySelector('.cat-sub').textContent, 'En', 'badge flips back');
     world.tap([...world.$('symGrid').querySelectorAll('.kb-key')].find(
         el => el.textContent === '[',
     ));
@@ -1778,7 +1877,7 @@ test('symbol category strip lists all batches with stable keys', {since: '3.28.0
     );
     equal(
         cats.map(c => c.textContent).join(','),
-        '常用En,最近,引号中,货币,数学,方向,序号,拼音,平假名,片假名,希腊',
+        '常用En,最近,引号En,货币,数学,方向,序号,拼音,平假名,片假名,希腊',
         'labels aligned with the category list (paired tables carry 中/En badges)',
     );
     // Japanese kana and Greek are newer symbol-layer additions.
@@ -2408,6 +2507,39 @@ test('custom [open:URI] steps: validate, execute, and mix with text', {since: '3
     assert(world.$('toast').textContent.includes('升级 App'),
         'missing bridge surfaces an upgrade hint');
     delete world.context.window.FeelimeNative.openLink;
+});
+
+test('custom keys: [setting:id] opens a settings anchor (issue #51)', {since: '3.73.34'}, () => {
+    const world = fresh();
+    const save = text => world.context.window.Feelime.saveCustomJson(text);
+    // 合法锚 id 落表；点按走 openSetupPage（与键盘 tile 深链同通道）。
+    save(JSON.stringify({ version: 1, rows: [[
+        { t: '声音', tap: '[setting:keySound]' },
+    ], [], []] }));
+    assert(world.$('toast').textContent.includes('已保存 1 个键'), 'setting key saved');
+    world.tap(world.$('toolCustom'));
+    const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')]
+        .filter(el => el.dataset.role !== 'backspace');
+    world.tap(keys.find(el => el.textContent === '声音'));
+    const calls = world.native.of('openSetupPage');
+    equal(calls.length, 1, 'setting key fires openSetupPage once');
+    const token = world.native.of('keyboardReady')[0].args[3];
+    equal(calls[0].args.join('|'), 'keySound|' + token, 'anchor id + token args');
+    // 非法标识（空 / 带路径 / 超长）整表拒收并指名记号。
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[setting:]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('设置项'), 'empty anchor rejected');
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[setting:a/b]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('设置项'), 'path chars rejected');
+    // 旧原生（无 openSetupPage）：可读提示，不抛 TypeError。
+    world.context.window.FeelimeNative.openSetupPage = undefined;
+    world.tap(world.$('toolCustom'));
+    world.tap(world.$('toolCustom'));
+    const key2 = [...world.document.querySelectorAll('#symGrid .sym-custom-key')]
+        .find(el => el.textContent === '声音');
+    world.tap(key2);
+    assert(world.$('toast').textContent.includes('升级 App'),
+        'missing openSetupPage surfaces an upgrade hint');
+    delete world.context.window.FeelimeNative.openSetupPage;
 });
 
 test('custom JSON validation: errors name the problem (3.20.0 form)', {until: '3.20.0'}, () => {
@@ -3936,16 +4068,23 @@ test('bottom pad rides hello into the CSS budget and is excluded from content', 
     equal(before - after, 6, 'row budget excludes exactly the pad');
 });
 
-test('candidate font scale rides hello into the body dataset', {since: '3.30.0'}, () => {
+test('candidate font scale rides hello into the CSS variable (issue #42)', {since: '3.30.0'}, () => {
     const world = fresh();
     world.hello({});
     equal(world.document.body.dataset.candFont, 'normal', 'default normal');
+    equal(world.document.body.style.getPropertyValue
+        ? world.document.body.style.getPropertyValue('--cand-font-scale')
+        : world.document.body.style['--cand-font-scale'], '1', 'scale 1 at 100%');
+    world.hello({candidateFont: 130});
+    equal(world.document.body.style['--cand-font-scale'], '1.3', 'continuous 130% scales');
+    equal(world.document.body.dataset.candFont, 'scaled', 'scaled anchor set');
+    // 旧档位（#42 之前的 APK hello）映射到新刻度。
     world.hello({candidateFont: 1});
-    equal(world.document.body.dataset.candFont, 'large', 'large tier applied');
+    equal(world.document.body.style['--cand-font-scale'], '1.2', 'legacy tier 1 → 120%');
     world.hello({candidateFont: 2});
-    equal(world.document.body.dataset.candFont, 'xlarge', 'xlarge tier applied');
+    equal(world.document.body.style['--cand-font-scale'], '1.35', 'legacy tier 2 → 135%');
     world.hello({candidateFont: 9});
-    equal(world.document.body.dataset.candFont, 'xlarge', 'off-whitelist ignored (keeps last)');
+    equal(world.document.body.style['--cand-font-scale'], '1.35', 'off-range ignored (keeps last)');
 });
 
 test('one-handed mode rides hello into the side pad (issue #15)', {since: '3.43.0'}, () => {
@@ -4937,7 +5076,7 @@ test('theme tile writes theme_mode pref; in-flight intent survives stale hello',
 
 test('quick tiles: cycle tiles rotate steps and apply locally', {since: '3.38.0'}, () => {
     const world = fresh();
-    world.hello({ candidateFont: 0, holdMs: 350, popupSnap: 1, bottomPad: 0, dpScheme: 'ziranma' });
+    world.hello({ candidateFont: 100, holdMs: 350, popupSnap: 1, bottomPad: 0, dpScheme: 'ziranma' });
     world.tap(world.$('setupButton'));
     const state = label => world.tile(label).querySelector('.qs-state').textContent;
     const lastPref = () => {
@@ -4945,8 +5084,9 @@ test('quick tiles: cycle tiles rotate steps and apply locally', {since: '3.38.0'
         return `${call.args[0]}=${call.args[1]}`;
     };
     world.tap(world.tile('候选字号'));
-    equal(lastPref(), 'candidateFont=1', 'font cycles to large');
-    equal(world.document.body.dataset.candFont, 'large', 'candidate scale applied');
+    equal(lastPref(), 'candidateFont=110', 'font steps 100 → 110 (#42 slider scale)');
+    equal(world.document.body.style['--cand-font-scale'], '1.1', 'candidate scale applied');
+    equal(state('候选字号'), '110%', 'state line shows the percentage');
     world.tap(world.tile('长按时长'));
     equal(lastPref(), 'holdMs=450', 'hold steps 350 → 450');
     equal(state('长按时长'), '450ms', 'hold state line follows');
@@ -5563,7 +5703,7 @@ test('clipboard button opens panel and requests clipboard', () => {
     assert(!world.$('qwertyLayer').hidden, 'letters restored');
 });
 
-test('clipboard items render, paste commits via commitText', () => {
+test('clipboard items render, paste commits via pasteText (issue #44)', () => {
     const world = fresh();
     world.clipboard([
         { id: 'a1', time: 1, text: '复制的内容' },
@@ -5573,10 +5713,18 @@ test('clipboard items render, paste commits via commitText', () => {
     const rows = [...world.document.querySelectorAll('.panel-item')];
     equal(rows.length, 2, 'two items rendered');
     world.tap(rows[1]); // 'second'
-    const commits = world.native.of('commitText');
-    equal(commits.length, 1, 'paste goes through commitText');
-    equal(commits[0].args[0], 'second', 'full text committed');
-    equal(commits[0].args[1], 'tok-1', 'token attached');
+    if (verAtLeast(KEYBOARD_VERSION, '3.73.34')) {
+        // 面板粘贴不是「输入」：走 pasteText 通道，不进 #41 统计。
+        const pastes = world.native.of('pasteText');
+        equal(pastes.length, 1, 'paste goes through pasteText');
+        equal(pastes[0].args[0], 'second', 'full text committed');
+        equal(pastes[0].args[1], 'tok-1', 'token attached');
+        equal(world.native.of('commitText').length, 0, 'panel paste must not touch commitText');
+    } else {
+        const commits = world.native.of('commitText');
+        equal(commits.length, 1, 'legacy keyboard: paste goes through commitText');
+        equal(commits[0].args[0], 'second', 'full text committed');
+    }
     assert(world.$('panelLayer').hidden, 'panel closes after paste');
 });
 
@@ -5685,7 +5833,11 @@ test('favorites tab renders, pastes; menu deletes', () => {
     equal(world.native.of('removeFavorite').slice(-1)[0].args[0], 'f1', 'menu delete removes');
     world.favorites([{ id: 'f2', time: 2, text: '常用语一条' }]);
     world.tap(world.document.querySelectorAll('.panel-item')[0].querySelector('.panel-text'));
-    equal(world.native.of('commitText').slice(-1)[0].args[0], '常用语一条', 'favorite pastes');
+    if (verAtLeast(KEYBOARD_VERSION, '3.73.34')) {
+        equal(world.native.of('pasteText').slice(-1)[0].args[0], '常用语一条', 'favorite pastes');
+    } else {
+        equal(world.native.of('commitText').slice(-1)[0].args[0], '常用语一条', 'legacy favorite pastes');
+    }
 });
 
 test('composing closes the panel and hides clipboard tool', () => {

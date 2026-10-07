@@ -275,27 +275,28 @@ def main():
     record("E4b picked words land space-separated",
            spaced == "bonjour monde ", f"text={spaced!r}")
 
-    # The first char's accented alts ride the pool right
-    # after the engine head; picking one swaps the first character and
-    # keeps composing (preedit "ête").
+    # 1.3.6 起（法语重音折叠索引，用户反馈 etre→être）：候选池不再出现
+    # 首字符单字重音变体（é/è/ê/ë 让位给折叠词形变体 été/éteuf…），
+    # 重音单字改走长按弹层（下方 E4d）。head 必须仍是完整修正词形。
     clear(kb)
     d.type_word(kb, "ete", wait=0.15)
     time.sleep(0.7)
     variant_pool = d.devtools_candidates()
-    # The engine head is whatever Hunspell ranks first for "ete" (its
-    # corrected "été" on device, the raw echo in the mock) - the gate is
-    # that a variant never displaces it.
     head_is_word = bool(variant_pool) and variant_pool[0] != "é" and len(variant_pool[0]) > 1
-    record("E4c accent variants join the pool after the engine head",
-           head_is_word and all(a in variant_pool[1:6] for a in ("é", "è", "ê", "ë")),
-           repr(variant_pool[:7]))
-    picked = d.devtools_eval(
-        "(() => { const b=[...document.querySelectorAll('#candidates .candidate')]"
-        ".find(e => e.textContent === 'ê'); if (!b) return false; b.click(); return true; })()")
-    time.sleep(0.8)
-    variant_preedit = d.devtools_preedit()
-    record("E4d variant pick swaps the first char and keeps composing",
-           picked is True and variant_preedit == "ête", f"preedit={variant_preedit!r}")
+    accented = [w for w in variant_pool[1:] if any(
+        a in w for a in ("é", "è", "ê", "ë", "â", "à", "ô", "î", "ï", "û", "ü", "ç"))]
+    record("E4c folded accent word-forms join the pool after the engine head",
+           head_is_word and len(accented) >= 1,
+           repr(variant_pool[:8]))
+    clear(kb)
+    # E4d（1.3.6 语义）：重音字符经长按弹层直选（与俄语 ё 同款路径），
+    # 点选后字面落屏。
+    acc_items = popup_items_and_select(kb, "e", "ê")
+    time.sleep(0.6)
+    acc_text = d.field_text_retry()
+    record("E4d accent pick comes from the long-press popup",
+           "ê" in acc_items and acc_text == "ê",
+           f"items={acc_items[:8]} text={acc_text!r}")
     clear(kb)
 
     # Russian ё/Ё, dictionary correction and Shift.

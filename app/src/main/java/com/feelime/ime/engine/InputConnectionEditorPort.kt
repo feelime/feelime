@@ -20,6 +20,11 @@ class InputConnectionEditorPort(private val service: InputMethodService) : Edito
         com.feelime.ime.InputStats.record(service, text)
     }
 
+    override fun commitTextUntracked(text: String) {
+        // 面板粘贴等外部长文本（issue #44）：粘贴不是「输入」。
+        service.currentInputConnection?.commitText(text, 1)
+    }
+
     override fun reopenComposing(start: Int, end: Int, word: String): Boolean {
         val connection = service.currentInputConnection ?: return false
         connection.beginBatchEdit()

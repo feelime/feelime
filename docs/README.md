@@ -34,4 +34,8 @@
 ## branding/ — 品牌资源
 
 - [`branding/feelime-logo.svg`](branding/feelime-logo.svg) — logo 源稿；
-  Android 端同形状见 `app/src/main/res/drawable/ic_launcher.xml`。
+  Android 自适应图标（#53）由它派生：前景层 `drawable/ic_launcher_foreground.xml`
+  （F 字形 + 光标，108dp 画布缩放 1.25 居中）、单色层 `ic_launcher_monochrome.xml`
+  （Android 13 主题图标）、背景色 `colors.xml` 的 `ic_launcher_background`
+  （#11121A，与源稿同色），组装在 `mipmap-anydpi-v26/ic_launcher(_round).xml`；
+  minSdk 26 起 adaptive-icon 全版本可达，无位图回退桶。

@@ -3,7 +3,7 @@
     <shortcut
         android:shortcutId="ime-picker"
         android:enabled="true"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:shortcutShortLabel="@string/shortcut_ime_short"
         android:shortcutLongLabel="@string/shortcut_ime_long">
         <intent

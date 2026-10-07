@@ -380,24 +380,14 @@ def case_french_candidates(keyboard):
     candidates = wait_until(
         lambda: ev("[...document.querySelectorAll('#candidates .candidate')].map(e => e.textContent)"),
         lambda value: isinstance(value, list) and len(value) > 0, timeout=8.0) or []
-    accent_point = keyboard_text_point("ê", "#candidates .candidate")
-    if not accent_point:
-        # Some model builds expose a different circumflex head; the required
-        # regression is still recorded as a missing accent rather than guessed.
-        accent_point = keyboard_text_point("é", "#candidates .candidate")
-        accent_text = "é"
-    else:
-        accent_text = "ê"
-    if accent_point:
-        d.tap(*accent_point, wait=1.0)
-        accent_state = keyboard_state()
-        preedit = accent_state.get("preedit", "").replace(" ", "")
-        record("tapping French accent keeps composing without expanding",
-               not accent_state.get("expanded") and preedit.startswith(accent_text),
-               f"accent={accent_text} preedit={preedit!r} expanded={accent_state.get('expanded')}")
-    else:
-        record("tapping French accent keeps composing without expanding",
-               False, f"candidates={candidates[:8]}")
+    # 1.3.6 起（重音折叠索引）：池内不再有单字重音变体（ê/é 让位给
+    # 词形变体 été…），「点单字变体保持组合」的旧路径移除。重音直选
+    # 走长按弹层（extended 段 E4d 覆盖）；本段改验池 head 是完整词形
+    # 且未被回声占据。
+    head = candidates[0] if candidates else ""
+    record("French pool head is a full word-form (accents folded, 1.3.6)",
+           bool(head) and len(head) > 1 and head != "ete",
+           f"head={head!r} candidates={candidates[:8]}")
 
     reset_input(keyboard)
     type_word_adb(keyboard, "ete", wait=0.35)

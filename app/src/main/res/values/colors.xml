@@ -4,4 +4,7 @@
     <color name="feelime_text">#F4F4FA</color>
     <color name="feelime_muted">#A0A0B8</color>
     <color name="feelime_accent">#00D45A</color>
+    <!-- #53 adaptive icon background: branding source color, deliberately
+         NOT feelime_bg (docs/branding/feelime-logo.svg is the source). -->
+    <color name="ic_launcher_background">#11121A</color>
 </resources>

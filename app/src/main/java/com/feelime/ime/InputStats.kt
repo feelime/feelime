@@ -57,12 +57,17 @@ object InputStats {
             }
             val base = parsed.getOrNull() ?: Cache(LocalDate.now(), 0L, 0L, HashMap())
             // 旧版迁移：一轮的平铺 total 并入（一次性，谁先读到谁合并）。
-            if (raw == null) {
-                val legacy = prefs.getLong(KEY_LEGACY_TOTAL, 0L)
-                if (legacy > 0) {
-                    base.total += legacy
-                    prefs.edit().remove(KEY_LEGACY_TOTAL).apply()
-                }
+            // JSON 已存在但损坏（半写入现场）同样读 legacy 补救；并入后
+            // 立即 persist——此前只改内存 cache，legacy 键却已删，进程在
+            // 下一次 record 前被杀则旧 total 双向丢失（issue #44 累计
+            // 偏小的来源之一）。
+            val legacy = prefs.getLong(KEY_LEGACY_TOTAL, 0L)
+            if (legacy > 0) {
+                base.total += legacy
+                prefs.edit().remove(KEY_LEGACY_TOTAL).apply()
+                cache = base
+                persist(context)
+                return base
             }
             cache = base
             return base

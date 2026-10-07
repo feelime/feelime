@@ -83,11 +83,20 @@ def pick_candidate_font(label, reopen=True):
         if shared.settings_visible_pages() != ["input"] and not open_input_page():
             if not (shared.launch_settings() and open_input_page()):
                 return False
-    if not shared.pick_select_option("#candidateFont", label):
+    # #42：select 三档改滑杆（80-150，步进 5）——evaluate 直接设值并派
+    # change（CDP 合成 input 事件在键盘页 rAF 停摆的坑不适用于设置页，
+    # 但滑杆没有可点的 option，evaluate 是最短路径）。
+    pct = int(label.rstrip("%"))
+    ok = sev(
+        "(() => { const el = document.querySelector('#candidateFont');"
+        " if (!el) return false; el.value = String(%d);"
+        " el.dispatchEvent(new Event('change', { bubbles: true }));"
+        " return true; })()" % pct
+    )
+    if not ok:
         return False
-    values = {"100%": "0", "120%": "1", "135%": "2"}
     return bool(shared.wait_until(
-        lambda: pref_says(keyboard_prefs_body(), "candidate_font", values[label], "0"),
+        lambda: pref_says(keyboard_prefs_body(), "candidate_font", str(pct), "100"),
         lambda value: value is True, timeout=8.0))
 
 
@@ -134,8 +143,8 @@ def case_candidate_font():
     large, bar_large = candidate_font_px(kb, setup=False)
     dataset1 = ev("document.body.dataset.candFont")
 
-    if not pick_candidate_font("135%", reopen=False):
-        record("candFont: 135% picked", False)
+    if not pick_candidate_font("150%", reopen=False):
+        record("candFont: 150% picked", False)
         return
     d.fresh_kb(refocus=True)
     xlarge, bar_xlarge = candidate_font_px(kb, setup=False)
@@ -144,16 +153,18 @@ def case_candidate_font():
     def px(value):
         return float(str(value).replace("px", "")) if value else 0.0
 
-    record("candFont: tiers land on the live candidate text",
+    # #42 滑杆：120% 与新上限 150% 都落在实算字号上；dataset 只有
+    # normal/scaled 两态（CSS 变量才是刻度真源）。
+    record("candFont: slider values land on the live candidate text",
            bool(base and large and xlarge)
            and abs(px(large) - px(base) * 1.2) < 0.6
-           and abs(px(xlarge) - px(base) * 1.35) < 0.6
-           and (dataset0, dataset1, dataset2) == ("normal", "large", "xlarge"),
+           and abs(px(xlarge) - px(base) * 1.5) < 0.6
+           and (dataset0, dataset1, dataset2) == ("normal", "scaled", "scaled"),
            f"base={base} large={large} xlarge={xlarge} "
            f"datasets={(dataset0, dataset1, dataset2)}")
 
     # Row budget untouched: the candidates bar height must not move.
-    record("candFont: bar height unchanged across tiers",
+    record("candFont: bar height unchanged across slider values",
            bar_base == bar_large == bar_xlarge and (bar_base or 0) >= 40,
            f"bars=({bar_base}, {bar_large}, {bar_xlarge})")
 

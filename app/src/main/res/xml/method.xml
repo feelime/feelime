@@ -3,7 +3,7 @@
     android:settingsActivity="com.feelime.ime.SetupActivity"
     android:supportsSwitchingToNextInputMethod="true">
     <subtype
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:imeSubtypeLocale="zh_CN"
         android:imeSubtypeMode="keyboard"
         android:isAsciiCapable="true"

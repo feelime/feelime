@@ -105,7 +105,7 @@ class TextInputCoordinator(
         data class Command(val value: EngineCommand) : QueuedInput
         data class Mode(val value: InputMode) : QueuedInput
         data class Accept(val after: () -> Unit) : QueuedInput
-        data class Literal(val text: String) : QueuedInput
+        data class Literal(val text: String, val countStats: Boolean = true) : QueuedInput
     }
     private val warmupQueue = ArrayDeque<QueuedInput>()
     private var warmupReplayGeneration = 0L
@@ -657,15 +657,15 @@ class TextInputCoordinator(
      * finishComposing+commit would leave the engine's old buffer alive and
      * the next keystroke would open a second preedit over the pasted text.
      */
-    fun pasteExternal(text: String): DispatchAck {
+    fun pasteExternal(text: String, countStats: Boolean = true): DispatchAck {
         asrGuard()
         if (pendingEngine != null || replaying) {
-            return enqueueQueued(QueuedInput.Literal(text))
+            return enqueueQueued(QueuedInput.Literal(text, countStats))
         }
-        return pasteExternalNow(text)
+        return pasteExternalNow(text, countStats)
     }
 
-    private fun pasteExternalNow(text: String): DispatchAck {
+    private fun pasteExternalNow(text: String, countStats: Boolean = true): DispatchAck {
         removeAutomaticSpaceBefore(text)
         invalidateWordUndo()
         // A live composition must LAND before the literal -
@@ -690,7 +690,9 @@ class TextInputCoordinator(
         }
         val ack = dispatchLive(EngineCommand.Reset)
         expectReplacement(text.length)
-        editor.commitText(text)
+        // 粘贴通道（issue #44）不进 #41 统计；用户键出的 raw 预提交
+        // 仍计数。
+        if (countStats) editor.commitText(text) else editor.commitTextUntracked(text)
         return ack
     }
 
@@ -892,7 +894,7 @@ class TextInputCoordinator(
                     else dispatchLive(item.value, ::next)
                 }
                 is QueuedInput.Literal -> {
-                    pasteExternalNow(item.text)
+                    pasteExternalNow(item.text, item.countStats)
                     if (generation == warmupReplayGeneration) next()
                 }
                 is QueuedInput.Accept -> {

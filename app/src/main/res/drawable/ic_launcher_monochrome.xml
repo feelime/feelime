@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Monochrome layer (Android 13 themed icons, #53): the same
+         foreground geometry tinted by the launcher. -->
+    <group android:scaleX="1.25" android:scaleY="1.25"
+        android:translateX="24" android:translateY="24">
+        <path android:fillColor="#FFFFFF"
+            android:pathData="M12.5,8.5h24l-1.8,6.2H19.3v7.2h13.3l-1.8,6.2H19.3v11.4h-6.8z" />
+        <path android:fillColor="#FFFFFF"
+            android:pathData="M32,31H34.5A1,1 0,0 1,35.5,32V38.5A1,1 0,0 1,34.5,39.5H32A1,1 0,0 1,31,38.5V32A1,1 0,0 1,32,31z" />
+    </group>
+</vector>

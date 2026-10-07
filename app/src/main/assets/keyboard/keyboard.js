@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.33';
+    const KEYBOARD_VERSION = '3.73.34';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1159,6 +1159,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // BEGIN GENERATED SCHEMA_MAP
     // schema-sha256: ziranma=ac60c13a00eae405 flypy=7850588e9495b50d sogou=e278729922814390 ziguang=6a139f79776718dd
     const DP_INITIAL_FINALS = {"ziranma":{"a":"ahijklno","b":"acdfghijklmnouxyz","c":"abefghijkloprsuvz","d":"abcefghijklmopqrsuvwxyz","e":"efginrz","f":"abcfghjosuz","g":"abdefghjkloprsuvwyz","h":"abdefghjkloprsuvwyz","i":"abdefghijkloprsuvwy","j":"cdimnpqrstuvwxy","k":"abdefghjkloprsuvwyz","l":"abcdeghijklmnopqrstuvwxyz","m":"abcefghijklmnoquxyz","n":"abcdefghijklmnopqrstuvwxyz","o":"abefghjkloruz","p":"abcfghijklmnouwxyz","q":"cdimnpqrstuvwxy","r":"befghijkoprsuvw","s":"abefghijkloprsuvz","t":"abceghijklmoprsuvxyz","u":"abdefghijklopruvwyz","v":"abdefghijkloprsuvwyz","w":"afghjlosuz","x":"cdimnpqrstuvwxy","y":"abehijklnoprstuvy","z":"abefghijkloprsuvz"},"flypy":{"a":"acdhijno","b":"abcdfghijklmnopuw","c":"acdefghijorsuvwyz","d":"acdefghijkmnopqrsuvwxyz","e":"efghinrw","f":"afghjnosuwz","g":"acdefghjklorsuvwxyz","h":"acdefghjklorsuvwxyz","i":"acdefghijklorsuvxyz","j":"biklmnpqrstuvxy","k":"acdefghjklorsuvwxyz","l":"abcdeghijklmnopqrstuvwxyz","m":"abcdefghijkmnopquwz","n":"abcdefghijklmnopqrstuvwxyz","o":"ouz","p":"abcdfghijkmnopuwxz","q":"biklmnpqrstuvxy","r":"cefghijorsuvxyz","s":"acdefghijorsuvwyz","t":"acdeghijkmnoprsuvwyz","u":"acdefghijkloruvwxyz","v":"acdefghijklorsuvwxyz","w":"adfghjosuw","x":"biklmnpqrstuvxy","y":"abcdehijkorstuvyz","z":"acdefghijorsuvwyz"},"sogou":{"a":"ahjkl","b":";acdfghijklmnouxz","c":"abefghijkloprsuvz","d":";abcefghijklmopqrsuvwxz","e":"efgrz","f":"abcfghjosuz","g":"abdefghjkloprsuvwyz","h":"abdefghjkloprsuvwyz","i":"abdefghijkloprsuvwy","j":";cdimnpqrstuwxy","k":"abdefghjkloprsuvwyz","l":";abcdeghijklmnopqrstuwxyz","m":";abcefghijklmnoquxz","n":";abcdefghijklmnopqrstuwxyz","o":"abefghjkloruz","p":";abcfghijklmnouwxz","q":";cdimnpqrstuwxy","r":"befghijkoprsuvw","s":"abefghijkloprsuvz","t":";abceghijklmoprsuvxz","u":"abdefghijklopruvwyz","v":"abdefghijkloprsuvwyz","w":"afghjlosuz","x":";cdimnpqrstuwxy","y":";abehijklnoprstuy","z":"abefghijkloprsuvz"},"ziguang":{"a":"aeghilmnopqrstuwxyz","b":";abdfgikopqrstuwy","c":"aehiklmnopqrstuwz","d":";abdefhijklmnopqrstuwxz","f":"abhkorstuwz","g":"aeghklmnopqrstuwxyz","h":"aeghklmnopqrstuwxyz","i":"aegiklmnopqrstuwxyz","j":";bdfghijlmnuvxy","k":"aeghklmnopqrstuwxyz","l":";abdefghijklmnopqrstuvxyz","m":";abdefijkopqrstuwyz","n":";abdefghijklmnopqrstuvwxyz","o":"aejkopqrstwz","p":";abdfikopqrstuwxyz","q":";bdfghijlmnuvxy","r":"ehilmnoqrstuwxz","s":"aehiklmnopqrstuwz","t":";abdefhiklmnopqrstuz","u":"aeghiklmnopqrstuwxyz","w":"ahkoprstuw","x":";bdfghijlmnuvxy","y":";aehilmnopqrsuvyz","z":"aehiklmnopqrstuwz"}};
+    const DP_KEYMAP = {"ziranma":{"q":"iu","w":"ua/ia","e":null,"r":"uan/er","t":"ue/ve","y":"ing/uai","u":"sh","i":"ch","o":"uo","p":"un","a":null,"s":"ong/iong","d":"iang/uang","f":"en","g":"eng","h":"ang","j":"an","k":"ao","l":"ai","z":"ei","x":"ie","c":"iao","v":"zh/ui ü","b":"ou","n":"in","m":"ian"},"flypy":{"q":"iu","w":"ei","e":null,"r":"uan/er","t":"ue/ve","y":"un","u":"sh","i":"ch","o":"uo","p":"ie","a":null,"s":"ong/iong","d":"ai","f":"en","g":"eng","h":"ang","j":"an","k":"ing/uai","l":"iang/uang","z":"ou","x":"ua/ia","c":"ao","v":"zh/ui ü","b":"in","n":"iao","m":"ian"},"sogou":{"q":"iu","w":"ua/ia","e":null,"r":"uan/er","t":"ue/ve","y":"uai","u":"sh","i":"ch","o":"uo","p":"un","a":null,"s":"ong/iong","d":"iang/uang","f":"en","g":"eng","h":"ang","j":"an","k":"ao","l":"ai","z":"ei","x":"ie","c":"iao","v":"zh/ui","b":"ou","n":"in","m":"ian"},"ziguang":{"q":"ao","w":"en","e":null,"r":"an","t":"eng","y":"uai/in","u":"zh","i":"sh","o":"uo","p":"ai","a":"ch","s":"ang","d":"ie","f":"ian","g":"iang/uang","h":"ong/iong","j":"iu/er","k":"ei","l":"uan","z":"ou","x":"ua/ia","v":null,"b":"iao","n":"ui üe","m":"un"}};
     // END GENERATED SCHEMA_MAP
 
     class FeelimeKeyboard {
@@ -1329,8 +1330,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Bottom blank strip (CSS px) below the rows - native window
             // includes it; applyHeight/H budgets exclude it (mode-fallback §3).
             this.bottomPad = 0;
-            // Candidate text scale (issue #2), pre-hello default.
-            this.candidateFont = 0;
+            // Candidate text scale: 80-150 continuous % (issue #42).
+            this.candidateFont = 100;
             // 拼音字号（issue #8）：0/1/2 三档，hello 回读（旧 APK 的 hello
             // 没有该字段时保持默认档 = 原始 13px 悬浮带）。加粗开关默认关。
             this.preeditFont = 0;
@@ -1515,6 +1516,50 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     });
                 }
             }, { capture: true, passive: true });
+            // PointerEvent 与 Touch 的编号不是同一个空间；按下时用目标和
+            // 坐标关联，取消时才能只收所属手指，不误伤同键第二指。
+            const pointers = new Map();
+            document.addEventListener('pointerdown', event => {
+                if (event.pointerType === 'touch') pointers.set(event.pointerId, {
+                    target: event.target, x: event.clientX, y: event.clientY,
+                });
+            }, { capture: true, passive: true });
+            document.addEventListener('touchstart', event => {
+                for (const touch of event.changedTouches) {
+                    const pointer = Array.from(pointers.values()).find(p =>
+                        !p.touch && p.target === (touch.target || event.target)
+                        && p.x === touch.clientX && p.y === touch.clientY);
+                    if (pointer) pointer.touch = touch;
+                }
+            }, { capture: true, passive: true });
+            const forgetPointers = event => {
+                for (const [id, pointer] of pointers) {
+                    if (pointer.touch && Array.from(event.changedTouches || []).some(
+                        t => t.identifier === pointer.touch.identifier)) pointers.delete(id);
+                }
+            };
+            document.addEventListener('touchend', forgetPointers, { capture: true, passive: true });
+            document.addEventListener('touchcancel', event => {
+                this.cancelTouchEvent(event);
+                forgetPointers(event);
+            }, { capture: true, passive: true });
+            document.addEventListener('pointerup', event => pointers.delete(event.pointerId),
+                { capture: true, passive: true });
+            document.addEventListener('pointercancel', event => {
+                const pointer = pointers.get(event.pointerId);
+                pointers.delete(event.pointerId);
+                if (!pointer || !pointer.touch) return;
+                const id = pointer.touch.identifier;
+                this.cancelTouchEvent({ target: pointer.target,
+                    changedTouches: [pointer.touch],
+                    touches: Array.from(this.pressById.keys()).filter(key => key !== id)
+                        .map(identifier => ({ identifier })),
+                });
+            }, { capture: true, passive: true });
+            window.addEventListener('blur', () => pointers.clear());
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) pointers.clear();
+            });
             // 长按浮层不收起（#7）：系统级长按 ~500ms 触发 WebView 文本
             // 选择/callout 菜单，触摸流被直接终止（touchend/cancel 都不再
             // 发给 JS），弹层悬挂。键盘整页无任何需要右键菜单的场景，
@@ -3520,6 +3565,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!glyph) return;
             const bubble = document.getElementById('keyBubble');
             if (!bubble) return;
+            this.bubbleButton = button;
             bubble.textContent = glyph;
             bubble.hidden = false;
             const rect = button.getBoundingClientRect();
@@ -3551,6 +3597,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         hideKeyBubble() {
+            this.bubbleButton = null;
             if (this.bubbleHideTimer) { clearTimeout(this.bubbleHideTimer); this.bubbleHideTimer = 0; }
             const bubble = document.getElementById('keyBubble');
             if (bubble && !bubble.hidden) bubble.hidden = true;
@@ -3712,33 +3759,40 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 else if (this.popup) this._diagNoClick.pop += 1;
                 else button.click();
             }, { passive: false });
-            button.addEventListener('touchcancel', event => {
-                const ownsPopup = !!(this.popup && this.popupOwnsTouch(this.popup, event));
-                const ownerPress = this.popup ? this.pressById.get(this.popup.fingerId) : null;
-                const sameKeyNonOwner = !!(this.popup && !ownsPopup
-                    && ownerPress && ownerPress.button === button);
-                for (const item of event.changedTouches || []) {
-                    this.pressById.delete(item.identifier);
-                }
-                // 同键非所属手指被系统取消：共享标记/计时器都属于还按着的
-                // owner，撤了会让 owner 随后的 touchend 早退（同 touchend
-                // 路径的残留）。只清本键的吞键标记。
-                if (sameKeyNonOwner) {
-                    button._suppressClick = false;
-                    return;
-                }
+        }
+
+        /** 页面级取消出口：事件即使没经过原键，也按手指账本收尾。 */
+        cancelTouchEvent(event) {
+            const ids = new Set(Array.from(event.changedTouches || [], t => t.identifier));
+            const buttons = new Set();
+            for (const id of ids) {
+                const press = this.pressById.get(id);
+                if (press) buttons.add(press.button);
+                this.pressById.delete(id);
+            }
+            if (this.popup && this.popupOwnsTouch(this.popup, event)) this.closePopup(true);
+            for (const button of buttons) {
+                // 同键仍有手指按住时，保留共享的按压态与计时器。
+                if (Array.from(this.pressById.values()).some(p => p.button === button)) continue;
                 this.pressedKeys.delete(button);
                 button.classList.remove('active-touch');
-                this.scheduleHideBubble();
-                clear();
-                if (this.popup && ownsPopup) {
-                    this.closePopup(true);
-                }
-                // Review P3: a cancelled gesture never delivers the click
-                // that would consume _suppressClick  -
-                // clear it or the key's NEXT tap is swallowed.
-                button._suppressClick = false;
-            });
+                if (button._cancelPress) button._cancelPress();
+                clearTimeout(button._comboTimer);
+                if (this.bubbleButton === button) this.hideKeyBubble();
+            }
+            // 编辑条的计时器不在 pressedKeys 中，按事件目标撤销。
+            const target = event.target;
+            const tool = target && target.closest && target.closest('.tool');
+            if (tool) {
+                clearTimeout(tool._editHold);
+                tool._editHoldPos = null;
+            }
+            const bar = target && target.closest && target.closest('#candidateBar');
+            if (bar) {
+                clearTimeout(bar._barHold);
+                bar._barHoldPos = null;
+            }
+            if (this.finishTouchGesture) this.finishTouchGesture(event, true);
         }
 
         cancelTouches() {
@@ -4044,7 +4098,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 setTimeout(() => { this.swiping = false; }, 0);
             };
             root.addEventListener('touchend', event => finish(event, false), { capture: true });
-            root.addEventListener('touchcancel', event => finish(event, true), { capture: true });
+            this.finishTouchGesture = finish;
         }
 
         /** Continuous scrub: crossing a unit boundary moves the caret by the
@@ -5062,11 +5116,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** The variant a paired table (常用/引号) shows: the pinned one
-         * (second tap on the active tab flips it) or the default - 常用
-         * follows the input mode, 引号 defaults to zh. */
+         * (second tap on the active tab flips it) or the default - both
+         * follow the input mode (issue #48: 引号 used to default to zh,
+         * forcing an extra tap in English mode). */
         variantNow(catId) {
             if (this.tableVariants[catId]) return this.tableVariants[catId];
-            return catId === 'common' && !this.chineseSymMode() ? 'en' : 'zh';
+            return !this.chineseSymMode() ? 'en' : 'zh';
         }
 
         rowsFor(catId) {
@@ -5167,6 +5222,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const check = this.validateOpenUri(uri);
                     if (check.error) return { error: t("「{0}」{1}", match[0], check.error) };
                     steps.push({ open: uri });
+                    continue;
+                }
+                // [setting:id]：打开本 App 设置页并直达设置项（#51 定制
+                // 按键绑定）。id 是设置行/控件的 element id（与键盘 tile
+                // 深链同锚）；长度钳制防滥用（无内容跳转）。
+                if (raw.toLowerCase().startsWith('setting:')) {
+                    const id = raw.slice(8).trim();
+                    if (!/^[\w-]{1,64}$/.test(id)) {
+                        return { error: t("「{0}」设置项标识无效", match[0]) };
+                    }
+                    steps.push({ openSetup: id });
                     continue;
                 }
                 const body = raw.toLowerCase();
@@ -5383,6 +5449,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     }
                     this.call(() => Native.openLink(step.open, this.token));
                 }
+                else if (step.openSetup) {
+                    // #51 定制按键「打开设置项」：openSetupPage 与键盘 tile
+                    // 深链同通道（导航类无 token 门闸），能力探测同款。
+                    if (typeof Native.openSetupPage !== 'function') {
+                        this.showToast(t("此按键需要升级 App 后使用（打开设置）"));
+                        this.cancelCustomChain();
+                        return;
+                    }
+                    this.call(() => Native.openSetupPage(step.openSetup, this.token));
+                }
                 else if (step.text) {
                     this.sendSymbol(step.text);
                     this.customChainLastTextAt = Date.now();
@@ -5523,7 +5599,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.symbolCat === 'arrows') {
                 // The 方向 category commits directional TEXT (design §2.4):
                 // the glyphs land literally and ⇥ commits a real tab
-                // character - no key events, no repeat, nothing remembered.
+                // character - no key events, no repeat. Directional glyphs
+                // do land in 最近 (issue #48); the tab commit stays out.
                 // Rows live in a top-aligned wrap: two rows spread across
                 // the three-row slot would read as a hole in the middle.
                 const arrowsRows = [
@@ -5535,8 +5612,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 arrowsRows.forEach(cells => {
                     const row = this.row();
                     cells.forEach(([glyph, text]) => {
+                        const value = text || glyph;
                         row.append(this.functionKey(glyph,
-                            () => this.sendSymbol(text || glyph), 'sym-single'));
+                            () => {
+                                this.sendSymbol(value);
+                                if (!text) this.remember(glyph);
+                            },
+                            'sym-single'));
                     });
                     while (row.children.length < 10) {
                         const blank = document.createElement('span');
@@ -5980,11 +6062,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return Math.max(0, Number(this.bottomPad) || 0);
         }
 
-        // 候选字号（issue #2）：body data 属性驱动 CSS 变量，行高预算不动。
+        // 候选字号：80-150 连续百分比直写 CSS 变量（issue #42 替代
+        // 三档 data 属性），行高预算不动。
         applyCandidateFont() {
-            const level = Number(this.candidateFont) || 0;
-            document.body.dataset.candFont =
-                level === 1 ? 'large' : level === 2 ? 'xlarge' : 'normal';
+            const pct = Number(this.candidateFont);
+            const clamped = Number.isFinite(pct) ? Math.min(150, Math.max(80, pct)) : 100;
+            document.body.dataset.candFont = clamped === 100 ? 'normal' : 'scaled';
+            document.body.style.setProperty('--cand-font-scale', String(clamped / 100));
         }
 
         // 拼音字号（issue #8）：悬浮带回 1.0.13 的顶部形态，档位驱动
@@ -7689,7 +7773,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
             const themeText = { auto: t("跟随系统"), light: t("浅色"), dark: t("深色") };
             const snapText = { 0: t("松"), 1: t("标准"), 2: t("紧") };
-            const fontText = { 0: t("标准"), 1: t("大"), 2: t("更大") };
+            // #42 候选字号改为 80-150% 连续值：tile 点按按 10% 步进循环。
+            const CAND_STEPS = [80, 90, 100, 110, 120, 130, 140, 150];
             const oneHandText = { 0: t("关"), 1: t("左手"), 2: t("右手") };
             const themeTheme = () => this.themeMode || 'auto';
             const rehome = () => {
@@ -7765,10 +7850,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     },
                     {
                         icon: ICONS.font, label: t("候选字号"), hold: 'candidateFont',
-                        state: () => fontText[this.qRead('candidateFont', this.candidateFont)] || fontText[0],
+                        state: () => `${this.qRead('candidateFont', this.candidateFont)}%`,
                         tap: () => {
                             if (typeof Native.setQuickPref !== 'function') return;
-                            this.candidateFont = this.qStep('candidateFont', [0, 1, 2], this.candidateFont);
+                            this.candidateFont = this.qStep('candidateFont', CAND_STEPS, this.candidateFont);
                             this.applyCandidateFont();
                             quickPref('candidateFont', this.candidateFont);
                             rehome();
@@ -9003,7 +9088,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         this.fillPhraseCardFromPanel(item.text);
                         return;
                     }
-                    this.call(() => Native.commitText(item.text, this.token));
+                    // 粘贴不是「输入」：面板条目走独立通道不进 #41 统计
+                    // （issue #44）。旧 APK 无此桥方法，退回计数通道。
+                    this.call(() => {
+                        if (typeof Native.pasteText !== 'function') {
+                            Native.commitText(item.text, this.token);
+                        } else {
+                            Native.pasteText(item.text, this.token);
+                        }
+                    });
                     this.closePanel();
                 };
 
@@ -9663,10 +9756,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // CSS px in this WebView; hello is authoritative over the old
             // localStorage scrub key (which stays as the pre-hello fallback).
             this.bottomPad = Math.max(0, Number(payload.bottomPad) || 0);
-            // Candidate text scale (issue #2): 0=normal 1=large 2=xlarge,
-            // applied as a CSS var multiplier (row budget untouched).
-            if (Number(payload.candidateFont) in { 0: 1, 1: 1, 2: 1 }) {
-                this.candidateFont = Number(payload.candidateFont);
+            // Candidate text scale (issue #42): 80-150 %. Legacy 0/1/2
+            // levels (pre-#42 APKs) map onto the new scale.
+            {
+                const cf = Number(payload.candidateFont);
+                if (cf >= 80 && cf <= 150) this.candidateFont = cf;
+                else if (cf === 0) this.candidateFont = 100;
+                else if (cf === 1) this.candidateFont = 120;
+                else if (cf === 2) this.candidateFont = 135;
             }
             this.applyCandidateFont();
             // 拼音字号（issue #8）：0=标准 1=大 2=特大；旧 APK 不带字段不覆盖。

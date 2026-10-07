@@ -157,6 +157,13 @@ class SettingsWorld {
             setTimeout: fn => { this.timers.push(fn); return this.timers.length; },
             clearTimeout: () => {},
             location: { hash: '' },
+            // #51 hashtag 直达：hashchange 收集（applyLocationHash 顶层
+            // 注册；测试改写 location.hash 后手动派发）。
+            addEventListener: (type, fn) => {
+                (this.winListeners = this.winListeners || {})[type] = fn;
+            },
+            removeEventListener: () => {},
+            scrollTo: (x, y) => { this.lastScrollTo = [x, y]; },
         };
         this.timers = [];
         sandbox.window = sandbox;
@@ -1200,13 +1207,13 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     const hiddenMap = () => Object.fromEntries(
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
-        home: false, appearance: true, skin: true, input: true, fuzzy: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
+        home: false, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
         backup: true, about: true, customkeys: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
-        home: true, appearance: true, skin: true, input: true, fuzzy: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
+        home: true, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
         backup: true, about: true, customkeys: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', 'home', world.token], 'reportPage(page, parent) on sub-page');
@@ -1634,13 +1641,14 @@ test('flick swap toggle reflects state and commits setFlickSwap with the token',
 
 test('feel card renders state values and commits each control with the token', () => {
     const world = new SettingsWorld();
-    world.push({ ...BASE_STATE, bottomPadPortrait: 24, bottomPadLandscape: 12, holdMs: 450, scrubSpeed: 2, popupSnap: 2, candidateFont: 2 });
+    world.push({ ...BASE_STATE, bottomPadPortrait: 24, bottomPadLandscape: 12, holdMs: 450, scrubSpeed: 2, popupSnap: 2, candidateFont: 135 });
     equal(world.$('bottomPadPortrait').value, '24', 'portrait pad from state');
     equal(world.$('bottomPadLandscape').value, '12', 'landscape pad from state');
     equal(world.$('holdMs').value, '450', 'hold ms from state');
     equal(world.$('scrubSpeed').value, '2', 'scrub speed from state');
     equal(world.$('popupSnap').value, '2', 'popup snap from state');
-    equal(world.$('candidateFont').value, '2', 'candidate font from state');
+    equal(world.$('candidateFont').value, '135', 'candidate font from state (#42 slider)');
+    equal(world.$('candidateFontOut').textContent, '135%', 'slider readout follows state');
 
     const fire = (id) => {
         const select = world.$(id);
@@ -1658,7 +1666,7 @@ test('feel card renders state values and commits each control with the token', (
     fire('bottomPadLandscape');
     equal(world.lastCall('setBottomPadLandscape').args, [12, world.token], 'landscape pad + token');
     fire('candidateFont');
-    equal(world.lastCall('setCandidateFont').args, [2, world.token], 'candidate font + token');
+    equal(world.lastCall('setCandidateFont').args, [135, world.token], 'candidate font + token');
 });
 
 
@@ -1670,7 +1678,7 @@ test('feel card defaults when state omits the values and never adopts off-whitel
     equal(world.$('holdMs').value, '350', 'hold default 350');
     equal(world.$('scrubSpeed').value, '3', 'scrub default 3x');
     equal(world.$('popupSnap').value, '1', 'snap default standard');
-    equal(world.$('candidateFont').value, '0', 'candidate font default 100%');
+    equal(world.$('candidateFont').value, '100', 'candidate font default 100% (#42 slider)');
     // Native validates too, but the page must not blindly mirror junk.
     world.push({ ...BASE_STATE, bottomPadPortrait: 7, bottomPadLandscape: 9, holdMs: 1234, scrubSpeed: 99, popupSnap: 9, candidateFont: 5 });
     equal(world.$('bottomPadPortrait').value, '0', 'off-list portrait pad ignored');
@@ -1678,7 +1686,7 @@ test('feel card defaults when state omits the values and never adopts off-whitel
     equal(world.$('holdMs').value, '350', 'off-list hold ignored');
     equal(world.$('scrubSpeed').value, '3', 'off-list scrub ignored');
     equal(world.$('popupSnap').value, '1', 'off-list snap ignored');
-    equal(world.$('candidateFont').value, '0', 'off-list candidate font ignored');
+    equal(world.$('candidateFont').value, '100', 'off-range candidate font ignored');
 });
 
 test('fuzzy-pinyin group toggles reflect the state mask and commit the combined mask', () => {
@@ -2331,6 +2339,56 @@ test('dictionary operation progress stays in its own card after reopening', () =
 // ---------------------------------------------------------------- runner
 
 const failed = RESULTS.filter(([, ok]) => !ok);
+
+test('showPage restores each page scroll offset (issue #51)', () => {
+    const world = new SettingsWorld();
+    const S = world.FeelimeSettings();
+    // 模拟滚动：window.scrollY 由测试直接拨动（fake scroller 无布局）。
+    const win = world.sandbox.window;
+    S.showPage('input');
+    win.scrollY = 640;
+    S.showPage('home');
+    equal(world.lastScrollTo, [0, 0], 'fresh home starts at top');
+    S.showPage('input');
+    equal(world.lastScrollTo, [0, 640], 'returning to input restores 640');
+    // 新访问过的页从顶部开始：voice 从未记过滚动。
+    win.scrollY = 0;
+    S.showPage('voice');
+    equal(world.lastScrollTo, [0, 0], 'unvisited page starts at top');
+});
+
+test('location hash routes to the anchor on load and on change (issue #51)', () => {
+    const world = new SettingsWorld();
+    const win = world.sandbox.window;
+    // 启动消费：hash 已在（外部 deeplink / tile 深链复用同一锚语义）。
+    // applyLocationHash 在脚本顶层已跑过一次（hash 为空 → no-op），
+    // 这里直接改写再手动派发，覆盖 hashchange 路径。
+    win.location.hash = '#keySound';
+    assert(world.winListeners && typeof world.winListeners.hashchange === 'function',
+        'hashchange listener registered');
+    world.winListeners.hashchange();
+    assert(world.lastCall('reportPage').args[0] === 'input',
+        'anchor routes to its page first');
+    equal(win.location.hash, '#keySound', 'focusSetting keeps the anchor');
+    // focusSetting 自己写回的 hash 不回环（lastAppliedHash 挡板）。
+    const reports = world.native.calls.filter(c => c.name === 'reportPage').length;
+    world.winListeners.hashchange();
+    equal(world.native.calls.filter(c => c.name === 'reportPage').length, reports,
+        'self-written hash does not re-run');
+});
+
+test('custom key setting mode round-trips [setting:id] (issue #51)', () => {
+    const world = new SettingsWorld();
+    const S = world.FeelimeSettings();
+    // 表单值 → DSL。
+    let draft = { mode: 'setting', setting: 'keySound', t: '声音' };
+    equal(S.ckTapFromDraft(draft), '[setting:keySound]', 'draft builds the setting token');
+    // DSL → 表单（编辑回填）。
+    const parsed = S.ckTapParse('[setting:candidateFont]');
+    equal(parsed.mode, 'setting', 'parse recognizes the token');
+    equal(parsed.setting, 'candidateFont', 'anchor id kept');
+});
+
 console.log(`\n== settings mock-bridge suite: ${RESULTS.length - failed.length}/${RESULTS.length} passed ==`);
 if (failed.length) {
     console.log('failures: ' + failed.map(([name]) => name).join(' | '));

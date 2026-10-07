@@ -42,7 +42,20 @@ class HandwritingEngine(
         fun onInkResult(reqId: Int, candidates: List<InkCandidate>, error: String?)
     }
 
-    private val worker = Executors.newSingleThreadExecutor { task -> Thread(task, "feelime-ink") }
+    // IME 是常驻进程，worker 线程的漏网异常一律吞掉并落诊断（默认
+    // uncaughtExceptionHandler 会 killProcess——1.3.6 真机手写连环
+    // 进程死亡的兜底防线；native crash 走 tombstone 不经此处）。
+    private val worker = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "feelime-ink").apply {
+            setUncaughtExceptionHandler { thread, failure ->
+                Log.e(TAG, "ink worker uncaught on ${thread.name}", failure)
+                Diagnostics.log(
+                    "inkWorker",
+                    "uncaught ${failure.javaClass.name}: ${failure.message ?: ""}",
+                )
+            }
+        }
+    }
     private val modelStore = ModelStore(context)
     @Volatile private var session: OrtSession? = null
     @Volatile private var environment: OrtEnvironment? = null
@@ -59,9 +72,15 @@ class HandwritingEngine(
             val result = runCatching { recognize(reqId, payload) }
                 .getOrElse { failure ->
                     Log.w(TAG, "ink recognition failed", failure)
+                    Diagnostics.log(
+                        "inkFail",
+                        "${failure.javaClass.name}: ${failure.message ?: ""} req=$reqId",
+                    )
                     InkResult(reqId, emptyList(), "failed")
                 }
-            listener.onInkResult(result.reqId, result.candidates, result.error)
+            // 结果分发也在 worker 线程：回调抛异常不能拖垮常驻进程。
+            runCatching { listener.onInkResult(result.reqId, result.candidates, result.error) }
+                .onFailure { Log.w(TAG, "ink result dispatch failed", it) }
         }
     }
 
@@ -132,6 +151,9 @@ class HandwritingEngine(
         val env = checkNotNull(environment)
         // 模型输入 (1,96,96,1) uint8（NHWC，tf2onnx 转换保真）。
         val shape = longArrayOf(1, MELNYK_SIZE.toLong(), MELNYK_SIZE.toLong(), 1)
+        // native crash 取证埋点：begin 无对应的 diag 结尾 = 死在 run 内
+        //（runCatching 接不住 SIGSEGV）。1.3.6 真机手写连环进程死亡用。
+        Diagnostics.log("inkInfer", "begin req=$reqId")
         OnnxTensor.createTensor(
             env,
             java.nio.ByteBuffer.wrap(input),
@@ -139,6 +161,7 @@ class HandwritingEngine(
             ai.onnxruntime.OnnxJavaType.UINT8,
         ).use { tensor ->
             activeSession.run(mapOf(checkNotNull(inputName) to tensor)).use { output ->
+                Diagnostics.log("inkInfer", "done req=$reqId")
                 val tensor = output[0] as OnnxTensor
                 val buffer = tensor.floatBuffer
                 val probs = FloatArray(buffer.remaining())

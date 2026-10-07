@@ -2660,8 +2660,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "candidateFont" -> {
+                    // #42 滑杆区间（80-150），与 SettingsBridge 同源钳制。
                     val size = value.toIntOrNull()
-                    if (size == null || size !in 0..2) return@guarded
+                    if (size == null || size !in CANDIDATE_FONT_RANGE) return@guarded
                     keyboardPrefs.edit().putInt(PREF_CANDIDATE_FONT, size).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
@@ -3493,10 +3494,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             }
         }
 
-        /** Panel paste (clipboard/favorites): multi-code-point external commit. */
-        @JavascriptInterface
-        fun commitText(text: String, token: String) = guarded(token, limited = false) {
-            val valid = text.isNotEmpty() &&
+        /** Shared payload validation for the two literal-commit bridges:
+         * non-empty, within [MAX_COMMIT_CODE_POINTS], no NUL and no
+         * unpaired surrogates. */
+        private fun isValidCommitPayload(text: String): Boolean =
+            text.isNotEmpty() &&
                 text.codePointCount(0, text.length) <= MAX_COMMIT_CODE_POINTS &&
                 runCatching {
                     var index = 0
@@ -3514,13 +3516,29 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     }
                     true
                 }.getOrDefault(false)
-            if (!valid) {
+
+        /** Panel paste (clipboard/favorites): multi-code-point external commit. */
+        @JavascriptInterface
+        fun commitText(text: String, token: String) = guarded(token, limited = false) {
+            if (!isValidCommitPayload(text)) {
                 rejectedCalls += 1
                 return@guarded
             }
             // #41 字数统计：JS 直发文本走 pasteExternal→editor.commitText，
             // 计数点在 InputConnectionEditorPort（此处再加会双计）。
             coordinator.pasteExternal(text)
+        }
+
+        /** Panel paste that is NOT typing (issue #44): clipboard/favorites
+         * entries land through the same channel but must not feed #41
+         * stats. Validation identical to [commitText]. */
+        @JavascriptInterface
+        fun pasteText(text: String, token: String) = guarded(token, limited = false) {
+            if (!isValidCommitPayload(text)) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            coordinator.pasteExternal(text, countStats = false)
         }
 
         /** Candidate-bar ×: abort composition, restore the toolbar.

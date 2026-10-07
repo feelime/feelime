@@ -664,10 +664,8 @@ body.settings-page #candidateBar > .tool { display: none; }
  * 用户定稿（2026-09-20）：不做任何「这是联想」的降调标识——不加灰字、
  * 不加圆点/角标，样式全部继承 .candidate。class 名保留供测试定位。 */
 
-/* 候选字号档位（issue #2）：hello 带来的 body[data-cand-font] 只缩放
- * 文字，不动 34px 行高预算（扩到 2 档以上会挤压行高，另行设计）。 */
-body[data-cand-font="large"] { --cand-font-scale: 1.2; }
-body[data-cand-font="xlarge"] { --cand-font-scale: 1.35; }
+/* 候选字号（issue #42）：JS 直写 --cand-font-scale（80-150% 连续），
+ * data 属性仅作测试锚点，不再驱动缩放；34px 行高预算不动。 */
 .candidate:active, .candidate.active-touch { background: var(--pressed); }
 /* First candidate: accent text on a pill (both themes, reference behaviour). */
 .candidate.first { color: var(--accent-text); background: var(--pill); }
