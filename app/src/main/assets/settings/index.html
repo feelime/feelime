@@ -871,12 +871,22 @@
           <button class="btn" id="btnMic" type="button" data-i18n="voice.mic.action">去授权</button>
         </div>
       </div>
-      <!-- #39-13 长按空格语音开关：关=空格长按不触发、隐藏空格 mic 小标
-           与工具栏麦克风（不用语音的用户净化键盘）。 -->
-      <label class="row switch-row" for="voiceOnSpace">
-        <span class="row-label"><span data-i18n="voice.holdSpace">长按空格语音输入</span><small data-i18n="voice.holdSpaceHint">关闭后空格键不再显示麦克风，工具栏麦克风按钮同隐藏。</small></span>
-        <input type="checkbox" id="voiceOnSpace" data-keywords="语音 长按空格 麦克风 关闭 隐藏 voice hold space" class="toggle">
-      </label>
+      <!-- #39-13 长按空格语音开关；#50 升级为动作选择：语音输入（默认）/
+           剪贴板/表情/快捷编辑/控制键层/关闭。语音动作才画空格 mic 小标，
+           工具栏麦克风也只在语音动作显示。 -->
+      <div class="rows">
+        <label class="row" for="spaceHoldAction">
+          <span class="row-label"><span data-i18n="voice.holdSpace">长按空格</span><small data-i18n="voice.holdSpaceHint">长按空格键触发的动作；「语音输入」显示麦克风，「关闭」则长按无响应。</small></span>
+          <select id="spaceHoldAction" class="select" data-keywords="语音 长按空格 麦克风 剪贴板 表情 编辑 控制键 关闭 voice hold space clipboard favorites edit control">
+            <option value="voice" data-i18n="voice.hold.voice">语音输入</option>
+            <option value="clipboard" data-i18n="voice.hold.clipboard">剪贴板面板</option>
+            <option value="favorites" data-i18n="voice.hold.favorites">表情/常用面板</option>
+            <option value="edit" data-i18n="voice.hold.edit">快捷编辑面板</option>
+            <option value="control" data-i18n="voice.hold.control">控制键层</option>
+            <option value="none" data-i18n="voice.hold.none">关闭</option>
+          </select>
+        </label>
+      </div>
       <div class="rows">
         <label class="row" for="modelBackend">
           <span class="row-label"><span data-i18n="voice.backend.label">模型来源</span></span>

@@ -96,7 +96,8 @@ class MockSettingsNative {
     setOneHandPad(...a) { this._rec('setOneHandPad', a); }
     setKeySound(...a) { this._rec('setKeySound', a); }
     setKeyHaptic(...a) { this._rec('setKeyHaptic', a); }
-    setVoiceOnSpace(...a) { this._rec('setVoiceOnSpace', a); }
+    setVoiceOnSpace(...a) { this._rec("setVoiceOnSpace", a); }
+    setSpaceHoldAction(...a) { this._rec("setSpaceHoldAction", a); }
     setKeySoundVolume(...a) { this._rec('setKeySoundVolume', a); }
     setKeyHapticStrength(...a) { this._rec('setKeyHapticStrength', a); }
     // /R8: page reporting (BACK returns home first) + about-page
@@ -1889,16 +1890,21 @@ test('base dictionary switching copy states the effective lexicon and the target
         'current line reflects the effective lexicon');
 });
 
-test('issue-39 follow-ups: hold-space voice / key volume / haptic strength post via the bridge', () => {
+test('issue-39/50 follow-ups: hold-space action / key volume / haptic strength post via the bridge', () => {
     const world = new SettingsWorld();
-    world.push({ ...BASE_STATE, voiceOnSpace: false, keySoundVolume: 40, keyHapticStrength: 2 });
-    equal(world.$('voiceOnSpace').checked, false, 'hold-space voice reflects off state');
+    // #50：动作域优先；旧布尔（无 spaceHoldAction 推送）回退映射。
+    world.push({ ...BASE_STATE, spaceHoldAction: 'clipboard', keySoundVolume: 40, keyHapticStrength: 2 });
+    equal(world.$('spaceHoldAction').value, 'clipboard', 'hold-space action reflects state');
     equal(world.$('keySoundVolume').value, '40', 'volume slider reflects state');
     equal(world.$('keyHapticStrength').value, '2', 'haptic strength reflects state');
+    world.push({ ...BASE_STATE, voiceOnSpace: false });
+    equal(world.$('spaceHoldAction').value, 'none', 'legacy boolean false maps to none');
+    world.push({ ...BASE_STATE });
+    equal(world.$('spaceHoldAction').value, 'voice', 'default maps to voice');
     const fire = (id, type, target) =>
         world.$(id).listeners.find(l => l.type === type).handler({ target });
-    fire('voiceOnSpace', 'change', { checked: true });
-    equal(world.lastCall('setVoiceOnSpace').args, [true, world.token], 'toggle posts setVoiceOnSpace');
+    fire('spaceHoldAction', 'change', { value: 'edit' });
+    equal(world.lastCall('setSpaceHoldAction').args, ['edit', world.token], 'select posts setSpaceHoldAction');
     fire('keyHapticStrength', 'change', { value: '0' });
     equal(world.lastCall('setKeyHapticStrength').args, [0, world.token], 'strength posts setKeyHapticStrength');
     // 音量滑条防抖 250ms：input 当拍不进桥（sandbox 的 setTimeout 只入队）。
