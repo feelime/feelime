@@ -165,6 +165,17 @@ def conv_after(kb, word):
 
 def main():
     d.prepare()
+    # C 段候选期望值全部写在内置词库上：基底词库换装态（custom）的
+    # rime-user/build 产物按设计遮蔽内置 table/prism，简拼/分词语义
+    # 随码表整个换掉（ace 2026-10-08 实录：9-30 万象 Lite 实验残留，
+    # C13 x'an→西安 假失败，AVD 同包通过）。前置门：非 builtin 快失败，
+    # 免得换装态淹没成一片难归因的 C 段失败。
+    base_dict = d.shell(f"run-as {d.PKG} cat shared_prefs/feelime_base_dict.xml")
+    if 'name="mode" value="custom"' in base_dict:
+        raise SystemExit(
+            "base dict is custom-swapped: C-segment candidate expectations "
+            "assume the built-in lexicon. Restore it first (设置 → 键盘与输入 "
+            "→ 基底词库 → 恢复内置) or point the suite at a clean install.")
     kb = d.fresh_kb()
     if not kb:
         raise SystemExit("keyboard geometry unavailable")
@@ -274,6 +285,15 @@ def main():
     spaced = d.field_text_retry()
     record("E4b picked words land space-separated",
            spaced == "bonjour monde ", f"text={spaced!r}")
+
+    # 1.3.7 起（省音词根收紧，用户实录 quotidie → quotidien）：词根只认
+    # 原样/重音摆位形，suggest 的 ngram 无关词（otidie→idiotie 拼出
+    # qu'idiotie）不再进省音，前缀补全高频词回第一。
+    quot = candidates_after(kb, "quotidie")
+    record("E4e elision roots never bury the prefix completion",
+           bool(quot) and quot[0] == "quotidien" and not any(
+               c.startswith("qu'") for c in quot),
+           repr(quot[:6]))
 
     # 1.3.6 起（法语重音折叠索引，用户反馈 etre→être）：候选池不再出现
     # 首字符单字重音变体（é/è/ê/ë 让位给折叠词形变体 été/éteuf…），
