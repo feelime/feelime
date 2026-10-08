@@ -165,6 +165,17 @@ def conv_after(kb, word):
 
 def main():
     d.prepare()
+    # C 段候选期望值全部写在内置词库上：基底词库换装态（custom）的
+    # rime-user/build 产物按设计遮蔽内置 table/prism，简拼/分词语义
+    # 随码表整个换掉（ace 2026-10-08 实录：9-30 万象 Lite 实验残留，
+    # C13 x'an→西安 假失败，AVD 同包通过）。前置门：非 builtin 快失败，
+    # 免得换装态淹没成一片难归因的 C 段失败。
+    base_dict = d.shell(f"run-as {d.PKG} cat shared_prefs/feelime_base_dict.xml")
+    if 'name="mode" value="custom"' in base_dict:
+        raise SystemExit(
+            "base dict is custom-swapped: C-segment candidate expectations "
+            "assume the built-in lexicon. Restore it first (设置 → 键盘与输入 "
+            "→ 基底词库 → 恢复内置) or point the suite at a clean install.")
     kb = d.fresh_kb()
     if not kb:
         raise SystemExit("keyboard geometry unavailable")
