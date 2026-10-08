@@ -3453,9 +3453,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 clearTimeout(this.spaceHoldTimer);
                 if (this.voiceHold) {
                     this.voiceHold = false;
-            // #39-13 长按空格语音（默认开）：关=长按不触发+隐藏空格 mic
-            // 小标与工具栏麦克风。
-            this.voiceOnSpace = true;
                     this.resetSlideCancel();
                     this.requestVoiceStop(true);
                 }
@@ -3487,9 +3484,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.resetSlideCancel();
                 if (this.voiceHold) {
                     this.voiceHold = false;
-            // #39-13 长按空格语音（默认开）：关=长按不触发+隐藏空格 mic
-            // 小标与工具栏麦克风。
-            this.voiceOnSpace = true;
                     // 松手就上屏；只有上滑过阈值才撤销。
                     this.requestVoiceStop(armed ? true : cancelled);
                     if (armed) this.showToast(t("已撤销本次听写"));
@@ -10036,12 +10030,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.qConfirm('dpScheme', dpScheme);
             // 字母键盘布局（kbLayout pref，"26"|"14"）：变化即重渲染当前
             // 键面（renderMode 内部按 pref 换 dp14/qwerty 布局）。
+            // 长按空格语音开关（#56）：空格 mic 小标与 data-lp 圆点只在
+            // spaceKey() 构建时读 voiceOnSpace——推送只改字段不重渲染的
+            // 话，关掉后图标残留到下一次 renderMode、WebView 重启时构造
+            // 器默认 true 又先画出来（时隐时现）。变化即重渲染。
+            const voiceChanged = (payload.voiceOnSpace !== false) !== this.voiceOnSpace;
             this.voiceOnSpace = payload.voiceOnSpace !== false;
             const nextKbLayout = payload.kbLayout === '14' ? '14' : '26';
             const kbLayoutChanged = nextKbLayout !== this.kbLayout;
             this.kbLayout = nextKbLayout;
             if (modeChanged) this.renderMode();
             else if (kbLayoutChanged && MERGEABLE_14.has(this.mode)) {
+                this.renderMode();
+            } else if (voiceChanged) {
                 this.renderMode();
             }
             // Degraded/warming state arrives with every hello (mode-fallback
