@@ -1423,14 +1423,14 @@ body.landscape .num-grid { gap: 3px; }
 .kb-key[data-lp="lock"],
 .kb-key[data-lp="numpad"],
 .kb-key[data-lp="mode-menu"],
-.kb-key[data-lp="voice-hold"],
+.kb-key[data-lp="space-hold"],
 #ctrlLayer .ctrl-mod {
     position: relative;
 }
 .kb-key[data-lp="lock"]::after,
 .kb-key[data-lp="numpad"]::after,
 .kb-key[data-lp="mode-menu"]::after,
-.kb-key[data-lp="voice-hold"]::after,
+.kb-key[data-lp="space-hold"]::after,
 #ctrlLayer .ctrl-mod::after {
     content: '';
     position: absolute;

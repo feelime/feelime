@@ -169,12 +169,26 @@ fun readKeyHapticStrength(context: Context): Int =
         .getInt(PREF_KEY_HAPTIC_STRENGTH, 1)
         .coerceIn(0, 2)
 
-/** #39-13 长按空格语音输入（默认开）：关=长按不触发+隐藏麦克风。 */
+/** #39-13 长按空格语音输入（默认开）：关=长按不触发+隐藏麦克风。
+ *  #50 起由 space_hold_action 动作域接管（voice 语义不变），此布尔
+ *  仅作读侧迁移源与旧键盘 JS（热更）的推送兼容。 */
 const val PREF_VOICE_ON_SPACE = "voice_on_space"
 
 fun readVoiceOnSpace(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_VOICE_ON_SPACE, true)
+
+/** #50 长按空格动作（枚举见 [SPACE_HOLD_ACTIONS]）：未设置时回退旧
+ *  布尔开关（voice/none）。 */
+const val PREF_SPACE_HOLD_ACTION = "space_hold_action"
+val SPACE_HOLD_ACTIONS = setOf("voice", "none", "clipboard", "favorites", "edit", "control")
+
+fun readSpaceHoldAction(context: Context): String {
+    val action = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_SPACE_HOLD_ACTION, null)
+    if (action != null && action in SPACE_HOLD_ACTIONS) return action
+    return if (readVoiceOnSpace(context)) "voice" else "none"
+}
 
 /** #36→全局 字母键盘布局（拼音/双拼/英文生效）："26"（默认）|"14"。
  *  旧键 dp_layout 是双拼专属，读到非默认值迁移沿用。 */
@@ -739,6 +753,7 @@ class SettingsBridge(
             })
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(context))
             .put("kbLayout", readKbLayout(context))
+            .put("spaceHoldAction", readSpaceHoldAction(context))
             .put("voiceOnSpace", readVoiceOnSpace(context))
             .put("keySoundVolume", readKeySoundVolume(context))
             .put("keyHapticStrength", readKeyHapticStrength(context))
@@ -1171,6 +1186,20 @@ class SettingsBridge(
     fun setVoiceOnSpace(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_VOICE_ON_SPACE, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #50 长按空格动作（voice/none/clipboard/favorites/edit/control）：
+     *  白名单外一律拒收（保持现值），落盘走 ACTION_KEYBOARD_PREFS_CHANGED
+     *  的既有重推链。 */
+    @JavascriptInterface
+    fun setSpaceHoldAction(action: String, token: String) = guarded(token) {
+        if (action !in SPACE_HOLD_ACTIONS) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_SPACE_HOLD_ACTION, action).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

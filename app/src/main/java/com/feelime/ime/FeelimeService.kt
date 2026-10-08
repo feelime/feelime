@@ -2054,6 +2054,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("keySat", readKeySat(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("kbLayout", readKbLayout(this))
+            .put("spaceHoldAction", readSpaceHoldAction(this))
             .put("voiceOnSpace", readVoiceOnSpace(this))
             .put("associationOn", readAssociation(this))
             .put("backspaceAssocOn", readBackspaceAssoc(this))
@@ -2729,6 +2730,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 "voiceOnSpace" -> {
                     // #39-13 长按空格语音开关（键盘侧暂无入口，预留 tile 用）。
                     keyboardPrefs.edit().putBoolean(PREF_VOICE_ON_SPACE, value == "1").commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "spaceHoldAction" -> {
+                    // #50 长按空格动作（设置页下拉）：白名单外拒收。
+                    if (value !in SPACE_HOLD_ACTIONS) return@guarded
+                    keyboardPrefs.edit().putString(PREF_SPACE_HOLD_ACTION, value).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "kbLayout" -> {

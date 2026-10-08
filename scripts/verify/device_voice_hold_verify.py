@@ -77,6 +77,7 @@ def main():
 
     try:
         run_cases(kb)
+        run_panel_action_cases(kb)
     finally:
         teardown_overlay()
 
@@ -158,6 +159,51 @@ def run_cases(kb):
         bool(released) and released.get("open") is False,
         repr(released),
     )
+
+
+
+def run_panel_action_cases(kb):
+    """#50 长按空格面板动作：edit/control 分发正确、松手不补发空格、
+    dot 泛化（可长按）与 mic 收敛（仅语音画）。收尾恢复 voice。"""
+    def set_action(action):
+        d.devtools_eval_target(
+            "settings", f"call('setSpaceHoldAction', '{action}'); 'ok'")
+        time.sleep(1.5)
+
+    def layer_open(el_id):
+        return d.devtools_eval(
+            f"(() => {{ const e = document.getElementById('{el_id}');"
+            " return e ? !e.hidden : null; })()")
+
+    def close_view(el_id, hook):
+        d.devtools_eval(
+            "(() => { const e = document.getElementById(" + repr(el_id) + ");"
+            " if (e && !e.hidden) window.Feelime && window.Feelime[" + repr(hook) + "]();"
+            " return true; })()")
+        time.sleep(0.6)
+
+    sx, sy = kb["<space>"]
+    for action, el, hook in (("edit", "editLayer", "toggleEditPanel"),
+                             ("control", "ctrlLayer", "toggleControlView")):
+        set_action(action)
+        dom = d.devtools_eval(
+            "(() => { const k = document.getElementById('spaceKey');"
+            " return JSON.stringify({dot: k ? (k.dataset.lp || null) : null,"
+            " mic: !!(k && k.querySelector('svg.space-mic'))}); })()")
+        record(f"#50 {action}: dot set, mic hidden",
+               '"dot":"space-hold"' in str(dom) and '"mic":false' in str(dom), dom)
+        before = d.field_text_retry() or ""
+        motion("DOWN", sx, sy)
+        time.sleep(1.0)
+        opened = layer_open(el)
+        motion("UP", sx, sy)
+        time.sleep(0.8)
+        after = d.field_text_retry() or ""
+        record(f"#50 {action}: long-press opens {el}", opened is True, repr(opened))
+        record(f"#50 {action}: release commits no space", after == before,
+               f"{before!r}->{after!r}")
+        close_view(el, hook)
+    set_action("voice")
 
 
 if __name__ == "__main__":

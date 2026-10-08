@@ -25,6 +25,8 @@ const KEYBOARD_MODES = [
     ['french', '法语'], ['russian', '俄语'], ['japanese', '日语'],
 ];
 const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
+/** #50 长按空格动作的合法域（与原生 SPACE_HOLD_ACTIONS 同源）。 */
+const HOLD_ACTIONS = ['voice', 'none', 'clipboard', 'favorites', 'edit', 'control'];
 
 // #31 键盘色调：与 native THEME_PRESETS / keyboard.css html[data-preset] 同源。
 const THEME_PRESET_LIST = ['classic', 'ocean', 'violet', 'amber', 'sakura', 'teal'];
@@ -326,8 +328,14 @@ const I18N = {
         "voice.downloadSource.archivePlaceholder": "例如：https://example.com/model.tar.bz2",
         "voice.downloadSource.save": "保存下载源",
         "voice.downloadSource.hint": "下载后会校验文件完整性；压缩包地址只用于流式模型的大文件，自定义源需同时填写仓库地址和对应的 tar.bz2 地址。",
-        "voice.holdSpace": "长按空格语音输入",
-        "voice.holdSpaceHint": "关闭后空格键不再显示麦克风，工具栏麦克风按钮同隐藏。",
+        "voice.holdSpace": "长按空格",
+        "voice.holdSpaceHint": "长按空格键触发的动作；「语音输入」显示麦克风，「关闭」则长按无响应。",
+        "voice.hold.voice": "语音输入",
+        "voice.hold.clipboard": "剪贴板面板",
+        "voice.hold.favorites": "表情/常用面板",
+        "voice.hold.edit": "快捷编辑面板",
+        "voice.hold.control": "控制键层",
+        "voice.hold.none": "关闭",
         "voice.mic.permission": "麦克风权限",
         "voice.mic.hint": "语音输入必需，全程本地处理",
         "voice.mic.action": "去授权",
@@ -966,8 +974,14 @@ const I18N = {
         "voice.downloadSource.archivePlaceholder": "For example: https://example.com/model.tar.bz2",
         "voice.downloadSource.save": "Save download source",
         "voice.downloadSource.hint": "Downloads are checked for integrity. The archive URL is only for the streaming model's large file; a custom source must provide both the repository URL and its matching tar.bz2 URL.",
-        "voice.holdSpace": "Hold-space voice input",
-        "voice.holdSpaceHint": "Off removes the mic glyph from the space bar and hides the toolbar mic.",
+        "voice.holdSpace": "Hold space",
+        "voice.holdSpaceHint": "What a long-press on the space bar does; Voice shows the mic glyph, Off disables the hold.",
+        "voice.hold.voice": "Voice input",
+        "voice.hold.clipboard": "Clipboard panel",
+        "voice.hold.favorites": "Emoji / favorites panel",
+        "voice.hold.edit": "Quick edit panel",
+        "voice.hold.control": "Control-key layer",
+        "voice.hold.none": "Off",
         "voice.mic.permission": "Microphone permission",
         "voice.mic.hint": "Required for voice input; processing stays on this device",
         "voice.mic.action": "Allow",
@@ -2073,8 +2087,12 @@ function setLed(rowId, ok) {
 }
 
 function renderVoice(state) {
-    if (document.activeElement !== $("voiceOnSpace")) {
-        $("voiceOnSpace").checked = state.voiceOnSpace !== false;
+    // #50 长按空格动作：新键优先，旧布尔（热更键盘/旧推送）回退映射。
+    const holdAction = HOLD_ACTIONS.indexOf(state.spaceHoldAction) >= 0
+        ? state.spaceHoldAction
+        : (state.voiceOnSpace === false ? "none" : "voice");
+    if (document.activeElement !== $("spaceHoldAction")) {
+        $("spaceHoldAction").value = holdAction;
     }
     if (document.activeElement !== $("modelBackend")) {
         $("modelBackend").value = state.modelBackend === "remote" ? "remote" : "auto";
@@ -3419,7 +3437,7 @@ $("scrubSpeed").addEventListener("change", submitFeelOptions);
 $("flickSwap").addEventListener("change", event => call("setFlickSwap", event.target.checked));
 $("popupSnap").addEventListener("change", submitFeelOptions);
 $("modelBackend").addEventListener("change", event => call("setModelBackend", event.target.value));
-$("voiceOnSpace").addEventListener("change", event => call("setVoiceOnSpace", event.target.checked));
+$("spaceHoldAction").addEventListener("change", event => call("setSpaceHoldAction", event.target.value));
 $("modelDownloadSource").addEventListener("change", event => {
     const visible = event.target.value === "custom";
     $("modelDownloadCustom").hidden = !visible;

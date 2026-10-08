@@ -319,6 +319,10 @@
     // 专业键面维持 26 键）。
     const MERGEABLE_14 = new Set(['pinyin', 'double-pinyin', 'direct']);
 
+    /** 长按空格动作的合法域（#50）：voice=语音浮层（默认）、none=关、
+     *  其余为一次性打开的面板（见 bindSpaceHold 的分发）。 */
+    const SPACE_HOLD_ACTIONS = new Set(['voice', 'none', 'clipboard', 'favorites', 'edit', 'control']);
+
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
      *  到候选第 3 格；含汉字/字母的词（正常词条）不在此列。 */
@@ -1249,9 +1253,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.pressById = new Map();
             this.swiping = false;
             this.voiceHold = false;
-            // #39-13 长按空格语音（默认开）：关=长按不触发+隐藏空格 mic
-            // 小标与工具栏麦克风。
-            this.voiceOnSpace = true;
+            // #39-13/#50 长按空格动作（默认 voice）：none=长按不触发+
+            // 隐藏空格 mic 小标与工具栏麦克风；面板类动作见
+            // bindSpaceHold 的分发（clipboard/favorites/edit/control）。
+            this.spaceHoldAction = 'voice';
             this.voiceSession = null;
             this.spaceHoldTimer = 0;
             // 手写板状态（issue #28）：笔迹（书写区局部 CSS px）、在途请求
@@ -3400,11 +3405,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const button = document.createElement('button');
             button.className = 'kb-key kb-wide-4';
             button.id = 'spaceKey';
-            // 长按空格拉起语音浮层（design §1.2）：右上角圆点标识可长按。
-            // #39-13：语音长按关掉后不画 mic 小标也不标可长按。
-            if (this.voiceOnSpace !== false) button.dataset.lp = 'voice-hold';
+            // 长按空格：右上角圆点标识可长按（#50 起动作可自定义，
+            // 圆点语义泛化为「可长按」；mic 小标只在语音动作画）。
+            if (this.spaceHoldAction !== 'none') button.dataset.lp = 'space-hold';
             button.setAttribute('aria-label', t("空格"));
-            if (this.voiceOnSpace !== false) {
+            if (this.spaceHoldAction === 'voice') {
                 const mic = document.createElementNS(SVG_NS, 'svg');
                 mic.setAttribute('viewBox', '0 0 24 24');
                 mic.setAttribute('class', 'space-mic');
@@ -3449,13 +3454,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const SLIDE_CANCEL_PX = 110;
             let startY = 0;
             let slideProgress = 0;
+            // #50：面板类长按已消费手势——松手不再补发空格点击。
+            let holdConsumed = false;
             button._cancelSpaceHold = () => {
                 clearTimeout(this.spaceHoldTimer);
                 if (this.voiceHold) {
                     this.voiceHold = false;
-            // #39-13 长按空格语音（默认开）：关=长按不触发+隐藏空格 mic
-            // 小标与工具栏麦克风。
-            this.voiceOnSpace = true;
                     this.resetSlideCancel();
                     this.requestVoiceStop(true);
                 }
@@ -3465,11 +3469,29 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 button.classList.add('active-touch');
                 startY = event.touches[0].clientY;
                 slideProgress = 0;
-                if (!this.ready || !this.token || this.voiceOnSpace === false) return;
+                holdConsumed = false;
+                if (!this.ready || !this.token || this.spaceHoldAction === 'none') return;
                 this.spaceHoldTimer = setTimeout(() => {
-                    this.voiceHold = true;
-                    this.voiceSession = 'space-hold';
-                    Native.startVoice(this.token);
+                    // #50 长按空格自定义映射：语音走原浮层流（松手收尾），
+                    // 面板类一次性触发、不进 voiceHold（无语音收尾语义）。
+                    const act = this.spaceHoldAction;
+                    if (act === 'voice') {
+                        this.voiceHold = true;
+                        this.voiceSession = 'space-hold';
+                        Native.startVoice(this.token);
+                    } else if (act === 'clipboard') {
+                        holdConsumed = true;
+                        this.openPanel('clipboard');
+                    } else if (act === 'favorites') {
+                        holdConsumed = true;
+                        this.openPanel('favorites');
+                    } else if (act === 'edit') {
+                        holdConsumed = true;
+                        this.toggleEditPanel();
+                    } else if (act === 'control') {
+                        holdConsumed = true;
+                        this.setControlView(true);
+                    }
                 }, 350);
             };
             const move = event => {
@@ -3487,17 +3509,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.resetSlideCancel();
                 if (this.voiceHold) {
                     this.voiceHold = false;
-            // #39-13 长按空格语音（默认开）：关=长按不触发+隐藏空格 mic
-            // 小标与工具栏麦克风。
-            this.voiceOnSpace = true;
                     // 松手就上屏；只有上滑过阈值才撤销。
                     this.requestVoiceStop(armed ? true : cancelled);
                     if (armed) this.showToast(t("已撤销本次听写"));
-                } else if (!cancelled) {
+                } else if (!cancelled && !holdConsumed) {
                     // touchstart preventDefault suppresses synthetic clicks,
                     // so the tap must be delivered manually. T9 的 mic 有
                     // data-key：横滑 scrub 已被手势层消费，松手不再补发
                     // 空格（swiping 的复位是 setTimeout(0)，此处仍为 true）。
+                    // #50 面板类长按已消费手势，不再补发空格。
                     if (!this.swiping) button.click();
                 }
             };
@@ -6240,7 +6260,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     : (this.toolbarYield || composeHidden || overflow.has(dom));
             });
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = this.voiceOnSpace === false || this.toolbarYield ||
+            if (mic) mic.hidden = this.spaceHoldAction !== 'voice' || this.toolbarYield ||
                 (composeHidden && this.voiceState === 'idle');
         }
 
@@ -8913,7 +8933,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('composeExpand').hidden = !this.composing || voiceBusy;
             if (!this.composing && this.expanded && !this.variantReplaying) this.setExpanded(false);
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = this.voiceOnSpace === false ||
+            if (mic) mic.hidden = this.spaceHoldAction !== 'voice' ||
                 (this.composing && !recording);
             // 手写候选态的整行互斥要压过上面 mic/工具的通用可见性规则：
             // 引擎回声（commitText 后的空事件等）不得把工具栏插回候选行。
@@ -10036,12 +10056,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.qConfirm('dpScheme', dpScheme);
             // 字母键盘布局（kbLayout pref，"26"|"14"）：变化即重渲染当前
             // 键面（renderMode 内部按 pref 换 dp14/qwerty 布局）。
-            this.voiceOnSpace = payload.voiceOnSpace !== false;
+            // 长按空格动作（#50/#56）：空格 mic 小标与 data-lp 圆点只在
+            // spaceKey() 构建时读——推送只改字段不重渲染的话，改掉后
+            // 图标残留到下一次 renderMode、WebView 重启时构造器默认值
+            // 又先画出来（时隐时现）。变化即重渲染。热更键盘（新 JS）跑
+            // 旧原生（无 spaceHoldAction 推送）时回退旧布尔键。
+            const nextSpaceHoldAction = SPACE_HOLD_ACTIONS.has(payload.spaceHoldAction)
+                ? payload.spaceHoldAction
+                : (payload.voiceOnSpace === false ? 'none' : 'voice');
+            const spaceHoldChanged = nextSpaceHoldAction !== this.spaceHoldAction;
+            this.spaceHoldAction = nextSpaceHoldAction;
             const nextKbLayout = payload.kbLayout === '14' ? '14' : '26';
             const kbLayoutChanged = nextKbLayout !== this.kbLayout;
             this.kbLayout = nextKbLayout;
             if (modeChanged) this.renderMode();
             else if (kbLayoutChanged && MERGEABLE_14.has(this.mode)) {
+                this.renderMode();
+            } else if (spaceHoldChanged) {
                 this.renderMode();
             }
             // Degraded/warming state arrives with every hello (mode-fallback
