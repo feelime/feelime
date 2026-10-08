@@ -198,50 +198,41 @@ class HunspellTextEngine(
      * root（était/accord…）是普通词，两级验证：
      *   1) 整词（含撇号）过词典；
      *   2) head' 与 root 各自过词典（aff 复合不认整词时的退路）。
+     * 词根只认「用户所打字母的原样/重音摆位形」（elisionRootsStatic），
+     * 不收 suggest 建议：quotidie 切 qu+otidie 后 ngram 建议出
+     * idiotie/idiotifie/idiotise，拼成 qu'idiotie 还压住 quotidien
+     * 的前缀补全（用户实录）。排序：整词验证过的在前（jusqu'à 压住
+     * 拼装的 jusqu'a），同档词根重音少的在前（j'aime 压住 j'aimé）。
      * 完整词免疫：quand/table/seul 的 root（and/able/eul）不是词，
      * 验证不过就不会误出 qu'and/t'able/s'eul。
      */
     private fun elisionCandidates(): List<String> {
-        val out = LinkedHashSet<String>()
+        // whole → 排序键：整词档 = 词根重音数，拼装档 = STITCHED_RANK +
+        // 重音数（永远落后整词档）。
+        val found = LinkedHashMap<String, Int>()
+        fun spell(word: String) = NativeSmoke.hunspellSpell(handle, word) == 1
         fun offer(head: String, rest: String, minRest: Int = 2) {
             if (rest.length < minRest) return
             // 省音只在元音（或哑音 h）前。
             if (rest[0].lowercase() !in ELISION_VOWELS) return
-            val roots = ArrayList<String>()
-            if (NativeSmoke.hunspellSpell(handle, rest) == 1) roots += rest
-            NativeSmoke.hunspellSuggest(handle, rest).lineSequence()
-                .filter { it.isNotEmpty() }.take(3)
-                .forEach { if (it !in roots) roots += it }
-            // 单字母词根的重音族展开（jusqu'à 的 à）：prefix 索引按
-            // startsWith 匹配，à 不以 a 开头永远进不来；重音族成员
-            // 过词典即收，并排到词根前面（打无调形求带调词，à 优先于
-            // 原字母 a）。
-            if (rest.length == 1) {
-                val accentedFirst = ArrayList<String>()
-                for (accented in ACCENT_FOLD[rest[0]] ?: charArrayOf()) {
-                    val form = accented.toString()
-                    if (NativeSmoke.hunspellSpell(handle, form) == 1) accentedFirst += form
-                }
-                roots.removeAll(accentedFirst)
-                roots.addAll(0, accentedFirst)
-            }
+            val roots = elisionRootsStatic(rest, ::spell, accentFold.orEmpty())
             for (root in roots) {
                 if (root[0].lowercase() !in ELISION_VOWELS) continue
                 val whole = head + "'" + root
-                if (out.contains(whole)) continue
-                if (NativeSmoke.hunspellSpell(handle, whole) == 1 ||
-                    (
-                        NativeSmoke.hunspellSpell(handle, head + "'") == 1 &&
-                            NativeSmoke.hunspellSpell(handle, root) == 1
-                        )
-                ) out += whole
+                if (found.contains(whole)) continue
+                if (spell(whole)) {
+                    found[whole] = root.count { it in ACCENT_CHARS }
+                } else if (spell(head + "'") && spell(root)) {
+                    found[whole] = STITCHED_RANK + root.count { it in ACCENT_CHARS }
+                }
             }
         }
         // jusqu' 档的词根可以是单字母（jusqu'à 的 à），其余档 ≥2。
         elisionSplitsStatic(composing).forEach { split ->
             offer(split.first, split.second, if (split.first == "jusqu") 1 else 2)
         }
-        return out.toList()
+        return found.entries.sortedWith(compareBy({ it.value }, { it.key }))
+            .map { it.key }
     }
 
 
@@ -268,6 +259,12 @@ class HunspellTextEngine(
 
         /** 省音发生的字母环境：元音（含各重音形）与哑音 h。 */
         private const val ELISION_VOWELS = "aàâäeéèêëiîïoôöuùûüyœæh"
+
+        /** 拼装档（整词没过词典、head' 与 root 各自过）的排序垫底值。 */
+        private const val STITCHED_RANK = 100
+
+        /** 省音词根枚举形的收集上限（与 rebuild 主路径的 4 同口径）。 */
+        private const val ROOT_CAP = 4
 
         /** 单字母词根重音族被 buildAccentFold 覆盖后仍保留：élision 的
          *  root 展开走它（jusqu'a → jusqu'à 的整词拼装在 offer 侧）。 */
@@ -400,7 +397,7 @@ class HunspellTextEngine(
             'ё' to 'е', 'Ё' to 'Е',
         )
 
-        /** 单字母词根的重音折叠族（jusqu'à 场景）。 */
+        /** 重音族（a→àâ、e→éèêë…）：accentVariantForms 的枚举源。 */
         private val ACCENT_FOLD = mapOf(
             'a' to charArrayOf('à', 'â'),
             'e' to charArrayOf('é', 'è', 'ê', 'ë'),
@@ -423,6 +420,27 @@ class HunspellTextEngine(
                 splits += word[0].toString() to word.substring(1)
             }
             return splits
+        }
+
+        /** 省音词根收集（纯逻辑，JVM 可测）：原样（过词典）+ 折叠表
+         *  重音形 + 重音摆位枚举形（≤ ROOT_CAP，过词典）。词根必须是
+         *  「用户所打字母的重音摆位形」——suggest 的 ngram 建议会把
+         *  无关词放进词根（otidie → idiotie，拼出 qu'idiotie 压住
+         *  quotidie 的 quotidien），这里结构上就不收 suggest。
+         *  原样排重音形前：j'aime 压住 j'aimé（无调词根是常用形）。 */
+        internal fun elisionRootsStatic(
+            rest: String,
+            spell: (String) -> Boolean,
+            accentFold: Map<String, List<String>>,
+        ): List<String> {
+            val roots = ArrayList<String>()
+            if (spell(rest)) roots += rest
+            accentFold[rest.lowercase()]?.forEach { if (it !in roots) roots += it }
+            for (form in accentVariantForms(rest.lowercase())) {
+                if (roots.size >= ROOT_CAP) break
+                if (form !in roots && spell(form)) roots += form
+            }
+            return roots
         }
     }
 }

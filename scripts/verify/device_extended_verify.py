@@ -275,6 +275,15 @@ def main():
     record("E4b picked words land space-separated",
            spaced == "bonjour monde ", f"text={spaced!r}")
 
+    # 1.3.7 起（省音词根收紧，用户实录 quotidie → quotidien）：词根只认
+    # 原样/重音摆位形，suggest 的 ngram 无关词（otidie→idiotie 拼出
+    # qu'idiotie）不再进省音，前缀补全高频词回第一。
+    quot = candidates_after(kb, "quotidie")
+    record("E4e elision roots never bury the prefix completion",
+           bool(quot) and quot[0] == "quotidien" and not any(
+               c.startswith("qu'") for c in quot),
+           repr(quot[:6]))
+
     # 1.3.6 起（法语重音折叠索引，用户反馈 etre→être）：候选池不再出现
     # 首字符单字重音变体（é/è/ê/ë 让位给折叠词形变体 été/éteuf…），
     # 重音单字改走长按弹层（下方 E4d）。head 必须仍是完整修正词形。
