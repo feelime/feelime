@@ -105,7 +105,11 @@ object Diagnostics {
 
     /** ApplicationExitInfo 取证（API 30+）：上一进程的死因 + 描述头。
      *  native 崩溃的 description 含 signal 与回溯片段——这是拿真实
-     *  崩溃点的唯一可靠通道（自有日志在硬崩时必丢队尾）。 */
+     *  崩溃点的唯一可靠通道（自有日志在硬崩时必丢队尾）。
+     *  v2（2026-10-09，#54 手写连环崩溃一次到位）：CRASH_NATIVE/
+     *  CRASH_JAVA/ANR/SIGNALED 再抽 traceInputStream（系统 tombstone
+     *  全文）的关键行——罪魁 .so 与帧号只在 trace 里，description 只有
+     *  死因类别；status（signal 号）一并入档。 */
     private fun logExitReasonsLocked(context: Context) {
         if (android.os.Build.VERSION.SDK_INT < 30) return
         val am = context.getSystemService(android.app.ActivityManager::class.java) ?: return
@@ -118,7 +122,7 @@ object Diagnostics {
             lastExitTs = info.timestamp
             logSyncLocked("exit",
                 "reason=${exitReasonName(info.reason)}(${info.reason}) " +
-                    "pid=${info.pid} t=${wallClock(info.timestamp)}")
+                    "sig=${info.status} pid=${info.pid} t=${wallClock(info.timestamp)}")
             // 描述（native 回溯/abort message）分段续行——单行 220 上限
             // 装不下回溯头，分段保留 ~1.4KB。
             val desc = (info.description?.toString() ?: "").replace(Regex("\\s+"), " ").trim()
@@ -127,8 +131,52 @@ object Diagnostics {
                     logSyncLocked("exit+", "[$i] $chunk")
                 }
             }
+            if (info.reason in TRACE_WORTHY_REASONS) {
+                val trace = runCatching {
+                    info.traceInputStream?.bufferedReader()?.use { reader ->
+                        reader.readText().take(MAX_TRACE_READ)
+                    }
+                }.getOrNull().orEmpty()
+                extractTraceLines(trace).forEachIndexed { i, line ->
+                    logSyncLocked("exitTrace", "[$i] $line")
+                }
+            }
         }
         prefs.edit().putLong(KEY_LAST_EXIT_TS, lastExitTs).commit()
+    }
+
+    /** trace 抽取的读取上限（tombstone 全文可达百 KB，只留头部+帧表）。 */
+    private const val MAX_TRACE_READ = 128 * 1024
+    private val TRACE_WORTHY_REASONS = setOf(
+        android.app.ApplicationExitInfo.REASON_CRASH_NATIVE,
+        android.app.ApplicationExitInfo.REASON_CRASH,
+        android.app.ApplicationExitInfo.REASON_ANR,
+        android.app.ApplicationExitInfo.REASON_SIGNALED,
+    )
+    /** tombstone 抽取（纯函数，JVM 可测）：保 signal/Abort message/
+     *  pid/Cmdline 头几行 + 全部 backtrace 帧（#NN pc … 带 .so 与
+     *  偏移），总预算 [maxChars]——帧表是定位罪魁 .so 的唯一来源。 */
+    internal fun extractTraceLines(trace: String, maxChars: Int = 3200): List<String> {
+        if (trace.isBlank()) return emptyList()
+        val headerKeep = Regex("signal |Abort message|^pid:|^Cmdline:|^Process uptime|^ABI:")
+        val frameKeep = Regex("""^\s*#\d+\s+pc""")
+        val seenHeader = HashSet<String>()
+        val picked = ArrayList<String>()
+        var used = 0
+        trace.lineSequence()
+            .filter { it.isNotBlank() && (headerKeep.containsMatchIn(it) || frameKeep.containsMatchIn(it)) }
+            .forEach { line ->
+                val headerKey = headerKeep.findAll(line).firstOrNull()?.value
+                if (headerKey != null && !seenHeader.add(headerKey)) {
+                    // 多线程 tombstone 每线程一段头：同字段只留首份，
+                    // 预算让给帧表。
+                    return@forEach
+                }
+                if (used + line.length > maxChars) return@forEach
+                picked.add(line.trim().take(MAX_EVENT_CHARS - 20))
+                used += line.length
+            }
+        return picked
     }
 
     /** 进程级 Java 崩溃兜底：默认 handler 前同步落盘栈头（异步队列在
