@@ -304,11 +304,11 @@ android {
         applicationId = "com.feelime.ime"
         minSdk = 26
         targetSdk = 36
-        versionCode = 63
+        versionCode = 64
         // versionName 在 debug 构建追加 commit 后缀（androidComponents
         // 段）：测试包连续重装时 OS/安装器不再识别成同一版本（用户
         // 2026-10-04 裁定）。release 恒纯净版本号。
-        versionName = "1.3.7"
+        versionName = "1.3.8"
 
         ndk {
             abiFilters += "arm64-v8a"
