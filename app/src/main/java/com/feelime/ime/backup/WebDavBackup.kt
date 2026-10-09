@@ -1,9 +1,12 @@
 package com.feelime.ime.backup
 
 import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Base64
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * WebDAV 云端备份传输层（issue #43，2026-10-09）。
@@ -29,6 +32,20 @@ object WebDavBackup {
     /** GET 的有界读取（与本地导入 MAX_BACKUP_BYTES 同量级，防内存炸弹）。 */
     const val MAX_GET_BYTES = 64L * 1024 * 1024
 
+    /** 共享客户端：连接复用；重定向关闭——3xx 统一走本对象的单跳跟随
+     *  （HttpURLConnection 只对 GET 自动跟随且拒收 PROPFIND——Android
+     *  的实现限定标准方法集，ProtocolException 定罪于 2026-10-10 AVD
+     *  实测，已整体迁 okhttp）。 */
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .readTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
+
+    /** PROPFIND 的零长请求体（Content-Length: 0，服务器端普遍要求）。 */
+    private val EMPTY_BODY = ByteArray(0).toRequestBody(null)
+
     data class Config(val url: String, val user: String, val password: String) {
         /** 地址规整：去空白、去尾斜杠——列表/上传的 URL 拼接统一走它。 */
         val base: String get() = url.trim().trimEnd('/')
@@ -43,8 +60,14 @@ object WebDavBackup {
         data class Fail(val code: String, val detail: String = "") : Outcome<Nothing>()
     }
 
-    /** 单次 HTTP 往返的统一产物：状态码 + 消息 + 响应体（PROPFIND 用）。 */
-    private data class Response(val code: Int, val message: String, val body: ByteArray?)
+    /** 单次 HTTP 往返的统一产物：状态码 + 消息 + 头（重定向 Location 用）
+     *  + 响应体（PROPFIND 用）。 */
+    private data class Response(
+        val code: Int,
+        val message: String,
+        val body: ByteArray?,
+        val headers: Map<String, String>? = null,
+    )
 
     /** 时间戳文件名（本地时区，秒级——同秒两次备份才可能撞名，撞名即
      *  PUT 覆盖同文件，语义可接受）。 */
@@ -121,10 +144,41 @@ object WebDavBackup {
         }
     }
 
-    /** HTTP 往返公共壳：认证头/超时/动词/请求体；响应体流式有界读回
-     *  （[maxBody] 判 Content-Length 头 + 实读双重防线，防超大响应
-     *  撑爆内存——GET 下载路径的安全闸）。 */
+    /** HTTP 往返公共壳（带单跳重定向跟随）：认证头/超时/动词/请求体；
+     *  响应体流式有界读回（[maxBody] 判 Content-Length 头 + 实读双重
+     *  防线，防超大响应撑爆内存——GET 下载路径的安全闸）。
+     *  重定向：HttpURLConnection 只对 GET 自动跟随，PROPFIND/PUT 的
+     *  301/302/307/308 要自己跟（实测：反代对无尾斜杠目录回 301，
+     *  app 的地址规整恰好会去掉尾斜杠）。只跟一跳，防环。 */
     private fun exchange(
+        config: Config,
+        method: String,
+        name: String,
+        depth: String? = null,
+        body: ByteArray? = null,
+        maxBody: Long = 4L * 1024 * 1024,
+    ): Outcome<Response> = exchangeOnce(config, method, name, depth, body, maxBody).let { first ->
+        val location = (first as? Outcome.Ok)?.value?.takeIf { it.code in 301..308 }
+            ?.let { resp -> redirectTarget(config, name, resp) } ?: return first
+        exchangeOnce(config, method, location, depth, body, maxBody)
+    }
+
+    /** 301/302/307/308 的 Location 解析（相对路径按 base 补全）。 */
+    private fun redirectTarget(config: Config, name: String, resp: Response): String? {
+        val location = resp.headers?.get("Location") ?: return null
+        if (location.isBlank()) return null
+        return when {
+            location.startsWith("http://") || location.startsWith("https://") -> location
+            // 根相对（/x）：按 origin（scheme://host）解析，不是拼到 base 后面。
+            location.startsWith("/") ->
+                Regex("^(https?://[^/]+)").find(config.base)?.groupValues?.get(1)
+                    ?.let { it + location }
+            // 相对当前路径的形态罕见，不跟（宁可不跟随也不错拼）。
+            else -> null
+        }
+    }
+
+    private fun exchangeOnce(
         config: Config,
         method: String,
         name: String,
@@ -133,49 +187,52 @@ object WebDavBackup {
         maxBody: Long = 4L * 1024 * 1024,
     ): Outcome<Response> {
         return try {
-        val target = if (name.isEmpty()) config.base
-            else config.base + "/" + java.net.URLEncoder.encode(name, "UTF-8")
-        val conn = URL(target).openConnection() as HttpURLConnection
-        conn.requestMethod = method
-        conn.connectTimeout = CONNECT_TIMEOUT_MS
-        conn.readTimeout = READ_TIMEOUT_MS
-        conn.setRequestProperty("Authorization", basicAuth(config))
-        conn.setRequestProperty("User-Agent", "feelime-backup/1")
-        depth?.let { conn.setRequestProperty("Depth", it) }
-        body?.let {
-            conn.doOutput = true
-            conn.setFixedLengthStreamingMode(it.size)
-            conn.outputStream.use { output -> output.write(it) }
-        }
-        val code = conn.responseCode
-        val message = runCatching { conn.responseMessage ?: "" }.getOrDefault("").take(80)
-        val declared = conn.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
-        if (declared > maxBody) {
-            conn.disconnect()
-            return Outcome.Fail("TOO_LARGE", "Content-Length=$declared")
-        }
-        var overflow = false
-        val respBody = runCatching {
-            (if (code in 200..399) conn.inputStream else conn.errorStream)?.use { input ->
-                val buffer = ByteArrayOutputStream()
-                val chunk = ByteArray(64 * 1024)
-                var total = 0L
-                while (true) {
-                    val read = input.read(chunk)
-                    if (read < 0) break
-                    total += read
-                    if (total > maxBody) {
-                        overflow = true
-                        break
-                    }
-                    buffer.write(chunk, 0, read)
-                }
-                buffer.toByteArray()
+            val target = when {
+                name.startsWith("http://") || name.startsWith("https://") -> name
+                name.isEmpty() -> config.base
+                else -> config.base + "/" + java.net.URLEncoder.encode(name, "UTF-8")
             }
-        }.getOrNull()
-        conn.disconnect()
-        if (overflow) return Outcome.Fail("TOO_LARGE")
-        Outcome.Ok(Response(code, message, respBody))
+            val builder = Request.Builder()
+                .url(target)
+                .header("Authorization", basicAuth(config))
+                .header("User-Agent", "feelime-backup/1")
+            depth?.let { builder.header("Depth", it) }
+            when {
+                body != null -> builder.method(method, body.toRequestBody(null))
+                method == "PROPFIND" -> builder.method(method, EMPTY_BODY)
+                else -> builder.method(method, null)
+            }
+            client.newCall(builder.build()).execute().use { response ->
+                val code = response.code
+                val message = (response.message ?: "").take(80)
+                val declared = response.header("Content-Length")?.toLongOrNull() ?: -1L
+                if (declared > maxBody) return Outcome.Fail("TOO_LARGE", "Content-Length=$declared")
+                var overflow = false
+                val respBody = runCatching {
+                    response.body?.byteStream()?.use { input ->
+                        val buffer = ByteArrayOutputStream()
+                        val chunk = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val read = input.read(chunk)
+                            if (read < 0) break
+                            total += read
+                            if (total > maxBody) {
+                                overflow = true
+                                break
+                            }
+                            buffer.write(chunk, 0, read)
+                        }
+                        buffer.toByteArray()
+                    }
+                }.getOrNull()
+                if (overflow) return Outcome.Fail("TOO_LARGE")
+                val headerMap = HashMap<String, String>()
+                listOf("Location").forEach { key ->
+                    response.header(key)?.let { headerMap[key] = it }
+                }
+                Outcome.Ok(Response(code, message, respBody, headerMap))
+            }
         } catch (failure: Throwable) {
             Outcome.Fail("NETWORK", failure.javaClass.simpleName + ": " + (failure.message ?: "").take(80))
         }

@@ -390,8 +390,11 @@ const I18N = {
         "backup.consent.cancel": "取消",
         "webdav.title": "云端备份（WebDAV）",
         "webdav.note": "备份上传到你自己的 WebDAV 网盘（如坚果云）。每次备份都是带时间戳的新文件，不覆盖历史；恢复时从列表里挑一份下载。凭据只保存在本机，不进备份文件。",
-        "webdav.url": "服务器地址（https://dav.jianguoyun.com/dav/feelime/）",
+        "webdav.urlLabel": "服务器地址",
+        "webdav.url": "https://dav.jianguoyun.com/dav/feelime/",
+        "webdav.userLabel": "用户名",
         "webdav.user": "用户名",
+        "webdav.passLabel": "应用密码",
         "webdav.pass": "应用密码（不是登录密码）",
         "webdav.save": "保存并测试",
         "webdav.backup": "立即备份",
@@ -417,6 +420,7 @@ const I18N = {
         "webdav.err.TOO_LONG": "输入过长",
         "webdav.err.BAD_NAME": "备份名不合法",
         "webdav.err.INTERNAL": "内部错误",
+        "webdav.err.GENERIC": "操作失败",
         "webdav.size.kb": "{0} KB",
         "backup.consent.confirm": "选择文件导入",
         "backup.done.export": "已导出到所选位置。",
@@ -1074,8 +1078,11 @@ const I18N = {
         "backup.consent.cancel": "Cancel",
         "webdav.title": "Cloud backup (WebDAV)",
         "webdav.note": "Uploads backups to your own WebDAV server (e.g. Jianguoyun). Each backup is a new timestamped file - history is never overwritten; pick one from the list to restore. Credentials stay on this device and never travel inside backups.",
-        "webdav.url": "Server URL (https://dav.jianguoyun.com/dav/feelime/)",
+        "webdav.urlLabel": "Server URL",
+        "webdav.url": "https://dav.jianguoyun.com/dav/feelime/",
+        "webdav.userLabel": "Username",
         "webdav.user": "Username",
+        "webdav.passLabel": "App password",
         "webdav.pass": "App password (not the login password)",
         "webdav.save": "Save & test",
         "webdav.backup": "Back up now",
@@ -1101,6 +1108,7 @@ const I18N = {
         "webdav.err.TOO_LONG": "Input too long",
         "webdav.err.BAD_NAME": "Invalid backup name",
         "webdav.err.INTERNAL": "Internal error",
+        "webdav.err.GENERIC": "Operation failed",
         "webdav.size.kb": "{0} KB",
         "backup.consent.confirm": "Choose a file",
         "backup.done.export": "Exported to the chosen location.",
@@ -3676,7 +3684,9 @@ function renderWebdavList(event) {
     const list = $("webdavList");
     list.textContent = "";
     if (!event.ok) {
-        setNote("webdavNote", t("webdav.err." + (event.code || "INTERNAL")));
+        const mapped = t("webdav.err." + (event.code || "INTERNAL"));
+        setNote("webdavNote", mapped.startsWith("webdav.err.")
+            ? t("webdav.err.GENERIC") + "（" + (event.code || "INTERNAL") + "）" : mapped);
         return;
     }
     const items = Array.isArray(event.items) ? event.items : [];
@@ -3718,7 +3728,11 @@ function renderWebdavStatus(event) {
         }
         return;
     }
-    setNote("webdavNote", t("webdav.err." + (event.code || "INTERNAL")));
+    // 未知码（HTTP_301 这类）落到通用文案并带原始码，不再显示裸 key。
+    const mapped = t("webdav.err." + (event.code || "INTERNAL"));
+    const text = mapped.startsWith("webdav.err.")
+        ? t("webdav.err.GENERIC") + "（" + (event.code || "INTERNAL") + "）" : mapped;
+    setNote("webdavNote", text);
 }
 
 $("btnWebdavSave").addEventListener("click", () => {

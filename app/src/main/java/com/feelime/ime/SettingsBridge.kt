@@ -2602,7 +2602,7 @@ class SettingsBridge(
                             pushEvent(JSONObject().put("type", "webdavList")
                                 .put("ok", true).put("items", items))
                         }
-                        "backup" -> pushWebdavStatus(op, true, "", outcome.value as? String ?: "")
+                        "backup", "restore" -> pushWebdavStatus(op, true, "", outcome.value as? String ?: "")
                         else -> pushWebdavStatus(op, true)
                     }
                 }
