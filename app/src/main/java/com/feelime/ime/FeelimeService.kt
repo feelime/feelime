@@ -616,6 +616,23 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
      *  键盘铺满屏幕底。竖屏恢复 show。ROM 偷恢复/吞首次 hide（puff
      *  实录：焦点变化后恢复）→ onWindowShown 重放 + 600ms 后查仍
      *  可见再补一刀。 */
+    /** #39/#57：IME 窗口铺进挖孔区。ALWAYS 语义最强（SHORT_EDGES 在
+     *  部分 ROM 的 IME 窗口上被忽略——XYNEXT 的 MIUI 14/Android 13
+     *  实录：v1.3.6 起 SHORT_EDGES 在 ColorOS/Android 15+ 生效，小米
+     *  13 上横屏仍整条黑边）。onWindowShown 重放：部分 ROM 重挂 IME
+     *  窗口时会重置 attributes，一次性设置活不过窗口重建。 */
+    private fun assertCutoutMode() {
+        val w = window?.window ?: return
+        if (Build.VERSION.SDK_INT < 28) return
+        if (w.attributes.layoutInDisplayCutoutMode ==
+            android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        ) return
+        w.attributes = w.attributes.apply {
+            layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
+    }
+
     private fun applyLandscapeNavBars() {
         val w = window?.window ?: return
         val ctrl = androidx.core.view.WindowCompat.getInsetsController(w, w.decorView)
@@ -658,17 +675,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         getWindow()?.window?.let { w ->
             w.navigationBarColor = Color.TRANSPARENT
             if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
-            // #39（XYNEXT）：横屏挖孔区铺满——IME 窗口默认 cutout 模式
-            // 在横屏下让开挖孔短边，屏幕左/右整条黑边（真机 2400x1080
-            // 左侧 ~1/4 黑；宿主 app 的「全面屏显示」开关管不到 IME
-            // 自己的窗口）。SHORT_EDGES 让窗口延伸进挖孔区，键盘才能
-            // 铺满短边；挖孔只是小孔，周边仍是可点屏幕。
-            if (Build.VERSION.SDK_INT >= 28) {
-                w.attributes = w.attributes.apply {
-                    layoutInDisplayCutoutMode =
-                        android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                }
-            }
+            // #39（XYNEXT）：横屏挖孔区铺满（#57 小米复发加固 v2）。
+            assertCutoutMode()
             // #39：横屏藏导航条（onWindowShown 会重放，这里只是尽早）。
             applyLandscapeNavBars()
         }
@@ -1021,6 +1029,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // （600ms/2500ms——ColorOS 实测在弹出后 1-3s 才把导航条恢复回来，
         // 单档 600ms 检查时还藏着，真机 t0 截图 pill 复实录）。
         applyLandscapeNavBars()
+        // #57：重挂窗口的 ROM 会重置 cutout attributes，shown 时补一刀。
+        assertCutoutMode()
         window?.window?.decorView?.let { decor ->
             decor.removeCallbacks(navRetryHide)
             decor.postDelayed(navRetryHide, 600)
