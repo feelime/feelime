@@ -871,22 +871,6 @@
           <button class="btn" id="btnMic" type="button" data-i18n="voice.mic.action">去授权</button>
         </div>
       </div>
-      <!-- #39-13 长按空格语音开关；#50 升级为动作选择：语音输入（默认）/
-           剪贴板/表情/快捷编辑/控制键层/关闭。语音动作才画空格 mic 小标，
-           工具栏麦克风也只在语音动作显示。 -->
-      <div class="rows">
-        <label class="row" for="spaceHoldAction">
-          <span class="row-label"><span data-i18n="voice.holdSpace">长按空格</span><small data-i18n="voice.holdSpaceHint">长按空格键触发的动作；「语音输入」显示麦克风，「关闭」则长按无响应。</small></span>
-          <select id="spaceHoldAction" class="select" data-keywords="语音 长按空格 麦克风 剪贴板 表情 编辑 控制键 关闭 voice hold space clipboard favorites edit control">
-            <option value="voice" data-i18n="voice.hold.voice">语音输入</option>
-            <option value="clipboard" data-i18n="voice.hold.clipboard">剪贴板面板</option>
-            <option value="favorites" data-i18n="voice.hold.favorites">表情/常用面板</option>
-            <option value="edit" data-i18n="voice.hold.edit">快捷编辑面板</option>
-            <option value="control" data-i18n="voice.hold.control">控制键层</option>
-            <option value="none" data-i18n="voice.hold.none">关闭</option>
-          </select>
-        </label>
-      </div>
       <div class="rows">
         <label class="row" for="modelBackend">
           <span class="row-label"><span data-i18n="voice.backend.label">模型来源</span></span>
@@ -1090,7 +1074,21 @@
           <input type="checkbox" id="customEnabled" class="toggle">
         </label>
       </div>
-      <p class="hint" data-i18n="input.custom.note">保存在本机，键盘下次载入时生效。</p>
+      <!-- #50 长按空格动作（用户裁定归定制按键体系）：语音输入（默认）/
+           剪贴板/表情/快捷编辑/控制键层/关闭，与 [panel:] DSL 同域。 -->
+      <div class="rows">
+        <label class="row" for="spaceHoldAction">
+          <span class="row-label"><span data-i18n="voice.holdSpace">长按空格</span><small data-i18n="voice.holdSpaceHint">长按空格键触发的动作；「语音输入」显示麦克风，「关闭」则长按无响应。</small></span>
+          <select id="spaceHoldAction" class="select" data-keywords="语音 长按空格 麦克风 剪贴板 表情 编辑 控制键 关闭 voice hold space clipboard favorites edit control">
+            <option value="voice" data-i18n="voice.hold.voice">语音输入</option>
+            <option value="clipboard" data-i18n="voice.hold.clipboard">剪贴板面板</option>
+            <option value="favorites" data-i18n="voice.hold.favorites">表情/常用面板</option>
+            <option value="edit" data-i18n="voice.hold.edit">快捷编辑面板</option>
+            <option value="control" data-i18n="voice.hold.control">控制键层</option>
+            <option value="none" data-i18n="voice.hold.none">关闭</option>
+          </select>
+        </label>
+      </div>
     </section>
     <section class="card" aria-labelledby="ckRowsHead">
       <div class="section-heading"><h2 id="ckRowsHead" data-i18n="ck.rows.title">按键：点按修改，长按可移动/删除</h2></div>
