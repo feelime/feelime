@@ -205,6 +205,27 @@ class SetupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         destroyed = false
+        // #52 复发修复（XYNEXT：MIUI 14 / Android 13 顶底黑条）：v1.3.3
+        // 的沉浸式依赖「targetSdk 35 + Android 15+」的强制 edge-to-edge，
+        // Android 13/14 设备没有强制行为、decor 仍 fit 系统栏——黑条回归。
+        // 显式 opt-in（WindowCompat 向下兼容），透明系统栏 + 内容铺满，
+        // 安全区避让仍由页面 CSS env(safe-area-inset-*) 处理（viewport-fit
+        // 已 cover）。Android 15+ 上这些 setter 是无害 no-op。
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
+        // 系统栏图标外观跟随 App 主题（浅色页=深色图标）。页面内实时切
+        // 主题的跟随留待后续（重开生效）；15+ 由强制 e2e 自动处理。
+        val mode = readThemeMode(this)
+        val night = (resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val lightBars = !(mode == "dark" || (mode != "light" && night))
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = lightBars
+            isAppearanceLightNavigationBars = lightBars
+        }
         // route 诊断链 3/3：设置页到达（target 空 = 普通打开）。
         Diagnostics.log("route", "SetupActivity onCreate target=${intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""}")
         // P1-5 补口（真机第 5 轮 G 段定罪）：force-stop 中断安装后直接开
