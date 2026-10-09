@@ -2530,14 +2530,19 @@ class SettingsBridge(
         webdavRun("test") { WebDavBackup.test(webdavConfig()) }
     }
 
-    /** 云端备份：组包 → PUT 时间戳文件名（不覆盖历史，用户裁定）。 */
+    /** 云端备份：组包 → PUT 用户在备份弹窗里确认过的文件名（默认时间戳、
+     *  可改；重名覆盖已在 UI 层警示，用户裁定）。校验与恢复侧白名单同源：
+     *  前缀+后缀+无路径+长度，丢了前缀的文件将来恢复不了。 */
     @JavascriptInterface
-    fun webdavBackup(token: String) = guarded(token) {
+    fun webdavBackup(name: String, token: String) = guarded(token) {
         webdavRun("backup") {
             val config = webdavConfig()
             if (!config.valid) return@webdavRun WebDavBackup.Outcome.Fail("EMPTY_URL")
+            if (!name.startsWith(WebDavBackup.FILE_PREFIX) || !name.endsWith(".json")
+                || name.contains('/') || name.length > 128) {
+                return@webdavRun WebDavBackup.Outcome.Fail("BAD_NAME")
+            }
             val json = UserdataBackup(AndroidPrefs(context), context.filesDir, appVersion()).export()
-            val name = WebDavBackup.backupFileName()
             WebDavBackup.put(config, name, json.toString().toByteArray(Charsets.UTF_8))
         }
     }

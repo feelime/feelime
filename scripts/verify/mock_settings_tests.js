@@ -1568,7 +1568,7 @@ test('custom phrases: CRUD is refused before the first state push (no seed wipe)
     equal(world.native.of('saveCustomPhrases').length, 0, 'toggle refused before state arrives');
 });
 
-test('webdav: config fills the form; save/backup/refresh reach the bridge with the token', () => {
+test('webdav: config fills the form; save reaches the bridge trimmed + token', () => {
     const world = new SettingsWorld();
     world.native.webdavConfig = { url: 'https://dav.example.com/dav/feelime/', user: 'felix', password: 'app-pass' };
     world.FeelimeSettings().webdavFillConfig();
@@ -1582,40 +1582,76 @@ test('webdav: config fills the form; save/backup/refresh reach the bridge with t
     equal(save.args.slice(0, 3),
         ['https://dav.example.com/dav/x/', 'felix', 'app-pass'],
         'saveConfig args trimmed + token last');
-
-    world.$('btnWebdavBackup').listeners.find(l => l.type === 'click').handler();
-    equal(world.lastCall('webdavBackup').args, [world.token], 'backup carries the token');
-    world.$('btnWebdavRefresh').listeners.find(l => l.type === 'click').handler();
-    equal(world.lastCall('webdavListBackups').args, [world.token], 'list carries the token');
 });
 
-test('webdav: list event renders rows newest-first; restore goes through consent + token', () => {
+test('webdav: backup modal prefills a name; dup warns and flips to overwrite; bad name disabled', () => {
     const world = new SettingsWorld();
+    // 预置云端名单（模拟 webdavList 事件已回来）。
+    world.FeelimeSettings().onEvent({ type: 'webdavList', ok: true, items: [
+        { name: 'feelime-backup-20260101-000000.json', size: 100, modified: '' }] });
+    world.$('btnWebdavBackup').listeners.find(l => l.type === 'click').handler();
+    equal(world.$('webdavBackupModal').hidden, false, 'modal opens');
+    equal(world.lastCall('webdavListBackups').args, [world.token],
+        'opening pulls the cloud list for dup check');
+    const name = world.$('webdavNameInput').value;
+    assert(/^feelime-backup-\d{8}-\d{6}\.json$/.test(name), 'prefilled timestamp name: ' + name);
+    equal(world.$('webdavDupWarn').hidden, true, 'fresh name: no dup warning');
+    equal(world.$('webdavBackupGo').disabled, false, 'go enabled');
+
+    // 改成云端已有名字 → 覆盖警告 + 按钮翻成「覆盖」。
+    world.$('webdavNameInput').value = 'feelime-backup-20260101-000000.json';
+    world.$('webdavNameInput').listeners.find(l => l.type === 'input').handler();
+    equal(world.$('webdavDupWarn').hidden, false, 'dup warning shown');
+    assert(world.$('webdavBackupGo').textContent.includes('覆盖'), 'go flips to overwrite');
+    assert(world.$('webdavBackupGo').className.includes('ck-btn-danger'), 'overwrite is danger-styled');
+
+    // 丢了前缀的名字（将来恢复不了）→ 禁用并说明格式。
+    world.$('webdavNameInput').value = 'my-backup.json';
+    world.$('webdavNameInput').listeners.find(l => l.type === 'input').handler();
+    equal(world.$('webdavBackupGo').disabled, true, 'bad name disables go');
+
+    // 合法新名字 → 确认 → webdavBackup(name, token) + 弹窗收起。
+    world.$('webdavNameInput').value = 'feelime-backup-20990101-111111.json';
+    world.$('webdavNameInput').listeners.find(l => l.type === 'input').handler();
+    world.$('webdavBackupGo').listeners.find(l => l.type === 'click').handler();
+    equal(world.lastCall('webdavBackup').args,
+        ['feelime-backup-20990101-111111.json', world.token], 'backup name + token');
+    equal(world.$('webdavBackupModal').hidden, true, 'modal closed after confirm');
+});
+
+test('webdav: restore modal lists time/size apart; pick → confirm → restore + token', () => {
+    const world = new SettingsWorld();
+    world.$('btnWebdavRestore').listeners.find(l => l.type === 'click').handler();
+    equal(world.$('webdavRestoreModal').hidden, false, 'modal opens');
+    equal(world.$('webdavRestoreGo').disabled, true, 'go disabled until a pick');
     world.FeelimeSettings().onEvent({
         type: 'webdavList', ok: true, items: [
             { name: 'feelime-backup-20261009-213905.json', size: 57198, modified: 'x' },
             { name: 'feelime-backup-20261008-060025.json', size: 12, modified: 'y' },
         ],
     });
-    const rows = [...world.doc.querySelectorAll('#webdavList .phrase-row')];
+    const rows = [...world.doc.querySelectorAll('#webdavPickList .webdav-pick-row')];
     equal(rows.length, 2, 'two cloud backups rendered');
-    equal(world.$('webdavEmpty').hidden, true, 'empty hint hidden when items exist');
-    const first = rows[0].querySelector('.phrase-text').textContent;
+    const first = rows[0].querySelector('.webdav-pick-time').textContent;
     assert(first.includes('2026-10-09 21:39:05'), 'timestamp decoded for display: ' + first);
-    assert(first.includes('56 KB'), 'size rendered in KB');
+    assert(!first.includes('56 KB'), 'time column free of the size text');
+    assert(rows[0].querySelector('.webdav-pick-size').textContent.includes('56 KB'),
+        'size rendered in its own column');
 
-    // 恢复先弹确认（覆盖语义与本地导入一致），确认才发 webdavRestore。
-    rows[0].querySelector('button').listeners.find(l => l.type === 'click').handler();
-    equal(world.$('webdavConsent').hidden, false, 'consent shown');
-    assert(world.$('webdavConsentName').textContent.includes('2026-10-09'),
-        'consent names the picked backup');
-    world.$('webdavConsentConfirm').listeners.find(l => l.type === 'click').handler();
+    // 选中 → 确认视图（覆盖警告 + 文件名）→ 确认才发 webdavRestore。
+    rows[0].listeners.find(l => l.type === 'click').handler();
+    equal(world.$('webdavRestoreGo').disabled, false, 'go enabled after pick');
+    world.$('webdavRestoreGo').listeners.find(l => l.type === 'click').handler();
+    equal(world.$('webdavConfirmView').hidden, false, 'confirm view shown');
+    assert(world.$('webdavConfirmName').textContent.includes('2026-10-09'),
+        'confirm names the picked backup');
+    world.$('webdavRestoreConfirm').listeners.find(l => l.type === 'click').handler();
     equal(world.lastCall('webdavRestore').args,
         ['feelime-backup-20261009-213905.json', world.token], 'restore name + token');
-    equal(world.$('webdavConsent').hidden, true, 'consent closed after confirm');
+    equal(world.$('webdavRestoreModal').hidden, true, 'modal closed after confirm');
 });
 
-test('webdav: status failures map codes to readable notes; backup ok refreshes the list', () => {
+test('webdav: status failures map codes to readable notes; backup ok refreshes; cancel sends no restore', () => {
     const world = new SettingsWorld();
     world.FeelimeSettings().onEvent({ type: 'webdavStatus', op: 'test', ok: false, code: 'AUTH' });
     assert(world.$('webdavNote').textContent.includes('认证失败'), 'AUTH mapped to text');
@@ -1623,14 +1659,14 @@ test('webdav: status failures map codes to readable notes; backup ok refreshes t
     assert(world.$('webdavNote').textContent.includes('2026-10-09 21:39:05'),
         'backup ok names the new file');
     equal(world.lastCall('webdavListBackups').args, [world.token], 'backup ok refreshes the list');
-    // 取消路径：确认框不残留。
+    // 取消路径：弹窗选了但取消 → 不发 webdavRestore、弹窗收起。
+    world.$('btnWebdavRestore').listeners.find(l => l.type === 'click').handler();
     world.FeelimeSettings().onEvent({ type: 'webdavList', ok: true, items: [
         { name: 'feelime-backup-20261009-213905.json', size: 1, modified: '' }] });
-    const row = [...world.doc.querySelectorAll('#webdavList .phrase-row')][0]
-        .querySelector('button');
+    const row = [...world.doc.querySelectorAll('#webdavPickList .webdav-pick-row')][0];
     row.listeners.find(l => l.type === 'click').handler();
-    world.$('webdavConsentCancel').listeners.find(l => l.type === 'click').handler();
-    equal(world.$('webdavConsent').hidden, true, 'cancel closes consent');
+    world.$('webdavRestoreCancel').listeners.find(l => l.type === 'click').handler();
+    equal(world.$('webdavRestoreModal').hidden, true, 'cancel closes the modal');
     equal(world.native.of('webdavRestore').length, 0, 'cancel sends no restore');
 });
 
