@@ -1559,19 +1559,28 @@ test('custom phrases: CRUD is refused before the first state push (no seed wipe)
     equal(world.native.of('saveCustomPhrases').length, 0, 'toggle refused before state arrives');
 });
 
-test('custom phrases: empty list shows the hint; third-level page routes back to input', () => {
+test('custom phrases: empty list shows the hint; third-level page routes back to dict', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE, customPhrases: { enabled: false, items: [] } });
     equal(world.$('phraseEmpty').hidden, false, 'empty hint visible');
     equal(world.$('phrasesOn').checked, false, 'toggle off from state');
 
-    // 三级页：back 回 input，不回 home。
-    world.FeelimeSettings().showPage('input');
+    // 三级页（#54 归位）：back 回 dict，不回 input/home；开关与
+    // 管理按钮现在挂在词库页卡片里，输入页不再有这两个元素。
+    world.FeelimeSettings().showPage('dict');
     world.FeelimeSettings().showPage('phrases');
     equal(world.doc.querySelector('[data-page="phrases"]').hidden, false, 'phrases page open');
     world.doc.querySelector('[data-page="phrases"] [data-back]').click();
-    equal(world.doc.querySelector('[data-page="input"]').hidden, false, 'back lands on input');
+    equal(world.doc.querySelector('[data-page="dict"]').hidden, false, 'back lands on dict');
     equal(world.doc.querySelector('[data-page="phrases"]').hidden, true, 'phrases closed');
+    assert(world.$('sec-dict-phrases').contains(world.$('phrasesOn')),
+        'symbol toggle lives in the dict page card');
+    assert(world.$('sec-dict-phrases').contains(world.$('btnManagePhrases')),
+        'manage button lives in the dict page card');
+    assert(!world.$('sec-phrases').contains(world.$('phrasesOn')),
+        'input page no longer hosts the symbol toggle');
+    equal(world.$('phrasesTitle').textContent, '候选增强',
+        'input card renamed to the english/slash scope');
 });
 
 // ------------------------------------------------- double-pinyin scheme (§2)

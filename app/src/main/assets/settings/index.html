@@ -358,7 +358,11 @@
     </section>
 
     <section class="card" id="sec-phrases" aria-labelledby="phrasesTitle">
-      <div class="section-heading"><h2 id="phrasesTitle" data-i18n="input.phrases.title">候选符号词</h2><span class="eyebrow" data-i18n="input.phrases.badge">输入</span></div>
+      <!-- #54（2026-10-09 用户裁定·简化版）：符号词与自造词保持两个
+           独立功能，但入口统一归词库页——附加符号/emoji 候选的开关与
+           管理按钮已挪往词库页「候选符号词」卡片；输入页本卡只剩
+           英文词直出与万象 / 键引导，标题改「候选增强」。 -->
+      <div class="section-heading"><h2 id="phrasesTitle" data-i18n="input.candidates.title">候选增强</h2><span class="eyebrow" data-i18n="input.phrases.badge">输入</span></div>
       <!-- #29-3 英文词直出：github/ios/android 等内置英文词在拼音/双拼
            组合态直接出候选，免切英文模式。 -->
       <label class="row switch-row no-rule" for="englishWordsOn">
@@ -379,11 +383,6 @@
           <option value="5" data-i18n="input.english.pos5">第 5 位</option>
         </select>
       </div>
-      <label class="row switch-row no-rule" for="phrasesOn">
-        <span class="row-label"><span data-i18n="input.phrases.enable">附加符号/emoji 候选</span><small data-i18n="input.phrases.hint">打 shang 出 ↑、dui 出 ✓ 这类符号词，排在候选第 3 位附近；全拼和双拼通用。</small></span>
-        <input type="checkbox" id="phrasesOn" class="toggle">
-      </label>
-      <button class="btn" id="btnManagePhrases" type="button" data-i18n="input.phrases.manage">管理词条</button>
     </section>
 
     <section class="card" id="sec-dp" aria-labelledby="dpTitle">
@@ -789,6 +788,17 @@
       <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码 逐行导入，上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。</p>
     </section>
 
+    <!-- #54（2026-10-09 用户裁定·简化版）：候选符号词从输入页归位到
+         词库页——与自造词相邻成对（预置内容 vs 手动维护，各自独立）。 -->
+    <section class="card" id="sec-dict-phrases" aria-labelledby="dictPhrasesTitle">
+      <div class="section-heading"><h2 id="dictPhrasesTitle" data-keywords="符号 emoji 候选 symbol" data-i18n="input.phrases.title">候选符号词</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
+      <label class="row switch-row no-rule" for="phrasesOn">
+        <span class="row-label"><span data-i18n="input.phrases.enable">附加符号/emoji 候选</span><small data-i18n="input.phrases.hint">打 shang 出 ↑、dui 出 ✓ 这类符号词，排在候选第 3 位附近；全拼和双拼通用。</small></span>
+        <input type="checkbox" id="phrasesOn" data-keywords="符号 emoji 候选 symbol" class="toggle">
+      </label>
+      <button class="btn" id="btnManagePhrases" type="button" data-i18n="input.phrases.manage">管理词条</button>
+    </section>
+
     <section class="card" id="sec-dict-user-words" aria-labelledby="dictUserWordsTitle">
       <div class="section-heading"><h2 id="dictUserWordsTitle" data-keywords="自造词 造词 常用词 名字 公司名 user words" data-i18n="dict.userwords.title">自造词</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
       <div class="row language-row no-rule">
@@ -830,10 +840,10 @@
   </main>
 </div>
 
-<!-- Custom phrase list (issue #17): third-level page under 键盘与输入. -->
+<!-- Custom phrase list (issue #17): third-level page under 词库（#54 归位）. -->
 <div class="page" data-page="phrases" hidden>
   <header class="page-head">
-    <button class="page-back" type="button" data-back="input" data-i18n-aria="nav.backInput" aria-label="返回键盘与输入">‹</button>
+    <button class="page-back" type="button" data-back="dict" data-i18n-aria="nav.backDict" aria-label="返回词库">‹</button>
     <h2 class="page-title" data-i18n="page.phrases">候选符号词</h2>
   </header>
   <main>
