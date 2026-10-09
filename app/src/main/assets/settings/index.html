@@ -1019,15 +1019,16 @@
     <section class="card" id="sec-webdav" aria-labelledby="webdavTitle">
       <div class="section-heading"><h2 id="webdavTitle" data-keywords="webdav 云备份 云端 坚果云 网盘 cloud" data-i18n="webdav.title">云端备份（WebDAV）</h2><span class="eyebrow" data-i18n="backup.badge">备份</span></div>
       <p class="hint block" data-i18n="webdav.note">备份上传到你自己的 WebDAV 网盘（如坚果云）。每次备份都是带时间戳的新文件，不覆盖历史；恢复时从列表里挑一份下载。凭据只保存在本机，不进备份文件。</p>
-      <div class="phrase-form">
-        <input id="webdavUrl" class="input" type="url" maxlength="512" data-i18n-placeholder="webdav.url" placeholder="服务器地址（https://dav.jianguoyun.com/dav/feelime/）">
-        <input id="webdavUser" class="input" type="text" maxlength="128" autocomplete="off" data-i18n-placeholder="webdav.user" placeholder="用户名">
-        <input id="webdavPass" class="input" type="password" maxlength="256" autocomplete="new-password" data-i18n-placeholder="webdav.pass" placeholder="应用密码（不是登录密码）">
-        <div class="actions">
-          <button class="btn primary" id="btnWebdavSave" type="button" data-i18n="webdav.save">保存并测试</button>
-          <button class="btn" id="btnWebdavBackup" type="button" data-i18n="webdav.backup">立即备份</button>
-          <button class="btn ghost-btn" id="btnWebdavRefresh" type="button" data-i18n="webdav.refresh">刷新云端列表</button>
-        </div>
+      <label class="field-label" for="webdavUrl" data-i18n="webdav.urlLabel">服务器地址</label>
+      <input id="webdavUrl" type="url" maxlength="512" data-i18n-placeholder="webdav.url" placeholder="https://dav.jianguoyun.com/dav/feelime/" autocomplete="off">
+      <label class="field-label" for="webdavUser" data-i18n="webdav.userLabel">用户名</label>
+      <input id="webdavUser" type="text" maxlength="128" data-i18n-placeholder="webdav.user" placeholder="用户名" autocomplete="off">
+      <label class="field-label" for="webdavPass" data-i18n="webdav.passLabel">应用密码</label>
+      <input id="webdavPass" type="password" maxlength="256" data-i18n-placeholder="webdav.pass" placeholder="应用密码（不是登录密码）" autocomplete="new-password">
+      <div class="actions" style="margin-top:12px">
+        <button class="btn primary" id="btnWebdavSave" type="button" data-i18n="webdav.save">保存并测试</button>
+        <button class="btn" id="btnWebdavBackup" type="button" data-i18n="webdav.backup">立即备份</button>
+        <button class="btn ghost-btn" id="btnWebdavRefresh" type="button" data-i18n="webdav.refresh">刷新云端列表</button>
       </div>
       <ul id="webdavList" class="phrase-list"></ul>
       <p id="webdavEmpty" class="hint block" data-i18n="webdav.empty" hidden>云端还没有备份。</p>
