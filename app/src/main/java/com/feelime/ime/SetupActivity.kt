@@ -63,6 +63,12 @@ class SetupActivity : AppCompatActivity() {
     /** Debug-only editor fixtures; visible only under
      * [EXTRA_SHOW_FIXTURES] (null on release builds). */
     private var debugFixtures: LinearLayout? = null
+
+    /** #fixtures-collapse：收起后的细条恢复入口（同 fixtures 仅 debug
+     *  且 intent 带 extra 时可见）。自动化每次带 extra 重拉即复位展示，
+     *  人手收起不被最近任务的重投 intent 反复骚扰。 */
+    private var debugFixturesSliver: android.widget.Button? = null
+    private var fixturesCollapsed = false
     private var pendingModelImportId: String? = null
 
     /** The system picker can cover this Activity without pausing it. Observe
@@ -314,20 +320,43 @@ class SetupActivity : AppCompatActivity() {
             // the fixtures now show only when the activity is started with
             // EXTRA_SHOW_FIXTURES (automation passes it; humans never see
             // the block at all). No in-page entry exists on purpose.
+            // #fixtures-collapse：顶部加「收起测试项」——验证脚本反复带
+            // extra 拉起后最近任务也原样重投 intent，人手只能强退清场；
+            // 一键收起留细条恢复，自动化下次带 extra 拉起自动复位。
             val fixtures = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                visibility =
-                    if (intent.getBooleanExtra(EXTRA_SHOW_FIXTURES, false)) {
-                        android.view.View.VISIBLE
-                    } else {
-                        android.view.View.GONE
-                    }
             }
+            val collapseBar = android.widget.Button(this).apply {
+                text = "收起测试项"
+                textSize = 12f
+                isAllCaps = false
+                setPadding(24, 8, 24, 8)
+                minHeight = 0
+                minimumHeight = 0
+                setOnClickListener { setFixturesCollapsed(true) }
+            }
+            fixtures.addView(collapseBar, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = android.view.Gravity.CENTER_HORIZONTAL })
             debugFixtures = fixtures
             addDebugEditorFixtures(fixtures)
             rootLayout.addView(fixtures, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             ))
+            debugFixturesSliver = android.widget.Button(this).apply {
+                text = "··· 显示测试项（debug）"
+                textSize = 11f
+                isAllCaps = false
+                setPadding(24, 4, 24, 4)
+                minHeight = 0
+                minimumHeight = 0
+                visibility = android.view.View.GONE
+                setOnClickListener { setFixturesCollapsed(false) }
+            }
+            rootLayout.addView(debugFixturesSliver, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ))
+            applyFixturesVisibility(intent)
         }
         setContentView(rootLayout)
         updateSetupLaunchMarker(intent)
@@ -692,13 +721,12 @@ class SetupActivity : AppCompatActivity() {
         routeToSetupTarget()
         // The fixtures follow the launch intent in BOTH entries (the
         // activity is singleTop - a relaunch with the extra lands here).
+        // #fixtures-collapse：显式带 extra 的拉起视为自动化请求，复位
+        // 展示（套件永远拿得到测试框）；无 extra（最近任务重投旧 intent
+        // 以外的常规打开）则隐藏。
         if (BuildConfig.DEBUG) {
-            debugFixtures?.visibility =
-                if (intent.getBooleanExtra(EXTRA_SHOW_FIXTURES, false)) {
-                    android.view.View.VISIBLE
-                } else {
-                    android.view.View.GONE
-                }
+            if (intent.getBooleanExtra(EXTRA_SHOW_FIXTURES, false)) fixturesCollapsed = false
+            applyFixturesVisibility(intent)
         }
         if (intent.getStringExtra(KeyboardUpdateCenter.INBOX_EXTRA) != null) installFromInbox()
     }
@@ -800,6 +828,22 @@ class SetupActivity : AppCompatActivity() {
     private fun rerouteSetupTargetOnReady() {
         if (pendingSetupTarget.isEmpty()) return
         routeToSetupTarget()
+    }
+
+    /** #fixtures-collapse：收起/展开调试测试区（会话级，无 pref）。
+     *  可见性 = intent 带 extra（自动化/最近任务重投）且未收起；
+     *  收起时留细条恢复入口。 */
+    private fun setFixturesCollapsed(collapsed: Boolean) {
+        fixturesCollapsed = collapsed
+        applyFixturesVisibility(intent)
+    }
+
+    private fun applyFixturesVisibility(intent: Intent) {
+        val requested = intent.getBooleanExtra(EXTRA_SHOW_FIXTURES, false)
+        debugFixtures?.visibility =
+            if (requested && !fixturesCollapsed) android.view.View.VISIBLE else android.view.View.GONE
+        debugFixturesSliver?.visibility =
+            if (requested && fixturesCollapsed) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     /**
