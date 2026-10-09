@@ -1244,6 +1244,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.clipboardItems = [];
             this.favoriteItems = [];
             this.popup = null;
+            this.popupEndEvents = new WeakSet();
             this.touchOrigin = null;
             // 重叠双指（快速双手打字的常见窗口：B 落键时 A 还没抬）：
             // 每根手指自己的按下点。touchOrigin 是首指所有权，owner 抬起
@@ -1543,7 +1544,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         t => t.identifier === pointer.touch.identifier)) pointers.delete(id);
                 }
             };
-            document.addEventListener('touchend', forgetPointers, { capture: true, passive: true });
+            document.addEventListener('touchend', event => {
+                this.finishPopupTouch(event, false);
+                // 页面先注销结束的手指；原键被替换时也不能留下可开层的记录。
+                for (const touch of event.changedTouches) this.pressById.delete(touch.identifier);
+                forgetPointers(event);
+            }, { capture: true, passive: true });
             document.addEventListener('touchcancel', event => {
                 this.cancelTouchEvent(event);
                 forgetPointers(event);
@@ -3679,7 +3685,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         const ownerPress = this.touchOrigin &&
                             this.touchOrigin.button === button
                             ? this.pressById.get(this.touchOrigin.id) : null;
-                        const base = ownerPress || press;
+                        // 同键他指取消会保留共享计时器，闭包 press 却可能已
+                        // 结束。只从活跃账本取锚点，避免开出无人能松手的层。
+                        const base = ownerPress || (press && this.pressById.get(press.id))
+                            || Array.from(this.pressById.values()).find(p => p.button === button);
+                        if (!base) return;
                         // T9：长按=数字+字母组全后选（引擎通道）；1 键=
                         // 符号行并收起工具栏；qwerty 维持 accent 备选弹层。
                         if (this.mode === 't9') {
@@ -3724,10 +3734,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }, { passive: true });
             button.addEventListener('touchend', event => {
                 event.preventDefault();
-                // 归属判定必须在任何清理之前（1.3.4 回归根因）：同键双指下
-                // 非所属手指先松，旧序会先删掉整键共享的按压标记，所属
-                // 手指随后在下方早退，长按弹层永远到不了关闭分支。
-                const ownsPopup = !!(this.popup && this.popupOwnsTouch(this.popup, event));
+                // 先判归属再清整键共享标记（1.3.4）：同键非所属手指
+                // 先松时，不能撤掉仍按着的 owner 的按压态与计时器。
+                // 页面 capture 已收层时仍消费这次松手，不能再补发键面字符。
+                // 原键已脱离文档时，由这里调用同一入口收尾。
+                const ownsPopup = this.finishPopupTouch(event, false);
                 const ownerPress = this.popup ? this.pressById.get(this.popup.fingerId) : null;
                 const sameKeyNonOwner = !!(this.popup && !ownsPopup
                     && ownerPress && ownerPress.button === button);
@@ -3752,22 +3763,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 button.classList.remove('active-touch');
                 this.scheduleHideBubble();
                 clear();
+                if (ownsPopup) return;
                 if (this.popup) {
-                    // 弹层只认开它的那根手指：别指抬手不得替它终判/关层
-                    // （多指下 A 一抬会把 B 正在拖选的弹层当场收掉，B 松手
-                    // 落成键面点按）。fingerId 未知=旧弹层/mock 单指，放行。
-                    if (ownsPopup) {
-                        // 快速甩出时最终位置只出现在 changedTouches：相对跟手
-                        // 收尾先刷新一次选中再提交，否则按旧高亮落错格
-                        // （codex P2）。同一事件可能同时结束两根手指，终判
-                        // 坐标只认 owner 那根，changedTouches[0] 可能是别人。
-                        if (this.popup.relative) {
-                            const last = event.changedTouches && Array.from(event.changedTouches)
-                                .find(item => item.identifier === this.popup.fingerId);
-                            if (last) this.movePopup(last);
-                        }
-                        this.closePopup(false);
-                    } else if (!longFired && !this.swiping && !options.skipClick) {
+                    if (!longFired && !this.swiping && !options.skipClick) {
                         // 别指的弹层开着：本指按自己的点按语义正常落键。
                         button.click();
                     }
@@ -3789,7 +3787,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (press) buttons.add(press.button);
                 this.pressById.delete(id);
             }
-            if (this.popup && this.popupOwnsTouch(this.popup, event)) this.closePopup(true);
+            this.finishPopupTouch(event, true);
             for (const button of buttons) {
                 // 同键仍有手指按住时，保留共享的按压态与计时器。
                 if (Array.from(this.pressById.values()).some(p => p.button === button)) continue;
@@ -4423,8 +4421,30 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (opts.grid || opts.middle) this.attachRelativeTracking(popup, selected, opts.press);
         }
 
-        /** 弹层是否属于本次事件里变化的手指（多指仲裁）：键级 touchend/
-         *  touchcancel 只在归属成立时才终判/关层。fingerId 未知（未记录
+        /** 松手/取消共用的弹层终判：不依赖原键还在文档中，也不依赖
+         * touchOrigin 的手势所有权。只有仍按住的手指才能继续持有浮层。
+         * 同一事件可能经过页面和原键两次；记录消费结果，防止重复上屏。 */
+        finishPopupTouch(event, cancelled) {
+            if (this.popupEndEvents.has(event)) return true;
+            const popup = this.popup;
+            if (!popup) return false;
+            const ownsPopup = this.popupOwnsTouch(popup, event);
+            const ownerStillDown = Array.from(event.touches || []).some(
+                touch => touch.identifier === popup.fingerId);
+            if (!ownsPopup && ownerStillDown) return false;
+            // 所属手指已失联时只撤销，不能拿别指的松手位置提交旧高亮。
+            if (ownsPopup) this.popupEndEvents.add(event);
+            if (ownsPopup && !cancelled && popup.relative) {
+                const last = Array.from(event.changedTouches || []).find(
+                    touch => touch.identifier === popup.fingerId);
+                if (last) this.movePopup(last);
+            }
+            this.closePopup(cancelled || !ownsPopup);
+            return ownsPopup;
+        }
+
+        /** 弹层是否属于本次事件里变化的手指（多指仲裁）：所属手指
+         *  才能提交选中项。fingerId 未知（未记录
          *  的旧弹层、mock 无 identifier）恒真，保持单指既有语义。 */
         popupOwnsTouch(popup, event) {
             return popup.fingerId === undefined ||
