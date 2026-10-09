@@ -856,6 +856,20 @@ def restore_network(initial):
 
 
 def main():
+    # 事故门闸（2026-10-10，ace 实录）：本套件为测离线路径会动设备全局
+    # 网络状态（airplane + svc wifi/data）。在真机上跑会切断设备自身的
+    # 无线电——ace 的 chroot 跑在手机上，adb 通道随网络一起死，
+    # restore_network 都发不出去（finally 存在但执行不到）。默认只许
+    # 一次性模拟器（emulator-*）；真机要跑必须显式
+    # FEELIME_ALLOW_DEVICE_MUTATIONS=1 自担恢复。
+    serial = d.SERIAL
+    if not serial.startswith("emulator-") and \
+            os.environ.get("FEELIME_ALLOW_DEVICE_MUTATIONS") != "1":
+        raise SystemExit(
+            "refusing to run: this suite toggles airplane/wifi/data device-"
+            "globally. Use a disposable emulator (emulator-*), or set "
+            "FEELIME_ALLOW_DEVICE_MUTATIONS=1 to accept mutating a real "
+            "device (restore may be impossible if adb rides that network).")
     raw_good = os.environ.get("FEELIME_KEYBOARD_ZIP", "").strip()
     if not raw_good:
         raise SystemExit("FEELIME_KEYBOARD_ZIP is required")
