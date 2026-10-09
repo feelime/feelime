@@ -41,6 +41,8 @@ import java.util.concurrent.TimeUnit
 object Diagnostics {
     private const val PREFS = "feelime_diagnostics"
     private const val KEY_ENABLED = "enabled"
+    /** 已扫过的最近进程退因时间戳（崩溃取证去重）。 */
+    private const val KEY_LAST_EXIT_TS = "last_exit_ts"
     private const val MAX_EVENTS = 400
     private const val MAX_EVENT_CHARS = 220
     /** snapshot() 对心跳行保留的尾部条数（issue #13 v3）。 */
@@ -87,8 +89,107 @@ object Diagnostics {
                 startedAt = SystemClock.elapsedRealtime()
                 logLocked("diag",
                     "--- process start ${wallClock()} pid=${android.os.Process.myPid()} app=${BuildConfig.VERSION_NAME} ---")
+                // 崩溃取证（1.3.7 后手写连环死亡的采集缺口）：本进程
+                // 活着的日志随进程死（DiagSink 队尾来不及写盘），但系统
+                // 的 ApplicationExitInfo 不随进程死——进程启动时扫上一
+                // 个死进程的退因（REASON_CRASH_NATIVE 的 description 自
+                // 带 signal + native 回溯头），同步落盘进导出。
+                logExitReasonsLocked(context)
+                installCrashHandlerLocked(context)
             }
         }
+    }
+
+    /** 已见的最近一次进程退因时间戳（去重：多次 refresh 不重扫）。 */
+    private var lastExitTs = 0L
+
+    /** ApplicationExitInfo 取证（API 30+）：上一进程的死因 + 描述头。
+     *  native 崩溃的 description 含 signal 与回溯片段——这是拿真实
+     *  崩溃点的唯一可靠通道（自有日志在硬崩时必丢队尾）。 */
+    private fun logExitReasonsLocked(context: Context) {
+        if (android.os.Build.VERSION.SDK_INT < 30) return
+        val am = context.getSystemService(android.app.ActivityManager::class.java) ?: return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (lastExitTs == 0L) lastExitTs = prefs.getLong(KEY_LAST_EXIT_TS, 0L)
+        val infos = runCatching { am.getHistoricalProcessExitReasons(context.packageName, 0, 6) }
+            .getOrNull().orEmpty()
+        for (info in infos.sortedBy { it.timestamp }) {
+            if (info.timestamp <= lastExitTs) continue
+            lastExitTs = info.timestamp
+            logSyncLocked("exit",
+                "reason=${exitReasonName(info.reason)}(${info.reason}) " +
+                    "pid=${info.pid} t=${wallClock(info.timestamp)}")
+            // 描述（native 回溯/abort message）分段续行——单行 220 上限
+            // 装不下回溯头，分段保留 ~1.4KB。
+            val desc = (info.description?.toString() ?: "").replace(Regex("\\s+"), " ").trim()
+            if (desc.isNotEmpty()) {
+                desc.chunked(170).take(8).forEachIndexed { i, chunk ->
+                    logSyncLocked("exit+", "[$i] $chunk")
+                }
+            }
+        }
+        prefs.edit().putLong(KEY_LAST_EXIT_TS, lastExitTs).commit()
+    }
+
+    /** 进程级 Java 崩溃兜底：默认 handler 前同步落盘栈头（异步队列在
+     *  崩溃时必丢队尾），再交还系统默认处理（tombstone/ANR 语义不变）。 */
+    private fun installCrashHandlerLocked(context: Context) {
+        if (crashHandlerInstalled) return
+        crashHandlerInstalled = true
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            runCatching {
+                synchronized(lock) {
+                    if (recording) {
+                        logSyncLocked("javaCrash",
+                            "thread=${thread.name} ${throwable.javaClass.name}: " +
+                                "${(throwable.message ?: "").take(120)}")
+                    }
+                }
+            }
+            runCatching {
+                synchronized(lock) {
+                    if (recording) {
+                        throwable.stackTrace.take(14).forEach {
+                            logSyncLocked("javaCrash+", "at ${it.toString().take(150)}")
+                        }
+                    }
+                }
+            }
+            previous?.uncaughtException(thread, throwable)
+        }
+    }
+
+    private var crashHandlerInstalled = false
+
+    /** 同步落盘（绕过 DiagSink 异步队列）：崩溃路径/进程退因专用——
+     *  fsync 保证硬崩前字节已到盘。 */
+    private fun logSyncLocked(tag: String, detail: String) {
+        seq += 1
+        val seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000.0
+        var line = String.format(java.util.Locale.US, "%.3f #%d %s %s",
+            seconds, seq, tag, detail).trim()
+        if (line.length > MAX_EVENT_CHARS) line = line.take(MAX_EVENT_CHARS - 1) + "…"
+        events.addLast(line)
+        if (events.size >= MAX_EVENTS) events.removeFirst()
+        sink?.appendSync(line)
+    }
+
+    private fun wallClock(millis: Long): String =
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date(millis))
+
+    /** ApplicationExitInfo.reason 的可读名（导出里人工读）。 */
+    private fun exitReasonName(reason: Int): String = when (reason) {
+        android.app.ApplicationExitInfo.REASON_USER_REQUESTED -> "USER_REQUESTED"
+        android.app.ApplicationExitInfo.REASON_USER_STOPPED -> "USER_STOPPED"
+        android.app.ApplicationExitInfo.REASON_ANR -> "ANR"
+        android.app.ApplicationExitInfo.REASON_SIGNALED -> "SIGNALED"
+        android.app.ApplicationExitInfo.REASON_LOW_MEMORY -> "LOW_MEMORY"
+        android.app.ApplicationExitInfo.REASON_CRASH -> "CRASH_JAVA"
+        android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "CRASH_NATIVE"
+        android.app.ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "DEPENDENCY_DIED"
+        android.app.ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "EXCESSIVE_RESOURCE"
+        else -> "OTHER"
     }
 
     fun setEnabled(context: Context, on: Boolean) {
@@ -109,6 +210,13 @@ object Diagnostics {
         // recording 判定收进锁内（codex 评审 P3）：关闭与并发 log 竞争时，
         // 锁外判定会放进一条迟到事件。
         synchronized(lock) { if (recording) logLocked(tag, detail) }
+    }
+
+    /** 关键取证行（硬崩前的最后一跳）：同步写盘 + fsync，绕过异步
+     *  队列——崩溃瞬间队尾必丢（1.3.7 手写连环死亡实录：inkInfer
+     *  begin 无一存活）。识别节奏每次手写一笔一次，fsync 开销可忽略。 */
+    fun logCritical(tag: String, detail: String) {
+        synchronized(lock) { if (recording) logSyncLocked(tag, detail) }
     }
 
     /** 调用方已持 [lock]。 */
@@ -226,6 +334,25 @@ object Diagnostics {
                 executor.execute { drainLoop() }
             }
             queue.offer(line) // 满即丢：见类注释的反压策略
+        }
+
+        /** 同步追加（崩溃/退因取证路径）：直接写盘 + fd.sync，绕过
+         *  异步队列——硬崩时队尾必丢，这里保证字节已到介质。 */
+        fun appendSync(line: String) {
+            fileLock.lock()
+            try {
+                file.parentFile?.mkdirs()
+                FileOutputStream(file, true).use { out ->
+                    out.write((line + "\n").toByteArray())
+                    out.flush()
+                    out.fd.sync()
+                }
+                if (lines >= 0) lines += 1
+            } catch (_: java.io.IOException) {
+                // 取证尽力而为：盘满等 IO 异常不允许反噬崩溃路径。
+            } finally {
+                fileLock.unlock()
+            }
         }
 
         private fun drainLoop() {

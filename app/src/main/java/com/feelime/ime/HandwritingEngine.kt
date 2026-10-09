@@ -68,6 +68,10 @@ class HandwritingEngine(
 
     fun recognizeInk(reqId: Int, payload: String) {
         if (released) return
+        // 到达点同步落盘（logCritical）：用户实录（1.3.7 PJC110 五连
+        // 崩溃循环）里 begin 无一存活——从桥进 worker 到 begin 之间还有
+        // 排队/bitmap 绘制一段，死亡点用到达点+begin 二分定位。
+        Diagnostics.logCritical("inkReq", "arrive req=$reqId bytes=${payload.length}")
         worker.execute {
             val result = runCatching { recognize(reqId, payload) }
                 .getOrElse { failure ->
@@ -152,8 +156,10 @@ class HandwritingEngine(
         // 模型输入 (1,96,96,1) uint8（NHWC，tf2onnx 转换保真）。
         val shape = longArrayOf(1, MELNYK_SIZE.toLong(), MELNYK_SIZE.toLong(), 1)
         // native crash 取证埋点：begin 无对应的 diag 结尾 = 死在 run 内
-        //（runCatching 接不住 SIGSEGV）。1.3.6 真机手写连环进程死亡用。
-        Diagnostics.log("inkInfer", "begin req=$reqId")
+        //（runCatching 接不住 SIGSEGV）。1.3.6 真机手写连环进程死亡用；
+        // 1.3.8 起改 logCritical 同步落盘——硬崩时异步队尾必丢，begin
+        // 必须先到介质（PJC110 实录：连 begin 都没活下来）。
+        Diagnostics.logCritical("inkInfer", "begin req=$reqId")
         OnnxTensor.createTensor(
             env,
             java.nio.ByteBuffer.wrap(input),
@@ -181,6 +187,12 @@ class HandwritingEngine(
         }
     }.getOrDefault(emptyList())
 
+    /** 模型来源标签（取证行用）。 */
+    private fun sourceLabel(source: ModelSource): String = when (source) {
+        is ModelSource.Assets -> "assets"
+        is ModelSource.Directory -> "dir:" + File(source.root).name
+    }
+
     /** 模型落地才创建 session（1 线程后台 init）；失败按 unavailable 上报。 */
     private fun ensureSession(): Boolean {
         if (session != null) return vocabulary.isNotEmpty()
@@ -191,6 +203,8 @@ class HandwritingEngine(
                     context.assets.open(MODEL_FILE).use { it.readBytes() }
                 is ModelSource.Directory -> File(source.root, MODEL_FILE).readBytes()
             }
+            // 模型变源入档（崩溃取证：bundled vs 下载模型的分叉排除）。
+            Diagnostics.log("ink", "model=${sourceLabel(source)} bytes=${bytes.size}")
             val env = OrtEnvironment.getEnvironment()
             val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(1) }
             val created = env.createSession(bytes, options)
