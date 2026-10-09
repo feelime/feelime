@@ -167,7 +167,7 @@ def run_panel_action_cases(kb):
     dot 泛化（可长按）与 mic 收敛（仅语音画）。收尾恢复 voice。"""
     def set_action(action):
         d.devtools_eval_target(
-            "settings", f"call('setSpaceHoldAction', '{action}'); 'ok'")
+            "settings", f"call('setSpaceHoldTap', '{action}'); 'ok'")
         time.sleep(1.5)
 
     def layer_open(el_id):
@@ -183,8 +183,8 @@ def run_panel_action_cases(kb):
         time.sleep(0.6)
 
     sx, sy = kb["<space>"]
-    for action, el, hook in (("edit", "editLayer", "toggleEditPanel"),
-                             ("control", "ctrlLayer", "toggleControlView")):
+    for action, el, hook in (("dsl:[panel:edit]", "editLayer", "toggleEditPanel"),
+                             ("dsl:[panel:control]", "ctrlLayer", "toggleControlView")):
         set_action(action)
         dom = d.devtools_eval(
             "(() => { const k = document.getElementById('spaceKey');"

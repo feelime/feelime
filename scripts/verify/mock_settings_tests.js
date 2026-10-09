@@ -98,6 +98,7 @@ class MockSettingsNative {
     setKeyHaptic(...a) { this._rec('setKeyHaptic', a); }
     setVoiceOnSpace(...a) { this._rec("setVoiceOnSpace", a); }
     setSpaceHoldAction(...a) { this._rec("setSpaceHoldAction", a); }
+    setSpaceHoldTap(...a) { this._rec("setSpaceHoldTap", a); }
     setKeySoundVolume(...a) { this._rec('setKeySoundVolume', a); }
     setKeyHapticStrength(...a) { this._rec('setKeyHapticStrength', a); }
     // /R8: page reporting (BACK returns home first) + about-page
@@ -604,10 +605,12 @@ test('custom key editor: open type validates URI at apply time', () => {
     const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
     const tInput = g.document.getElementById('ckT');
     tInput.value = '翻译'; fire(tInput, 'input');
-    const segBtn = container => text =>
-        [...world.doc.querySelectorAll(container + ' .ck-seg-btn')]
-            .find(el => el.textContent === text);
-    fire(segBtn('#ckMode')('打开'), 'click');
+    const pickMode = value => {
+        const sel = world.doc.getElementById('ckMode');
+        sel.value = value;
+        fire(sel, 'change');
+    };
+    pickMode('open');
     // 坏 URI：intent:// 走私被拦，确定按钮不落表（ckRows 是 let，不进
     // vm 全局——经行 chips 断言，与既有测试同一口径）。
     const uri = g.document.getElementById('ckOpenUri');
@@ -639,10 +642,9 @@ test('custom key editor: long URIs are stopped at apply time (review P2-3)', () 
     const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
     const tInput = g.document.getElementById('ckT');
     tInput.value = '长链'; fire(tInput, 'input');
-    const segBtn = container => text =>
-        [...world.doc.querySelectorAll(container + ' .ck-seg-btn')]
-            .find(el => el.textContent === text);
-    fire(segBtn('#ckMode')('打开'), 'click');
+    const modeSel = world.doc.getElementById('ckMode');
+    modeSel.value = 'open';
+    fire(modeSel, 'change');
     // 220 字符 URI：scheme 合法但 tap 会超 128——必须在确定时拦下
     // （键盘侧整表拒收会让全部定制键静默消失）。
     const uri = g.document.getElementById('ckOpenUri');
@@ -899,9 +901,9 @@ test('custom key editor: open presets are a dropdown with full labels (2026-10-0
     g.ckEnter();
     g.ckOpenNew(2);
     const tInput = g.document.getElementById('ckT');
-    const segBtn = text =>
-        [...world.doc.querySelectorAll('#ckMode .ck-seg-btn')].find(el => el.textContent === text);
-    fire(segBtn('打开'), 'click');
+    const modeSel = world.doc.getElementById('ckMode');
+    modeSel.value = 'open';
+    fire(modeSel, 'change');
     const sel = g.document.getElementById('ckOpenPreset');
     assert(sel, 'preset dropdown rendered');
     const labels = [...sel.querySelectorAll('option')].map(o => o.textContent);
@@ -1029,11 +1031,10 @@ test('custom key editor: new key -> apply -> save rides the saveCustom bridge (#
     const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
     const tInput = g.document.getElementById('ckT');
     tInput.value = '存'; fire(tInput, 'input');
-    // 类型是 segmented 按钮组（click 选中），色板同形态。
-    const segBtn = container => text =>
-        [...world.doc.querySelectorAll(container + ' .ck-seg-btn')]
-            .find(el => el.textContent === text);
-    fire(segBtn('#ckMode')('组合'), 'click');
+    // 类型是下拉（#50 三轮：九项排不开一字排开），色板仍是 segmented。
+    const modeSel = world.doc.getElementById('ckMode');
+    modeSel.value = 'combo';
+    fire(modeSel, 'change');
     const keySel = g.document.getElementById('ckKey');
     keySel.value = 's'; fire(keySel, 'change');
     // 颜色：切「自定义」展开 hue 滑块，设 120。
@@ -1890,25 +1891,42 @@ test('base dictionary switching copy states the effective lexicon and the target
         'current line reflects the effective lexicon');
 });
 
-test('issue-39/50 follow-ups: hold-space action / key volume / haptic strength post via the bridge', () => {
+test('issue-39/50: hold-space virtual custom key (summary + editor) / volume / haptic', () => {
     const world = new SettingsWorld();
-    // #50：动作域优先；旧布尔（无 spaceHoldAction 推送）回退映射。
-    world.push({ ...BASE_STATE, spaceHoldAction: 'clipboard', keySoundVolume: 40, keyHapticStrength: 2 });
-    equal(world.$('spaceHoldAction').value, 'clipboard', 'hold-space action reflects state');
+    // 摘要反映：tap 值优先，旧布尔回退，默认 voice。
+    world.push({ ...BASE_STATE, spaceHoldTap: 'dsl:[panel:clipboard]', keySoundVolume: 40, keyHapticStrength: 2 });
+    equal(world.$('spaceHoldSummary').textContent, '剪贴板面板', 'panel tap renders panel label');
     equal(world.$('keySoundVolume').value, '40', 'volume slider reflects state');
     equal(world.$('keyHapticStrength').value, '2', 'haptic strength reflects state');
     world.push({ ...BASE_STATE, voiceOnSpace: false });
-    equal(world.$('spaceHoldAction').value, 'none', 'legacy boolean false maps to none');
+    equal(world.$('spaceHoldSummary').textContent, '关闭', 'legacy boolean false maps to none');
     world.push({ ...BASE_STATE });
-    equal(world.$('spaceHoldAction').value, 'voice', 'default maps to voice');
-    const fire = (id, type, target) =>
-        world.$(id).listeners.find(l => l.type === type).handler({ target });
-    fire('spaceHoldAction', 'change', { value: 'edit' });
-    equal(world.lastCall('setSpaceHoldAction').args, ['edit', world.token], 'select posts setSpaceHoldAction');
-    fire('keyHapticStrength', 'change', { value: '0' });
+    equal(world.$('spaceHoldSummary').textContent, '语音输入', 'default maps to voice');
+    world.push({ ...BASE_STATE, spaceHoldTap: 'dsl:hi there' });
+    equal(world.$('spaceHoldSummary').textContent.includes('文本'), true,
+        'text tap renders mode + preview: ' + world.$('spaceHoldSummary').textContent);
+    // 编辑器：入口按钮 → 同款弹层（类型下拉，voice 置顶）→ 文本型保存
+    // 走 setSpaceHoldTap('dsl:<tap>')。
+    const fire = (el, type, target) =>
+        el.listeners.find(l => l.type === type).handler({ target });
+    world.$('spaceHoldEdit').click();
+    equal(world.$('ckModalTitle').textContent, '长按空格动作', 'space editor title');
+    const modeSel = world.doc.getElementById('ckMode');
+    equal(modeSel.tagName, 'SELECT', 'type picker is a dropdown (9 kinds)');
+    equal([...modeSel.querySelectorAll('option')].length, 9, 'voice/none prepended for space');
+    equal(modeSel.value, 'text', 'current tap back-fills the type');
+    const textInput = world.doc.getElementById('ckText');
+    textInput.value = 'me@x.com'; fire(textInput, 'input');
+    world.$('ckApply').click();
+    equal(world.lastCall('setSpaceHoldTap').args, ['dsl:me@x.com', world.token],
+        'editor posts setSpaceHoldTap with dsl prefix + token');
+    equal(world.$('spaceHoldSummary').textContent.includes('me@x.com'), true,
+        'summary refreshes after save');
+    equal(world.$('ckModal').hidden, true, 'modal closes after save');
+    fire(world.$('keyHapticStrength'), 'change', { value: '0' });
     equal(world.lastCall('setKeyHapticStrength').args, [0, world.token], 'strength posts setKeyHapticStrength');
     // 音量滑条防抖 250ms：input 当拍不进桥（sandbox 的 setTimeout 只入队）。
-    fire('keySoundVolume', 'input', { value: '75' });
+    fire(world.$('keySoundVolume'), 'input', { value: '75' });
     equal(world.native.of('setKeySoundVolume').length, 0, 'volume debounced (not posted yet)');
 });
 

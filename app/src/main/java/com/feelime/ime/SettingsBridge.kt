@@ -170,23 +170,26 @@ fun readKeyHapticStrength(context: Context): Int =
         .coerceIn(0, 2)
 
 /** #39-13 长按空格语音输入（默认开）：关=长按不触发+隐藏麦克风。
- *  #50 起由 space_hold_action 动作域接管（voice 语义不变），此布尔
- *  仅作读侧迁移源与旧键盘 JS（热更）的推送兼容。 */
+ *  #50 起由 space_hold_tap（虚拟定制键）接管，此布尔仅作读侧迁移源
+ *  与旧键盘 JS（热更）的推送兼容。 */
 const val PREF_VOICE_ON_SPACE = "voice_on_space"
 
 fun readVoiceOnSpace(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_VOICE_ON_SPACE, true)
 
-/** #50 长按空格动作（枚举见 [SPACE_HOLD_ACTIONS]）：未设置时回退旧
- *  布尔开关（voice/none）。 */
-const val PREF_SPACE_HOLD_ACTION = "space_hold_action"
-val SPACE_HOLD_ACTIONS = setOf("voice", "none", "clipboard", "favorites", "edit", "control")
+/** #50 长按空格=虚拟定制键：tap 值域 voice | none | dsl:<tap DSL 串>。
+ *  dsl 前缀避免与字面文本撞保留字；长度上限 = 4 + 定制键 tapChars(128)。
+ *  未设置时回退旧布尔开关（voice/none）。枚举版 space_hold_action 从未
+ *  发布，不留迁移。 */
+const val PREF_SPACE_HOLD_TAP = "space_hold_tap"
+private const val SPACE_HOLD_TAP_MAX = 4 + 128
 
-fun readSpaceHoldAction(context: Context): String {
-    val action = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getString(PREF_SPACE_HOLD_ACTION, null)
-    if (action != null && action in SPACE_HOLD_ACTIONS) return action
+fun readSpaceHoldTap(context: Context): String {
+    val tap = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_SPACE_HOLD_TAP, null)
+    if (tap == "voice" || tap == "none") return tap
+    if (tap != null && tap.startsWith("dsl:") && tap.length <= SPACE_HOLD_TAP_MAX) return tap
     return if (readVoiceOnSpace(context)) "voice" else "none"
 }
 
@@ -753,7 +756,7 @@ class SettingsBridge(
             })
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(context))
             .put("kbLayout", readKbLayout(context))
-            .put("spaceHoldAction", readSpaceHoldAction(context))
+            .put("spaceHoldTap", readSpaceHoldTap(context))
             .put("voiceOnSpace", readVoiceOnSpace(context))
             .put("keySoundVolume", readKeySoundVolume(context))
             .put("keyHapticStrength", readKeyHapticStrength(context))
@@ -1192,14 +1195,16 @@ class SettingsBridge(
         pushState()
     }
 
-    /** #50 长按空格动作（voice/none/clipboard/favorites/edit/control）：
-     *  白名单外一律拒收（保持现值），落盘走 ACTION_KEYBOARD_PREFS_CHANGED
-     *  的既有重推链。 */
+    /** #50 长按空格=虚拟定制键（voice|none|dsl:<tap>）：域外/超长一律
+     *  拒收（保持现值），落盘走 ACTION_KEYBOARD_PREFS_CHANGED 的既有
+     *  重推链。DSL 内容校验在键盘侧 parseTapDsl（与定制键同口径）。 */
     @JavascriptInterface
-    fun setSpaceHoldAction(action: String, token: String) = guarded(token) {
-        if (action !in SPACE_HOLD_ACTIONS) return@guarded
+    fun setSpaceHoldTap(tap: String, token: String) = guarded(token) {
+        val ok = tap == "voice" || tap == "none" ||
+            (tap.startsWith("dsl:") && tap.length <= SPACE_HOLD_TAP_MAX)
+        if (!ok) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putString(PREF_SPACE_HOLD_ACTION, action).commit()
+            .edit().putString(PREF_SPACE_HOLD_TAP, tap).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

@@ -25,8 +25,15 @@ const KEYBOARD_MODES = [
     ['french', '法语'], ['russian', '俄语'], ['japanese', '日语'],
 ];
 const DEFAULT_MENU_MODES = ['direct', 'pinyin', 'double-pinyin', 't9', 'stroke'];
-/** #50 长按空格动作的合法域（与原生 SPACE_HOLD_ACTIONS 同源）。 */
-const HOLD_ACTIONS = ['voice', 'none', 'clipboard', 'favorites', 'edit', 'control'];
+/** 定制按键编辑器的动作类型（#50 三轮起类型选择为下拉）：值为
+ *  mode、标签为 i18n 键（用时 t() 解析，跟随界面语言）。长按空格的
+ *  编辑器在此基础上前插 voice/none 两个特殊类型。 */
+const CK_MODES = [
+    ['text', 'ck.f.mode.text'], ['single', 'ck.f.mode.single'],
+    ['combo', 'ck.f.mode.combo'], ['open', 'ck.f.mode.open'],
+    ['setting', 'ck.f.mode.setting'], ['panel', 'ck.f.mode.panel'],
+    ['advanced', 'ck.f.mode.advanced'],
+];
 
 // #31 键盘色调：与 native THEME_PRESETS / keyboard.css html[data-preset] 同源。
 const THEME_PRESET_LIST = ['classic', 'ocean', 'violet', 'amber', 'sakura', 'teal'];
@@ -235,6 +242,10 @@ const I18N = {
         "ck.f.mode.open": "打开",
         "ck.f.mode.setting": "设置",
         "ck.f.mode.panel": "面板",
+        "ck.f.kind": "类型",
+        "ck.spaceTitle": "长按空格动作",
+        "ck.space.edit": "编辑动作",
+        "ck.space.hint": "长按空格触发该动作（350ms）；语音输入为按住说话，其余动作触发一次。",
         "ck.f.panel.pick": "打开哪个面板",
         "ck.f.text": "要输入的文本，如 :w 或 me@example.com",
         "ck.f.mods": "修饰键",
@@ -888,6 +899,10 @@ const I18N = {
         "ck.f.mode.open": "Open",
         "ck.f.mode.setting": "Settings",
         "ck.f.mode.panel": "Panel",
+        "ck.f.kind": "Type",
+        "ck.spaceTitle": "Hold-space action",
+        "ck.space.edit": "Edit action",
+        "ck.space.hint": "A 350ms press on the space bar runs this action; Voice is hold-to-talk, others fire once.",
         "ck.f.panel.pick": "Which panel to open",
         "ck.f.text": "Text to type, e.g. :w or me@example.com",
         "ck.f.mods": "Mods",
@@ -2093,13 +2108,7 @@ function setLed(rowId, ok) {
 }
 
 function renderVoice(state) {
-    // #50 长按空格动作：新键优先，旧布尔（热更键盘/旧推送）回退映射。
-    const holdAction = HOLD_ACTIONS.indexOf(state.spaceHoldAction) >= 0
-        ? state.spaceHoldAction
-        : (state.voiceOnSpace === false ? "none" : "voice");
-    if (document.activeElement !== $("spaceHoldAction")) {
-        $("spaceHoldAction").value = holdAction;
-    }
+    renderSpaceHold(state);
     if (document.activeElement !== $("modelBackend")) {
         $("modelBackend").value = state.modelBackend === "remote" ? "remote" : "auto";
     }
@@ -3443,7 +3452,7 @@ $("scrubSpeed").addEventListener("change", submitFeelOptions);
 $("flickSwap").addEventListener("change", event => call("setFlickSwap", event.target.checked));
 $("popupSnap").addEventListener("change", submitFeelOptions);
 $("modelBackend").addEventListener("change", event => call("setModelBackend", event.target.value));
-$("spaceHoldAction").addEventListener("change", event => call("setSpaceHoldAction", event.target.value));
+$("spaceHoldEdit").addEventListener("click", openSpaceHoldEditor);
 $("modelDownloadSource").addEventListener("change", event => {
     const visible = event.target.value === "custom";
     $("modelDownloadCustom").hidden = !visible;
@@ -3665,6 +3674,10 @@ const CK_OPEN_PRESETS = [
     { label: "百度搜索", t: "搜索", uri: "https://www.baidu.com/s?wd=" },
 ];
 let ckRows = null;
+// #50 三轮：编辑弹层的目标（cell=定制键 | space=长按空格虚拟键）与
+// 长按空格当前动作（归一后 "voice"|"none"|tap DSL 串）。
+let ckEditorTarget = "cell";
+let spaceHoldRaw = "voice";
 let ckSel = null;   // 正在编辑的位置 {r, c, isNew}
 let ckDraft = null; // 表单草稿
 let ckDirty = false;
@@ -3690,7 +3703,7 @@ function ckMarkDirty(dirty) {
 function ckOpenModal(isNew) {
     const modal = document.getElementById("ckModal");
     document.getElementById("ckModalTitle").textContent =
-        t(isNew ? "ck.newTitle" : "ck.edit.title");
+        ckEditorTarget === "space" ? t("ck.spaceTitle") : t(isNew ? "ck.newTitle" : "ck.edit.title");
     setNote("ckEditNote", "");
     modal.hidden = false;
 }
@@ -4253,6 +4266,7 @@ function ckBindDrag(chip) {
 /** 编辑卡：isNew 时空白表单；否则按 cell 回填（tap 反猜型别）。 */
 function ckOpenChip(r, c) {
     const cell = ckRows[r][c];
+    ckEditorTarget = "cell";
     ckSel = { r, c, isNew: false };
     // 全字段先兜底再让 parse 覆盖命中型：切到任何型都拿得到默认值
     // （此前文本/组合键型缺 text/mods 字段，切换后输入框填 undefined、
@@ -4271,11 +4285,55 @@ function ckOpenChip(r, c) {
 }
 
 function ckOpenNew(r) {
+    ckEditorTarget = "cell";
     ckSel = { r, c: ckRows[r].length, isNew: true };
     ckDraft = { t: "", mode: "single", single: "esc", text: "", comboKey: "s",
         mods: new Set(["ctrl"]), open: "", setting: "", panel: "clipboard", dsl: "", color: "", note: "", span: 0 };
     ckBuildForm();
     ckOpenModal(true);
+}
+
+/** #50 长按空格=虚拟定制键：与定制键同一编辑器（类型+动作，无键面
+ *  /颜色/备注），保存走 setSpaceHoldTap 桥。 */
+function openSpaceHoldEditor() {
+    ckEditorTarget = "space";
+    ckSel = null;
+    const parsed = spaceHoldRaw === "voice" || spaceHoldRaw === "none"
+        ? { mode: spaceHoldRaw } : ckTapParse(spaceHoldRaw);
+    ckDraft = { t: "", text: "", single: "esc", comboKey: "s",
+        mods: new Set(["ctrl"]), open: "", setting: "", panel: "clipboard",
+        dsl: "", color: "", note: "", span: 0, ...parsed };
+    ckBuildForm();
+    ckOpenModal(true);
+}
+
+/** 状态推送 → 摘要行（voice|none|dsl: 前缀归一，旧布尔回退）。 */
+function renderSpaceHold(state) {
+    const raw = typeof state.spaceHoldTap === "string" && state.spaceHoldTap
+        ? state.spaceHoldTap
+        : (state.voiceOnSpace === false ? "none" : "voice");
+    spaceHoldRaw = raw === "voice" || raw === "none"
+        ? raw
+        : (raw.startsWith("dsl:") ? raw.slice(4) : "voice");
+    const el = document.getElementById("spaceHoldSummary");
+    if (el) el.textContent = spaceHoldSummary(spaceHoldRaw);
+}
+
+/** 动作 → 摘要文案：特殊类型直译，DSL 按反猜型别给「类型 · 预览」。 */
+function spaceHoldSummary(raw) {
+    if (raw === "voice") return t("voice.hold.voice");
+    if (raw === "none") return t("voice.hold.none");
+    const parsed = ckTapParse(raw);
+    if (parsed.mode === "panel") {
+        const labels = { clipboard: "voice.hold.clipboard", favorites: "voice.hold.favorites",
+            edit: "voice.hold.edit", control: "voice.hold.control" };
+        return t(labels[parsed.panel] || "ck.f.mode.panel");
+    }
+    const keys = { text: "ck.f.mode.text", single: "ck.f.mode.single", combo: "ck.f.mode.combo",
+        open: "ck.f.mode.open", setting: "ck.f.mode.setting", advanced: "ck.f.mode.advanced" };
+    const key = keys[parsed.mode] || "ck.f.mode.advanced";
+    const preview = [...String(raw)].length > 16 ? [...String(raw)].slice(0, 15).join("") + "…" : String(raw);
+    return t(key) + " · " + preview;
 }
 
 /** 行式表单行：短标签在左、控件在右占满余宽（一行一个属性——空间
@@ -4317,7 +4375,7 @@ function ckBuildForm() {
     const d = ckDraft;
 
     // 新建时提供「常用」起点：默认收起，点开展开，选一颗预填。
-    if (ckSel && ckSel.isNew) {
+    if (ckSel && ckSel.isNew && ckEditorTarget === "cell") {
         const common = document.createElement("div");
         common.className = "ck-common";
         const toggle = document.createElement("button");
@@ -4351,23 +4409,35 @@ function ckBuildForm() {
         body.append(common);
     }
 
-    // 顺序：键面文案 -> 类型四选 -> 类型输入控件 -> 颜色 -> 备注。
-    const tInput = document.createElement("input");
-    tInput.id = "ckT";
-    tInput.className = "ck-input";
-    tInput.value = d.t;
-    tInput.placeholder = t("ck.f.t.hint");
-    tInput.addEventListener("input", () => { d.t = tInput.value; });
-    body.append(ckField(t("ck.f.t"), tInput));
+    // 顺序：键面文案 -> 类型下拉 -> 类型输入控件 -> 颜色 -> 备注。
+    // 长按空格是虚拟键（无键面/颜色/备注），只保留类型与动作。
+    if (ckEditorTarget === "cell") {
+        const tInput = document.createElement("input");
+        tInput.id = "ckT";
+        tInput.className = "ck-input";
+        tInput.value = d.t;
+        tInput.placeholder = t("ck.f.t.hint");
+        tInput.addEventListener("input", () => { d.t = tInput.value; });
+        body.append(ckField(t("ck.f.t"), tInput));
+    }
 
-    const modeSeg = ckSegment([["text", t("ck.f.mode.text")], ["single", t("ck.f.mode.single")],
-        ["combo", t("ck.f.mode.combo")], ["open", t("ck.f.mode.open")],
-        ["setting", t("ck.f.mode.setting")], ["panel", t("ck.f.mode.panel")],
-        ["advanced", t("ck.f.mode.advanced")]],
-        d.mode, v => { d.mode = v; ckBuildForm(); });
-    modeSeg.id = "ckMode";
-    modeSeg.classList.add("ck-mode-seg");
-    body.append(modeSeg);
+    // #50 三轮（用户裁定）：类型选择改下拉——枚举已到九项（含长按空格
+    // 的语音/关闭两个特殊类型），一字排开放不下。
+    const modeList = ckEditorTarget === "space"
+        ? [["voice", "voice.hold.voice"], ["none", "voice.hold.none"], ...CK_MODES]
+        : CK_MODES;
+    const modeSel = document.createElement("select");
+    modeSel.id = "ckMode";
+    modeSel.className = "ck-input";
+    modeList.forEach(([value, labelKey]) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = t(labelKey);
+        modeSel.append(opt);
+    });
+    modeSel.value = modeList.some(([value]) => value === d.mode) ? d.mode : modeList[0][0];
+    modeSel.addEventListener("change", () => { d.mode = modeSel.value; ckBuildForm(); });
+    body.append(ckField(t("ck.f.kind"), modeSel));
 
     const holder = document.createElement("div");
     holder.id = "ckActionHolder";
@@ -4376,6 +4446,14 @@ function ckBuildForm() {
 
     // 颜色：默认 / 自定义（自定义才展开 hue 滑块行）。cell.color 记
     // "h<度数>"（0-359）渲染按 hsl 算；旧色板名兼容读。
+    if (ckEditorTarget !== "cell") {
+        // 虚拟键无颜色/备注：直接跳到表单尾部（见下方配对的 }）。
+        const noteSkip = document.createElement("p");
+        noteSkip.className = "hint";
+        noteSkip.textContent = t("ck.space.hint");
+        body.append(noteSkip);
+        return;
+    }
     const HUE_RE = /^h\d{1,3}(?:s\d{1,3})?$/;
     const isCustomHue = HUE_RE.test(d.color || "");
     const colorSeg = ckSegment([["", t("ck.color.default")], ["custom", t("ck.color.custom")]],
@@ -4595,7 +4673,8 @@ function ckBuildAction(holder) {
 
 $("ckApply").addEventListener("click", () => {
     const d = ckDraft;
-    if (!d.t.trim()) return setNote("ckEditNote", t("ck.err.t"));
+    // 长按空格是虚拟键：无键面文案，标签必填只约束真实定制键。
+    if (ckEditorTarget === "cell" && !d.t.trim()) return setNote("ckEditNote", t("ck.err.t"));
     // open 型先过本地校验（键盘侧 parseCustomKeys 是整表拒收，坏键
     //  不该等保存才发现）：http(s) 或应用 scheme，拒绝空串/空白/方括号/
     //  走私 scheme（与键盘 validateOpenUri、native openLink 同清单）。
@@ -4621,6 +4700,17 @@ $("ckApply").addEventListener("click", () => {
     // tap 长度与键盘侧 CUSTOM_LIMITS.tapChars 同限（128）：长链接是 open
     //  型主用途，放行后键盘 hello 采纳时整表静默拒收=全部定制键消失。
     if ([...tap].length > 128) return setNote("ckEditNote", t("ck.err.tapLong"));
+    // #50 长按空格虚拟键：tap 值域 voice|none|dsl:<tap>，保存即桥推。
+    if (ckEditorTarget === "space") {
+        const value = d.mode === "voice" ? "voice"
+            : d.mode === "none" ? "none" : "dsl:" + tap;
+        call("setSpaceHoldTap", value);
+        spaceHoldRaw = d.mode === "voice" || d.mode === "none" ? d.mode : tap;
+        const el = document.getElementById("spaceHoldSummary");
+        if (el) el.textContent = spaceHoldSummary(spaceHoldRaw);
+        ckCloseModal();
+        return;
+    }
     const cell = { t: d.t.trim(), tap, note: d.note || "" };
     if (d.color) cell.color = d.color;
     // 宽键跨格（span）没有独立控件：编辑已有键时保留原值，误编辑不该

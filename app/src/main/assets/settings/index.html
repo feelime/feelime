@@ -1074,20 +1074,14 @@
           <input type="checkbox" id="customEnabled" class="toggle">
         </label>
       </div>
-      <!-- #50 长按空格动作（用户裁定归定制按键体系）：语音输入（默认）/
-           剪贴板/表情/快捷编辑/控制键层/关闭，与 [panel:] DSL 同域。 -->
+      <!-- #50 长按空格=虚拟定制键（用户裁定）：动作与定制按键同编辑器
+           同 DSL（文本/组合键/链接/设置项/面板/多步链），语音输入与关闭
+           为两个特殊类型。 -->
       <div class="rows">
-        <label class="row" for="spaceHoldAction">
-          <span class="row-label"><span data-i18n="voice.holdSpace">长按空格</span><small data-i18n="voice.holdSpaceHint">长按空格键触发的动作；「语音输入」显示麦克风，「关闭」则长按无响应。</small></span>
-          <select id="spaceHoldAction" class="select" data-keywords="语音 长按空格 麦克风 剪贴板 表情 编辑 控制键 关闭 voice hold space clipboard favorites edit control">
-            <option value="voice" data-i18n="voice.hold.voice">语音输入</option>
-            <option value="clipboard" data-i18n="voice.hold.clipboard">剪贴板面板</option>
-            <option value="favorites" data-i18n="voice.hold.favorites">表情/常用面板</option>
-            <option value="edit" data-i18n="voice.hold.edit">快捷编辑面板</option>
-            <option value="control" data-i18n="voice.hold.control">控制键层</option>
-            <option value="none" data-i18n="voice.hold.none">关闭</option>
-          </select>
-        </label>
+        <div class="row" id="spaceHoldRow" data-keywords="语音 长按空格 麦克风 剪贴板 表情 编辑 控制键 关闭 定制 voice hold space clipboard favorites edit control custom">
+          <span class="row-label"><span data-i18n="voice.holdSpace">长按空格</span><small id="spaceHoldSummary">语音输入</small></span>
+          <button class="btn" id="spaceHoldEdit" type="button" data-i18n="ck.space.edit">编辑动作</button>
+        </div>
       </div>
     </section>
     <section class="card" aria-labelledby="ckRowsHead">
