@@ -110,6 +110,23 @@
 - 旧原生（无 pushStores/getStores）上运行新键盘 JS：全部 `typeof`
   探测后调用，绝不抛错。
 
+### 1.4 WebDAV 云端备份（issue #43，2026-10-09）
+
+- 传输层 `WebDavBackup`：HTTP 直写（PUT/GET/PROPFIND/OPTIONS）零新依赖，
+  Basic 认证（Digest-only 服务器 v1 不支持）；组包/换装完全复用本地
+  导入导出管线（§1.1/§1.2 同一份 UserdataBackup）。
+- **备份不覆盖历史**（用户裁定）：文件名 `feelime-backup-<yyyyMMdd-
+  HHmmss>.json` 秒级时间戳，每次备份 PUT 新文件。
+- **恢复先列后选**（用户裁定）：PROPFIND Depth 1 列远端（前缀过滤、
+  文件名倒序=最新在前）→ 用户点选 → 覆盖确认（与本地导入同语义）→
+  GET 有界读取（64MiB 同上限）→ 换装。
+- 凭据存设备私有 prefs（`webdav_backup`：url/user/password），**不进
+  备份包**——备份 JSON 用户可手工编辑/转发，密码不能随之旅行
+  （PREFS_FILES 白名单不含它）；`webdavRestore` 的文件名走前缀+无斜杠
+  白名单，URL 拼接不收路径穿越。
+- GET 响应有界读取双重防线：Content-Length 头预检 + 实读计数，防
+  超大响应撑爆内存。
+
 ## 2. 语音首用直弹系统权限
 
 现状：FeelimeService.startVoice 无权限时只 toast 指引用户去设置页

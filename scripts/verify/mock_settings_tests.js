@@ -65,6 +65,15 @@ class MockSettingsNative {
     openModelDocument(...a) { this._rec('openModelDocument', a); }
     openKeyboardDocument(...a) { this._rec('openKeyboardDocument', a); }
     exportUserdata(...a) { this._rec('exportUserdata', a); }
+    webdavGetConfig(...a) {
+        this._rec('webdavGetConfig', a);
+        return JSON.stringify(this.webdavConfig || { url: '', user: '', password: '' });
+    }
+    webdavSaveConfig(...a) { this._rec('webdavSaveConfig', a); }
+    webdavTest(...a) { this._rec('webdavTest', a); }
+    webdavBackup(...a) { this._rec('webdavBackup', a); }
+    webdavListBackups(...a) { this._rec('webdavListBackups', a); }
+    webdavRestore(...a) { this._rec('webdavRestore', a); }
     openBackupDocument(...a) { this._rec('openBackupDocument', a); }
     confirmKeyboardInstall(...a) { this._rec('confirmKeyboardInstall', a); }
     dismissKeyboardInstall(...a) { this._rec('dismissKeyboardInstall', a); }
@@ -1557,6 +1566,72 @@ test('custom phrases: CRUD is refused before the first state push (no seed wipe)
     box.checked = false;
     box.listeners.find(l => l.type === 'change').handler({ target: box });
     equal(world.native.of('saveCustomPhrases').length, 0, 'toggle refused before state arrives');
+});
+
+test('webdav: config fills the form; save/backup/refresh reach the bridge with the token', () => {
+    const world = new SettingsWorld();
+    world.native.webdavConfig = { url: 'https://dav.example.com/dav/feelime/', user: 'felix', password: 'app-pass' };
+    world.FeelimeSettings().webdavFillConfig();
+    equal(world.$('webdavUrl').value, 'https://dav.example.com/dav/feelime/', 'url filled');
+    equal(world.$('webdavUser').value, 'felix', 'user filled');
+    equal(world.$('webdavPass').value, 'app-pass', 'password filled');
+
+    world.$('webdavUrl').value = ' https://dav.example.com/dav/x/ ';
+    world.$('btnWebdavSave').listeners.find(l => l.type === 'click').handler();
+    const save = world.lastCall('webdavSaveConfig');
+    equal(save.args.slice(0, 3),
+        ['https://dav.example.com/dav/x/', 'felix', 'app-pass'],
+        'saveConfig args trimmed + token last');
+
+    world.$('btnWebdavBackup').listeners.find(l => l.type === 'click').handler();
+    equal(world.lastCall('webdavBackup').args, [world.token], 'backup carries the token');
+    world.$('btnWebdavRefresh').listeners.find(l => l.type === 'click').handler();
+    equal(world.lastCall('webdavListBackups').args, [world.token], 'list carries the token');
+});
+
+test('webdav: list event renders rows newest-first; restore goes through consent + token', () => {
+    const world = new SettingsWorld();
+    world.FeelimeSettings().onEvent({
+        type: 'webdavList', ok: true, items: [
+            { name: 'feelime-backup-20261009-213905.json', size: 57198, modified: 'x' },
+            { name: 'feelime-backup-20261008-060025.json', size: 12, modified: 'y' },
+        ],
+    });
+    const rows = [...world.doc.querySelectorAll('#webdavList .phrase-row')];
+    equal(rows.length, 2, 'two cloud backups rendered');
+    equal(world.$('webdavEmpty').hidden, true, 'empty hint hidden when items exist');
+    const first = rows[0].querySelector('.phrase-text').textContent;
+    assert(first.includes('2026-10-09 21:39:05'), 'timestamp decoded for display: ' + first);
+    assert(first.includes('56 KB'), 'size rendered in KB');
+
+    // 恢复先弹确认（覆盖语义与本地导入一致），确认才发 webdavRestore。
+    rows[0].querySelector('button').listeners.find(l => l.type === 'click').handler();
+    equal(world.$('webdavConsent').hidden, false, 'consent shown');
+    assert(world.$('webdavConsentName').textContent.includes('2026-10-09'),
+        'consent names the picked backup');
+    world.$('webdavConsentConfirm').listeners.find(l => l.type === 'click').handler();
+    equal(world.lastCall('webdavRestore').args,
+        ['feelime-backup-20261009-213905.json', world.token], 'restore name + token');
+    equal(world.$('webdavConsent').hidden, true, 'consent closed after confirm');
+});
+
+test('webdav: status failures map codes to readable notes; backup ok refreshes the list', () => {
+    const world = new SettingsWorld();
+    world.FeelimeSettings().onEvent({ type: 'webdavStatus', op: 'test', ok: false, code: 'AUTH' });
+    assert(world.$('webdavNote').textContent.includes('认证失败'), 'AUTH mapped to text');
+    world.FeelimeSettings().onEvent({ type: 'webdavStatus', op: 'backup', ok: true, name: 'feelime-backup-20261009-213905.json' });
+    assert(world.$('webdavNote').textContent.includes('2026-10-09 21:39:05'),
+        'backup ok names the new file');
+    equal(world.lastCall('webdavListBackups').args, [world.token], 'backup ok refreshes the list');
+    // 取消路径：确认框不残留。
+    world.FeelimeSettings().onEvent({ type: 'webdavList', ok: true, items: [
+        { name: 'feelime-backup-20261009-213905.json', size: 1, modified: '' }] });
+    const row = [...world.doc.querySelectorAll('#webdavList .phrase-row')][0]
+        .querySelector('button');
+    row.listeners.find(l => l.type === 'click').handler();
+    world.$('webdavConsentCancel').listeners.find(l => l.type === 'click').handler();
+    equal(world.$('webdavConsent').hidden, true, 'cancel closes consent');
+    equal(world.native.of('webdavRestore').length, 0, 'cancel sends no restore');
 });
 
 test('custom phrases: empty list shows the hint; third-level page routes back to dict', () => {

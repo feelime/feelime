@@ -19,6 +19,7 @@ import android.webkit.JavascriptInterface
 import androidx.core.content.FileProvider
 import com.feelime.ime.backup.AndroidPrefs
 import com.feelime.ime.backup.UserdataBackup
+import com.feelime.ime.backup.WebDavBackup
 import com.feelime.ime.update.GithubReleaseSource
 import com.feelime.ime.update.KeyboardPackageVerifier
 import com.feelime.ime.update.KeyboardSource
@@ -2450,24 +2451,7 @@ class SettingsBridge(
                         }
                         buffer.toByteArray()
                     } ?: throw java.io.IOException("selected document has no readable stream")
-                    val result = UserdataBackup(AndroidPrefs(context), context.filesDir).restore(bytes)
-                    if (result is UserdataBackup.RestoreResult.Fail) {
-                        pushEvent(
-                            JSONObject().put("type", "backupStatus").put("direction", "import")
-                                .put("ok", false).put("code", result.code),
-                        )
-                    } else {
-                        com.feelime.ime.panel.PanelStoreSignals.fireFavoritesChanged()
-                        // 不带词库的备份也要广播：键盘页要刷新运行时设置；
-                        // 页面不在时 rev 协议保证下次握手仍会拉到恢复值。
-                        context.sendBroadcast(
-                            Intent(ACTION_USERDATA_RESTORED).setPackage(context.packageName),
-                        )
-                        pushEvent(
-                            JSONObject().put("type", "backupStatus").put("direction", "import").put("ok", true),
-                        )
-                    }
-                    pushState()
+                    restoreUserdataBytes(bytes)
                 }.onFailure { failure ->
                     Log.w(TAG, "userdata import failed", failure)
                     pushEvent(
@@ -2477,6 +2461,161 @@ class SettingsBridge(
                 }
             }
         }
+    }
+
+    /** 本地导入与 WebDAV 恢复共用的换装管线（#43）：校验 kind/version、
+     *  settings 即时生效、userdb 暂存广播给 IME。调用方已在 worker。 */
+    private fun restoreUserdataBytes(bytes: ByteArray) {
+        val result = UserdataBackup(AndroidPrefs(context), context.filesDir).restore(bytes)
+        if (result is UserdataBackup.RestoreResult.Fail) {
+            pushEvent(
+                JSONObject().put("type", "backupStatus").put("direction", "import")
+                    .put("ok", false).put("code", result.code),
+            )
+        } else {
+            com.feelime.ime.panel.PanelStoreSignals.fireFavoritesChanged()
+            // 不带词库的备份也要广播：键盘页要刷新运行时设置；
+            // 页面不在时 rev 协议保证下次握手仍会拉到恢复值。
+            context.sendBroadcast(
+                Intent(ACTION_USERDATA_RESTORED).setPackage(context.packageName),
+            )
+            pushEvent(
+                JSONObject().put("type", "backupStatus").put("direction", "import").put("ok", true),
+            )
+        }
+        pushState()
+    }
+
+    // ---- WebDAV 云端备份（issue #43；凭据存 webdav_backup prefs，不进备份包） ----
+
+    private fun webdavConfig(): WebDavBackup.Config {
+        val prefs = context.getSharedPreferences("webdav_backup", Context.MODE_PRIVATE)
+        return WebDavBackup.Config(
+            prefs.getString("url", "") ?: "",
+            prefs.getString("user", "") ?: "",
+            prefs.getString("password", "") ?: "",
+        )
+    }
+
+    /** 同步返回配置（设置页表单回填；密码留在设备内，不进备份包）。
+     *  guarded 只回 Unit——带返回值的桥自带同款 token 门闸。 */
+    @JavascriptInterface
+    fun webdavGetConfig(token: String): String {
+        if (closed || pageToken.isEmpty() || token != pageToken) return ""
+        val config = webdavConfig()
+        return JSONObject()
+            .put("url", config.url)
+            .put("user", config.user)
+            .put("password", config.password)
+            .toString()
+    }
+
+    @JavascriptInterface
+    fun webdavSaveConfig(url: String, user: String, password: String, token: String) = guarded(token) {
+        if (url.length > 512 || user.length > 128 || password.length > 256) {
+            pushWebdavStatus("save", false, "TOO_LONG")
+            return@guarded
+        }
+        context.getSharedPreferences("webdav_backup", Context.MODE_PRIVATE).edit()
+            .putString("url", url.trim())
+            .putString("user", user.trim())
+            .putString("password", password)
+            .commit()
+        // 保存即探测：错误码（AUTH/NOT_FOUND/NO_DAV）当场反馈。
+        webdavRun("test") { WebDavBackup.test(webdavConfig()) }
+    }
+
+    @JavascriptInterface
+    fun webdavTest(token: String) = guarded(token) {
+        webdavRun("test") { WebDavBackup.test(webdavConfig()) }
+    }
+
+    /** 云端备份：组包 → PUT 时间戳文件名（不覆盖历史，用户裁定）。 */
+    @JavascriptInterface
+    fun webdavBackup(token: String) = guarded(token) {
+        webdavRun("backup") {
+            val config = webdavConfig()
+            if (!config.valid) return@webdavRun WebDavBackup.Outcome.Fail("EMPTY_URL")
+            val json = UserdataBackup(AndroidPrefs(context), context.filesDir, appVersion()).export()
+            val name = WebDavBackup.backupFileName()
+            WebDavBackup.put(config, name, json.toString().toByteArray(Charsets.UTF_8))
+        }
+    }
+
+    /** 云端备份列表（恢复选择用，用户裁定：恢复前列出让用户挑）。 */
+    @JavascriptInterface
+    fun webdavListBackups(token: String) = guarded(token) {
+        webdavRun("list") { WebDavBackup.list(webdavConfig()) }
+    }
+
+    @JavascriptInterface
+    fun webdavRestore(name: String, token: String) = guarded(token) {
+        // 文件名白名单：只许恢复本应用前缀的备份，URL 拼接不收路径穿越。
+        if (!name.startsWith(WebDavBackup.FILE_PREFIX) || name.contains('/') || name.length > 128) {
+            pushWebdavStatus("restore", false, "BAD_NAME")
+            return@guarded
+        }
+        webdavRun("restore") {
+            val outcome = WebDavBackup.get(webdavConfig(), name)
+            when (outcome) {
+                is WebDavBackup.Outcome.Fail -> outcome
+                is WebDavBackup.Outcome.Ok -> {
+                    restoreUserdataBytes(outcome.value)
+                    // restoreUserdataBytes 已推 backupStatus；此处再补
+                    // webdavStatus 让云端区块的 UI 收自己的尾。
+                    WebDavBackup.Outcome.Ok(name)
+                }
+            }
+        }
+    }
+
+    /** worker 上的 WebDAV 往返 + 事件回推（op/status/detail 三段式，
+     *  list 单独走 webdavList 事件带条目数组）。星号投影：不同 op 的
+     *  Ok 载荷类型不同（Boolean/String/List/ByteArray），分发只看 op。 */
+    private fun webdavRun(op: String, block: () -> WebDavBackup.Outcome<*>) {
+        runCatching {
+            worker.execute {
+                if (closed) return@execute
+                val outcome = runCatching(block).getOrElse { failure ->
+                    Log.w(TAG, "webdav $op failed", failure)
+                    WebDavBackup.Outcome.Fail("INTERNAL", failure.javaClass.simpleName)
+                }
+                when (outcome) {
+                    is WebDavBackup.Outcome.Fail ->
+                        if (op == "list") {
+                            pushEvent(JSONObject().put("type", "webdavList")
+                                .put("ok", false).put("code", outcome.code))
+                        } else {
+                            pushWebdavStatus(op, false, outcome.code, outcome.detail)
+                        }
+                    is WebDavBackup.Outcome.Ok -> when (op) {
+                        "list" -> {
+                            val items = JSONArray()
+                            (outcome.value as? List<*> ?: emptyList<Any>()).forEach { raw ->
+                                (raw as? WebDavBackup.Entry)?.let {
+                                    items.put(JSONObject()
+                                        .put("name", it.name)
+                                        .put("size", it.size)
+                                        .put("modified", it.modified))
+                                }
+                            }
+                            pushEvent(JSONObject().put("type", "webdavList")
+                                .put("ok", true).put("items", items))
+                        }
+                        "backup" -> pushWebdavStatus(op, true, "", outcome.value as? String ?: "")
+                        else -> pushWebdavStatus(op, true)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun pushWebdavStatus(op: String, ok: Boolean, code: String = "", name: String = "") {
+        val payload = JSONObject().put("type", "webdavStatus")
+            .put("op", op).put("ok", ok)
+        if (code.isNotEmpty()) payload.put("code", code)
+        if (name.isNotEmpty()) payload.put("name", name)
+        pushEvent(payload)
     }
 
     /** 从哪版 App 导出（信息性，恢复不依赖）。 */
