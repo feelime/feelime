@@ -95,9 +95,18 @@ class HandwritingEngine(
     }
 
     private fun recognize(reqId: Int, payload: String): InkResult {
+        // 取证 v2（2026-10-09）：到达点→begin 之间的每一步都有同步标记，
+        // 硬崩时死点不再是黑盒；早退路径（parse 失败/无会话/空预处理）
+        // 也入档——1.3.8 实录里就有「没崩也没走到推理」的静默世代。
         val request = HandwritingInk.parseInkRequest(payload)
-            ?: return InkResult(reqId, emptyList(), "failed")
-        if (!ensureSession()) return InkResult(reqId, emptyList(), "unavailable")
+            ?: run {
+                Diagnostics.logCritical("inkSkip", "reason=parse req=$reqId")
+                return InkResult(reqId, emptyList(), "failed")
+            }
+        if (!ensureSession()) {
+            Diagnostics.logCritical("inkSkip", "reason=noSession req=$reqId")
+            return InkResult(reqId, emptyList(), "unavailable")
+        }
         val activeSession = checkNotNull(session)
         // §4.1 渲染：内容 bbox 归一到 256×256（长边撑满、短边居中留白），
         // 笔宽 = 渲染画布短边的 2.2%，白底纯黑笔画、圆头圆角、抗锯齿。
@@ -141,9 +150,18 @@ class HandwritingEngine(
         val pixels = IntArray(SIZE_PX * SIZE_PX)
         bitmap.getPixels(pixels, 0, SIZE_PX, 0, 0, SIZE_PX, SIZE_PX)
         bitmap.recycle()
+        // 取证 v2：drawn 后落一笔形态（笔数/点数，判读崩溃是否随笔迹
+        // 形态变化——1.3.8 实录死亡与存活世代笔数相近，需要此字段佐证）。
+        Diagnostics.logCritical("inkDrawn", "req=$reqId strokes=${request.strokes.size} " +
+            "points=${request.strokes.sumOf { it.size }}")
         // 预处理 + 解码（纯函数，参数钉死）：96×96 反色 uint8 NHWC。
         val input = HandwritingInk.preprocessMelnyk(pixels, SIZE_PX, SIZE_PX)
-        if (input.isEmpty()) return InkResult(reqId, emptyList(), null)
+        if (input.isEmpty()) {
+            // 静默早退路径入档（1.3.8 实录的存活世代没走到 begin，此处
+            // 是候选解释之一）。
+            Diagnostics.logCritical("inkSkip", "reason=emptyPre req=$reqId")
+            return InkResult(reqId, emptyList(), null)
+        }
         // DEBUG-INK 真迹采集（仅 debug 包）：全量落盘每次识别的模型输入
         // 张量（每个 reqId 一份不覆盖），host 离线分析识别率用。正式包
         // （BuildConfig.DEBUG=false）不开启，不留任何落盘开销。
@@ -160,6 +178,8 @@ class HandwritingEngine(
         // 1.3.8 起改 logCritical 同步落盘——硬崩时异步队尾必丢，begin
         // 必须先到介质（PJC110 实录：连 begin 都没活下来）。
         Diagnostics.logCritical("inkInfer", "begin req=$reqId")
+        // 取证 v2：pre 标记把「绘图/预处理」与「张量构建」再切一刀。
+        Diagnostics.logCritical("inkPre", "req=$reqId bytes=${input.size}")
         OnnxTensor.createTensor(
             env,
             java.nio.ByteBuffer.wrap(input),
@@ -167,7 +187,9 @@ class HandwritingEngine(
             ai.onnxruntime.OnnxJavaType.UINT8,
         ).use { tensor ->
             activeSession.run(mapOf(checkNotNull(inputName) to tensor)).use { output ->
-                Diagnostics.log("inkInfer", "done req=$reqId")
+                // done 升级为同步（v2）：begin→done 之间死 = ORT run 内；
+                // done 之后死 = 解码/分发。异步 done 在硬崩时同样丢队尾。
+                Diagnostics.logCritical("inkInfer", "done req=$reqId")
                 val tensor = output[0] as OnnxTensor
                 val buffer = tensor.floatBuffer
                 val probs = FloatArray(buffer.remaining())
@@ -196,22 +218,34 @@ class HandwritingEngine(
     /** 模型落地才创建 session（1 线程后台 init）；失败按 unavailable 上报。 */
     private fun ensureSession(): Boolean {
         if (session != null) return vocabulary.isNotEmpty()
-        val source = modelStore.sourceFor(MODEL_ROLE) ?: return false
+        val source = modelStore.sourceFor(MODEL_ROLE) ?: run {
+            // 取证 v2：模型源缺失是静默 unavailable 的第一分支（1.3.8
+            // 实录存活世代没走到 begin 的候选解释）。
+            Diagnostics.logCritical("inkSession", "fail stage=noModel")
+            return false
+        }
         return try {
             val bytes = when (source) {
                 is ModelSource.Assets ->
                     context.assets.open(MODEL_FILE).use { it.readBytes() }
                 is ModelSource.Directory -> File(source.root, MODEL_FILE).readBytes()
             }
-            // 模型变源入档（崩溃取证：bundled vs 下载模型的分叉排除）。
-            Diagnostics.log("ink", "model=${sourceLabel(source)} bytes=${bytes.size}")
+            // 模型变源入档（崩溃取证：bundled vs 下载模型的分叉排除）；
+            // sha 短摘排查下载模型半写/损坏（assets 段的理论恒定值）。
+            Diagnostics.logCritical("inkSession",
+                "model=${sourceLabel(source)} bytes=${bytes.size} sha=${shaHead(bytes)}")
             val env = OrtEnvironment.getEnvironment()
             val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(1) }
             val created = env.createSession(bytes, options)
+            // 会话建成即同步入档（v2）：1.3.8 实录的死亡点夹在「model= 行」
+            // 与 begin 之间——createSession 是窗口内最重的 native 操作，
+            // ready 标记把「会话创建」与「绘图/预处理」切开。
+            Diagnostics.logCritical("inkSession", "created")
             val vocab = loadVocabulary()
             if (vocab.isEmpty()) {
                 created.close()
                 Log.w(TAG, "handwriting vocab asset missing")
+                Diagnostics.logCritical("inkSession", "fail stage=vocabEmpty")
                 return false
             }
             // 输出类目数必须 = 词表大小；不符说明词表与模型错配
@@ -222,6 +256,8 @@ class HandwritingEngine(
             if (outputVocab > 0 && outputVocab != vocab.size) {
                 created.close()
                 Log.w(TAG, "handwriting vocab mismatch: output=$outputVocab vocab=${vocab.size}")
+                Diagnostics.logCritical("inkSession",
+                    "fail stage=vocabMismatch output=$outputVocab vocab=${vocab.size}")
                 return false
             }
             Log.i(TAG, "handwriting outputVocab=$outputVocab vocab=${vocab.size}")
@@ -229,12 +265,21 @@ class HandwritingEngine(
             environment = env
             session = created
             vocabulary = vocab
+            Diagnostics.logCritical("inkSession", "ready vocab=${vocab.size}")
             Log.i(TAG, "handwriting model ready vocab=${vocab.size}")
             true
         } catch (failure: Throwable) {
             Log.w(TAG, "handwriting model load failed", failure)
+            Diagnostics.logCritical("inkSession",
+                "fail stage=exc ${failure.javaClass.name}: ${(failure.message ?: "").take(90)}")
             false
         }
+    }
+
+    /** 模型字节 sha256 前 16 hex（取证：下载模型半写/损坏 vs 内置恒定）。 */
+    private fun shaHead(bytes: ByteArray): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+        return digest.take(8).joinToString("") { "%02x".format(it) }
     }
 
     private fun closeSession() {
