@@ -2054,7 +2054,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("keySat", readKeySat(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("kbLayout", readKbLayout(this))
-            .put("spaceHoldAction", readSpaceHoldAction(this))
+            .put("spaceHoldTap", readSpaceHoldTap(this))
             .put("voiceOnSpace", readVoiceOnSpace(this))
             .put("associationOn", readAssociation(this))
             .put("backspaceAssocOn", readBackspaceAssoc(this))
@@ -2732,10 +2732,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     keyboardPrefs.edit().putBoolean(PREF_VOICE_ON_SPACE, value == "1").commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
-                "spaceHoldAction" -> {
-                    // #50 长按空格动作（设置页下拉）：白名单外拒收。
-                    if (value !in SPACE_HOLD_ACTIONS) return@guarded
-                    keyboardPrefs.edit().putString(PREF_SPACE_HOLD_ACTION, value).commit()
+                "spaceHoldTap" -> {
+                    // #50 长按空格=虚拟定制键（voice|none|dsl:<tap>）：
+                    // 域外/超长拒收（与 SettingsBridge.setSpaceHoldTap 同口径）。
+                    val ok = value == "voice" || value == "none" ||
+                        (value.startsWith("dsl:") && value.length <= 4 + 128)
+                    if (!ok) return@guarded
+                    keyboardPrefs.edit().putString(PREF_SPACE_HOLD_TAP, value).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "kbLayout" -> {

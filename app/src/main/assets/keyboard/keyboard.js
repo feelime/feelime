@@ -319,12 +319,8 @@
     // 专业键面维持 26 键）。
     const MERGEABLE_14 = new Set(['pinyin', 'double-pinyin', 'direct']);
 
-    /** 长按空格动作的合法域（#50）：voice=语音浮层（默认）、none=关、
-     *  其余为一次性打开的面板（见 bindSpaceHold 的分发）。 */
-    const SPACE_HOLD_ACTIONS = new Set(['voice', 'none', 'clipboard', 'favorites', 'edit', 'control']);
-
-    /** [panel:x] DSL 的面板白名单（#50 定制按键复用）：与长按空格
-     *  动作的面板域同源——runPanelStep 是唯一分发点。 */
+    /** [panel:x] DSL 的面板白名单（#50）：runPanelStep 是唯一分发点，
+     *  长按空格的虚拟定制键同样经此打开面板。 */
     const PANEL_STEPS = new Set(['clipboard', 'favorites', 'edit', 'control']);
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
@@ -1258,9 +1254,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.swiping = false;
             this.voiceHold = false;
             // #39-13/#50 长按空格动作（默认 voice）：none=长按不触发+
-            // 隐藏空格 mic 小标与工具栏麦克风；面板类动作见
-            // bindSpaceHold 的分发（clipboard/favorites/edit/control）。
-            this.spaceHoldAction = 'voice';
+            // 隐藏空格 mic 小标与工具栏麦克风；其余值为定制按键 tap DSL
+            //（虚拟定制键，见 bindSpaceHold 的 runCustomCell 分发）。
+            this.spaceHoldTap = 'voice';
             this.voiceSession = null;
             this.spaceHoldTimer = 0;
             // 手写板状态（issue #28）：笔迹（书写区局部 CSS px）、在途请求
@@ -3411,9 +3407,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.id = 'spaceKey';
             // 长按空格：右上角圆点标识可长按（#50 起动作可自定义，
             // 圆点语义泛化为「可长按」；mic 小标只在语音动作画）。
-            if (this.spaceHoldAction !== 'none') button.dataset.lp = 'space-hold';
+            if (this.spaceHoldTap !== 'none') button.dataset.lp = 'space-hold';
             button.setAttribute('aria-label', t("空格"));
-            if (this.spaceHoldAction === 'voice') {
+            if (this.spaceHoldTap === 'voice') {
                 const mic = document.createElementNS(SVG_NS, 'svg');
                 mic.setAttribute('viewBox', '0 0 24 24');
                 mic.setAttribute('class', 'space-mic');
@@ -3474,19 +3470,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 startY = event.touches[0].clientY;
                 slideProgress = 0;
                 holdConsumed = false;
-                if (!this.ready || !this.token || this.spaceHoldAction === 'none') return;
+                if (!this.ready || !this.token || this.spaceHoldTap === 'none') return;
                 this.spaceHoldTimer = setTimeout(() => {
-                    // #50 长按空格自定义映射：语音走原浮层流（松手收尾），
-                    // 面板类一次性触发、不进 voiceHold（无语音收尾语义），
-                    // 分发与定制按键 [panel:] 共用 runPanelStep。
-                    const act = this.spaceHoldAction;
+                    // #50 长按空格=虚拟定制键（用户裁定）：语音走原浮层流
+                    // （松手收尾），其余动作与定制按键完全同通道——
+                    // runCustomCell 的 parse+队列串行+错误 toast 全复用；
+                    // 松手不补发空格（手势已消费）。
+                    const act = this.spaceHoldTap;
                     if (act === 'voice') {
                         this.voiceHold = true;
                         this.voiceSession = 'space-hold';
                         Native.startVoice(this.token);
-                    } else if (PANEL_STEPS.has(act)) {
+                    } else {
                         holdConsumed = true;
-                        this.runPanelStep(act);
+                        this.runCustomCell({ tap: act });
                     }
                 }, 350);
             };
@@ -6280,7 +6277,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     : (this.toolbarYield || composeHidden || overflow.has(dom));
             });
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = this.spaceHoldAction !== 'voice' || this.toolbarYield ||
+            if (mic) mic.hidden = this.spaceHoldTap !== 'voice' || this.toolbarYield ||
                 (composeHidden && this.voiceState === 'idle');
         }
 
@@ -8953,7 +8950,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('composeExpand').hidden = !this.composing || voiceBusy;
             if (!this.composing && this.expanded && !this.variantReplaying) this.setExpanded(false);
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = this.spaceHoldAction !== 'voice' ||
+            if (mic) mic.hidden = this.spaceHoldTap !== 'voice' ||
                 (this.composing && !recording);
             // 手写候选态的整行互斥要压过上面 mic/工具的通用可见性规则：
             // 引擎回声（commitText 后的空事件等）不得把工具栏插回候选行。
@@ -10080,12 +10077,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // spaceKey() 构建时读——推送只改字段不重渲染的话，改掉后
             // 图标残留到下一次 renderMode、WebView 重启时构造器默认值
             // 又先画出来（时隐时现）。变化即重渲染。热更键盘（新 JS）跑
-            // 旧原生（无 spaceHoldAction 推送）时回退旧布尔键。
-            const nextSpaceHoldAction = SPACE_HOLD_ACTIONS.has(payload.spaceHoldAction)
-                ? payload.spaceHoldAction
+            // 旧原生（无 spaceHoldTap 推送）时回退旧布尔键；tap 值域
+            // voice|none|<tap DSL 串>（native 侧带 dsl: 前缀，此处剥掉）。
+            const rawHold = typeof payload.spaceHoldTap === 'string' && payload.spaceHoldTap
+                ? payload.spaceHoldTap
                 : (payload.voiceOnSpace === false ? 'none' : 'voice');
-            const spaceHoldChanged = nextSpaceHoldAction !== this.spaceHoldAction;
-            this.spaceHoldAction = nextSpaceHoldAction;
+            const nextSpaceHold = rawHold === 'voice' || rawHold === 'none'
+                ? rawHold
+                : (rawHold.startsWith('dsl:') ? rawHold.slice(4) : 'voice');
+            const spaceHoldChanged = nextSpaceHold !== this.spaceHoldTap;
+            this.spaceHoldTap = nextSpaceHold;
             const nextKbLayout = payload.kbLayout === '14' ? '14' : '26';
             const kbLayoutChanged = nextKbLayout !== this.kbLayout;
             this.kbLayout = nextKbLayout;
