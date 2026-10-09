@@ -7430,7 +7430,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const p = Math.min(1, (Date.now() - start) / 900);
                 const eased = 1 - Math.pow(1 - p, 3);
                 node.textContent = Math.round(target * eased).toLocaleString();
-                if (p < 1) next(step);
+                if (p < 1) raf(step);
                 else if (unitNode) node.append(unitNode);
             };
             raf(step);

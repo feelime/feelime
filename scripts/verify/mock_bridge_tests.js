@@ -3789,6 +3789,40 @@ test('typing stats: tile opens the keyboard-layer panel with the bridge data (is
         'stats toolbar bar hidden on close');
 });
 
+test('stats hero count-up completes to the real total under rAF (next ReferenceError regression)', {since: '3.73.36'}, () => {
+    // 现场实录（2026-10-09）：真机 rAF 路径首帧抛 next is not defined，
+    // 「累计输入」冻结在动画中间值，比今日字数还小。mock 环境无 rAF 走
+    // 直落分支测不到——这里装一个手动帧泵逼出动画路径。
+    const w = fresh({ mode: 'pinyin' });
+    w.native._statsJson = JSON.stringify({
+        today: 21, total: 1234, keystrokes: 5000, streak: 3,
+        since: '2026-09-27', daysWith: 2, avgDaily: 617,
+        daily: Array.from({ length: 7 }, (_, i) =>
+            ({ date: `2026-09-2${3 + i}`, chars: i === 6 ? 21 : 0 })),
+    });
+    const frames = [];
+    globalThis.requestAnimationFrame = cb => { frames.push(cb); return frames.length; };
+    const realNow = Date.now;
+    let fakeNow = realNow();
+    Date.now = () => fakeNow;
+    try {
+        w.tap(w.$('setupButton'));
+        w.tap(w.tile('输入统计'));
+        // countUp 首帧已入队（grown 的双 rAF 也是帧），逐步推进假时钟。
+        for (let i = 0; i < 14 && frames.length; i++) {
+            fakeNow += 100;
+            const batch = frames.splice(0, frames.length);
+            batch.forEach(cb => cb());
+        }
+        const hero = w.document.getElementById('statsTotal');
+        equal(hero.textContent.replace(/,/g, ''), '1234字',
+            'hero reaches the real total and keeps the unit glyph');
+    } finally {
+        Date.now = realNow;
+        delete globalThis.requestAnimationFrame;
+    }
+});
+
 test('french: shift cycles candidate case, pick commits the cased text', {since: '3.73.6'}, () => {
     const w = fresh({ mode: 'french' });
     // 组合态 + 引擎候选（c'était 等）。
