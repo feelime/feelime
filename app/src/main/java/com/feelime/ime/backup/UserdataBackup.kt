@@ -416,6 +416,10 @@ class UserdataBackup(
             "feelime_asr",
             "feelime_custom_keys",
             "feelime_favorites",
+            // 输入统计（#41）：整段 JSON（total/keystrokes/daily/since）
+            // 随备份走——换机/重装不丢「相伴天数」与累计字数。恢复为
+            // 覆盖语义（整键替换），跨设备导入不会双计。
+            "input_stats",
             UPDATE_PREFS,
         )
 

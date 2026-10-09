@@ -44,6 +44,9 @@ class UserdataBackupTest {
         prefs.put("keyboard_update", "update_auto_check_enabled", true)
         prefs.put("keyboard_update", "update_state", "ACTIVE")
         prefs.put("keyboard_update", "content_hash", "abc123")
+        // 输入统计整段 JSON 随备份走（#41：换机不丢相伴天数与累计字数）。
+        prefs.put("input_stats", "stats",
+            """{"since":"2026-08-12","total":1234,"keystrokes":5000,"daily":{"2026-10-08":108}}""")
 
         val files = newDir()
         val backup = UserdataBackup(prefs, files, appVersion = "9.9.9-test")
@@ -73,6 +76,10 @@ class UserdataBackupTest {
         assertEquals(true, target.all("feelime_custom_keys")["enabled"])
         assertEquals(true, target.all("keyboard_update")["update_auto_check_enabled"])
         assertEquals("dark", target.all("feelime_ui")["theme"])
+        // 统计段整体还原（String 保真，覆盖语义）。
+        assertEquals(
+            """{"since":"2026-08-12","total":1234,"keystrokes":5000,"daily":{"2026-10-08":108}}""",
+            target.all("input_stats")["stats"])
         // 热更配置搬地址类键，过程状态必须留在恢复方自己的世界里。
         assertEquals("https://example.com/kb.zip", target.all("keyboard_update")["update_url"])
         assertNull(target.all("keyboard_update")["update_state"])

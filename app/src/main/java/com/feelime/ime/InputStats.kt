@@ -65,6 +65,16 @@ object InputStats {
             if (legacy > 0) {
                 base.total += legacy
                 prefs.edit().remove(KEY_LEGACY_TOTAL).apply()
+            }
+            // 「与 Feelime 相伴」起算点校正（用户裁定 A，2026-10-09）：
+            // 统计 v2 首启日晚于实际安装日的老用户（功能上线前已在用），
+            // 相伴天数从安装日起算。firstInstallTime 升级保留、卸载重装
+            // 重置——重装=新纪元，起算点随之重置，语义恰好。fresh 初始化
+            // 时 since=今天，安装日只会同天或更早：新装用户天然从安装日
+            // 起算，行为不变。
+            val previousSince = parsed.getOrNull()?.since
+            base.since = adoptEarlierSince(base.since, installDay(context))
+            if (legacy > 0 || base.since != previousSince) {
                 cache = base
                 persist(context)
                 return base
@@ -134,6 +144,17 @@ object InputStats {
         val cutoff = today.minusDays(DAILY_WINDOW.toLong()).toString()
         c.daily.keys.removeAll { it < cutoff }
     }
+
+    /** 相伴起算点取更早的可信日期：安装日早于统计首启日则采用安装日
+     *  （JVM 可测：纯函数）。null（包信息读不到）保持现状。 */
+    internal fun adoptEarlierSince(current: LocalDate, installed: LocalDate?): LocalDate =
+        if (installed != null && installed.isBefore(current)) installed else current
+
+    private fun installDay(context: Context): LocalDate? = runCatching {
+        java.time.Instant.ofEpochMilli(
+            context.packageManager.getPackageInfo(context.packageName, 0).firstInstallTime)
+            .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+    }.getOrNull()
 
     /** [today, total] code point counts（设置页关于行，一轮协议保持）。 */
     fun snapshot(context: Context): Pair<Long, Long> {
