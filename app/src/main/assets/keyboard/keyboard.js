@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.35';
+    const KEYBOARD_VERSION = '3.73.36';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -2201,7 +2201,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const bottom = this.row();
             bottom.append(this.specialKey('symbols', '123', () => this.showSymbols(), 'kb-wide-2_1 kb-special', 'numpad'));
             bottom.append(this.letterKey('.'));
-            bottom.append(this.spaceKey());
+            // 26 键空格挂 data-key 借横滑光标 scrub 通道（手势层只认
+            // .kb-key[data-key]，同 T9/手写空格）。值取 ' '：bubbleGlyph
+            // 对空格本就免气泡（不会按下冒 "0"），垂直 flick 无字面语义
+            // 由手势层的 spaceKey guard 让路。
+            const space = this.spaceKey();
+            space.dataset.key = ' ';
+            bottom.append(space);
             bottom.append(this.cnEnKey());
             bottom.append(this.enterKey());
             layer.append(bottom);
@@ -3969,11 +3975,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         this.t9Flick(originButton, dx, dy, touch.clientX,
                             touch.identifier)) return;
                     if (Math.abs(dy) >= Math.abs(dx) && button && button.dataset.key) {
-                        // 手写空格挂 data-key 只为借横滑 scrub（round-4）：
-                        // 垂直方向没有字面语义，落进下面的分支会把 0/大写
-                        // 字发出去——上滑是 bindSpaceHold 的语音长按/撤销。
-                        if (this.mode === 'handwriting' &&
-                            button.id === 'spaceKey') return;
+                        // 空格的垂直 flick 无字面语义：T9/笔画的字面 0
+                        // 已在 t9Flick 内消费，落到这里的 spaceKey 只会是
+                        // 手写/26 键——挂 data-key 都只为借横滑 scrub，
+                        // 垂直让路（上滑是 bindSpaceHold 的语音长按/撤销）。
+                        if (button.id === 'spaceKey') return;
                         const key = button.dataset.key;
                         // Chinese-mode punct slot : the main glyph is
                         // 。so a tap/down-flick commits it; up commits the
@@ -7424,7 +7430,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const p = Math.min(1, (Date.now() - start) / 900);
                 const eased = 1 - Math.pow(1 - p, 3);
                 node.textContent = Math.round(target * eased).toLocaleString();
-                if (p < 1) next(step);
+                if (p < 1) raf(step);
                 else if (unitNode) node.append(unitNode);
             };
             raf(step);

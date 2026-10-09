@@ -1512,6 +1512,61 @@ test('fast scrub keeps all steps beyond the old 40-step cap', {since: '3.22.0'},
     assert(moves.length < 5, 'bounded batch avoids single-step call flood');
 });
 
+test('qwerty space borrows the scrub channel; vertical stays inert', {since: '3.73.36'}, () => {
+    const world = fresh();
+    const space = world.$('spaceKey');
+    // 26 键空格挂 data-key 借横滑 scrub（值 ' '：bubbleGlyph 免气泡）。
+    equal(space.dataset.key, ' ', 'space carries data-key for the gesture selector');
+
+    // 横滑 scrub：与字母键同一通道，越阈 1 步、继续滑按 12px/步跟手。
+    world.touchDown(space, 20, 20);
+    world.move(space, -20, 0);
+    equal(world.native.of('moveCursor').length, 1, 'space drag engages the caret scrub');
+    world.move(space, -68, 0);
+    equal(world.native.of('moveCursor').reduce((sum, c) => sum + c.args[0], 0), -5,
+        'space scrub tracks at the letter-key step unit');
+    // 滑动已接管手势：350ms 长按空格的语音计时器必须被撤（横滑移
+    // 光标中途不能拉起语音浮层，同 T9 mic 的仲裁）。
+    world.clock.advance(400);
+    equal(world.native.of('startVoice').length, 0, 'scrub cancels the pending hold action');
+    world.touchUp(space, -68, 0);
+
+    // 松手不补发空格：scrub 消费了手势。
+    equal(world.native.of('space').length, 0, 'scrubbed space never commits');
+
+    // 垂直 flick 无字面语义：不发音节、不发 0/大写、也不补发空格。
+    world.touchDown(space, 20, 20);
+    world.move(space, 20, -60);
+    world.touchUp(space, 20, -60);
+    world.clock.advance(2);
+    equal(world.native.of('commitText').length, 0, 'vertical flick commits nothing');
+    equal(world.native.of('key').length, 0, 'vertical flick hits no engine key');
+    equal(world.native.of('space').length, 0, 'vertical flick does not fall back to space');
+
+    // 纯点按语义不变：仍走 space 通道。
+    world.touchDown(space, 20, 20);
+    world.touchUp(space, 20, 20);
+    equal(world.native.of('space').length, 1, 'plain tap still sends space');
+
+    // 按压气泡不冒 "0"/空格字面（keyBubble 开启时）。
+    world.hello({keyBubble: true});
+    world.touchDown(space, 20, 20);
+    const bubble = world.document.getElementById('keyBubble');
+    assert(bubble.hidden, 'space press shows no bubble glyph');
+    world.touchUp(space, 20, 20);
+});
+
+test('handwriting space still scrubs after the shared spaceKey guard', {since: '3.73.36'}, () => {
+    const world = fresh({ mode: 'handwriting' });
+    const space = world.$('spaceKey');
+    equal(space.dataset.key, '0', 'ink space keeps its data-key 0');
+    world.touchDown(space, 20, 20);
+    world.move(space, 60, 0);
+    assert(world.native.of('moveCursor').length >= 1, 'ink space still scrubs');
+    world.touchUp(space, 60, 0);
+    equal(world.native.of('commitText').length, 0, 'ink space flick sends no literal');
+});
+
 test('123 opens on 常用: digits row 1, fullwidth rows for Chinese', () => {
     const world = fresh({ mode: 'pinyin' });
     const key123 = [...world.document.querySelectorAll('.kb-special')].find(
@@ -3732,6 +3787,40 @@ test('typing stats: tile opens the keyboard-layer panel with the bridge data (is
         'stats-page class cleared on close');
     equal(w.document.getElementById('statsPageBar').hidden, true,
         'stats toolbar bar hidden on close');
+});
+
+test('stats hero count-up completes to the real total under rAF (next ReferenceError regression)', {since: '3.73.36'}, () => {
+    // 现场实录（2026-10-09）：真机 rAF 路径首帧抛 next is not defined，
+    // 「累计输入」冻结在动画中间值，比今日字数还小。mock 环境无 rAF 走
+    // 直落分支测不到——这里装一个手动帧泵逼出动画路径。
+    const w = fresh({ mode: 'pinyin' });
+    w.native._statsJson = JSON.stringify({
+        today: 21, total: 1234, keystrokes: 5000, streak: 3,
+        since: '2026-09-27', daysWith: 2, avgDaily: 617,
+        daily: Array.from({ length: 7 }, (_, i) =>
+            ({ date: `2026-09-2${3 + i}`, chars: i === 6 ? 21 : 0 })),
+    });
+    const frames = [];
+    globalThis.requestAnimationFrame = cb => { frames.push(cb); return frames.length; };
+    const realNow = Date.now;
+    let fakeNow = realNow();
+    Date.now = () => fakeNow;
+    try {
+        w.tap(w.$('setupButton'));
+        w.tap(w.tile('输入统计'));
+        // countUp 首帧已入队（grown 的双 rAF 也是帧），逐步推进假时钟。
+        for (let i = 0; i < 14 && frames.length; i++) {
+            fakeNow += 100;
+            const batch = frames.splice(0, frames.length);
+            batch.forEach(cb => cb());
+        }
+        const hero = w.document.getElementById('statsTotal');
+        equal(hero.textContent.replace(/,/g, ''), '1234字',
+            'hero reaches the real total and keeps the unit glyph');
+    } finally {
+        Date.now = realNow;
+        delete globalThis.requestAnimationFrame;
+    }
 });
 
 test('french: shift cycles candidate case, pick commits the cased text', {since: '3.73.6'}, () => {

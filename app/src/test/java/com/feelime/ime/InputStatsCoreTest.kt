@@ -56,4 +56,20 @@ class InputStatsCoreTest {
         assertEquals(75L, json.getLong("avgDaily"))
         assertTrue(json.getLong("total") == 150L)
     }
+
+    @Test
+    fun companionSinceAdoptsEarlierInstallDay() {
+        // 用户裁定 A（2026-10-09）：功能上线前已在用的老用户，相伴天数
+        // 从安装日起算，不从统计 v2 首启日起算。
+        val current = LocalDate.of(2026, 9, 30)
+        val installed = LocalDate.of(2026, 8, 12)
+        assertEquals(installed, InputStats.adoptEarlierSince(current, installed))
+        // 备份带来的更早 since（换机导入）保持不动。
+        val olderBackup = LocalDate.of(2026, 7, 1)
+        assertEquals(olderBackup, InputStats.adoptEarlierSince(olderBackup, installed))
+        // 包信息读不到：保持现状。
+        assertEquals(current, InputStats.adoptEarlierSince(current, null))
+        // 新装用户：安装日==首启日或更晚（同天安装当天启用），不变。
+        assertEquals(current, InputStats.adoptEarlierSince(current, current))
+    }
 }
