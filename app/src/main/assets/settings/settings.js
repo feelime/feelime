@@ -168,6 +168,7 @@ const I18N = {
         "input.datetime.badge": "输入",
         "input.datetime.enable": "打 date/time/week 出日期时间",
         "input.datetime.hint": "候选条直接给当前日期、时间、星期（全拼打 riqi/shijian/xingqi 也出）；不需要可关。",
+        "input.candidates.title": "候选增强",
         "input.phrases.title": "候选符号词",
         "input.phrases.badge": "输入",
         "input.phrases.enable": "附加符号/emoji 候选",
@@ -387,6 +388,36 @@ const I18N = {
         "backup.consent.badge": "覆盖提示",
         "backup.consent.message": "导入会覆盖当前的设置、常用语、自定义键位与词库，且无法撤销。确定继续吗？",
         "backup.consent.cancel": "取消",
+        "webdav.title": "云端备份（WebDAV）",
+        "webdav.note": "备份上传到你自己的 WebDAV 网盘（如坚果云）。每次备份都是带时间戳的新文件，不覆盖历史；恢复时从列表里挑一份下载。凭据只保存在本机，不进备份文件。",
+        "webdav.url": "服务器地址（https://dav.jianguoyun.com/dav/feelime/）",
+        "webdav.user": "用户名",
+        "webdav.pass": "应用密码（不是登录密码）",
+        "webdav.save": "保存并测试",
+        "webdav.backup": "立即备份",
+        "webdav.refresh": "刷新云端列表",
+        "webdav.restore": "恢复",
+        "webdav.empty": "云端还没有备份。",
+        "webdav.consent.title": "确认恢复",
+        "webdav.consent.message": "恢复会覆盖当前的设置、常用语、自定义键位与词库，且无法撤销。确定继续吗？",
+        "webdav.consent.confirm": "恢复这份备份",
+        "webdav.note.testing": "连接测试中…",
+        "webdav.note.ok": "连接正常",
+        "webdav.note.backupOk": "已备份：{0}",
+        "webdav.note.restoreOk": "已恢复：{0}",
+        "webdav.note.listing": "正在拉取云端列表…",
+        "webdav.note.backing": "正在备份…",
+        "webdav.note.restoring": "正在下载并恢复…",
+        "webdav.err.AUTH": "认证失败：用户名或密码不对",
+        "webdav.err.NOT_FOUND": "地址不存在（检查路径）",
+        "webdav.err.NO_DAV": "该地址不支持 WebDAV",
+        "webdav.err.EMPTY_URL": "先填服务器地址",
+        "webdav.err.NETWORK": "网络连接失败",
+        "webdav.err.TOO_LARGE": "文件超出大小上限",
+        "webdav.err.TOO_LONG": "输入过长",
+        "webdav.err.BAD_NAME": "备份名不合法",
+        "webdav.err.INTERNAL": "内部错误",
+        "webdav.size.kb": "{0} KB",
         "backup.consent.confirm": "选择文件导入",
         "backup.done.export": "已导出到所选位置。",
         "backup.done.import": "导入完成，正在生效。",
@@ -820,6 +851,7 @@ const I18N = {
         "input.datetime.badge": "Input",
         "input.datetime.enable": "Type date/time/week for quick stamps",
         "input.datetime.hint": "The candidates bar offers the current date, time and weekday (full pinyin riqi/shijian/xingqi works too); turn off if unwanted.",
+        "input.candidates.title": "Candidate extras",
         "input.phrases.title": "Symbol candidates",
         "input.phrases.badge": "Input",
         "input.phrases.enable": "Symbol / emoji candidates",
@@ -1040,6 +1072,36 @@ const I18N = {
         "backup.consent.badge": "Overwrite",
         "backup.consent.message": "Importing overwrites your current settings, saved phrases, custom keys and lexicons. This cannot be undone. Continue?",
         "backup.consent.cancel": "Cancel",
+        "webdav.title": "Cloud backup (WebDAV)",
+        "webdav.note": "Uploads backups to your own WebDAV server (e.g. Jianguoyun). Each backup is a new timestamped file - history is never overwritten; pick one from the list to restore. Credentials stay on this device and never travel inside backups.",
+        "webdav.url": "Server URL (https://dav.jianguoyun.com/dav/feelime/)",
+        "webdav.user": "Username",
+        "webdav.pass": "App password (not the login password)",
+        "webdav.save": "Save & test",
+        "webdav.backup": "Back up now",
+        "webdav.refresh": "Refresh cloud list",
+        "webdav.restore": "Restore",
+        "webdav.empty": "No cloud backups yet.",
+        "webdav.consent.title": "Confirm restore",
+        "webdav.consent.message": "Restoring overwrites current settings, favorites, custom keys and dictionaries. This cannot be undone. Continue?",
+        "webdav.consent.confirm": "Restore this backup",
+        "webdav.note.testing": "Testing connection…",
+        "webdav.note.ok": "Connection OK",
+        "webdav.note.backupOk": "Backed up: {0}",
+        "webdav.note.restoreOk": "Restored: {0}",
+        "webdav.note.listing": "Fetching cloud list…",
+        "webdav.note.backing": "Backing up…",
+        "webdav.note.restoring": "Downloading and restoring…",
+        "webdav.err.AUTH": "Auth failed: wrong username or password",
+        "webdav.err.NOT_FOUND": "URL not found (check the path)",
+        "webdav.err.NO_DAV": "This URL does not speak WebDAV",
+        "webdav.err.EMPTY_URL": "Enter the server URL first",
+        "webdav.err.NETWORK": "Network error",
+        "webdav.err.TOO_LARGE": "File exceeds the size limit",
+        "webdav.err.TOO_LONG": "Input too long",
+        "webdav.err.BAD_NAME": "Invalid backup name",
+        "webdav.err.INTERNAL": "Internal error",
+        "webdav.size.kb": "{0} KB",
         "backup.consent.confirm": "Choose a file",
         "backup.done.export": "Exported to the chosen location.",
         "backup.done.import": "Import complete; applying changes.",
@@ -1622,6 +1684,12 @@ window.FeelimeSettings = {
             case "backupStatus":
                 renderBackupStatus(event);
                 break;
+            case "webdavStatus":
+                renderWebdavStatus(event);
+                break;
+            case "webdavList":
+                renderWebdavList(event);
+                break;
             default:
                 break;
         }
@@ -1629,6 +1697,7 @@ window.FeelimeSettings = {
 
     showPage,
     focusSetting,
+    webdavFillConfig,
 };
 
 /* --- pages ------------------------------------------------------------- */
@@ -3580,6 +3649,102 @@ $("backupConsentConfirm").addEventListener("click", () => {
     $("backupConsent").hidden = true;
     call("openBackupDocument");
 });
+
+// #43 WebDAV 云端备份（2026-10-09）：时间戳文件名不覆盖历史（native
+// 侧 PUT feelime-backup-<yyyyMMdd-HHmmss>.json）；恢复先列远端让用户挑，
+// 确认后才 GET+换装（复用本地导入的覆盖确认语义）。
+let webdavPendingRestore = "";
+
+function webdavFillConfig() {
+    try {
+        const raw = typeof BRIDGE.webdavGetConfig === "function"
+            ? BRIDGE.webdavGetConfig(token) : "";
+        const cfg = raw ? JSON.parse(raw) : {};
+        $("webdavUrl").value = cfg.url || "";
+        $("webdavUser").value = cfg.user || "";
+        $("webdavPass").value = cfg.password || "";
+    } catch (error) { /* 旧壳无桥：保持空表单 */ }
+}
+
+/** feelime-backup-20261009-213905.json → 2026-10-09 21:39:05 */
+function webdavDisplayName(name) {
+    const m = /^feelime-backup-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.json$/.exec(name);
+    return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}` : name;
+}
+
+function renderWebdavList(event) {
+    const list = $("webdavList");
+    list.textContent = "";
+    if (!event.ok) {
+        setNote("webdavNote", t("webdav.err." + (event.code || "INTERNAL")));
+        return;
+    }
+    const items = Array.isArray(event.items) ? event.items : [];
+    $("webdavEmpty").hidden = items.length > 0;
+    items.forEach(item => {
+        const row = document.createElement("li");
+        row.className = "phrase-row";
+        const label = document.createElement("span");
+        label.className = "phrase-text";
+        label.textContent = webdavDisplayName(String(item.name));
+        const size = document.createElement("small");
+        size.textContent = t("webdav.size.kb",
+            [String(Math.max(1, Math.round(Number(item.size) / 1024)))]);
+        label.append(size);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn";
+        btn.textContent = t("webdav.restore");
+        btn.addEventListener("click", () => {
+            webdavPendingRestore = String(item.name);
+            $("webdavConsentName").textContent = webdavDisplayName(webdavPendingRestore);
+            $("webdavConsent").hidden = false;
+        });
+        row.append(label, btn);
+        list.append(row);
+    });
+}
+
+function renderWebdavStatus(event) {
+    const op = event.op || "";
+    if (event.ok) {
+        if (op === "test" || op === "save") setNote("webdavNote", t("webdav.note.ok"));
+        else if (op === "backup") {
+            setNote("webdavNote", t("webdav.note.backupOk", [webdavDisplayName(event.name || "")]));
+            call("webdavListBackups");
+        } else if (op === "restore") {
+            setNote("webdavNote", t("webdav.note.restoreOk", [webdavDisplayName(event.name || "")]));
+            call("webdavListBackups");
+        }
+        return;
+    }
+    setNote("webdavNote", t("webdav.err." + (event.code || "INTERNAL")));
+}
+
+$("btnWebdavSave").addEventListener("click", () => {
+    setNote("webdavNote", t("webdav.note.testing"));
+    call("webdavSaveConfig", $("webdavUrl").value.trim(), $("webdavUser").value.trim(), $("webdavPass").value);
+});
+$("btnWebdavBackup").addEventListener("click", () => {
+    setNote("webdavNote", t("webdav.note.backing"));
+    call("webdavBackup");
+});
+$("btnWebdavRefresh").addEventListener("click", () => {
+    setNote("webdavNote", t("webdav.note.listing"));
+    call("webdavListBackups");
+});
+$("webdavConsentCancel").addEventListener("click", () => {
+    webdavPendingRestore = "";
+    $("webdavConsent").hidden = true;
+});
+$("webdavConsentConfirm").addEventListener("click", () => {
+    if (!webdavPendingRestore) return;
+    $("webdavConsent").hidden = true;
+    setNote("webdavNote", t("webdav.note.restoring"));
+    call("webdavRestore", webdavPendingRestore);
+    webdavPendingRestore = "";
+});
+webdavFillConfig();
 // 签名不符的确认导入（§3）：凭 confirmId 只对暂存的那一份包生效，
 // 取消/确认都会作废它，旧包残留不到下一次操作。
 let pendingKbSigId = "";
