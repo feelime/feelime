@@ -234,6 +234,8 @@ const I18N = {
         "ck.f.mode.advanced": "高级",
         "ck.f.mode.open": "打开",
         "ck.f.mode.setting": "设置",
+        "ck.f.mode.panel": "面板",
+        "ck.f.panel.pick": "打开哪个面板",
         "ck.f.text": "要输入的文本，如 :w 或 me@example.com",
         "ck.f.mods": "修饰键",
         "ck.f.key": "按键",
@@ -262,6 +264,7 @@ const I18N = {
         "ck.err.tap": "点击输出不能为空",
         "ck.err.open": "链接需为 http(s) 网页地址或应用链接（如 doubao://），且不能含空格",
         "ck.err.setting": "请选择要打开的设置项",
+        "ck.err.panel": "面板目标无效",
         "ck.err.tapLong": "点击输出超过 128 字符（链接太长），请换短链接",
         "ck.note.saved": "已保存，键盘下次载入时生效",
         "ck.note.deleted": "已删除",
@@ -884,6 +887,8 @@ const I18N = {
         "ck.f.mode.advanced": "Adv",
         "ck.f.mode.open": "Open",
         "ck.f.mode.setting": "Settings",
+        "ck.f.mode.panel": "Panel",
+        "ck.f.panel.pick": "Which panel to open",
         "ck.f.text": "Text to type, e.g. :w or me@example.com",
         "ck.f.mods": "Mods",
         "ck.f.key": "Key",
@@ -912,6 +917,7 @@ const I18N = {
         "ck.err.tap": "Tap action is required",
         "ck.err.open": "Link must be an http(s) web address or an app link like doubao://, with no spaces",
         "ck.err.setting": "Pick a setting first",
+        "ck.err.panel": "Invalid panel target",
         "ck.err.tapLong": "Tap action exceeds 128 characters (link too long) - please use a shorter link",
         "ck.note.saved": "Saved; applied the next time the keyboard loads",
         "ck.note.deleted": "Deleted",
@@ -3723,6 +3729,9 @@ function ckTapParse(tap) {
     // [setting:id]（#51 定制按键绑定设置项）在 lowercase 之前识别。
     const setting = /^\[setting:([\w-]{1,64})\]$/.exec(String(tap || "").trim());
     if (setting) return { mode: "setting", setting: setting[1] };
+    // [panel:x]（#50 打开键盘面板，与长按空格动作同域）。
+    const panel = /^\[panel:(clipboard|favorites|edit|control)\]$/.exec(String(tap || "").trim().toLowerCase());
+    if (panel) return { mode: "panel", panel: panel[1] };
     const m = /^\[([a-z0-9+]+)\]$/.exec(String(tap || "").trim().toLowerCase());
     if (m) {
         const parts = m[1].split("+");
@@ -3751,6 +3760,7 @@ function ckTapFromDraft(d) {
         const id = (d.setting || "").trim();
         return id ? "[setting:" + id + "]" : "";
     }
+    if (d.mode === "panel") return "[panel:" + (d.panel || "clipboard") + "]";
     if (d.mode === "single") return d.single ? "[" + d.single + "]" : "";
     if (d.mode === "combo") {
         const mods = CK_MODS.filter(([name]) => d.mods.has(name)).map(([name]) => name);
@@ -4249,7 +4259,8 @@ function ckOpenChip(r, c) {
     // 组合键渲染直接中断——用户实录）。
     ckDraft = {
         t: cell.t,
-        text: "", single: "esc", comboKey: "s", mods: new Set(["ctrl"]), dsl: "",
+        text: "", single: "esc", comboKey: "s", mods: new Set(["ctrl"]),
+        setting: "", panel: "clipboard", dsl: "",
         ...ckTapParse(cell.tap),
         color: cell.color || "",
         note: cell.note || "",
@@ -4262,7 +4273,7 @@ function ckOpenChip(r, c) {
 function ckOpenNew(r) {
     ckSel = { r, c: ckRows[r].length, isNew: true };
     ckDraft = { t: "", mode: "single", single: "esc", text: "", comboKey: "s",
-        mods: new Set(["ctrl"]), open: "", dsl: "", color: "", note: "", span: 0 };
+        mods: new Set(["ctrl"]), open: "", setting: "", panel: "clipboard", dsl: "", color: "", note: "", span: 0 };
     ckBuildForm();
     ckOpenModal(true);
 }
@@ -4351,7 +4362,8 @@ function ckBuildForm() {
 
     const modeSeg = ckSegment([["text", t("ck.f.mode.text")], ["single", t("ck.f.mode.single")],
         ["combo", t("ck.f.mode.combo")], ["open", t("ck.f.mode.open")],
-        ["setting", t("ck.f.mode.setting")], ["advanced", t("ck.f.mode.advanced")]],
+        ["setting", t("ck.f.mode.setting")], ["panel", t("ck.f.mode.panel")],
+        ["advanced", t("ck.f.mode.advanced")]],
         d.mode, v => { d.mode = v; ckBuildForm(); });
     modeSeg.id = "ckMode";
     modeSeg.classList.add("ck-mode-seg");
@@ -4522,6 +4534,30 @@ function ckBuildAction(holder) {
             }
         });
         holder.append(ckField(t("ck.f.setting.pick"), sel));
+    } else if (d.mode === "panel") {
+        // #50 打开键盘面板：四目标下拉（与长按空格动作同域）。
+        const targets = [["clipboard", t("voice.hold.clipboard")],
+            ["favorites", t("voice.hold.favorites")],
+            ["edit", t("voice.hold.edit")],
+            ["control", t("voice.hold.control")]];
+        const sel = document.createElement("select");
+        sel.id = "ckPanelTarget";
+        sel.className = "ck-input";
+        targets.forEach(([value, label]) => {
+            const opt = document.createElement("option");
+            opt.textContent = label;
+            opt.value = value;
+            sel.append(opt);
+        });
+        sel.value = targets.some(([value]) => value === d.panel) ? d.panel : "clipboard";
+        sel.addEventListener("change", () => {
+            d.panel = sel.value;
+            if (!d.t.trim()) {
+                const found = targets.find(([value]) => value === sel.value);
+                if (found) d.t = found[1].slice(0, 6);
+            }
+        });
+        holder.append(ckField(t("ck.f.panel.pick"), sel));
     } else {
         // 高级：标签 + ? 帮助（点开 DSL 速查）+ 输入框，行式对齐。
         const labelWrap = document.createElement("span");
@@ -4576,6 +4612,9 @@ $("ckApply").addEventListener("click", () => {
         if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
             return setNote("ckEditNote", t("ck.err.setting"));
         }
+    }
+    if (d.mode === "panel" && !["clipboard", "favorites", "edit", "control"].includes(d.panel)) {
+        return setNote("ckEditNote", t("ck.err.panel"));
     }
     const tap = ckTapFromDraft(d);
     if (!tap) return setNote("ckEditNote", t("ck.err.tap"));

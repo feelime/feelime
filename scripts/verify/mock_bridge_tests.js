@@ -2509,6 +2509,26 @@ test('custom [open:URI] steps: validate, execute, and mix with text', {since: '3
     delete world.context.window.FeelimeNative.openLink;
 });
 
+test('custom keys: [panel:x] opens keyboard panels (issue #50 rework)', {since: '3.73.35'}, () => {
+    const world = fresh();
+    const save = text => world.context.window.Feelime.saveCustomJson(text);
+    // 合法面板目标落表；点按走 runPanelStep 分发（与长按空格同域）。
+    save(JSON.stringify({ version: 1, rows: [[
+        { t: '剪贴板', tap: '[panel:clipboard]' },
+    ], [], []] }));
+    assert(world.$('toast').textContent.includes('已保存 1 个键'), 'panel key saved');
+    world.tap(world.$('toolCustom'));
+    const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')]
+        .filter(el => el.dataset.role !== 'backspace');
+    world.tap(keys.find(el => el.textContent === '剪贴板'));
+    const panelLayer = world.document.getElementById('panelLayer');
+    assert(panelLayer && panelLayer.hidden === false, 'clipboard panel opened');
+    // 非法面板名整表拒收并指名记号。
+    world.context.window.Feelime.closePanel && world.context.window.Feelime.closePanel();
+    save(JSON.stringify({ version: 1, rows: [[{ t: 'A', tap: '[panel:home]' }], [], []] }));
+    assert(world.$('toast').textContent.includes('面板'), 'unknown panel rejected');
+});
+
 test('custom keys: [setting:id] opens a settings anchor (issue #51)', {since: '3.73.34'}, () => {
     const world = fresh();
     const save = text => world.context.window.Feelime.saveCustomJson(text);

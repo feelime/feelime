@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.34';
+    const KEYBOARD_VERSION = '3.73.35';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -322,6 +322,10 @@
     /** 长按空格动作的合法域（#50）：voice=语音浮层（默认）、none=关、
      *  其余为一次性打开的面板（见 bindSpaceHold 的分发）。 */
     const SPACE_HOLD_ACTIONS = new Set(['voice', 'none', 'clipboard', 'favorites', 'edit', 'control']);
+
+    /** [panel:x] DSL 的面板白名单（#50 定制按键复用）：与长按空格
+     *  动作的面板域同源——runPanelStep 是唯一分发点。 */
+    const PANEL_STEPS = new Set(['clipboard', 'favorites', 'edit', 'control']);
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -3473,24 +3477,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!this.ready || !this.token || this.spaceHoldAction === 'none') return;
                 this.spaceHoldTimer = setTimeout(() => {
                     // #50 长按空格自定义映射：语音走原浮层流（松手收尾），
-                    // 面板类一次性触发、不进 voiceHold（无语音收尾语义）。
+                    // 面板类一次性触发、不进 voiceHold（无语音收尾语义），
+                    // 分发与定制按键 [panel:] 共用 runPanelStep。
                     const act = this.spaceHoldAction;
                     if (act === 'voice') {
                         this.voiceHold = true;
                         this.voiceSession = 'space-hold';
                         Native.startVoice(this.token);
-                    } else if (act === 'clipboard') {
+                    } else if (PANEL_STEPS.has(act)) {
                         holdConsumed = true;
-                        this.openPanel('clipboard');
-                    } else if (act === 'favorites') {
-                        holdConsumed = true;
-                        this.openPanel('favorites');
-                    } else if (act === 'edit') {
-                        holdConsumed = true;
-                        this.toggleEditPanel();
-                    } else if (act === 'control') {
-                        holdConsumed = true;
-                        this.setControlView(true);
+                        this.runPanelStep(act);
                     }
                 }, 350);
             };
@@ -5255,6 +5251,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     steps.push({ openSetup: id });
                     continue;
                 }
+                // [panel:x]：打开键盘面板/图层（#50 定制按键复用——与
+                // 长按空格动作同一套面板白名单）。一次性触发，无收尾语义。
+                if (raw.toLowerCase().startsWith('panel:')) {
+                    const target = raw.slice(6).trim().toLowerCase();
+                    if (!PANEL_STEPS.has(target)) {
+                        return { error: t("「{0}」面板名无效", match[0]) };
+                    }
+                    steps.push({ panel: target });
+                    continue;
+                }
                 const body = raw.toLowerCase();
                 if (!body) return { error: t("出现空的 [] 记号") };
                 const mods = [];
@@ -5450,6 +5456,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.customChainLastTextAt = 0;
         }
 
+        /** #50 面板动作分发（唯一入口）：长按空格动作与定制按键
+         *  [panel:x] 步骤共用。一次性打开，无收尾语义。 */
+        runPanelStep(target) {
+            if (target === 'clipboard') this.openPanel('clipboard');
+            else if (target === 'favorites') this.openPanel('favorites');
+            else if (target === 'edit') this.toggleEditPanel();
+            else if (target === 'control') this.setControlView(true);
+        }
+
         /** #48：DSL 步骤执行器。文本步→键步的通道切换处垫台阶到
          *  距最后一次文本发送满 300ms（见 runCustomCell 上方注释）；
          *  同步跑到台阶点，余下步骤 setTimeout 续跑（无 async，假时钟
@@ -5478,6 +5493,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         return;
                     }
                     this.call(() => Native.openSetupPage(step.openSetup, this.token));
+                }
+                else if (step.panel) {
+                    // [panel:x]（#50 定制按键复用）：与长按空格动作同一
+                    // 分发点，一次性打开面板/图层。
+                    this.runPanelStep(step.panel);
                 }
                 else if (step.text) {
                     this.sendSymbol(step.text);
