@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.37';
+    const KEYBOARD_VERSION = '3.73.38';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1245,6 +1245,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.favoriteItems = [];
             this.popup = null;
             this.popupEndEvents = new WeakSet();
+            // 已撤销浮层的 owner 手指（按 touch identifier）：撤销后其迟到
+            // touchend 不得再走普通点按补发键面字符（codex 二轮 P1）。新
+            // touchstart 复用同 id 时移除，cancelTouches 全清。
+            this.popupRetiredIds = new Set();
             this.touchOrigin = null;
             // 重叠双指（快速双手打字的常见窗口：B 落键时 A 还没抬）：
             // 每根手指自己的按下点。touchOrigin 是首指所有权，owner 抬起
@@ -1511,6 +1515,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The view can disappear while a finger is down. A new touch
             // sequence must not inherit a press whose end was never delivered.
             document.addEventListener('touchstart', event => {
+                // 事件对账：浮层 owner 不在本事件快照 = 失联（end 丢失或
+                // 浏览器触点报告停滞）。多指打字风格会屏蔽下面「全新
+                // 序列」的 cancelTouches 兜底（每次 start 屏上都有他指），
+                // 失联浮层必须在这里直接撤销（1.3.9 复发取证：A/a 浮层
+                // 在后续大量打字中永不收敛）。
+                if (this.popup && this.popup.fingerId !== undefined &&
+                    !Array.from(event.touches).some(
+                        item => item.identifier === this.popup.fingerId)) {
+                    this.closePopup(true);
+                }
                 if (event.touches.length === event.changedTouches.length) {
                     this.cancelTouches();
                     // WebView may omit the synthetic click after a long
@@ -2132,6 +2146,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         renderLetters(layoutName) {
+            // 换键面 = 旧键面上的在途触摸会话全部作废（codex 复发分析
+            // 4.4：replaceChildren 摘掉旧按键后其 end 可能永不到达，旧
+            // 按压/长按计时器/浮层没有任何生命周期收口）。幂等：常规
+            // 重绘时无可清项。
+            this.cancelTouches();
             if (layoutName === 'handwriting') {
                 this.t9SymBar = false;
                 if (!this.composing) this.setToolbarYield(this.assocWords.length > 0);
@@ -3663,6 +3682,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 press = { x: touch.clientX, y: touch.clientY,
                     id: touch.identifier, button };
                 this.pressById.set(press.id, press);
+                // 同 id 的新按下是新会话：撤销标记不跨会话。
+                this.popupRetiredIds.delete(press.id);
                 // 防御性重占：owner 手指已不在场（其 touchend 没被本层
                 // 看到，如按住中元素随布局更换被摘除）时锚点已是幽灵，
                 // 新手势不得对着它判定。
@@ -3764,6 +3785,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.scheduleHideBubble();
                 clear();
                 if (ownsPopup) return;
+                // 浮层已被看门狗/失联对账撤销的 owner：手势会话已终止，
+                // 松手不得补发键面字符（选 any：混指事件宁可丢一次点按
+                // 也不多输字符）。
+                if ([...(event.changedTouches || [])].some(
+                        item => this.popupRetiredIds.has(item.identifier))) return;
                 if (this.popup) {
                     if (!longFired && !this.swiping && !options.skipClick) {
                         // 别指的弹层开着：本指按自己的点按语义正常落键。
@@ -3831,6 +3857,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.popup) this.closePopup(true);
             this.touchOrigin = null;
             this.pressById.clear();
+            this.popupRetiredIds.clear();
             // 未到期的工具栏长按计时一并掐掉（codex 2026-10-03 方案 §3）：
             // 它们挂在按钮/候选条自己的 touchend/cancel 上，收起链走不到
             // 那里——不清的话键盘已收、到点仍把编辑态拉起。不依赖
@@ -3870,6 +3897,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const list = Array.from(event.touches);
                     const own = list.find(item =>
                         item.identifier === this.popup.fingerId);
+                    if (!own && this.popup.fingerId !== undefined) {
+                        // owner 已不在事件快照：失联浮层立即撤销——此前
+                        // 借 list[0]（别指）坐标继续更新旧浮层，多指打字
+                        // 的 move 流反而给残留浮层「续命」还可能改选中。
+                        this.closePopup(true);
+                        return;
+                    }
+                    // 看门狗只认 owner 自己的移动（changedTouches 含之）：
+                    // touches 在场≠在动——别指持续移动不得给停滞 owner
+                    // 续期（codex 二轮 P1）。
+                    if (own && Array.from(event.changedTouches || []).some(
+                            item => item.identifier === this.popup.fingerId)) {
+                        this.armPopupStallWatchdog();
+                    }
                     this.movePopup(own || list[0]);
                     return;
                 }
@@ -4419,6 +4460,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (opts.fingerId !== undefined) this.popup.fingerId = opts.fingerId;
             }
             if (opts.grid || opts.middle) this.attachRelativeTracking(popup, selected, opts.press);
+            // split（下滑拆分）不跟手、无 owner 移动可重置看门狗，
+            // 挂了只会误撤正常停留——它有 fingerId 认手与终判，失联
+            // 由 start/move 对账兜。
+            if (!opts.split) this.armPopupStallWatchdog();
         }
 
         /** 松手/取消共用的弹层终判：不依赖原键还在文档中，也不依赖
@@ -4518,6 +4563,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // qwerty accent 弹层与 T9 三行弹层同一套相对跟手（用户定稿）：
             // 高亮跟随手指位移，不要求手先滑上浮层。
             this.attachRelativeTracking(popup, selected, press);
+            this.armPopupStallWatchdog();
+        }
+
+        /** owner 停滞看门狗（最后防线，1.3.9 复发分析 §5）：owner 的
+         *  end 永不到达且事件流静默（没有 start/move 给对账机会）时，
+         *  浮层不存在任何退出事件——多指打字又屏蔽「全新序列」兜底。
+         *  5s 无有效 owner 移动即撤销：超时语义=交互失联，与 cancel
+         *  一致，绝不替用户提交选中项（自动提交会在打字中插入未经
+         *  确认的大写字符）。闭包绑浮层实例，旧回调关不掉新浮层。 */
+        armPopupStallWatchdog() {
+            clearTimeout(this._popupStallTimer);
+            const popup = this.popup;
+            // split（下滑拆分）靠移动选格、停滞是正常读选：豁免（codex
+            // 二轮 P2——movePopup 路径也曾绕过开层时的豁免）。
+            if (!popup || popup.split) return;
+            this._popupStallTimer = setTimeout(() => {
+                if (this.popup === popup) this.closePopup(true);
+            }, 5000);
         }
 
         /** 「松手撤销」提示（issue #9）：弹层滑出卡片边界时浮层淡出，
@@ -4538,6 +4601,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         movePopup(touch) {
             if (!this.popup) return;
+            // 看门狗重置不在此处：touch 只带坐标不带 changedTouches 语义，
+            // 无法区分 owner 自己动还是别指快照捎带（arm 只认
+            // setupFlick 里 changedTouches 含 owner 的真实移动）。
             // 手写标点上滑弹层（round-3）：绝对命中模式——手指压在哪格
             // 选哪格，无预选格、无相对跟手、无「松手撤销」（没选过谈
             // 不上撤销）。根级手势层是 capture、先进这里；键面 handler
@@ -4615,8 +4681,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         closePopup(cancel) {
+            clearTimeout(this._popupStallTimer);
             const popup = this.popup;
             this.popup = null;
+            // 撤销即终止 owner 的手势会话：其迟到的 touchend 不再点按
+            // 落键（用户自己松手触发的撤销，end 已被消费，标记无害）。
+            if (cancel && popup && popup.fingerId !== undefined) {
+                this.popupRetiredIds.add(popup.fingerId);
+            }
             const inner = document.getElementById('keyPopupInner');
             inner.style.transform = '';
             inner.style.opacity = '';
@@ -4891,6 +4963,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * there. Closes every panel/layer and returns to the letters (the
          * active MODE is untouched - renderMode would also drop it). */
         resetToHome() {
+            // 回主视图 = 上一个输入会话的触摸账本/浮层全部作废
+            // （onStartInputView 非 restarting 路径也走这里；键盘收起
+            // 期间丢掉的 end 不能让浮层跨会话存活——codex 复发分析 4.5）。
+            this.cancelTouches();
             this.closeOtherViews();
             this.clearEditorStrip();
             this.closeItemMenu();

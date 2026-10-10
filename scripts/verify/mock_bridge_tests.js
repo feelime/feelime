@@ -1004,6 +1004,127 @@ test('long-press popup follows the pressing finger while a co-touch holds', {sin
         'pressing finger drags select normally - no instant 松手撤销');
 });
 
+// ---- 1.3.9 复发（Android 16 真机，多指打字风格）四道防线 ----
+// 根因：owner 手指的 end 永不到达（或浏览器触点报告停滞）+ 多指在场
+// 屏蔽「全新序列」cancelTouches 兜底 → 浮层没有任何未来关闭事件。
+test('disconnected popup owner retracts on any later touchstart snapshot', () => {
+    const world = fresh();
+    const v = world.key('v');
+    const k = world.key('k');
+    // P2 先按住（不满足「全新序列」的 cancelTouches 条件——单独守住
+    // 新的对账分支，codex 二轮证据局限修正）。
+    world.dispatch(k, 'touchstart', 100, 20, { changedTouches: [touchPoint(2,100,20)], touches: [touchPoint(2,100,20)] });
+    // owner=P1 开层，其 end 假设丢失（不再 dispatch）
+    world.dispatch(v, 'touchstart', 20, 20, { changedTouches: [touchPoint(1,20,20)], touches: [touchPoint(1,20,20), touchPoint(2,100,20)] });
+    world.clock.advance(400);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    // P3 start：快照 [P2,P3] 含他指、不含 owner → 对账撤销
+    world.dispatch(k, 'touchstart', 110, 30, { changedTouches: [touchPoint(3,110,30)], touches: [touchPoint(2,100,20), touchPoint(3,110,30)] });
+    world.clock.advance(50);
+    assert(!world.$('keyPopup').classList.contains('open'),
+        'disconnected owner retracted by the start reconciliation');
+    world.dispatch(k, 'touchend', 100, 20, { changedTouches: [touchPoint(2,100,20)], touches: [touchPoint(3,110,30)] });
+    world.dispatch(k, 'touchend', 110, 30, { changedTouches: [touchPoint(3,110,30)], touches: [] });
+});
+
+test('disconnected popup owner retracts on a later touchmove snapshot', () => {
+    const world = fresh();
+    const v = world.key('v');
+    const k = world.key('k');
+    world.dispatch(v, 'touchstart', 20, 20, { changedTouches: [touchPoint(1,20,20)], touches: [touchPoint(1,20,20)] });
+    world.clock.advance(400);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    // 别指 move 且 touches 不含 owner：撤销，不得借 list[0] 坐标续命
+    world.dispatch(k, 'touchmove', 100, 40, { changedTouches: [touchPoint(2,100,40)], touches: [touchPoint(2,100,40)] });
+    world.clock.advance(50);
+    assert(!world.$('keyPopup').classList.contains('open'),
+        'disconnected owner retracted by the move reconciliation');
+});
+
+test('popup stall watchdog retracts after 5s without owner movement', () => {
+    const world = fresh();
+    const v = world.key('v');
+    world.dispatch(v, 'touchstart', 20, 20, { changedTouches: [touchPoint(1,20,20)], touches: [touchPoint(1,20,20)] });
+    world.clock.advance(400);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    // owner 停滞（无 move 无 end）超 5s：撤销而非提交（不得替用户确认选中）
+    const committed = world.native.of('key').length;
+    world.clock.advance(5200);
+    assert(!world.$('keyPopup').classList.contains('open'), 'stalled popup retracted');
+    // 撤销后 owner 的迟到 touchend 不得补发键面字符（codex 二轮 P1）
+    world.dispatch(v, 'touchend', 20, 20, { changedTouches: [touchPoint(1,20,20)], touches: [] });
+    world.clock.advance(50);
+    equal(world.native.of('key').length, committed, 'no stray key commit after watchdog retraction');
+    // 间歇拖选（owner 自己的 move 重置）不得被误撤
+    world.dispatch(v, 'touchstart', 20, 20, { changedTouches: [touchPoint(2,20,20)], touches: [touchPoint(2,20,20)] });
+    world.clock.advance(400);
+    for (let i = 1; i <= 3; i++) {
+        world.clock.advance(2000);
+        world.dispatch(v, 'touchmove', 20 + i * 8, -8, { changedTouches: [touchPoint(2,20+i*8,-8)], touches: [touchPoint(2,20+i*8,-8)] });
+    }
+    assert(world.$('keyPopup').classList.contains('open'), 'intermittent owner drags keep the popup (watchdog reset)');
+});
+
+test('a moving co-finger must not keep a stalled owner alive', () => {
+    const world = fresh();
+    const v = world.key('v');
+    const k = world.key('k');
+    // P1 先开层（成为 owner）后停滞；P2 随后按在无备选的键（e 不在
+    // CN_ALTS，自身长按不开层、不会覆盖成新浮层）并持续移动——
+    // touches 含 P1 但 changedTouches 只是 P2，看门狗不得被续期
+    // （codex 二轮 P1）。P2 必须在开层之后才按下，且不能按在弹层键。
+    // 别指不落在任何键上（softKeyboard 容器本身）：字母键都有重音
+    // 弹层，按上去会自己开层覆盖 owner。
+    const pad = world.$('softKeyboard');
+    world.dispatch(v, 'touchstart', 20, 20, { changedTouches: [touchPoint(1,20,20)], touches: [touchPoint(1,20,20)] });
+    world.clock.advance(400);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open (owner=P1)');
+    world.dispatch(pad, 'touchstart', 100, 20, { changedTouches: [touchPoint(2,100,20)], touches: [touchPoint(1,20,20), touchPoint(2,100,20)] });
+    for (let i = 1; i <= 4; i++) {
+        world.clock.advance(1500);
+        world.dispatch(pad, 'touchmove', 100, 20 + i * 5, { changedTouches: [touchPoint(2,100,20+i*5)], touches: [touchPoint(1,20,20), touchPoint(2,100,20+i*5)] });
+    }
+    assert(!world.$('keyPopup').classList.contains('open'),
+        'co-finger moves do not reset the stalled owner watchdog (6s total)');
+});
+
+test('split popups never arm the stall watchdog', () => {
+    const world = new KeyboardWorld();
+    world.js = world.js.replace('const keyboard = new FeelimeKeyboard();',
+        'const keyboard = window.testKeyboard = new FeelimeKeyboard();');
+    world.build();
+    world.hello();
+    const kb = world.context.window.testKeyboard;
+    // split 层（T9 下滑拆分）靠移动读选、停滞合法：arm 入口统一豁免
+    // （codex 二轮 P2——movePopup 路径曾绕过开层时的豁免）。
+    kb.popup = { key: '7', cells: [], selected: null, cancelled: false, split: true,
+        fingerId: 1, openedAt: Date.now() };
+    kb.armPopupStallWatchdog();
+    assert(!kb._popupStallTimer, 'split popup arms no watchdog');
+    kb.closePopup(true);
+    kb.popup = null;
+});
+
+test('renderLetters and resetToHome cancel a lingering popup session', () => {
+    const world = new KeyboardWorld();
+    world.js = world.js.replace('const keyboard = new FeelimeKeyboard();',
+        'const keyboard = window.testKeyboard = new FeelimeKeyboard();');
+    world.build();
+    world.hello();
+    const kb = world.context.window.testKeyboard;
+    const v = world.key('v');
+    world.dispatch(v, 'touchstart', 20, 20, { changedTouches: [touchPoint(1,20,20)], touches: [touchPoint(1,20,20)] });
+    world.clock.advance(400);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    kb.renderLetters('qwerty');
+    assert(!world.$('keyPopup').classList.contains('open'), 'key-face swap retracts the popup');
+    world.dispatch(v, 'touchstart', 20, 20, { changedTouches: [touchPoint(2,20,20)], touches: [touchPoint(2,20,20)] });
+    world.clock.advance(400);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup reopened');
+    kb.resetToHome();
+    assert(!world.$('keyPopup').classList.contains('open'), 'resetToHome retracts the popup');
+});
+
 test('long-press popup origin survives the co-touch lifting first', {since: '3.73.21'}, () => {
     const world = fresh();
     const q = world.key('q');
