@@ -90,7 +90,10 @@ body::before {
     content: "";
     position: fixed;
     inset: 0 0 auto 0;
-    height: calc(env(safe-area-inset-top) + 14px);
+    /* 24px 下限：个别 WebView 在 edge-to-edge 下报 inset-top=0（AVD
+     *  实录），内容会顶进窗口顶部的系统触摸死区——按钮可见但点不动
+     *  （9j 门禁 tap 失灵的根因）。真机 inset>24 时无变化。 */
+    height: calc(max(env(safe-area-inset-top), 24px) + 14px);
     background: linear-gradient(var(--bg), transparent);
     pointer-events: none;
     z-index: 5;
@@ -133,7 +136,7 @@ textarea:focus-visible, summary:focus-visible {
 .hero {
     max-width: 680px;
     margin: 0 auto;
-    padding: calc(12px + env(safe-area-inset-top)) 4px 12px;
+    padding: calc(12px + max(env(safe-area-inset-top), 24px)) 4px 12px;
 }
 
 .hero-mark { display: flex; align-items: center; gap: 12px; }
@@ -197,7 +200,7 @@ main { max-width: 680px; margin: 0 auto; }
     gap: 10px;
     max-width: 680px;
     margin: 0 auto;
-    padding: calc(14px + env(safe-area-inset-top)) 4px 10px;
+    padding: calc(14px + max(env(safe-area-inset-top), 24px)) 4px 10px;
 }
 
 .page-back {
@@ -418,7 +421,7 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
     color: var(--muted);
 }
 
-input[type="url"], input[type="text"], textarea, .select {
+input[type="url"], input[type="text"], input[type="password"], textarea, .select {
     width: 100%;
     margin-top: 6px;
     padding: 10px 12px;
@@ -1031,6 +1034,26 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
     bottom: calc(66px + env(safe-area-inset-bottom)); text-align: center; }
 #ckModal { overflow: visible; }
 .ck-btn-danger { color: var(--danger, #dc2626); border-color: color-mix(in srgb, var(--danger, #dc2626) 45%, transparent); background: transparent; }
+
+/* ===== #43 WebDAV 备份/恢复弹窗（复用 ck-modal 骨架）===== */
+#webdavBackupBody { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 0 10px;
+    overscroll-behavior: contain; }
+#webdavNameInput { margin-top: 6px; font-family: var(--mono); font-size: 13px; }
+#webdavDupWarn { margin: 8px 0 0; }
+#webdavRestoreBody { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 0 10px;
+    overscroll-behavior: contain; }
+.webdav-pick-list { list-style: none; margin: 2px 0 8px; padding: 0; }
+.webdav-pick-row {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 13px 4px; border-bottom: 1px solid var(--card-line);
+    font-size: 16px; cursor: pointer;
+}
+.webdav-pick-row:last-child { border-bottom: 0; }
+.webdav-pick-time { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.webdav-pick-size { flex: none; color: var(--card-sub);
+    font-size: 13px; font-variant-numeric: tabular-nums; }
+.webdav-pick-row[aria-selected="true"] { color: var(--accent-text); font-weight: 600; }
+.webdav-pick-row[aria-selected="true"] .webdav-pick-time::before { content: "✓ "; }
 .ck-save-bar {
     flex: none; display: flex; flex-direction: column; gap: 7px;
     padding: 10px 0 2px; margin-top: 8px;

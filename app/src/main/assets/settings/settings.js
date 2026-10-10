@@ -398,8 +398,18 @@ const I18N = {
         "webdav.pass": "应用密码（不是登录密码）",
         "webdav.save": "保存并测试",
         "webdav.backup": "立即备份",
-        "webdav.refresh": "刷新云端列表",
-        "webdav.restore": "恢复",
+        "webdav.restoreBtn": "恢复云端备份",
+        "webdav.backupModal.title": "备份到云端",
+        "webdav.backupModal.hint": "将上传一份新备份文件，文件名默认按当前时间生成，可修改。",
+        "webdav.backupModal.nameLabel": "备份文件名",
+        "webdav.backupModal.go": "开始备份",
+        "webdav.backupModal.dup": "⚠ 云端已有同名文件，保存将覆盖它",
+        "webdav.backupModal.dupBtn": "覆盖同名文件",
+        "webdav.backupModal.unknownDup": "未能核对云端是否重名；若重名，上传时会被服务器拦截",
+        "webdav.backupModal.sending": "上传中…",
+        "webdav.backupModal.badName": "文件名需以 feelime-backup- 开头、以 .json 结尾，且不含 /、空格或 +",
+        "webdav.restoreModal.title": "恢复云端备份",
+        "webdav.restoreModal.back": "返回",
         "webdav.empty": "云端还没有备份。",
         "webdav.consent.title": "确认恢复",
         "webdav.consent.message": "恢复会覆盖当前的设置、常用语、自定义键位与词库，且无法撤销。确定继续吗？",
@@ -419,6 +429,8 @@ const I18N = {
         "webdav.err.TOO_LARGE": "文件超出大小上限",
         "webdav.err.TOO_LONG": "输入过长",
         "webdav.err.BAD_NAME": "备份名不合法",
+        "webdav.err.CONFLICT": "云端已有同名文件",
+        "webdav.err.RESTORE_FAILED": "恢复失败：备份内容未通过校验",
         "webdav.err.INTERNAL": "内部错误",
         "webdav.err.GENERIC": "操作失败",
         "webdav.size.kb": "{0} KB",
@@ -1086,8 +1098,18 @@ const I18N = {
         "webdav.pass": "App password (not the login password)",
         "webdav.save": "Save & test",
         "webdav.backup": "Back up now",
-        "webdav.refresh": "Refresh cloud list",
-        "webdav.restore": "Restore",
+        "webdav.restoreBtn": "Restore from cloud",
+        "webdav.backupModal.title": "Back up to cloud",
+        "webdav.backupModal.hint": "A new backup file will be uploaded. The name defaults to the current time and can be edited.",
+        "webdav.backupModal.nameLabel": "Backup file name",
+        "webdav.backupModal.go": "Start backup",
+        "webdav.backupModal.dup": "⚠ A file with this name already exists in the cloud; saving will overwrite it",
+        "webdav.backupModal.dupBtn": "Overwrite existing file",
+        "webdav.backupModal.unknownDup": "Could not check the cloud for duplicates; if the name exists, the server will reject the upload",
+        "webdav.backupModal.sending": "Uploading…",
+        "webdav.backupModal.badName": "The name must start with feelime-backup- and end with .json, with no /, space or +",
+        "webdav.restoreModal.title": "Restore from cloud",
+        "webdav.restoreModal.back": "Back",
         "webdav.empty": "No cloud backups yet.",
         "webdav.consent.title": "Confirm restore",
         "webdav.consent.message": "Restoring overwrites current settings, favorites, custom keys and dictionaries. This cannot be undone. Continue?",
@@ -1107,6 +1129,8 @@ const I18N = {
         "webdav.err.TOO_LARGE": "File exceeds the size limit",
         "webdav.err.TOO_LONG": "Input too long",
         "webdav.err.BAD_NAME": "Invalid backup name",
+        "webdav.err.CONFLICT": "A file with this name already exists in the cloud",
+        "webdav.err.RESTORE_FAILED": "Restore failed: the backup content failed validation",
         "webdav.err.INTERNAL": "Internal error",
         "webdav.err.GENERIC": "Operation failed",
         "webdav.size.kb": "{0} KB",
@@ -1569,6 +1593,12 @@ window.FeelimeSettings = {
      *  继续编辑；脏态复用既有离开确认。普通翻页壳侧自理（onSubPage 逐
      *  级返回），不经此路。 */
     backPressed() {
+        // BACK 优先关最上层的 WebDAV 弹窗（backup 页）：native 只在定制键
+        // 页转交弹窗返回，其余页面直接翻页——弹窗开着翻页，回来旧弹窗
+        // 与选择全在（发版 review P2）。ck 系弹窗仍走下面的定制键流程。
+        const openWebdav = document.querySelector(
+            "#webdavBackupModal:not([hidden]), #webdavRestoreModal:not([hidden])");
+        if (openWebdav) { openWebdav.hidden = true; return; }
         if (typeof ckEditMode === "undefined" || currentPage !== "customkeys") return;
         // Android 惯例：BACK 先收最上层已开的对话框（ckDelModal/ckModal
         // 等开着时直接进编辑态确认会两框同屏，review P3-3）。
@@ -1598,6 +1628,14 @@ window.FeelimeSettings = {
         uiLocale = helloLocale || (uiChoice === "auto" ? browserLocale() : uiChoice);
         applyLocale();
         call("ready");
+        // WebDAV 表单回填要等 token 就位（native 侧 webdavGetConfig 带
+        // token 门闸）；且只在首次握手做一次——onResume 会重推 hello，
+        // 反复回填会把用户切去密码管理器前填了一半的表单冲掉
+        // （发版 review P2）。
+        if (!webdavFormInit) {
+            webdavFormInit = true;
+            webdavFillConfig();
+        }
     },
 
     onEvent(event) {
@@ -3659,9 +3697,14 @@ $("backupConsentConfirm").addEventListener("click", () => {
 });
 
 // #43 WebDAV 云端备份（2026-10-09）：时间戳文件名不覆盖历史（native
-// 侧 PUT feelime-backup-<yyyyMMdd-HHmmss>.json）；恢复先列远端让用户挑，
-// 确认后才 GET+换装（复用本地导入的覆盖确认语义）。
-let webdavPendingRestore = "";
+// 侧 PUT feelime-backup-*.json）；备份/恢复都走 bottom-sheet 弹窗——
+// 备份可改文件名、与云端重名时先警示（用户裁定：覆盖前必须提示），
+// 恢复列表选择（时间/大小分列）+ 确认后才 GET+换装（复用本地导入
+// 的覆盖确认语义）。
+let webdavCloudNames = null; // null=未知（没拉到列表/刚换服务器）；Set=已知名单
+let webdavPickedName = "";
+let webdavDupConfirmed = false; // 客户端警示或服务器 412 仲裁后，用户已确认覆盖
+let webdavFormInit = false; // 只在首次有效握手回填，防止切后台回来覆盖未保存输入
 
 function webdavFillConfig() {
     try {
@@ -3680,37 +3723,124 @@ function webdavDisplayName(name) {
     return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}` : name;
 }
 
+/** 默认文件名：与 native 侧 WebDavBackup.backupFileName 同格式（本地时区）。 */
+function webdavMakeName() {
+    const p = n => String(n).padStart(2, "0");
+    const d = new Date();
+    return "feelime-backup-" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())
+        + "-" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + ".json";
+}
+
+/** 文件名白名单：须保持 feelime-backup- 前缀与 .json 后缀（恢复侧
+ *  native 同规则校验，丢了前缀这份备份将来就恢复不了）；不含路径字符、
+ *  空白与 +（URL 表单编码下空格与 + 无法可靠往返，发版 review P2）。 */
+function webdavNameValid(name) {
+    return name.length > "feelime-backup-.json".length && name.length <= 128
+        && name.startsWith("feelime-backup-") && name.endsWith(".json")
+        && !/[\s/+]/.test(name);
+}
+
+/** 输入校验 + 重名检测 → 警告行与底部按钮（重名换「覆盖」红色按钮）。
+ *  名单未知不拦上传（服务器 If-None-Match 412 兜底），但要告知用户。 */
+function webdavCheckDup() {
+    const name = $("webdavNameInput").value.trim();
+    const warn = $("webdavDupWarn");
+    const go = $("webdavBackupGo");
+    if (!webdavNameValid(name)) {
+        webdavDupConfirmed = false;
+        warn.hidden = false;
+        warn.textContent = t("webdav.backupModal.badName");
+        go.disabled = true;
+        go.textContent = t("webdav.backupModal.go");
+        go.className = "btn primary";
+        return;
+    }
+    const dup = webdavCloudNames !== null && webdavCloudNames.has(name);
+    webdavDupConfirmed = dup;
+    if (dup) {
+        warn.hidden = false;
+        warn.textContent = t("webdav.backupModal.dup");
+        go.textContent = t("webdav.backupModal.dupBtn");
+        go.className = "btn ck-btn-danger";
+    } else {
+        warn.hidden = webdavCloudNames !== null;
+        warn.textContent = t("webdav.backupModal.unknownDup");
+        go.textContent = t("webdav.backupModal.go");
+        go.className = "btn primary";
+    }
+    go.disabled = false;
+}
+
+function webdavOpenBackup() {
+    $("webdavNameInput").value = webdavMakeName();
+    $("webdavBackupGo").disabled = false;
+    $("webdavBackupModal").hidden = false;
+    setNote("webdavNote", "");
+    // 拉一次云端列表刷新重名集合（事件回来 webdavCheckDup 会重跑）。
+    call("webdavListBackups");
+    webdavCheckDup();
+}
+
+function webdavShowRestoreView(confirm) {
+    $("webdavPickView").hidden = confirm;
+    $("webdavFootPick").hidden = confirm;
+    $("webdavConfirmView").hidden = !confirm;
+    $("webdavFootConfirm").hidden = !confirm;
+}
+
+function webdavOpenRestore() {
+    webdavPickedName = "";
+    $("webdavRestoreGo").disabled = true;
+    $("webdavPickList").textContent = "";
+    $("webdavPickHint").hidden = false;
+    $("webdavPickHint").textContent = t("webdav.note.listing");
+    webdavShowRestoreView(false);
+    $("webdavRestoreModal").hidden = false;
+    setNote("webdavNote", "");
+    call("webdavListBackups");
+}
+
 function renderWebdavList(event) {
-    const list = $("webdavList");
-    list.textContent = "";
-    if (!event.ok) {
+    // 先更新共享重名集合（备份弹窗的重名检测也吃这份名单）。
+    if (event.ok) {
+        const items = Array.isArray(event.items) ? event.items : [];
+        webdavCloudNames = new Set(items.map(item => String(item.name)));
+    } else {
+        webdavCloudNames = null;
         const mapped = t("webdav.err." + (event.code || "INTERNAL"));
         setNote("webdavNote", mapped.startsWith("webdav.err.")
             ? t("webdav.err.GENERIC") + "（" + (event.code || "INTERNAL") + "）" : mapped);
+    }
+    if (!$("webdavBackupModal").hidden) webdavCheckDup();
+    if ($("webdavRestoreModal").hidden || !event.ok) return;
+    const list = $("webdavPickList");
+    list.textContent = "";
+    const items = Array.isArray(event.items) ? event.items : [];
+    $("webdavPickHint").hidden = items.length > 0;
+    if (!items.length) {
+        $("webdavPickHint").textContent = t("webdav.empty");
         return;
     }
-    const items = Array.isArray(event.items) ? event.items : [];
-    $("webdavEmpty").hidden = items.length > 0;
     items.forEach(item => {
+        const name = String(item.name);
         const row = document.createElement("li");
-        row.className = "phrase-row";
-        const label = document.createElement("span");
-        label.className = "phrase-text";
-        label.textContent = webdavDisplayName(String(item.name));
-        const size = document.createElement("small");
+        row.className = "webdav-pick-row";
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", "false");
+        const time = document.createElement("span");
+        time.className = "webdav-pick-time";
+        time.textContent = webdavDisplayName(name);
+        const size = document.createElement("span");
+        size.className = "webdav-pick-size";
         size.textContent = t("webdav.size.kb",
             [String(Math.max(1, Math.round(Number(item.size) / 1024)))]);
-        label.append(size);
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "btn";
-        btn.textContent = t("webdav.restore");
-        btn.addEventListener("click", () => {
-            webdavPendingRestore = String(item.name);
-            $("webdavConsentName").textContent = webdavDisplayName(webdavPendingRestore);
-            $("webdavConsent").hidden = false;
+        row.append(time, size);
+        row.addEventListener("click", () => {
+            webdavPickedName = name;
+            list.querySelectorAll(".webdav-pick-row").forEach(el =>
+                el.setAttribute("aria-selected", String(el === row)));
+            $("webdavRestoreGo").disabled = false;
         });
-        row.append(label, btn);
         list.append(row);
     });
 }
@@ -3720,14 +3850,30 @@ function renderWebdavStatus(event) {
     if (event.ok) {
         if (op === "test" || op === "save") setNote("webdavNote", t("webdav.note.ok"));
         else if (op === "backup") {
+            $("webdavBackupModal").hidden = true;
+            $("webdavBackupGo").disabled = false;
             setNote("webdavNote", t("webdav.note.backupOk", [webdavDisplayName(event.name || "")]));
             call("webdavListBackups");
         } else if (op === "restore") {
             setNote("webdavNote", t("webdav.note.restoreOk", [webdavDisplayName(event.name || "")]));
-            call("webdavListBackups");
         }
         return;
     }
+    if (op === "backup" && event.code === "CONFLICT") {
+        // 服务器 If-None-Match 仲裁出重名（名单未知/过期时的最终裁判）：
+        // 弹窗回到前台翻覆盖确认，不默认覆盖。
+        $("webdavBackupModal").hidden = false;
+        $("webdavDupWarn").hidden = false;
+        $("webdavDupWarn").textContent = t("webdav.backupModal.dup");
+        const go = $("webdavBackupGo");
+        go.disabled = false;
+        go.textContent = t("webdav.backupModal.dupBtn");
+        go.className = "btn ck-btn-danger";
+        webdavDupConfirmed = true;
+        setNote("webdavNote", "");
+        return;
+    }
+    if (op === "backup") $("webdavBackupModal").hidden = true;
     // 未知码（HTTP_301 这类）落到通用文案并带原始码，不再显示裸 key。
     const mapped = t("webdav.err." + (event.code || "INTERNAL"));
     const text = mapped.startsWith("webdav.err.")
@@ -3736,29 +3882,45 @@ function renderWebdavStatus(event) {
 }
 
 $("btnWebdavSave").addEventListener("click", () => {
+    // 换了服务器配置，旧名单作废（上一台的名单拿来判这台的重名是错的）。
+    webdavCloudNames = null;
     setNote("webdavNote", t("webdav.note.testing"));
     call("webdavSaveConfig", $("webdavUrl").value.trim(), $("webdavUser").value.trim(), $("webdavPass").value);
 });
-$("btnWebdavBackup").addEventListener("click", () => {
+$("btnWebdavBackup").addEventListener("click", webdavOpenBackup);
+$("btnWebdavRestore").addEventListener("click", webdavOpenRestore);
+$("webdavNameInput").addEventListener("input", webdavCheckDup);
+$("webdavBackupX").addEventListener("click", () => { $("webdavBackupModal").hidden = true; });
+$("webdavBackupMask").addEventListener("click", () => { $("webdavBackupModal").hidden = true; });
+$("webdavBackupCancel").addEventListener("click", () => { $("webdavBackupModal").hidden = true; });
+$("webdavBackupGo").addEventListener("click", () => {
+    const name = $("webdavNameInput").value.trim();
+    if (!webdavNameValid(name)) return;
+    // 弹窗保持开：成功才收（失败/CONFLICT 都要在弹窗里给用户交代）。
+    // 覆盖必须显式确认：dup 态按钮已是「覆盖同名文件」才带 true，
+    // 名单未知/不重名都走 false，让服务器 If-None-Match 做最终仲裁。
+    const go = $("webdavBackupGo");
+    go.disabled = true;
+    go.textContent = t("webdav.backupModal.sending");
     setNote("webdavNote", t("webdav.note.backing"));
-    call("webdavBackup");
+    call("webdavBackup", name, webdavDupConfirmed);
 });
-$("btnWebdavRefresh").addEventListener("click", () => {
-    setNote("webdavNote", t("webdav.note.listing"));
-    call("webdavListBackups");
+$("webdavRestoreX").addEventListener("click", () => { $("webdavRestoreModal").hidden = true; });
+$("webdavRestoreMask").addEventListener("click", () => { $("webdavRestoreModal").hidden = true; });
+$("webdavRestoreCancel").addEventListener("click", () => { $("webdavRestoreModal").hidden = true; });
+$("webdavRestoreGo").addEventListener("click", () => {
+    if (!webdavPickedName) return;
+    $("webdavConfirmName").textContent = webdavDisplayName(webdavPickedName);
+    webdavShowRestoreView(true);
 });
-$("webdavConsentCancel").addEventListener("click", () => {
-    webdavPendingRestore = "";
-    $("webdavConsent").hidden = true;
-});
-$("webdavConsentConfirm").addEventListener("click", () => {
-    if (!webdavPendingRestore) return;
-    $("webdavConsent").hidden = true;
+$("webdavRestoreBack").addEventListener("click", () => webdavShowRestoreView(false));
+$("webdavRestoreConfirm").addEventListener("click", () => {
+    if (!webdavPickedName) return;
+    $("webdavRestoreModal").hidden = true;
     setNote("webdavNote", t("webdav.note.restoring"));
-    call("webdavRestore", webdavPendingRestore);
-    webdavPendingRestore = "";
+    call("webdavRestore", webdavPickedName);
+    webdavPickedName = "";
 });
-webdavFillConfig();
 // 签名不符的确认导入（§3）：凭 confirmId 只对暂存的那一份包生效，
 // 取消/确认都会作废它，旧包残留不到下一次操作。
 let pendingKbSigId = "";

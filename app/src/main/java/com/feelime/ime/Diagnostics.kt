@@ -2,6 +2,7 @@ package com.feelime.ime
 
 import android.content.Context
 import android.os.SystemClock
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
@@ -132,13 +133,43 @@ object Diagnostics {
                 }
             }
             if (info.reason in TRACE_WORTHY_REASONS) {
-                val trace = runCatching {
-                    info.traceInputStream?.bufferedReader()?.use { reader ->
-                        reader.readText().take(MAX_TRACE_READ)
+                // Android 12+ 的 tombstone 是 protobuf 而非文本（发版
+                // review：按文本解只能得到乱码）——限量读原始字节，文本
+                // 才走帧表抽取；二进制就记录事实与规模，完整解码另立项。
+                // 限量在读取侧（readText().take() 是先全量读再丢）。
+                val raw = runCatching {
+                    info.traceInputStream?.use { input ->
+                        val buffer = ByteArrayOutputStream()
+                        val chunk = ByteArray(16 * 1024)
+                        var total = 0
+                        while (total < MAX_TRACE_READ) {
+                            val read = input.read(chunk, 0, minOf(chunk.size, MAX_TRACE_READ - total))
+                            if (read < 0) break
+                            buffer.write(chunk, 0, read)
+                            total += read
+                        }
+                        buffer.toByteArray()
                     }
-                }.getOrNull().orEmpty()
-                extractTraceLines(trace).forEachIndexed { i, line ->
-                    logSyncLocked("exitTrace", "[$i] $line")
+                }.getOrNull()
+                if (raw == null) {
+                    logSyncLocked("exitTrace", "tombstone read failed")
+                } else if (raw.isEmpty()) {
+                    logSyncLocked("exitTrace", "tombstone empty")
+                } else {
+                    // protobuf 载荷按字段 tag 编码，文本 tombstone 以
+                    // '#'/换行开头——按可打印率判。
+                    val isText = runCatching {
+                        val head = raw.decodeToString(0, minOf(raw.size, 4096))
+                        val printable = head.count { !it.isISOControl() }
+                        printable * 10 >= head.length * 9
+                    }.getOrDefault(false)
+                    if (!isText) {
+                        logSyncLocked("exitTrace", "binary tombstone (protobuf), ${raw.size}B head=${raw.take(8).joinToString(",") { (it.toInt() and 0xff).toString() }}")
+                    } else {
+                        extractTraceLines(String(raw, Charsets.UTF_8)).forEachIndexed { i, line ->
+                            logSyncLocked("exitTrace", "[$i] $line")
+                        }
+                    }
                 }
             }
         }

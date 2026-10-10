@@ -2465,13 +2465,16 @@ class SettingsBridge(
 
     /** 本地导入与 WebDAV 恢复共用的换装管线（#43）：校验 kind/version、
      *  settings 即时生效、userdb 暂存广播给 IME。调用方已在 worker。 */
-    private fun restoreUserdataBytes(bytes: ByteArray) {
+    /** 恢复到本机（本地导入与 WebDAV 恢复共用）。返回真实结果——
+     *  下载成功但校验失败时云端区块不能跟着报成功（发版 review P2）。 */
+    private fun restoreUserdataBytes(bytes: ByteArray): Boolean {
         val result = UserdataBackup(AndroidPrefs(context), context.filesDir).restore(bytes)
         if (result is UserdataBackup.RestoreResult.Fail) {
             pushEvent(
                 JSONObject().put("type", "backupStatus").put("direction", "import")
                     .put("ok", false).put("code", result.code),
             )
+            return false
         } else {
             com.feelime.ime.panel.PanelStoreSignals.fireFavoritesChanged()
             // 不带词库的备份也要广播：键盘页要刷新运行时设置；
@@ -2484,6 +2487,7 @@ class SettingsBridge(
             )
         }
         pushState()
+        return result !is UserdataBackup.RestoreResult.Fail
     }
 
     // ---- WebDAV 云端备份（issue #43；凭据存 webdav_backup prefs，不进备份包） ----
@@ -2530,15 +2534,22 @@ class SettingsBridge(
         webdavRun("test") { WebDavBackup.test(webdavConfig()) }
     }
 
-    /** 云端备份：组包 → PUT 时间戳文件名（不覆盖历史，用户裁定）。 */
+    /** 云端备份：组包 → PUT 用户在备份弹窗里确认过的文件名（默认时间戳、
+     *  可改）。校验与恢复侧白名单同源：前缀+后缀+无路径/空白/加号（URL
+     *  表单编码下空格与 + 无法可靠往返）+长度，丢了前缀的文件将来恢复
+     *  不了。overwrite 只在用户看到重名警示后二次确认才为 true；首次
+     *  上传带 If-None-Match:*，服务器 412 仲裁重名（CONFLICT）。 */
     @JavascriptInterface
-    fun webdavBackup(token: String) = guarded(token) {
+    fun webdavBackup(name: String, overwrite: Boolean, token: String) = guarded(token) {
         webdavRun("backup") {
             val config = webdavConfig()
             if (!config.valid) return@webdavRun WebDavBackup.Outcome.Fail("EMPTY_URL")
+            if (!name.startsWith(WebDavBackup.FILE_PREFIX) || !name.endsWith(".json")
+                || name.contains('/') || name.contains(Regex("[\\s+]")) || name.length > 128) {
+                return@webdavRun WebDavBackup.Outcome.Fail("BAD_NAME")
+            }
             val json = UserdataBackup(AndroidPrefs(context), context.filesDir, appVersion()).export()
-            val name = WebDavBackup.backupFileName()
-            WebDavBackup.put(config, name, json.toString().toByteArray(Charsets.UTF_8))
+            WebDavBackup.put(config, name, json.toString().toByteArray(Charsets.UTF_8), overwrite)
         }
     }
 
@@ -2560,10 +2571,10 @@ class SettingsBridge(
             when (outcome) {
                 is WebDavBackup.Outcome.Fail -> outcome
                 is WebDavBackup.Outcome.Ok -> {
-                    restoreUserdataBytes(outcome.value)
-                    // restoreUserdataBytes 已推 backupStatus；此处再补
-                    // webdavStatus 让云端区块的 UI 收自己的尾。
-                    WebDavBackup.Outcome.Ok(name)
+                    // 恢复失败（格式/版本/字段校验）不能再报「已恢复」：
+                    // 真实结果回传，云端区块与本地导入共用同一份失败事实。
+                    if (restoreUserdataBytes(outcome.value)) WebDavBackup.Outcome.Ok(name)
+                    else WebDavBackup.Outcome.Fail("RESTORE_FAILED")
                 }
             }
         }
