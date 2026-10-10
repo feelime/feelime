@@ -1214,17 +1214,3 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
 .dict-slot .slot-label small { color: var(--muted, #888); }
 .dict-slot .slot-del { flex: none; border: 0; background: none; color: #dc2626;
     font-size: 13px; padding: 6px 10px; cursor: pointer; }
-
-/* WebDAV 服务商快选（#43 验收反馈：别只给个 url 输入框）：点选自动
- * 填地址，选中态复用 ck-seg-btn 的观感；窄屏换行。 */
-.webdav-providers { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
-.webdav-provider {
-    border: 1px solid var(--border, #ccc); border-radius: 9px;
-    min-height: 34px; padding: 0 12px; background: var(--card, #fff); color: inherit;
-    font-size: 13.5px; cursor: pointer;
-    transition: border-color .12s, background .12s, color .12s;
-}
-.webdav-provider.selected {
-    border-color: var(--accent, #3b82f6); background: var(--accent, #3b82f6);
-    color: var(--accent-ink, #fff); font-weight: 600;
-}

@@ -397,7 +397,7 @@ const I18N = {
         "webdav.provider.jg": "坚果云",
         "webdav.provider.inf": "InfiniCLOUD",
         "webdav.provider.nc": "Nextcloud / 群晖",
-        "webdav.provider.custom": "自定义",
+        "webdav.provider.custom": "自定义…",
         "webdav.url": "https://dav.jianguoyun.com/dav/feelime/",
         "webdav.userLabel": "用户名",
         "webdav.user": "用户名",
@@ -1104,7 +1104,7 @@ const I18N = {
         "webdav.provider.jg": "Jianguoyun",
         "webdav.provider.inf": "InfiniCLOUD",
         "webdav.provider.nc": "Nextcloud / Synology",
-        "webdav.provider.custom": "Custom",
+        "webdav.provider.custom": "Custom…",
         "webdav.url": "https://dav.jianguoyun.com/dav/feelime/",
         "webdav.userLabel": "Username",
         "webdav.user": "Username",
@@ -3732,41 +3732,33 @@ function webdavFillConfig() {
     } catch (error) { /* 旧壳无桥：保持空表单 */ }
 }
 
-/** 服务商快选（#43 验收反馈）：点选自动填地址；地址与已知服务商
- *  匹配时反向点亮（手填/恢复回显都认）。无固定地址的服务商只换
- *  占位示例并聚焦输入框。 */
-const WEBDAV_PROVIDERS = [
-    { key: "jg", url: "https://dav.jianguoyun.com/dav/",
+/** 服务商下拉（#43 验收反馈）：预定义服务商选中即把地址填进
+ *  「服务器地址」（一眼可见用上了，不是暗自记着）；无固定地址的
+ *  只换占位示例并聚焦输入。地址手填/回显与已知服务商匹配时反向
+ *  同步下拉，否则回落「自定义…」。 */
+const WEBDAV_PROVIDERS = {
+    jg: { url: "https://dav.jianguoyun.com/dav/",
         ph: "https://dav.jianguoyun.com/dav/" },
-    { key: "inf", url: "", ph: "https://你的账号.infini-cloud.net/dav/" },
-    { key: "nc", url: "", ph: "https://你的服务器/remote.php/dav/files/用户名/" },
-    { key: "custom", url: "", ph: "https://dav.example.com/dav/" },
-];
-
-function webdavProviderChips() {
-    return [...document.querySelectorAll("#webdavProviders .webdav-provider")];
-}
+    inf: { url: "", ph: "https://你的账号.infini-cloud.net/dav/" },
+    nc: { url: "", ph: "https://你的服务器/remote.php/dav/files/用户名/" },
+    custom: { url: "", ph: "https://dav.example.com/dav/" },
+};
 
 function webdavSyncProviderSelection() {
     const value = $("webdavUrl").value.trim().replace(/\/+$/, "");
-    webdavProviderChips().forEach(chip => chip.classList.remove("selected"));
-    const hit = WEBDAV_PROVIDERS.find(p =>
-        p.url && p.url.replace(/\/+$/, "") === value);
-    const chip = webdavProviderChips()[WEBDAV_PROVIDERS.indexOf(hit || WEBDAV_PROVIDERS[3])];
-    if (chip) chip.classList.add("selected");
-    $("webdavUrl").placeholder = (hit || WEBDAV_PROVIDERS[3]).ph;
+    const key = Object.keys(WEBDAV_PROVIDERS).find(k =>
+        WEBDAV_PROVIDERS[k].url &&
+        WEBDAV_PROVIDERS[k].url.replace(/\/+$/, "") === value) || "custom";
+    $("webdavProvider").value = key;
+    $("webdavUrl").placeholder = (WEBDAV_PROVIDERS[key] || WEBDAV_PROVIDERS.custom).ph;
 }
 
 function webdavWireProviders() {
-    webdavProviderChips().forEach((chip, i) => {
-        chip.addEventListener("click", () => {
-            const p = WEBDAV_PROVIDERS[i];
-            if (p.url) $("webdavUrl").value = p.url;
-            $("webdavUrl").placeholder = p.ph;
-            webdavProviderChips().forEach(c => c.classList.remove("selected"));
-            chip.classList.add("selected");
-            if (!p.url) $("webdavUrl").focus();
-        });
+    $("webdavProvider").addEventListener("change", () => {
+        const p = WEBDAV_PROVIDERS[$("webdavProvider").value] || WEBDAV_PROVIDERS.custom;
+        if (p.url) $("webdavUrl").value = p.url;
+        $("webdavUrl").placeholder = p.ph;
+        if (!p.url) $("webdavUrl").focus();
     });
     $("webdavUrl").addEventListener("input", webdavSyncProviderSelection);
 }
