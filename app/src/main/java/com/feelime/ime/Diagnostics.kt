@@ -65,6 +65,8 @@ object Diagnostics {
     private var startedAt = 0L
     private var seq = 0L
     private var sink: DiagSink? = null
+    /** tombstone 全量落盘目录（v3，refresh 时随 filesDir 定位）。 */
+    private var tombstoneDir: File? = null
     private var beatCount = 0
 
     /** 当前引擎/编辑器状态行（导出头用），由 service 在 hello 推送时刷新。 */
@@ -85,6 +87,7 @@ object Diagnostics {
     fun refresh(context: Context) {
         synchronized(lock) {
             if (sink == null) sink = DiagSink(File(context.noBackupFilesDir, "diag-events.log"))
+            if (tombstoneDir == null) tombstoneDir = File(context.filesDir, "diagnostics-tombstones")
             recording = enabled(context)
             if (recording && startedAt == 0L) {
                 startedAt = SystemClock.elapsedRealtime()
@@ -164,7 +167,23 @@ object Diagnostics {
                         printable * 10 >= head.length * 9
                     }.getOrDefault(false)
                     if (!isText) {
-                        logSyncLocked("exitTrace", "binary tombstone (protobuf), ${raw.size}B head=${raw.take(8).joinToString(",") { (it.toInt() and 0xff).toString() }}")
+                        // v3（2026-10-10 一次到位）：protobuf tombstone 只在
+                        // 日志里留 8 字节头等于把已读到的 128KB 证据扔掉——
+                        // 全量落盘（留最近 3 份），导出诊断时 base64 内嵌，
+                        // 用户照常导一份 txt 就带上完整 native 栈，不再需要
+                        // 额外抓 bugreport。
+                        val saved = runCatching {
+                            val dir = File(context.filesDir, "diagnostics-tombstones")
+                            dir.mkdirs()
+                            val f = File(dir, "tb-${info.pid}-${info.timestamp}.bin")
+                            f.writeBytes(raw)
+                            dir.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }
+                                ?.drop(3)?.forEach { it.delete() }
+                            f.name
+                        }.getOrNull()
+                        logSyncLocked("exitTrace", "binary tombstone (protobuf), ${raw.size}B " +
+                            "head=${raw.take(8).joinToString(",") { (it.toInt() and 0xff).toString() }} " +
+                            "saved=$saved")
                     } else {
                         extractTraceLines(String(raw, Charsets.UTF_8)).forEachIndexed { i, line ->
                             logSyncLocked("exitTrace", "[$i] $line")
@@ -333,6 +352,24 @@ object Diagnostics {
         val persisted = sink?.readTail(EXPORT_FILE_TAIL).orEmpty()
             .filterNot { it in liveSet }
         foldBeats(if (persisted.isEmpty()) live else persisted + live)
+    }
+
+    /** 导出用 tombstone 附件（v3）：文件名+字节对，新→旧，[maxTotalBytes]
+     *  预算内尽量多带——崩溃栈在 protobuf 里，host 离线按 schema 解。 */
+    fun tombstoneAttachments(maxTotalBytes: Int = 384 * 1024): List<Pair<String, ByteArray>> {
+        val dir = tombstoneDir ?: return emptyList()
+        val files = runCatching {
+            dir.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }
+        }.getOrNull().orEmpty()
+        val out = ArrayList<Pair<String, ByteArray>>()
+        var used = 0
+        for (f in files) {
+            val bytes = runCatching { f.readBytes() }.getOrNull() ?: continue
+            if (used + bytes.size > maxTotalBytes) continue
+            out.add(f.name to bytes)
+            used += bytes.size
+        }
+        return out
     }
 
     private fun foldBeats(all: List<String>): List<String> {

@@ -2289,7 +2289,14 @@ class SettingsBridge(
             "events=${Diagnostics.totalLogged()} logged, ${events.size} lines exported",
             "--- events ---",
         )
-        val text = (header + events).joinToString("\n")
+        // v3：tombstone 全量 base64 内嵌（崩溃取证——native 栈在系统
+        // protobuf 里，报告人只导这份 txt 就带上完整证据，host 离线解）。
+        val tombstones = Diagnostics.tombstoneAttachments()
+        val tombstoneLines = tombstones.flatMap { (name, bytes) ->
+            val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            listOf("--- tombstone $name bytes=${bytes.size} base64 ---") + b64.chunked(120)
+        }
+        val text = (header + events + tombstoneLines).joinToString("\n")
         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
             .format(java.util.Date())
         val file = File(File(context.cacheDir, "exports"), "feelime-diagnostics-$stamp.txt")
