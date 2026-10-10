@@ -619,18 +619,20 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     /** #39/#57：IME 窗口铺进挖孔区。ALWAYS 语义最强（SHORT_EDGES 在
      *  部分 ROM 的 IME 窗口上被忽略——XYNEXT 的 MIUI 14/Android 13
      *  实录：v1.3.6 起 SHORT_EDGES 在 ColorOS/Android 15+ 生效，小米
-     *  13 上横屏仍整条黑边）。onWindowShown 重放：部分 ROM 重挂 IME
-     *  窗口时会重置 attributes，一次性设置活不过窗口重建。 */
+     *  13 上横屏仍整条黑边）。但 ALWAYS 是 API 30+ 的布局语义，28/29
+     *  上该值落入「非 SHORT_EDGES」分支照样裁剪——老平台保持 1.3.8
+     *  的 SHORT_EDGES 行为（发版 review：ALWAYS 全量铺开是回归）。
+     *  onWindowShown 重放：部分 ROM 重挂 IME 窗口时会重置 attributes，
+     *  一次性设置活不过窗口重建。 */
     private fun assertCutoutMode() {
         val w = window?.window ?: return
         if (Build.VERSION.SDK_INT < 28) return
-        if (w.attributes.layoutInDisplayCutoutMode ==
+        val mode = if (Build.VERSION.SDK_INT >= 30)
             android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-        ) return
-        w.attributes = w.attributes.apply {
-            layoutInDisplayCutoutMode =
-                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-        }
+        else
+            android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        if (w.attributes.layoutInDisplayCutoutMode == mode) return
+        w.attributes = w.attributes.apply { layoutInDisplayCutoutMode = mode }
     }
 
     private fun applyLandscapeNavBars() {

@@ -1610,13 +1610,49 @@ test('webdav: backup modal prefills a name; dup warns and flips to overwrite; ba
     world.$('webdavNameInput').listeners.find(l => l.type === 'input').handler();
     equal(world.$('webdavBackupGo').disabled, true, 'bad name disables go');
 
-    // 合法新名字 → 确认 → webdavBackup(name, token) + 弹窗收起。
+    // 合法新名字 → 确认 → webdavBackup(name, overwrite=false, token)。
+    // 弹窗保持开（成功才收），上传中按钮禁用。
     world.$('webdavNameInput').value = 'feelime-backup-20990101-111111.json';
     world.$('webdavNameInput').listeners.find(l => l.type === 'input').handler();
     world.$('webdavBackupGo').listeners.find(l => l.type === 'click').handler();
     equal(world.lastCall('webdavBackup').args,
-        ['feelime-backup-20990101-111111.json', world.token], 'backup name + token');
-    equal(world.$('webdavBackupModal').hidden, true, 'modal closed after confirm');
+        ['feelime-backup-20990101-111111.json', false, world.token], 'backup name + no-overwrite + token');
+    equal(world.$('webdavBackupModal').hidden, false, 'modal stays open while uploading');
+    equal(world.$('webdavBackupGo').disabled, true, 'go disabled while uploading');
+    world.FeelimeSettings().onEvent({
+        type: 'webdavStatus', op: 'backup', ok: true, name: 'feelime-backup-20990101-111111.json' });
+    equal(world.$('webdavBackupModal').hidden, true, 'modal closes on backup ok');
+});
+
+test('webdav: unknown cloud list still uploads; server 412 flips to explicit overwrite', () => {
+    const world = new SettingsWorld();
+    world.FeelimeSettings().onEvent({ type: 'webdavList', ok: false, code: 'NETWORK' });
+    world.$('btnWebdavBackup').listeners.find(l => l.type === 'click').handler();
+    // 名单未知：不拦上传（服务器仲裁），但要告知。
+    equal(world.$('webdavDupWarn').hidden, false, 'unknown-list notice shown');
+    assert(world.$('webdavDupWarn').textContent.includes('核对'), 'notice explains the fallback');
+    equal(world.$('webdavBackupGo').className, 'btn primary', 'still a normal upload button');
+    world.$('webdavBackupGo').listeners.find(l => l.type === 'click').handler();
+    equal(world.lastCall('webdavBackup').args.slice(1, 2), [false],
+        'unknown list uploads with overwrite=false (server arbitrates)');
+    // 服务器 412 → 弹窗回到前台翻覆盖确认，不默认覆盖。
+    world.FeelimeSettings().onEvent({ type: 'webdavStatus', op: 'backup', ok: false, code: 'CONFLICT' });
+    equal(world.$('webdavBackupModal').hidden, false, 'conflict reopens the modal');
+    assert(world.$('webdavBackupGo').textContent.includes('覆盖'), 'go flips to overwrite');
+    assert(world.$('webdavBackupGo').className.includes('ck-btn-danger'), 'overwrite is danger-styled');
+    world.$('webdavBackupGo').listeners.find(l => l.type === 'click').handler();
+    equal(world.lastCall('webdavBackup').args.slice(1, 2), [true],
+        'confirmed overwrite re-sends with true');
+});
+
+test('webdav: names with spaces or + are rejected up front (URL round-trip)', () => {
+    const world = new SettingsWorld();
+    world.$('btnWebdavBackup').listeners.find(l => l.type === 'click').handler();
+    for (const bad of ['feelime-backup-my backup.json', 'feelime-backup-a+b.json']) {
+        world.$('webdavNameInput').value = bad;
+        world.$('webdavNameInput').listeners.find(l => l.type === 'input').handler();
+        equal(world.$('webdavBackupGo').disabled, true, 'rejected: ' + bad);
+    }
 });
 
 test('webdav: restore modal lists time/size apart; pick → confirm → restore + token', () => {

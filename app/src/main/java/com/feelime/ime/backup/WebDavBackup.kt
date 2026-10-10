@@ -84,11 +84,14 @@ object WebDavBackup {
         }
     }
 
-    /** 上传一份备份（PUT，新时间戳文件名，不覆盖历史）。 */
-    fun put(config: Config, name: String, bytes: ByteArray): Outcome<String> =
-        exchange(config, "PUT", name, body = bytes).let { outcome ->
+    /** 上传一份备份（PUT）。overwrite=false 时带 If-None-Match:* 让
+     *  服务器仲裁重名（412→CONFLICT）——客户端名单可能过期/拉取失败，
+     *  「覆盖必须经用户确认」的最终裁判在服务器端，不吃列表竞态。 */
+    fun put(config: Config, name: String, bytes: ByteArray, overwrite: Boolean = false): Outcome<String> =
+        exchange(config, "PUT", name, body = bytes, noClobber = !overwrite).let { outcome ->
             when (outcome) {
-                is Outcome.Ok -> if (outcome.value.code in 200..299) Outcome.Ok(name)
+                is Outcome.Ok -> if (outcome.value.code == 412) Outcome.Fail("CONFLICT")
+                else if (outcome.value.code in 200..299) Outcome.Ok(name)
                 else Outcome.Fail("HTTP_${outcome.value.code}", outcome.value.message)
                 is Outcome.Fail -> outcome
             }
@@ -157,17 +160,20 @@ object WebDavBackup {
         depth: String? = null,
         body: ByteArray? = null,
         maxBody: Long = 4L * 1024 * 1024,
-    ): Outcome<Response> = exchangeOnce(config, method, name, depth, body, maxBody).let { first ->
+        noClobber: Boolean = false,
+    ): Outcome<Response> = exchangeOnce(config, method, name, depth, body, maxBody, noClobber).let { first ->
         val location = (first as? Outcome.Ok)?.value?.takeIf { it.code in 301..308 }
             ?.let { resp -> redirectTarget(config, name, resp) } ?: return first
-        exchangeOnce(config, method, location, depth, body, maxBody)
+        exchangeOnce(config, method, location, depth, body, maxBody, noClobber)
     }
 
-    /** 301/302/307/308 的 Location 解析（相对路径按 base 补全）。 */
+    /** 301/302/307/308 的 Location 解析（相对路径按 base 补全）。
+     *  只跟同源（scheme+host 一致）目标：重定向是服务器可控的，凭据与
+     *  备份正文不能被带去第二台主机，也不能 https→http 降级明文重发。 */
     private fun redirectTarget(config: Config, name: String, resp: Response): String? {
         val location = resp.headers?.get("Location") ?: return null
         if (location.isBlank()) return null
-        return when {
+        val resolved = when {
             location.startsWith("http://") || location.startsWith("https://") -> location
             // 根相对（/x）：按 origin（scheme://host）解析，不是拼到 base 后面。
             location.startsWith("/") ->
@@ -175,7 +181,12 @@ object WebDavBackup {
                     ?.let { it + location }
             // 相对当前路径的形态罕见，不跟（宁可不跟随也不错拼）。
             else -> null
-        }
+        } ?: return null
+        val baseOrigin = Regex("^(https?://[^/]+)").find(config.base)?.groupValues?.get(1)
+            ?: return null
+        val targetOrigin = Regex("^(https?://[^/]+)").find(resolved)?.groupValues?.get(1)
+            ?: return null
+        return if (targetOrigin.equals(baseOrigin, ignoreCase = true)) resolved else null
     }
 
     private fun exchangeOnce(
@@ -185,6 +196,7 @@ object WebDavBackup {
         depth: String? = null,
         body: ByteArray? = null,
         maxBody: Long = 4L * 1024 * 1024,
+        noClobber: Boolean = false,
     ): Outcome<Response> {
         return try {
             val target = when {
@@ -197,6 +209,7 @@ object WebDavBackup {
                 .header("Authorization", basicAuth(config))
                 .header("User-Agent", "feelime-backup/1")
             depth?.let { builder.header("Depth", it) }
+            if (noClobber) builder.header("If-None-Match", "*")
             when {
                 body != null -> builder.method(method, body.toRequestBody(null))
                 method == "PROPFIND" -> builder.method(method, EMPTY_BODY)
@@ -208,24 +221,25 @@ object WebDavBackup {
                 val declared = response.header("Content-Length")?.toLongOrNull() ?: -1L
                 if (declared > maxBody) return Outcome.Fail("TOO_LARGE", "Content-Length=$declared")
                 var overflow = false
-                val respBody = runCatching {
-                    response.body?.byteStream()?.use { input ->
-                        val buffer = ByteArrayOutputStream()
-                        val chunk = ByteArray(64 * 1024)
-                        var total = 0L
-                        while (true) {
-                            val read = input.read(chunk)
-                            if (read < 0) break
-                            total += read
-                            if (total > maxBody) {
-                                overflow = true
-                                break
-                            }
-                            buffer.write(chunk, 0, read)
+                // 读体异常不吞（runCatching→null 会把断连/超时变成「成功的
+                // 空响应」：PROPFIND 得到空目录、重名检查被架空）——直接
+                // 抛给外层 catch 统一按 NETWORK 失败。
+                val respBody = response.body?.byteStream()?.use { input ->
+                    val buffer = ByteArrayOutputStream()
+                    val chunk = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val read = input.read(chunk)
+                        if (read < 0) break
+                        total += read
+                        if (total > maxBody) {
+                            overflow = true
+                            break
                         }
-                        buffer.toByteArray()
+                        buffer.write(chunk, 0, read)
                     }
-                }.getOrNull()
+                    buffer.toByteArray()
+                }
                 if (overflow) return Outcome.Fail("TOO_LARGE")
                 val headerMap = HashMap<String, String>()
                 listOf("Location").forEach { key ->
