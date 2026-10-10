@@ -103,6 +103,10 @@ class HandwritingEngine(
                 Diagnostics.logCritical("inkSkip", "reason=parse req=$reqId")
                 return InkResult(reqId, emptyList(), "failed")
             }
+        // 取证 v3（2026-10-10 一次到位）：链路上每个 native 调用边界
+        // 都有标记，任何一份未来的报告死点直接点名，不再逐轮加标记。
+        Diagnostics.logCritical("inkParse",
+            "req=$reqId strokes=${request.strokes.size} points=${request.strokes.sumOf { it.size }}")
         if (!ensureSession()) {
             Diagnostics.logCritical("inkSkip", "reason=noSession req=$reqId")
             return InkResult(reqId, emptyList(), "unavailable")
@@ -111,6 +115,8 @@ class HandwritingEngine(
         // §4.1 渲染：内容 bbox 归一到 256×256（长边撑满、短边居中留白），
         // 笔宽 = 渲染画布短边的 2.2%，白底纯黑笔画、圆头圆角、抗锯齿。
         val transform = HandwritingInk.inkTransform(request.strokes, SIZE_PX.toFloat())
+        Diagnostics.logCritical("inkXform",
+            "req=$reqId scale=${"%.3f".format(transform.scale)}")
         val paint = Paint().apply {
             color = android.graphics.Color.BLACK
             isAntiAlias = true
@@ -120,6 +126,7 @@ class HandwritingEngine(
             style = Paint.Style.STROKE
         }
         val bitmap = Bitmap.createBitmap(SIZE_PX, SIZE_PX, Bitmap.Config.ARGB_8888)
+        Diagnostics.logCritical("inkBitmap", "req=$reqId ${SIZE_PX}x$SIZE_PX")
         val canvas = Canvas(bitmap)
         canvas.drawColor(android.graphics.Color.WHITE)
         request.strokes.forEach { stroke ->
@@ -147,6 +154,8 @@ class HandwritingEngine(
             }
             canvas.drawPath(path, paint)
         }
+        // v3：Skia 绘制与 getPixels（同为 native）各占一窗。
+        Diagnostics.logCritical("inkRender", "req=$reqId")
         val pixels = IntArray(SIZE_PX * SIZE_PX)
         bitmap.getPixels(pixels, 0, SIZE_PX, 0, 0, SIZE_PX, SIZE_PX)
         bitmap.recycle()
@@ -186,6 +195,8 @@ class HandwritingEngine(
             shape,
             ai.onnxruntime.OnnxJavaType.UINT8,
         ).use { tensor ->
+            // v3：张量构建（JNI 分配）与 session.run（推理）各占一窗。
+            Diagnostics.logCritical("inkRun", "req=$reqId")
             activeSession.run(mapOf(checkNotNull(inputName) to tensor)).use { output ->
                 // done 升级为同步（v2）：begin→done 之间死 = ORT run 内；
                 // done 之后死 = 解码/分发。异步 done 在硬崩时同样丢队尾。
@@ -195,6 +206,9 @@ class HandwritingEngine(
                 val probs = FloatArray(buffer.remaining())
                 buffer.get(probs)
                 val candidates = HandwritingInk.rankSoftmax(probs, vocabulary, CANDIDATE_LIMIT)
+                // v3：done→decode 窗内只有 floatBuffer 读取（JNI），
+                // 解码后入档；分发异常另有 runCatching 兜底日志。
+                Diagnostics.logCritical("inkDecode", "req=$reqId n=${candidates.size}")
                 return InkResult(reqId, candidates, null)
             }
         }
@@ -242,6 +256,11 @@ class HandwritingEngine(
             // ready 标记把「会话创建」与「绘图/预处理」切开。
             Diagnostics.logCritical("inkSession", "created")
             val vocab = loadVocabulary()
+            // 取证 v3（2026-10-10）：1.3.9 PJC110 六次崩溃全部死在
+            // created→ready 之间（ready 从未到达，inkDrawn/inkInfer 零次），
+            // 窗口内只有两个 native 调用——词表 AssetManager 读取与
+            // outputInfo。两行标记把窗口一分为二，下一份报告直接点名。
+            Diagnostics.logCritical("inkSession", "vocabLoaded n=${vocab.size}")
             if (vocab.isEmpty()) {
                 created.close()
                 Log.w(TAG, "handwriting vocab asset missing")
@@ -252,6 +271,7 @@ class HandwritingEngine(
             // （解码出的字符会整体漂移），按不可用处理。
             val outputVocab = (created.outputInfo.values.firstOrNull() as? TensorInfo)
                 ?.let { it.shape.lastOrNull()?.toInt() } ?: 0
+            Diagnostics.logCritical("inkSession", "outInfoRead n=$outputVocab")
             // 动态/符号维度读不出来时（outputVocab<=0）放行。
             if (outputVocab > 0 && outputVocab != vocab.size) {
                 created.close()
