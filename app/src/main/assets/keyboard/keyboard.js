@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.38';
+    const KEYBOARD_VERSION = '3.73.39';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -2178,6 +2178,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             layout.rows.forEach(definition => {
                 const config = typeof definition === 'string' ? { keys: definition } : definition;
                 const row = this.row(config.indent);
+                // #59 行对齐：shift+退格行（字母区第三行）的字母与第二行
+                // 同宽——CSS 按第二行几何出公式：qwerty 家族 9 字母 8 缝
+                //（kb-align-9）、俄语 11 字母 10 缝（kb-align-11）、14 键
+                // 贴合 9 半键 4 缝且第三行带 merge-pair（kb-align-dp14）。
+                // 差值由两侧功能键吸收（z 落在 s 正下方）。
+                if (config.shift && config.backspace) {
+                    const indentDef = layout.rows.find(r =>
+                        typeof r === 'object' && r.indent && r.keys);
+                    const indentKeys = String(indentDef ? indentDef.keys : '');
+                    const paired = indentKeys.includes('|') ||
+                        String(config.keys).includes('|');
+                    const letters = indentKeys.replace(/\|/g, '').length;
+                    if (paired) row.classList.add('kb-align-dp14');
+                    else if (letters === 9) row.classList.add('kb-align-9');
+                    else if (letters === 11) row.classList.add('kb-align-11');
+                }
                 if (config.shift) {
                     // Both Chinese modes carry the 分词 separator.
                     // Full pinyin: xi'an pins the split. Double pinyin: the

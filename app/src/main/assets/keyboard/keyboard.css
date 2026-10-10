@@ -271,7 +271,7 @@ body.landscape #candidateBar .tool,
 body.landscape #settingsPageBar .tool { width: 30px; height: 30px; }
 body.landscape #candidates { min-height: 40px; }
 body.landscape .candidate { min-height: 40px; line-height: normal; font-size: calc(16px * var(--cand-font-scale, 1)); display: flex; align-items: center; }
-body.landscape .kb-row { gap: 4px; margin-bottom: 3px; }
+body.landscape .kb-row { margin-bottom: 3px; }
 body.landscape #symCatBar { margin-top: 3px; gap: 4px; }
 
 /* Composing preedit（issue #8 定稿）：拼音悬浮在顶部 padding 带里
@@ -680,9 +680,27 @@ body.settings-page #candidateBar > .tool { display: none; }
 /* ===== Key layers ===== */
 /* The row gap drops to 5px (a third tighter) - the freed
  * height funds the taller candidate bar. */
-.kb-row { display: flex; gap: 5px; margin-bottom: 5px; }
+/* 行内缝与缩进提成变量（#59 行对齐公式引用同一来源，竖屏/横屏
+ * 改一处即可）。 */
+body { --kb-gap: 5px; --kb-indent: 4.9%; }
+body.landscape { --kb-gap: 4px; }
+.kb-row { display: flex; gap: var(--kb-gap); margin-bottom: 5px; }
 .kb-row:last-child { margin-bottom: 0; }
-.kb-row.kb-indent { padding: 0 4.9%; }
+.kb-row.kb-indent { padding: 0 var(--kb-indent); }
+/* #59 26 键行对齐：第三行字母键与第二行（缩进行）同宽，z..m 精确
+ * 落在 s..k 之上（左功能键宽 = 缩进 + 一个字母，与旧版 z 的视觉位
+ * 一致），差值由退格 flex:1 吸收（Gboard 中文键面同款宽退格）。
+ * 类名按第二行几何：qwerty 家族 9 字母 8 缝、俄语 11 字母 10 缝。 */
+.kb-align-9 > .kb-letter { width: calc((100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); flex: none; }
+.kb-align-9 > .kb-mod { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); flex: none; }
+.kb-align-9 > .kb-special { flex: 1; }
+.kb-align-11 > .kb-letter { width: calc((100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
+.kb-align-11 > .kb-mod { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
+.kb-align-11 > .kb-special { flex: 1; }
+/* 14 键贴合（kb-align-dp14）：第二行 5 键帽 4 缝共 9 半键。第三行
+ * 半键/键帽显式定宽与第二行等宽（消漂移），差值由两侧功能键均分。 */
+.kb-align-dp14 > .kb-letter { width: calc((100% - 2 * var(--kb-indent) - 4 * var(--kb-gap)) / 9); flex: none; }
+.kb-align-dp14 > .merge-pair { width: calc(2 * (100% - 2 * var(--kb-indent) - 4 * var(--kb-gap)) / 9); flex: none; }
 /* #36 双拼 14 键（验收反馈三轮）：相邻两字母贴合为一颗宽键帽——
  * 触摸判定保持半区（半区宽 ≥ 原 26 键键宽，分界无歧义）；中间一道
  * 分割线区分两个半区，每颗半区键保留自己的居中字母与上滑小字
