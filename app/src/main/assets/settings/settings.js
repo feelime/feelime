@@ -247,6 +247,8 @@ const I18N = {
         "ck.spaceTitle": "长按空格动作",
         "ck.space.edit": "编辑动作",
         "ck.space.hint": "长按空格触发该动作（350ms）；语音输入为按住说话，其余动作触发一次。",
+        "ck.space.face": "空格键面文案",
+        "ck.space.faceHint": "显示在空格键上（如 📋 或「剪贴板」，最多 8 字）",
         "ck.f.panel.pick": "打开哪个面板",
         "ck.f.text": "要输入的文本，如 :w 或 me@example.com",
         "ck.f.mods": "修饰键",
@@ -950,6 +952,8 @@ const I18N = {
         "ck.f.kind": "Type",
         "ck.spaceTitle": "Hold-space action",
         "ck.space.edit": "Edit action",
+        "ck.space.face": "Space key label",
+        "ck.space.faceHint": "Shown on the space bar (e.g. 📋, up to 8 chars)",
         "ck.space.hint": "A 350ms press on the space bar runs this action; Voice is hold-to-talk, others fire once.",
         "ck.f.panel.pick": "Which panel to open",
         "ck.f.text": "Text to type, e.g. :w or me@example.com",
@@ -4019,6 +4023,8 @@ let ckRows = null;
 // 长按空格当前动作（归一后 "voice"|"none"|tap DSL 串）。
 let ckEditorTarget = "cell";
 let spaceHoldRaw = "voice";
+// 键面文案（非语音动作显示；语音恒 mic）——状态回填与编辑器预填用。
+let spaceHoldTextRaw = "";
 let ckSel = null;   // 正在编辑的位置 {r, c, isNew}
 let ckDraft = null; // 表单草稿
 let ckDirty = false;
@@ -4643,13 +4649,14 @@ function openSpaceHoldEditor() {
         ? { mode: spaceHoldRaw } : ckTapParse(spaceHoldRaw);
     ckDraft = { t: "", text: "", single: "esc", comboKey: "s",
         mods: new Set(["ctrl"]), open: "", setting: "", panel: "clipboard",
-        dsl: "", color: "", note: "", span: 0, ...parsed };
+        dsl: "", color: "", note: "", span: 0, spaceFace: spaceHoldTextRaw, ...parsed };
     ckBuildForm();
     ckOpenModal(true);
 }
 
 /** 状态推送 → 摘要行（voice|none|dsl: 前缀归一，旧布尔回退）。 */
 function renderSpaceHold(state) {
+    spaceHoldTextRaw = typeof state.spaceHoldText === "string" ? state.spaceHoldText : "";
     const raw = typeof state.spaceHoldTap === "string" && state.spaceHoldTap
         ? state.spaceHoldTap
         : (state.voiceOnSpace === false ? "none" : "voice");
@@ -4788,6 +4795,24 @@ function ckBuildForm() {
     // 颜色：默认 / 自定义（自定义才展开 hue 滑块行）。cell.color 记
     // "h<度数>"（0-359）渲染按 hsl 算；旧色板名兼容读。
     if (ckEditorTarget !== "cell") {
+        // 键面文案（#59 验收延伸）：非语音动作显示在空格键上（emoji 可
+        // 当小图标）；语音恒画麦克风，不显示文案。
+        const faceRow = document.createElement("div");
+        faceRow.id = "ckSpaceFaceRow";
+        const faceInput = document.createElement("input");
+        faceInput.id = "ckSpaceFace";
+        faceInput.className = "ck-input";
+        faceInput.value = d.spaceFace || "";
+        faceInput.placeholder = t("ck.space.faceHint");
+        faceInput.maxLength = 16;
+        faceInput.addEventListener("input", () => { d.spaceFace = faceInput.value; });
+        faceRow.append(ckField(t("ck.space.face"), faceInput));
+        body.append(faceRow);
+        const faceVisible = () => {
+            faceRow.style.display = d.mode === "voice" ? "none" : "";
+        };
+        faceVisible();
+        modeSel.addEventListener("change", faceVisible);
         // 虚拟键无颜色/备注：直接跳到表单尾部（见下方配对的 }）。
         const noteSkip = document.createElement("p");
         noteSkip.className = "hint";
@@ -5046,6 +5071,10 @@ $("ckApply").addEventListener("click", () => {
         const value = d.mode === "voice" ? "voice"
             : d.mode === "none" ? "none" : "dsl:" + tap;
         call("setSpaceHoldTap", value);
+        // 键面文案跟动作同存：语音清空（mic 恒定），其余动作存 ≤8 码位。
+        const face = d.mode === "voice" ? "" : [...(d.spaceFace || "").trim()].slice(0, 8).join("");
+        spaceHoldTextRaw = face;
+        call("setSpaceHoldText", face);
         spaceHoldRaw = d.mode === "voice" || d.mode === "none" ? d.mode : tap;
         const el = document.getElementById("spaceHoldSummary");
         if (el) el.textContent = spaceHoldSummary(spaceHoldRaw);

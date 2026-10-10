@@ -517,6 +517,29 @@ test('symbol custom phrases reorder to slot 3; CJK entries keep engine order (is
     equal(bar(), JSON.stringify(['你', '妮']), 'plain pools untouched');
 });
 
+test('space face text shows for non-voice hold actions', {since: '3.73.40'}, () => {
+    const world = fresh();
+    world.hello({ spaceHoldTap: 'dsl:[panel:clipboard]', spaceHoldText: '📋' });
+    const space = world.$('spaceKey');
+    const face = space.querySelector('.space-face');
+    equal(face && face.textContent, '📋', 'custom label on the space cap');
+    equal(space.querySelector('.space-mic'), null, 'no mic for non-voice action');
+    world.hello({ spaceHoldTap: 'voice', spaceHoldText: '📋' });
+    const space2 = world.$('spaceKey');
+    equal(!!space2.querySelector('.space-mic'), true, 'voice always draws the mic');
+    equal(space2.querySelector('.space-face'), null, 'voice ignores the custom label');
+});
+
+test('space face text clears when the action turns voice', {since: '3.73.40'}, () => {
+    const world = fresh();
+    world.hello({ spaceHoldTap: 'none', spaceHoldText: '剪贴板' });
+    equal(world.$('spaceKey').querySelector('.space-face').textContent, '剪贴板',
+        'label shows for the none action too');
+    world.hello({ spaceHoldTap: 'none', spaceHoldText: '' });
+    equal(world.$('spaceKey').querySelector('.space-face'), null,
+        'empty label renders nothing');
+});
+
 test('space hold 350ms starts voice once, release stops', () => {
     const world = fresh();
     const space = world.$('spaceKey');

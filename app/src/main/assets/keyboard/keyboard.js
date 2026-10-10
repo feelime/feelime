@@ -1271,6 +1271,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 隐藏空格 mic 小标与工具栏麦克风；其余值为定制按键 tap DSL
             //（虚拟定制键，见 bindSpaceHold 的 runCustomCell 分发）。
             this.spaceHoldTap = 'voice';
+            // 长按空格非语音动作时的键面文案（#59 验收延伸）：语音恒画
+            // mic（不读此字段），其余动作显示用户自定义文案（空=无标）。
+            this.spaceHoldText = '';
             this.voiceSession = null;
             this.spaceHoldTimer = 0;
             // 手写板状态（issue #28）：笔迹（书写区局部 CSS px）、在途请求
@@ -3475,6 +3478,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 path.setAttribute('fill', 'currentColor');
                 mic.append(path);
                 button.append(mic);
+            } else if (this.spaceHoldText) {
+                // 非语音动作的自定义键面文案（emoji 可当小图标用）。
+                const label = document.createElement('span');
+                label.className = 'space-face';
+                label.textContent = this.spaceHoldText;
+                button.append(label);
             }
             button.addEventListener('click', () => {
                 // 手写候选在条上时，空格=确认 top1 上屏（issue #28
@@ -10222,13 +10231,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 : (rawHold.startsWith('dsl:') ? rawHold.slice(4) : 'voice');
             const spaceHoldChanged = nextSpaceHold !== this.spaceHoldTap;
             this.spaceHoldTap = nextSpaceHold;
+            // 键面文案只在 spaceKey() 构建时读，与动作同一条「变化即
+            // 重渲染」纪律（旧原生无此字段=空串，不触发）。
+            const nextSpaceText = typeof payload.spaceHoldText === 'string'
+                ? [...payload.spaceHoldText].slice(0, 8).join('') : '';
+            const spaceTextChanged = nextSpaceText !== this.spaceHoldText;
+            this.spaceHoldText = nextSpaceText;
             const nextKbLayout = payload.kbLayout === '14' ? '14' : '26';
             const kbLayoutChanged = nextKbLayout !== this.kbLayout;
             this.kbLayout = nextKbLayout;
             if (modeChanged) this.renderMode();
             else if (kbLayoutChanged && MERGEABLE_14.has(this.mode)) {
                 this.renderMode();
-            } else if (spaceHoldChanged) {
+            } else if (spaceHoldChanged || spaceTextChanged) {
                 this.renderMode();
             }
             // Degraded/warming state arrives with every hello (mode-fallback
