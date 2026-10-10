@@ -242,6 +242,11 @@ class HandwritingEngine(
             // ready 标记把「会话创建」与「绘图/预处理」切开。
             Diagnostics.logCritical("inkSession", "created")
             val vocab = loadVocabulary()
+            // 取证 v3（2026-10-10）：1.3.9 PJC110 六次崩溃全部死在
+            // created→ready 之间（ready 从未到达，inkDrawn/inkInfer 零次），
+            // 窗口内只有两个 native 调用——词表 AssetManager 读取与
+            // outputInfo。两行标记把窗口一分为二，下一份报告直接点名。
+            Diagnostics.logCritical("inkSession", "vocabLoaded n=${vocab.size}")
             if (vocab.isEmpty()) {
                 created.close()
                 Log.w(TAG, "handwriting vocab asset missing")
@@ -252,6 +257,7 @@ class HandwritingEngine(
             // （解码出的字符会整体漂移），按不可用处理。
             val outputVocab = (created.outputInfo.values.firstOrNull() as? TensorInfo)
                 ?.let { it.shape.lastOrNull()?.toInt() } ?: 0
+            Diagnostics.logCritical("inkSession", "outInfoRead n=$outputVocab")
             // 动态/符号维度读不出来时（outputVocab<=0）放行。
             if (outputVocab > 0 && outputVocab != vocab.size) {
                 created.close()
