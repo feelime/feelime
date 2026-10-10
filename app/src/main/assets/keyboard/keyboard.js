@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.39';
+    const KEYBOARD_VERSION = '3.73.40';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -550,10 +550,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 { keys: 'фывапролджэ', indent: true },
                 { keys: 'ячсмитьбю', shift: true, backspace: true },
             ],
+            // 角标按 qwerty-EN 的音位习惯铺满全部 32 键（#59 验收
+            // 反馈：旧方案数字散落、符号缺失、部分键无角标）。行一
+            // 数字 1-0 连续占前 10 键、尾部 -/=（PC ЙЦУКЕН 习惯）；
+            // ё 不占唯一角标位——挂 е 的长按弹层（角标/上滑仍是 5，
+            // 与法语重音同机制）。行二符号对齐 qwerty 音位 + 俄文
+            // 引号 «»；行三 qwerty 符号 + 句读。
             alts: {
-                е: 'ё',
-                а: '1', н: '2', р: '3', о: '4', л: '5',
-                д: '6', ж: '7', э: '8', я: '9', ч: '0',
+                й: '1', ц: '2', у: '3', к: '4', е: ['5', 'ё'], н: '6',
+                г: '7', ш: '8', щ: '9', з: '0', х: '-', ъ: '=',
+                ф: '\\', ы: '/', в: ':', а: ';', п: '(', р: ')',
+                о: '~', л: '"', д: "'", ж: '«', э: '»',
+                я: '@', ч: '_', с: '#', м: '&', и: '?', т: '!',
+                ь: '…', б: ',', ю: '.',
             },
         },
     };
@@ -4209,11 +4218,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** #34 跟手删启动：锚点数学与空格 scrub 同源（在固定阈值跨越处
-         * 定锚、首个跨越恰删一字），步长换成退格键宽的 60%（spec --del-step
-         * 建议值，用实际行内键宽度量）。begin 先行——native 侧恢复缓冲
+         * 定锚、首个跨越恰删一字）。步长也与空格 scrub 同源
+         * （SCRUB_UNIT_BASE_PX / scrubSpeed，#59 验收反馈：键宽×0.6
+         * ≈29px/字是空格 12px/字的 2.4 倍，跟手感明显迟钝；顺带让
+         * 速度档位对退格同样生效）。begin 先行——native 侧恢复缓冲
          * 的光标前文本基线读取是异步的，越早开始越好。 */
         engageDeleteScrub(bsKey, dx, dy, threshold) {
-            this.delUnit = Math.max(12, (bsKey.getBoundingClientRect().width || 44) * 0.6);
+            this.delUnit = SCRUB_UNIT_BASE_PX / this.scrubSpeed;
             const distance = Math.hypot(dx, dy) || threshold;
             const crossingX = this.touchOrigin.x + (dx / distance) * threshold;
             this.delBase = crossingX + this.delUnit;
