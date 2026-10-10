@@ -92,4 +92,18 @@ class WebDavBackupTest {
         assertFalse(WebDavBackup.Config("ftp://x", "", "").valid)
         assertFalse(WebDavBackup.Config("", "", "").valid)
     }
+
+    /** 坚果云根目录 404 修复（2026-10-10）：文件一律进固定子目录。 */
+    @Test
+    fun putAndDirUrlsTargetTheFixedSubdirectory() {
+        val config = WebDavBackup.Config("https://dav.jianguoyun.com/dav/", "u", "p")
+        assertEquals("https://dav.jianguoyun.com/dav/feelime-backup/",
+            WebDavBackup.dirUrl(config))
+        assertEquals("https://dav.jianguoyun.com/dav/feelime-backup/feelime-backup-20261010-120000.json",
+            WebDavBackup.fileUrl(config, "feelime-backup-20261010-120000.json"))
+        // 用户自命名（校验层已拒空白/加号，这里只证编码安全）：中文名
+        // 走百分号编码，不裸拼进 URL。
+        assertTrue(WebDavBackup.fileUrl(config, "feelime-backup-备份.json")
+            .endsWith("/" + java.net.URLEncoder.encode("feelime-backup-备份.json", "UTF-8")))
+    }
 }

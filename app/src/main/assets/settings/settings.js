@@ -393,6 +393,11 @@ const I18N = {
         "webdav.title": "云端备份（WebDAV）",
         "webdav.note": "备份上传到你自己的 WebDAV 网盘（如坚果云）。每次备份都是带时间戳的新文件，不覆盖历史；恢复时从列表里挑一份下载。凭据只保存在本机，不进备份文件。",
         "webdav.urlLabel": "服务器地址",
+        "webdav.providerLabel": "服务商",
+        "webdav.provider.jg": "坚果云",
+        "webdav.provider.inf": "InfiniCLOUD",
+        "webdav.provider.nc": "Nextcloud / 群晖",
+        "webdav.provider.custom": "自定义",
         "webdav.url": "https://dav.jianguoyun.com/dav/feelime/",
         "webdav.userLabel": "用户名",
         "webdav.user": "用户名",
@@ -1095,6 +1100,11 @@ const I18N = {
         "webdav.title": "Cloud backup (WebDAV)",
         "webdav.note": "Uploads backups to your own WebDAV server (e.g. Jianguoyun). Each backup is a new timestamped file - history is never overwritten; pick one from the list to restore. Credentials stay on this device and never travel inside backups.",
         "webdav.urlLabel": "Server URL",
+        "webdav.providerLabel": "Provider",
+        "webdav.provider.jg": "Jianguoyun",
+        "webdav.provider.inf": "InfiniCLOUD",
+        "webdav.provider.nc": "Nextcloud / Synology",
+        "webdav.provider.custom": "Custom",
         "webdav.url": "https://dav.jianguoyun.com/dav/feelime/",
         "webdav.userLabel": "Username",
         "webdav.user": "Username",
@@ -3718,7 +3728,47 @@ function webdavFillConfig() {
         $("webdavUrl").value = cfg.url || "";
         $("webdavUser").value = cfg.user || "";
         $("webdavPass").value = cfg.password || "";
+        webdavSyncProviderSelection();
     } catch (error) { /* 旧壳无桥：保持空表单 */ }
+}
+
+/** 服务商快选（#43 验收反馈）：点选自动填地址；地址与已知服务商
+ *  匹配时反向点亮（手填/恢复回显都认）。无固定地址的服务商只换
+ *  占位示例并聚焦输入框。 */
+const WEBDAV_PROVIDERS = [
+    { key: "jg", url: "https://dav.jianguoyun.com/dav/",
+        ph: "https://dav.jianguoyun.com/dav/" },
+    { key: "inf", url: "", ph: "https://你的账号.infini-cloud.net/dav/" },
+    { key: "nc", url: "", ph: "https://你的服务器/remote.php/dav/files/用户名/" },
+    { key: "custom", url: "", ph: "https://dav.example.com/dav/" },
+];
+
+function webdavProviderChips() {
+    return [...document.querySelectorAll("#webdavProviders .webdav-provider")];
+}
+
+function webdavSyncProviderSelection() {
+    const value = $("webdavUrl").value.trim().replace(/\/+$/, "");
+    webdavProviderChips().forEach(chip => chip.classList.remove("selected"));
+    const hit = WEBDAV_PROVIDERS.find(p =>
+        p.url && p.url.replace(/\/+$/, "") === value);
+    const chip = webdavProviderChips()[WEBDAV_PROVIDERS.indexOf(hit || WEBDAV_PROVIDERS[3])];
+    if (chip) chip.classList.add("selected");
+    $("webdavUrl").placeholder = (hit || WEBDAV_PROVIDERS[3]).ph;
+}
+
+function webdavWireProviders() {
+    webdavProviderChips().forEach((chip, i) => {
+        chip.addEventListener("click", () => {
+            const p = WEBDAV_PROVIDERS[i];
+            if (p.url) $("webdavUrl").value = p.url;
+            $("webdavUrl").placeholder = p.ph;
+            webdavProviderChips().forEach(c => c.classList.remove("selected"));
+            chip.classList.add("selected");
+            if (!p.url) $("webdavUrl").focus();
+        });
+    });
+    $("webdavUrl").addEventListener("input", webdavSyncProviderSelection);
 }
 
 /** feelime-backup-20261009-213905.json → 2026-10-09 21:39:05 */
@@ -3885,6 +3935,7 @@ function renderWebdavStatus(event) {
     setNote("webdavNote", text);
 }
 
+webdavWireProviders();
 $("btnWebdavSave").addEventListener("click", () => {
     // 换了服务器配置，旧名单作废（上一台的名单拿来判这台的重名是错的）。
     webdavCloudNames = null;
