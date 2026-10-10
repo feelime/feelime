@@ -106,4 +106,29 @@ class WebDavBackupTest {
         assertTrue(WebDavBackup.fileUrl(config, "feelime-backup-备份.json")
             .endsWith("/" + java.net.URLEncoder.encode("feelime-backup-备份.json", "UTF-8")))
     }
+
+    /** 子目录用户可改（验收 2026-10-10）：规整规则 + 自定义目录路径。 */
+    @Test
+    fun customSubdirDrivesUrlsWithEncodedSegments() {
+        // 含空白段整体回退默认——URL 表单编码下空格不可靠往返。
+        assertEquals(WebDavBackup.DIR_NAME, WebDavBackup.normalizeDir("我的 备份/x"))
+        val ok = WebDavBackup.Config("https://dav.example.com/dav", "u", "p",
+            WebDavBackup.normalizeDir("手机/2026"))
+        assertEquals("https://dav.example.com/dav/" +
+            java.net.URLEncoder.encode("手机", "UTF-8") + "/" + "2026" + "/",
+            WebDavBackup.dirUrl(ok))
+    }
+
+    @Test
+    fun normalizeDirTrimsRejectsTraversalAndDefaults() {
+        assertEquals("feelime-backup", WebDavBackup.normalizeDir(null))
+        assertEquals("feelime-backup", WebDavBackup.normalizeDir("/feelime-backup///"))
+        assertEquals("", WebDavBackup.normalizeDir("  "))                    // 空=写根（显式选择）
+        assertEquals(WebDavBackup.DIR_NAME, WebDavBackup.normalizeDir("a/../b"))
+        assertEquals(WebDavBackup.DIR_NAME, WebDavBackup.normalizeDir("a+b"))
+        assertEquals("a/b", WebDavBackup.normalizeDir(" a / b "))
+        // 空=写根时，文件 URL 与根直写同路径。
+        val root = WebDavBackup.Config("https://d.example/dav/", "u", "p", "")
+        assertEquals("https://d.example/dav/f.json", WebDavBackup.fileUrl(root, "f.json"))
+    }
 }

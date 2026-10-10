@@ -393,6 +393,9 @@ const I18N = {
         "webdav.title": "云端备份（WebDAV）",
         "webdav.note": "备份上传到你自己的 WebDAV 网盘（如坚果云）。每次备份都是带时间戳的新文件，不覆盖历史；恢复时从列表里挑一份下载。凭据只保存在本机，不进备份文件。",
         "webdav.urlLabel": "服务器地址",
+        "webdav.dirLabel": "子目录",
+        "webdav.dir": "feelime-backup",
+        "webdav.dirHint": "备份文件存放在服务器地址下的这个子目录里。部分服务商（如坚果云）不支持把文件直接存到根目录，建议保留子目录；留空则存到根目录。",
         "webdav.providerLabel": "服务商",
         "webdav.provider.jg": "坚果云",
         "webdav.provider.inf": "InfiniCLOUD",
@@ -1100,6 +1103,9 @@ const I18N = {
         "webdav.title": "Cloud backup (WebDAV)",
         "webdav.note": "Uploads backups to your own WebDAV server (e.g. Jianguoyun). Each backup is a new timestamped file - history is never overwritten; pick one from the list to restore. Credentials stay on this device and never travel inside backups.",
         "webdav.urlLabel": "Server URL",
+        "webdav.dirLabel": "Subdirectory",
+        "webdav.dir": "feelime-backup",
+        "webdav.dirHint": "Backups are stored under this subdirectory of the server URL. Some providers (e.g. Jianguoyun) cannot store files in the root, so keeping a subdirectory is recommended; leave empty to use the root.",
         "webdav.providerLabel": "Provider",
         "webdav.provider.jg": "Jianguoyun",
         "webdav.provider.inf": "InfiniCLOUD",
@@ -3726,6 +3732,7 @@ function webdavFillConfig() {
             ? BRIDGE.webdavGetConfig(token) : "";
         const cfg = raw ? JSON.parse(raw) : {};
         $("webdavUrl").value = cfg.url || "";
+        $("webdavDir").value = typeof cfg.subdir === "string" ? cfg.subdir : "feelime-backup";
         $("webdavUser").value = cfg.user || "";
         $("webdavPass").value = cfg.password || "";
         webdavSyncProviderSelection();
@@ -3932,7 +3939,7 @@ $("btnWebdavSave").addEventListener("click", () => {
     // 换了服务器配置，旧名单作废（上一台的名单拿来判这台的重名是错的）。
     webdavCloudNames = null;
     setNote("webdavNote", t("webdav.note.testing"));
-    call("webdavSaveConfig", $("webdavUrl").value.trim(), $("webdavUser").value.trim(), $("webdavPass").value);
+    call("webdavSaveConfig", $("webdavUrl").value.trim(), $("webdavUser").value.trim(), $("webdavPass").value, $("webdavDir").value.trim());
 });
 $("btnWebdavBackup").addEventListener("click", webdavOpenBackup);
 $("btnWebdavRestore").addEventListener("click", webdavOpenRestore);

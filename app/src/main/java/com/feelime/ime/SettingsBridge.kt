@@ -2539,6 +2539,8 @@ class SettingsBridge(
             prefs.getString("url", "") ?: "",
             prefs.getString("user", "") ?: "",
             prefs.getString("password", "") ?: "",
+            // 未存过（升级用户）= 默认子目录；空串是显式选择（写根）。
+            WebDavBackup.normalizeDir(prefs.getString("subdir", null)),
         )
     }
 
@@ -2552,11 +2554,13 @@ class SettingsBridge(
             .put("url", config.url)
             .put("user", config.user)
             .put("password", config.password)
+            .put("subdir", config.dir)
             .toString()
     }
 
     @JavascriptInterface
-    fun webdavSaveConfig(url: String, user: String, password: String, token: String) = guarded(token) {
+    fun webdavSaveConfig(url: String, user: String, password: String,
+                         subdir: String, token: String) = guarded(token) {
         if (url.length > 512 || user.length > 128 || password.length > 256) {
             pushWebdavStatus("save", false, "TOO_LONG")
             return@guarded
@@ -2565,6 +2569,7 @@ class SettingsBridge(
             .putString("url", url.trim())
             .putString("user", user.trim())
             .putString("password", password)
+            .putString("subdir", WebDavBackup.normalizeDir(subdir))
             .commit()
         // 保存即探测：错误码（AUTH/NOT_FOUND/NO_DAV）当场反馈。
         webdavRun("test") { WebDavBackup.test(webdavConfig()) }

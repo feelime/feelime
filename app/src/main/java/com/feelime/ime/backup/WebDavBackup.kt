@@ -46,11 +46,28 @@ object WebDavBackup {
     /** PROPFIND 的零长请求体（Content-Length: 0，服务器端普遍要求）。 */
     private val EMPTY_BODY = ByteArray(0).toRequestBody(null)
 
-    data class Config(val url: String, val user: String, val password: String) {
+    data class Config(val url: String, val user: String, val password: String,
+                      val dir: String = DIR_NAME) {
         /** 地址规整：去空白、去尾斜杠——列表/上传的 URL 拼接统一走它。 */
         val base: String get() = url.trim().trimEnd('/')
         val valid: Boolean get() = base.startsWith("http://") || base.startsWith("https://")
         val isHttp get() = base.startsWith("http://")
+    }
+
+    /** 子目录名规整（用户可改）：去首尾斜杠、压多余斜杠；「..」/「.」
+     *  段与含空白/加号的段（URL 表单编码不可靠往返，与备份文件名同
+     *  规）一律整体回退默认；空串=写 base 根（普通服务器可用，坚果云
+     *  之类根不可写的由 PUT 真实失败暴露）。 */
+    internal fun normalizeDir(raw: String?): String {
+        // null=未存过（升级用户）→ 默认子目录；空串=用户显式选择写根。
+        if (raw == null) return DIR_NAME
+        val segments = raw.split('/').map { it.trim() }.filter { it.isNotEmpty() }
+        if (segments.isEmpty()) return ""
+        val bad = segments.any { seg ->
+            seg == "." || seg == ".." || seg.contains('+') ||
+                seg.any { it.isWhitespace() }
+        }
+        return if (bad) DIR_NAME else segments.joinToString("/").take(64)
     }
 
     data class Entry(val name: String, val size: Long, val modified: String)
@@ -110,12 +127,17 @@ object WebDavBackup {
      *  MKCOL 幂等无副作用）。ASCII 常量，不参与 URL 编码。 */
     const val DIR_NAME = "feelime-backup"
 
-    internal fun dirUrl(config: Config): String = config.base + "/" + DIR_NAME + "/"
+    internal fun dirUrl(config: Config): String = if (config.dir.isEmpty()) {
+        config.base + "/"
+    } else {
+        config.base + "/" + config.dir.split('/')
+            .joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8") } + "/"
+    }
 
     /** 子目录内文件的绝对 URL（name 在拼接处编码；绝对 URL 进
-     *  [exchangeOnce] 不再二次编码）。 */
+     *  [exchangeOnce] 不再二次编码）。dir 为空时与根直写同路径。 */
     internal fun fileUrl(config: Config, name: String): String =
-        config.base + "/" + DIR_NAME + "/" + java.net.URLEncoder.encode(name, "UTF-8")
+        dirUrl(config) + java.net.URLEncoder.encode(name, "UTF-8")
 
     /** MKCOL 幂等：201 新建 / 405 已存在 / 其它（403 根目录只读等）不
      *  阻断——PUT 自身会给出真实失败码。 */

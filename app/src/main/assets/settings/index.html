@@ -1028,6 +1028,9 @@
       </select>
       <label class="field-label" for="webdavUrl" data-i18n="webdav.urlLabel">服务器地址</label>
       <input id="webdavUrl" type="url" maxlength="512" data-i18n-placeholder="webdav.url" placeholder="https://dav.jianguoyun.com/dav/" autocomplete="off">
+      <label class="field-label" for="webdavDir" data-i18n="webdav.dirLabel">子目录</label>
+      <input id="webdavDir" type="text" maxlength="64" data-i18n-placeholder="webdav.dir" placeholder="feelime-backup" autocomplete="off">
+      <p class="hint block" data-i18n="webdav.dirHint">备份文件存放在服务器地址下的这个子目录里。部分服务商（如坚果云）不支持把文件直接存到根目录，建议保留子目录；留空则存到根目录。</p>
       <label class="field-label" for="webdavUser" data-i18n="webdav.userLabel">用户名</label>
       <input id="webdavUser" type="text" maxlength="128" data-i18n-placeholder="webdav.user" placeholder="用户名" autocomplete="off">
       <label class="field-label" for="webdavPass" data-i18n="webdav.passLabel">应用密码</label>
