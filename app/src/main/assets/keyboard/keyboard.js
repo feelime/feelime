@@ -6303,7 +6303,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     : (this.toolbarYield || composeHidden || overflow.has(dom));
             });
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = this.spaceHoldTap !== 'voice' || this.toolbarYield ||
+            // 工具栏 mic 的显隐只跟布局/让位走：长按空格动作是空格键
+            // 自己的事（76e3c72 曾把「动作非 voice」机械翻译成藏工具栏
+            // mic——设成剪贴板/定制键也藏，1.3.8 用户实测「刚开输入法
+            // 图标丢失、过会儿又被布局对账翻回来」，两条路径打架闪烁）。
+            if (mic) mic.hidden = this.toolbarYield ||
                 (composeHidden && this.voiceState === 'idle');
         }
 
@@ -8976,7 +8980,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('composeExpand').hidden = !this.composing || voiceBusy;
             if (!this.composing && this.expanded && !this.variantReplaying) this.setExpanded(false);
             const mic = document.getElementById('mic');
-            if (mic) mic.hidden = this.spaceHoldTap !== 'voice' ||
+            // 同 auditToolbarTools：不再耦合长按空格动作（用户反馈
+            // 1.3.8 丢图标的另一半触发点——本行在候选渲染高频路径上）。
+            if (mic) mic.hidden =
                 (this.composing && !recording);
             // 手写候选态的整行互斥要压过上面 mic/工具的通用可见性规则：
             // 引擎回声（commitText 后的空事件等）不得把工具栏插回候选行。
