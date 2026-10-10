@@ -205,13 +205,13 @@ function bsKey(world) {
     );
 }
 
-test('delete gesture: left swipe two steps batches backspaceN and closes the session', {since: '3.68.0'}, () => {
+test('delete gesture: left swipe two steps batches backspaceN and closes the session', {since: '3.73.40'}, () => {
     const world = fresh();
     const bs = bsKey(world);
     world.touchDown(bs, 100, 20);
     world.move(bs, 60, 20); // dx=-40 过 38px slop → engage，恰删一字
-    world.move(bs, 30, 20); // 再跨一个 26.4px 步长
-    world.touchUp(bs, 30, 20);
+    world.move(bs, 50, 20); // 再跨一个 12px 步长（与空格 scrub 同源）
+    world.touchUp(bs, 50, 20);
     equal(world.native.of('backspaceGestureBegin').length, 1, 'session begins');
     equal(world.native.of('backspaceN').reduce((s, c) => s + c.args[0], 0), 2,
         'two units deleted in total');
@@ -219,12 +219,12 @@ test('delete gesture: left swipe two steps batches backspaceN and closes the ses
     equal(world.native.of('backspace').length, 0, 'swipe suppresses the tap click');
 });
 
-test('delete gesture: swipe back right restores one unit at a time', {since: '3.68.0'}, () => {
+test('delete gesture: swipe back right restores one unit at a time', {since: '3.73.40'}, () => {
     const world = fresh();
     const bs = bsKey(world);
     world.touchDown(bs, 100, 20);
     world.move(bs, 60, 20); // net 1
-    world.move(bs, 30, 20); // net 2
+    world.move(bs, 50, 20); // net 2
     world.move(bs, 61, 20); // steps=-1 → 净删回到 1：弹回一字
     world.touchUp(bs, 61, 20);
     equal(world.native.of('backspaceRestoreOne').length, 1, 'one unit restored');
@@ -232,7 +232,7 @@ test('delete gesture: swipe back right restores one unit at a time', {since: '3.
     world.touchDown(bs, 100, 20);
     world.move(bs, 60, 20);
     world.move(bs, 61, 20); // 仍在同一格内：无新调用
-    world.move(bs, 120, 20); // 右滑跨两格（-1→+1）：净删 1→0，只恢复 1
+    world.move(bs, 86, 20); // 右滑跨一格（-1→+1）：净删 1→0，只恢复 1
     world.touchUp(bs, 120, 20);
     equal(world.native.of('backspaceRestoreOne').length, 2, 'restore capped at deleted count');
 });
@@ -268,15 +268,15 @@ test('delete gesture: up swipe uses the dedicated clearEditorText channel', {sin
 // codex 评审 P1-1 回执协议：restoreOne 返回 false（无账可弹/基线未结算/
 // 编辑器已换）时，delNet 不推进——净删除仍是位置的诚实函数；后续事件
 // 的重算是幂等重试，不补发删除。
-test('delete gesture: refused restores do not advance the net-delete position', {since: '3.68.0'}, () => {
+test('delete gesture: refused restores do not advance the net-delete position', {since: '3.73.40'}, () => {
     const world = fresh();
     const bs = bsKey(world);
     world.native.restoreResult = false;
     world.touchDown(bs, 100, 20);
     world.move(bs, 60, 20); // engage：net 1
-    world.move(bs, 30, 20); // net 2（backspaceN 共 2）
-    world.move(bs, 61, 20); // 右滑回 steps=-1：两笔恢复被拒，delNet 回滚到 2
-    world.move(bs, 120, 20); // 再右滑（steps=+1）：重算 delta=-2，重试两笔仍被拒
+    world.move(bs, 50, 20); // net 2（backspaceN 共 2）
+    world.move(bs, 61, 20); // 右滑回 steps=-1：恢复被拒，delNet 回滚到 2
+    world.move(bs, 86, 20); // 再右滑（steps=+1）：重算 delta=-1，重试仍被拒
     world.touchUp(bs, 120, 20);
     equal(world.native.of('backspaceN').reduce((s, c) => s + c.args[0], 0), 2,
         'deletes never exceed the swiped distance');
@@ -287,13 +287,13 @@ test('delete gesture: refused restores do not advance the net-delete position', 
 
 // codex 二轮 P2-3：恢复被拒后，同位置的后续事件（含松手前的最终结算）
 // 也要重试——基线在手指原地停顿时结算好后恢复能力即恢复。
-test('delete gesture: refused restore retries on same-position moves and final settle', {since: '3.68.0'}, () => {
+test('delete gesture: refused restore retries on same-position moves and final settle', {since: '3.73.40'}, () => {
     const world = fresh();
     const bs = bsKey(world);
     world.native.restoreResult = false;
     world.touchDown(bs, 100, 20);
     world.move(bs, 60, 20); // engage：net 1
-    world.move(bs, 30, 20); // net 2
+    world.move(bs, 50, 20); // net 2
     world.move(bs, 61, 20); // steps=-1：恢复被拒，delNet 回滚到 2
     world.move(bs, 61, 20); // 同位置：delRetry 强制重算再试一笔
     world.touchUp(bs, 61, 20); // 松手结算：再试一笔
@@ -303,14 +303,14 @@ test('delete gesture: refused restore retries on same-position moves and final s
         'refused + same-position retry + settle retry');
 });
 
-test('delete gesture: accepted restores keep draining the net position', {since: '3.68.0'}, () => {
+test('delete gesture: accepted restores keep draining the net position', {since: '3.73.40'}, () => {
     const world = fresh();
     const bs = bsKey(world);
     world.touchDown(bs, 100, 20);
     world.move(bs, 60, 20); // net 1
-    world.move(bs, 30, 20); // net 2
+    world.move(bs, 50, 20); // net 2
     world.move(bs, 61, 20); // 恢复 1（成功，delNet=1）
-    world.move(bs, 100, 20); // steps=0：恢复 1（成功，delNet=0）
+    world.move(bs, 74, 20); // steps=0：恢复 1（成功，delNet=0）
     world.move(bs, 120, 20); // steps=+1：target=0，无动作
     world.touchUp(bs, 120, 20);
     equal(world.native.of('backspaceRestoreOne').length, 2, 'restores drained both units');
@@ -515,6 +515,29 @@ test('symbol custom phrases reorder to slot 3; CJK entries keep engine order (is
     world.engineState({ mode: 'pinyin', revision: 6, composing: 'ni', rawInput: 'ni',
         candidates: [{ id: 'c7', text: '你' }, { id: 'c8', text: '妮' }], hasNextPage: false });
     equal(bar(), JSON.stringify(['你', '妮']), 'plain pools untouched');
+});
+
+test('space face text shows for non-voice hold actions', {since: '3.73.40'}, () => {
+    const world = fresh();
+    world.hello({ spaceHoldTap: 'dsl:[panel:clipboard]', spaceHoldText: '📋' });
+    const space = world.$('spaceKey');
+    const face = space.querySelector('.space-face');
+    equal(face && face.textContent, '📋', 'custom label on the space cap');
+    equal(space.querySelector('.space-mic'), null, 'no mic for non-voice action');
+    world.hello({ spaceHoldTap: 'voice', spaceHoldText: '📋' });
+    const space2 = world.$('spaceKey');
+    equal(!!space2.querySelector('.space-mic'), true, 'voice always draws the mic');
+    equal(space2.querySelector('.space-face'), null, 'voice ignores the custom label');
+});
+
+test('space face text clears when the action turns voice', {since: '3.73.40'}, () => {
+    const world = fresh();
+    world.hello({ spaceHoldTap: 'none', spaceHoldText: '剪贴板' });
+    equal(world.$('spaceKey').querySelector('.space-face').textContent, '剪贴板',
+        'label shows for the none action too');
+    world.hello({ spaceHoldTap: 'none', spaceHoldText: '' });
+    equal(world.$('spaceKey').querySelector('.space-face'), null,
+        'empty label renders nothing');
 });
 
 test('space hold 350ms starts voice once, release stops', () => {

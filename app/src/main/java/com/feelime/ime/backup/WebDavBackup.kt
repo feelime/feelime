@@ -46,11 +46,28 @@ object WebDavBackup {
     /** PROPFIND 的零长请求体（Content-Length: 0，服务器端普遍要求）。 */
     private val EMPTY_BODY = ByteArray(0).toRequestBody(null)
 
-    data class Config(val url: String, val user: String, val password: String) {
+    data class Config(val url: String, val user: String, val password: String,
+                      val dir: String = DIR_NAME) {
         /** 地址规整：去空白、去尾斜杠——列表/上传的 URL 拼接统一走它。 */
         val base: String get() = url.trim().trimEnd('/')
         val valid: Boolean get() = base.startsWith("http://") || base.startsWith("https://")
         val isHttp get() = base.startsWith("http://")
+    }
+
+    /** 子目录名规整（用户可改）：去首尾斜杠、压多余斜杠；「..」/「.」
+     *  段与含空白/加号的段（URL 表单编码不可靠往返，与备份文件名同
+     *  规）一律整体回退默认；空串=写 base 根（普通服务器可用，坚果云
+     *  之类根不可写的由 PUT 真实失败暴露）。 */
+    internal fun normalizeDir(raw: String?): String {
+        // null=未存过（升级用户）→ 默认子目录；空串=用户显式选择写根。
+        if (raw == null) return DIR_NAME
+        val segments = raw.split('/').map { it.trim() }.filter { it.isNotEmpty() }
+        if (segments.isEmpty()) return ""
+        val bad = segments.any { seg ->
+            seg == "." || seg == ".." || seg.contains('+') ||
+                seg.any { it.isWhitespace() }
+        }
+        return if (bad) DIR_NAME else segments.joinToString("/").take(64)
     }
 
     data class Entry(val name: String, val size: Long, val modified: String)
@@ -86,43 +103,95 @@ object WebDavBackup {
 
     /** 上传一份备份（PUT）。overwrite=false 时带 If-None-Match:* 让
      *  服务器仲裁重名（412→CONFLICT）——客户端名单可能过期/拉取失败，
-     *  「覆盖必须经用户确认」的最终裁判在服务器端，不吃列表竞态。 */
-    fun put(config: Config, name: String, bytes: ByteArray, overwrite: Boolean = false): Outcome<String> =
-        exchange(config, "PUT", name, body = bytes, noClobber = !overwrite).let { outcome ->
-            when (outcome) {
-                is Outcome.Ok -> if (outcome.value.code == 412) Outcome.Fail("CONFLICT")
-                else if (outcome.value.code in 200..299) Outcome.Ok(name)
-                else Outcome.Fail("HTTP_${outcome.value.code}", outcome.value.message)
-                is Outcome.Fail -> outcome
+     *  「覆盖必须经用户确认」的最终裁判在服务器端，不吃列表竞态。
+     *
+     *  文件一律写进固定子目录（[DIR_NAME]）：坚果云等服务器根目录对
+     *  PUT 回 404（文件必须位于目录内，2026-10-10 账号实测定罪——
+     *  PROPFIND 根目录正常所以「测试连接」通过、保存必失败），先
+     *  MKCOL 幂等建目录再写。 */
+    fun put(config: Config, name: String, bytes: ByteArray, overwrite: Boolean = false): Outcome<String> {
+        ensureDir(config)
+        return exchange(config, "PUT", fileUrl(config, name), body = bytes, noClobber = !overwrite)
+            .let { outcome ->
+                when (outcome) {
+                    is Outcome.Ok -> if (outcome.value.code == 412) Outcome.Fail("CONFLICT")
+                    else if (outcome.value.code in 200..299) Outcome.Ok(name)
+                    else Outcome.Fail("HTTP_${outcome.value.code}", outcome.value.message)
+                    is Outcome.Fail -> outcome
+                }
             }
-        }
-
-    /** 列出远端备份（PROPFIND Depth 1 + 前缀过滤，按文件名倒序=最新在前）。 */
-    fun list(config: Config): Outcome<List<Entry>> {
-        val outcome = exchange(config, "PROPFIND", "", depth = "1")
-        return when (outcome) {
-            is Outcome.Fail -> outcome
-            is Outcome.Ok -> when (outcome.value.code) {
-                207, 200 -> Outcome.Ok(
-                    parsePropfind(outcome.value.body?.toString(Charsets.UTF_8) ?: "")
-                        .filter { it.name.startsWith(FILE_PREFIX) && it.name.endsWith(".json") }
-                        .sortedByDescending { it.name })
-                401, 403 -> Outcome.Fail("AUTH", outcome.value.message)
-                else -> Outcome.Fail("HTTP_${outcome.value.code}", outcome.value.message)
-            }
-        }
     }
 
-    /** 下载一份备份（有界读取，[MAX_GET_BYTES]）。 */
+    /** 备份子目录：坚果云等「根目录不可直写」服务器需要文件位于目录
+     *  内；统一走固定子目录让远端结构可预测（普通服务器多一层目录，
+     *  MKCOL 幂等无副作用）。ASCII 常量，不参与 URL 编码。 */
+    const val DIR_NAME = "feelime-backup"
+
+    internal fun dirUrl(config: Config): String = if (config.dir.isEmpty()) {
+        config.base + "/"
+    } else {
+        config.base + "/" + config.dir.split('/')
+            .joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8") } + "/"
+    }
+
+    /** 子目录内文件的绝对 URL（name 在拼接处编码；绝对 URL 进
+     *  [exchangeOnce] 不再二次编码）。dir 为空时与根直写同路径。 */
+    internal fun fileUrl(config: Config, name: String): String =
+        dirUrl(config) + java.net.URLEncoder.encode(name, "UTF-8")
+
+    /** MKCOL 幂等：201 新建 / 405 已存在 / 其它（403 根目录只读等）不
+     *  阻断——PUT 自身会给出真实失败码。 */
+    private fun ensureDir(config: Config) {
+        exchange(config, "MKCOL", dirUrl(config))
+    }
+
+    /** 列出远端备份（PROPFIND Depth 1 + 前缀过滤，按文件名倒序=最新在前）。
+     *  子目录（新布局）与 base 根（1.3.9 直写布局）合并：子目录版优先、
+     *  按名去重；两层都列不到且有硬失败才报错（子目录 404=从未备份，
+     *  不是错误）。 */
+    fun list(config: Config): Outcome<List<Entry>> {
+        val entries = LinkedHashMap<String, Entry>()
+        var authDetail: String? = null
+        var hardFail: Outcome.Fail? = null
+        for (url in listOf(dirUrl(config), config.base)) {
+            val outcome = exchange(config, "PROPFIND", url, depth = "1")
+            when (outcome) {
+                is Outcome.Ok -> when (outcome.value.code) {
+                    207, 200 -> parsePropfind(outcome.value.body?.toString(Charsets.UTF_8) ?: "")
+                        .filter { it.name.startsWith(FILE_PREFIX) && it.name.endsWith(".json") }
+                        .forEach { entries.putIfAbsent(it.name, it) }
+                    401, 403 -> authDetail = authDetail ?: outcome.value.message
+                    // 404：该层不存在（子目录未建）——另一层兜底。
+                    else -> if (hardFail == null) {
+                        hardFail = Outcome.Fail("HTTP_${outcome.value.code}", outcome.value.message)
+                    }
+                }
+                is Outcome.Fail -> if (outcome.code != "HTTP_404" && hardFail == null) {
+                    hardFail = outcome
+                }
+            }
+        }
+        if (entries.isEmpty()) {
+            authDetail?.let { return Outcome.Fail("AUTH", it) }
+            hardFail?.let { return it }
+        }
+        return Outcome.Ok(entries.values.sortedByDescending { it.name })
+    }
+
+    /** 下载一份备份（有界读取，[MAX_GET_BYTES]）。先取子目录（新布局），
+     *  404 回落 base 根（1.3.9 布局）——对调用方透明。 */
     fun get(config: Config, name: String): Outcome<ByteArray> {
-        val outcome = exchange(config, "GET", name, maxBody = MAX_GET_BYTES)
-        return when (outcome) {
-            is Outcome.Fail -> outcome
-            is Outcome.Ok -> when (outcome.value.code) {
-                200 -> Outcome.Ok(outcome.value.body ?: ByteArray(0))
-                401, 403 -> Outcome.Fail("AUTH", outcome.value.message)
-                404 -> Outcome.Fail("NOT_FOUND", outcome.value.message)
-                else -> Outcome.Fail("HTTP_${outcome.value.code}", outcome.value.message)
+        val outcome = exchange(config, "GET", fileUrl(config, name), maxBody = MAX_GET_BYTES)
+        val final = if (outcome is Outcome.Ok && outcome.value.code == 404) {
+            exchange(config, "GET", name, maxBody = MAX_GET_BYTES)
+        } else outcome
+        return when (final) {
+            is Outcome.Fail -> final
+            is Outcome.Ok -> when (final.value.code) {
+                200 -> Outcome.Ok(final.value.body ?: ByteArray(0))
+                401, 403 -> Outcome.Fail("AUTH", final.value.message)
+                404 -> Outcome.Fail("NOT_FOUND", final.value.message)
+                else -> Outcome.Fail("HTTP_${final.value.code}", final.value.message)
             }
         }
     }

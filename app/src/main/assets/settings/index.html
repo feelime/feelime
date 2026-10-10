@@ -1019,8 +1019,18 @@
     <section class="card" id="sec-webdav" aria-labelledby="webdavTitle">
       <div class="section-heading"><h2 id="webdavTitle" data-keywords="webdav 云备份 云端 坚果云 网盘 cloud" data-i18n="webdav.title">云端备份（WebDAV）</h2><span class="eyebrow" data-i18n="backup.badge">备份</span></div>
       <p class="hint block" data-i18n="webdav.note">备份上传到你自己的 WebDAV 网盘（如坚果云）。每次备份都是带时间戳的新文件，不覆盖历史；恢复时从列表里挑一份下载。凭据只保存在本机，不进备份文件。</p>
+      <label class="field-label" for="webdavProvider" data-i18n="webdav.providerLabel">服务商</label>
+      <select id="webdavProvider" class="select">
+        <option value="jg" data-i18n="webdav.provider.jg">坚果云</option>
+        <option value="inf" data-i18n="webdav.provider.inf">InfiniCLOUD</option>
+        <option value="nc" data-i18n="webdav.provider.nc">Nextcloud / 群晖</option>
+        <option value="custom" data-i18n="webdav.provider.custom">自定义…</option>
+      </select>
       <label class="field-label" for="webdavUrl" data-i18n="webdav.urlLabel">服务器地址</label>
-      <input id="webdavUrl" type="url" maxlength="512" data-i18n-placeholder="webdav.url" placeholder="https://dav.jianguoyun.com/dav/feelime/" autocomplete="off">
+      <input id="webdavUrl" type="url" maxlength="512" data-i18n-placeholder="webdav.url" placeholder="https://dav.jianguoyun.com/dav/" autocomplete="off">
+      <label class="field-label" for="webdavDir" data-i18n="webdav.dirLabel">子目录</label>
+      <input id="webdavDir" type="text" maxlength="64" data-i18n-placeholder="webdav.dir" placeholder="feelime-backup" autocomplete="off">
+      <p class="hint block" data-i18n="webdav.dirHint">备份文件存放在服务器地址下的这个子目录里。部分服务商（如坚果云）不支持把文件直接存到根目录，建议保留子目录；留空则存到根目录。</p>
       <label class="field-label" for="webdavUser" data-i18n="webdav.userLabel">用户名</label>
       <input id="webdavUser" type="text" maxlength="128" data-i18n-placeholder="webdav.user" placeholder="用户名" autocomplete="off">
       <label class="field-label" for="webdavPass" data-i18n="webdav.passLabel">应用密码</label>

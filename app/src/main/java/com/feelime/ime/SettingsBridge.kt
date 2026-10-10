@@ -194,6 +194,22 @@ fun readSpaceHoldTap(context: Context): String {
     return if (readVoiceOnSpace(context)) "voice" else "none"
 }
 
+/** 长按空格非语音动作时的空格键面文案（#59 验收延伸）：≤8 码位，
+ *  语音动作恒画 mic 不读此键。 */
+const val PREF_SPACE_HOLD_TEXT = "space_hold_text"
+private const val SPACE_HOLD_TEXT_CP_MAX = 8
+
+fun readSpaceHoldText(context: Context): String {
+    var value = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_SPACE_HOLD_TEXT, null)?.trim() ?: ""
+    // take 按 UTF-16 单元截断会把 emoji 代理对切半个——退到完整边界。
+    if (value.length > SPACE_HOLD_TEXT_CP_MAX) value = value.take(SPACE_HOLD_TEXT_CP_MAX)
+    while (value.isNotEmpty() && Character.isHighSurrogate(value.last())) {
+        value = value.dropLast(1)
+    }
+    return value
+}
+
 /** #36→全局 字母键盘布局（拼音/双拼/英文生效）："26"（默认）|"14"。
  *  旧键 dp_layout 是双拼专属，读到非默认值迁移沿用。 */
 const val PREF_KB_LAYOUT = "kb_layout"
@@ -758,6 +774,7 @@ class SettingsBridge(
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(context))
             .put("kbLayout", readKbLayout(context))
             .put("spaceHoldTap", readSpaceHoldTap(context))
+            .put("spaceHoldText", readSpaceHoldText(context))
             .put("voiceOnSpace", readVoiceOnSpace(context))
             .put("keySoundVolume", readKeySoundVolume(context))
             .put("keyHapticStrength", readKeyHapticStrength(context))
@@ -1206,6 +1223,23 @@ class SettingsBridge(
         if (!ok) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putString(PREF_SPACE_HOLD_TAP, tap).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 长按空格键面文案（与动作配套）：读侧同口径截断（≤8 码位、
+     *  代理对不切半），落盘与广播同 setSpaceHoldTap 的重推链。 */
+    @JavascriptInterface
+    fun setSpaceHoldText(text: String, token: String) = guarded(token) {
+        var value = text.trim()
+        if (value.length > SPACE_HOLD_TEXT_CP_MAX) value = value.take(SPACE_HOLD_TEXT_CP_MAX)
+        while (value.isNotEmpty() && Character.isHighSurrogate(value.last())) {
+            value = value.dropLast(1)
+        }
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_SPACE_HOLD_TEXT, value).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -2505,6 +2539,8 @@ class SettingsBridge(
             prefs.getString("url", "") ?: "",
             prefs.getString("user", "") ?: "",
             prefs.getString("password", "") ?: "",
+            // 未存过（升级用户）= 默认子目录；空串是显式选择（写根）。
+            WebDavBackup.normalizeDir(prefs.getString("subdir", null)),
         )
     }
 
@@ -2518,11 +2554,13 @@ class SettingsBridge(
             .put("url", config.url)
             .put("user", config.user)
             .put("password", config.password)
+            .put("subdir", config.dir)
             .toString()
     }
 
     @JavascriptInterface
-    fun webdavSaveConfig(url: String, user: String, password: String, token: String) = guarded(token) {
+    fun webdavSaveConfig(url: String, user: String, password: String,
+                         subdir: String, token: String) = guarded(token) {
         if (url.length > 512 || user.length > 128 || password.length > 256) {
             pushWebdavStatus("save", false, "TOO_LONG")
             return@guarded
@@ -2531,6 +2569,7 @@ class SettingsBridge(
             .putString("url", url.trim())
             .putString("user", user.trim())
             .putString("password", password)
+            .putString("subdir", WebDavBackup.normalizeDir(subdir))
             .commit()
         // 保存即探测：错误码（AUTH/NOT_FOUND/NO_DAV）当场反馈。
         webdavRun("test") { WebDavBackup.test(webdavConfig()) }

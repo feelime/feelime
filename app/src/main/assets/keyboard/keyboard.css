@@ -1478,6 +1478,19 @@ body.landscape .num-grid { gap: 3px; }
     pointer-events: none;
 }
 #spaceKey.voice .space-mic { color: var(--accent-text); opacity: 1; }
+/* 长按空格非语音动作的自定义键面文案（#59 验收延伸）：与 mic 同一
+ * 槽位同一弱化观感，字号跟键高（≤8 字符）。 */
+#spaceKey .space-face {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: min(13px, calc(var(--kb-row-h, 44px) * 0.3));
+    color: var(--text);
+    opacity: .55;
+    pointer-events: none;
+    white-space: nowrap;
+}
 
 /* Chinese/English toggle: plain text, no accent
  * colour or highlight - the big current-language glyph with the small target
