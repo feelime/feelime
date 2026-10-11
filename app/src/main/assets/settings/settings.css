@@ -92,8 +92,11 @@ body::before {
     inset: 0 0 auto 0;
     /* 24px 下限：个别 WebView 在 edge-to-edge 下报 inset-top=0（AVD
      *  实录），内容会顶进窗口顶部的系统触摸死区——按钮可见但点不动
-     *  （9j 门禁 tap 失灵的根因）。真机 inset>24 时无变化。 */
-    height: calc(max(env(safe-area-inset-top), 24px) + 14px);
+     *  （9j 门禁 tap 失灵的根因）。真机 inset>24 时无变化。
+     *  --app-inset-*（#60）：native 注入的真实 systemBars/cutout 值——
+     *  WebView 的 env(safe-area-inset-*) 只映射挖孔，三键导航栏不在
+     *  其中，避让不能只靠 env()。 */
+    height: calc(max(env(safe-area-inset-top), var(--app-inset-top, 0px), 24px) + 14px);
     background: linear-gradient(var(--bg), transparent);
     pointer-events: none;
     z-index: 5;
@@ -102,7 +105,7 @@ body::after {
     content: "";
     position: fixed;
     inset: auto 0 0 0;
-    height: calc(env(safe-area-inset-bottom) + 10px);
+    height: calc(max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)) + 10px);
     background: linear-gradient(transparent, var(--bg));
     pointer-events: none;
     z-index: 5;
@@ -113,7 +116,10 @@ html { min-height: 100%; background: var(--bg); }
 body {
     min-height: 100dvh;
     margin: 0;
-    padding: 0 calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+    /* #60：--app-ime-bottom = 软键盘高度（adjustResize 在 edge-to-edge
+     *  下失效，native 注入兜底）——键盘弹起时底部 padding 抬高，配合
+     *  settings.js 的 focusin scrollIntoView 把输入框滚进可视区。 */
+    padding: 0 calc(16px + max(env(safe-area-inset-right), var(--app-inset-right, 0px))) calc(16px + max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)) + var(--app-ime-bottom, 0px)) calc(16px + max(env(safe-area-inset-left), var(--app-inset-left, 0px)));
     background: var(--bg);
     color: var(--card-text);
     font: 15px/1.5 system-ui, "Noto Sans CJK SC", sans-serif;
@@ -136,7 +142,7 @@ textarea:focus-visible, summary:focus-visible {
 .hero {
     max-width: 680px;
     margin: 0 auto;
-    padding: calc(12px + max(env(safe-area-inset-top), 24px)) 4px 12px;
+    padding: calc(12px + max(env(safe-area-inset-top), var(--app-inset-top, 0px), 24px)) 4px 12px;
 }
 
 .hero-mark { display: flex; align-items: center; gap: 12px; }
@@ -200,7 +206,7 @@ main { max-width: 680px; margin: 0 auto; }
     gap: 10px;
     max-width: 680px;
     margin: 0 auto;
-    padding: calc(14px + max(env(safe-area-inset-top), 24px)) 4px 10px;
+    padding: calc(14px + max(env(safe-area-inset-top), var(--app-inset-top, 0px), 24px)) 4px 10px;
 }
 
 .page-back {
@@ -998,7 +1004,7 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
  * 页底内容，用户两轮实录）。body 底 padding 兜 safe area。 */
 .page[data-page="customkeys"] {
     display: flex; flex-direction: column;
-    height: calc(100dvh - 16px - env(safe-area-inset-bottom));
+    height: calc(100dvh - 16px - max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)));
 }
 /* flex 列容器会吞掉 page-head 的块级宽度（shrink-to-fit 后整体右移，
  * 与其他页左对齐不一致——用户实录）：显式拉满。 */
@@ -1016,7 +1022,10 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
     position: absolute; left: 0; right: 0; bottom: 0;
     background: var(--card, #fff); color: inherit;
     border-radius: 16px 16px 0 0; padding: 4px 16px 0;
-    max-height: 84dvh;
+    /* #60：键盘弹起时 sheet 抬到键盘上方（fixed 布局不吃 body 的
+     *  --app-ime-bottom padding，要自己挪）。 */
+    bottom: var(--app-ime-bottom, 0px);
+    max-height: calc(84dvh - var(--app-ime-bottom, 0px));
     /* 头固定、内容可滚（滚出渐隐让用户感知下方还有内容）、按钮吸底。 */
     display: flex; flex-direction: column;
     box-shadow: 0 -6px 24px rgba(0, 0, 0, .18);
@@ -1027,11 +1036,11 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
     padding: 2px 0 10px; overscroll-behavior: contain; }
 .ck-modal-x { margin-left: auto; border: 0; background: none; font-size: 22px; line-height: 1; padding: 4px 8px; color: inherit; cursor: pointer; }
 .ck-modal-foot { flex: none; display: flex; align-items: center; gap: 10px;
-    padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); }
+    padding: 10px 0 calc(12px + max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px))); }
 .ck-modal-foot .btn { flex: 1; height: 50px; border-radius: 13px;
     font-size: 16px; font-weight: 600; justify-content: center; }
 .ck-modal-foot .save-note { position: absolute; left: 16px; right: 16px;
-    bottom: calc(66px + env(safe-area-inset-bottom)); text-align: center; }
+    bottom: calc(66px + max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px))); text-align: center; }
 #ckModal { overflow: visible; }
 .ck-btn-danger { color: var(--danger, #dc2626); border-color: color-mix(in srgb, var(--danger, #dc2626) 45%, transparent); background: transparent; }
 

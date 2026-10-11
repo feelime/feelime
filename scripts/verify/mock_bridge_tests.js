@@ -1030,7 +1030,7 @@ test('long-press popup follows the pressing finger while a co-touch holds', {sin
 // ---- 1.3.9 复发（Android 16 真机，多指打字风格）四道防线 ----
 // 根因：owner 手指的 end 永不到达（或浏览器触点报告停滞）+ 多指在场
 // 屏蔽「全新序列」cancelTouches 兜底 → 浮层没有任何未来关闭事件。
-test('disconnected popup owner retracts on any later touchstart snapshot', () => {
+test('disconnected popup owner retracts on any later touchstart snapshot', {since: '3.73.38'}, () => {
     const world = fresh();
     const v = world.key('v');
     const k = world.key('k');
@@ -1050,7 +1050,7 @@ test('disconnected popup owner retracts on any later touchstart snapshot', () =>
     world.dispatch(k, 'touchend', 110, 30, { changedTouches: [touchPoint(3,110,30)], touches: [] });
 });
 
-test('disconnected popup owner retracts on a later touchmove snapshot', () => {
+test('disconnected popup owner retracts on a later touchmove snapshot', {since: '3.73.38'}, () => {
     const world = fresh();
     const v = world.key('v');
     const k = world.key('k');
@@ -1064,7 +1064,7 @@ test('disconnected popup owner retracts on a later touchmove snapshot', () => {
         'disconnected owner retracted by the move reconciliation');
 });
 
-test('popup stall watchdog retracts after 5s without owner movement', () => {
+test('popup stall watchdog retracts after 5s without owner movement', {since: '3.73.38'}, () => {
     const world = fresh();
     const v = world.key('v');
     world.dispatch(v, 'touchstart', 20, 20, { changedTouches: [touchPoint(1,20,20)], touches: [touchPoint(1,20,20)] });
@@ -1088,7 +1088,7 @@ test('popup stall watchdog retracts after 5s without owner movement', () => {
     assert(world.$('keyPopup').classList.contains('open'), 'intermittent owner drags keep the popup (watchdog reset)');
 });
 
-test('a moving co-finger must not keep a stalled owner alive', () => {
+test('a moving co-finger must not keep a stalled owner alive', {since: '3.73.38'}, () => {
     const world = fresh();
     const v = world.key('v');
     const k = world.key('k');
@@ -1111,7 +1111,7 @@ test('a moving co-finger must not keep a stalled owner alive', () => {
         'co-finger moves do not reset the stalled owner watchdog (6s total)');
 });
 
-test('split popups never arm the stall watchdog', () => {
+test('split popups never arm the stall watchdog', {since: '3.73.38'}, () => {
     const world = new KeyboardWorld();
     world.js = world.js.replace('const keyboard = new FeelimeKeyboard();',
         'const keyboard = window.testKeyboard = new FeelimeKeyboard();');
@@ -1128,7 +1128,7 @@ test('split popups never arm the stall watchdog', () => {
     kb.popup = null;
 });
 
-test('renderLetters and resetToHome cancel a lingering popup session', () => {
+test('renderLetters and resetToHome cancel a lingering popup session', {since: '3.73.38'}, () => {
     const world = new KeyboardWorld();
     world.js = world.js.replace('const keyboard = new FeelimeKeyboard();',
         'const keyboard = window.testKeyboard = new FeelimeKeyboard();');

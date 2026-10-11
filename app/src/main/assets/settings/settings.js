@@ -5295,3 +5295,21 @@ document.querySelectorAll("[data-back]").forEach(back => {
 /* Apply browser fallback before the first bridge hello. Native state may
  * immediately replace it with uiLocale/uiLanguage. */
 applyLocale();
+
+// #60：软键盘遮挡输入框——edge-to-edge 下 adjustResize 失效，键盘高度
+// 由 native 注入 --app-ime-bottom（body 底 padding 抬高），获焦元素滚
+// 进可视区（fixed 弹层内的输入靠 sheet 上移 + 容器自身滚动）。
+document.addEventListener("focusin", (event) => {
+    const el = event.target;
+    if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return;
+    if (typeof el.scrollIntoView !== "function") return;
+    // 延后一拍等 --app-ime-bottom 落到 body padding（insets 注入在
+    // 键盘动画起点，同帧滚动会少滚一截）。behavior 必须 instant：
+// smooth 依赖 rAF，键盘弹起窗口被挤压时 rAF 停摆——滚动静默不动
+// （AVD 实录，键盘页 rAF 停摆同类）。
+    // 同步先滚一次：键盘弹起的窗口冻结会整批丢 timer（AVD 实录），
+    // 只靠 setTimeout 兜底的话滚动静默失效。同步滚到位后 timer 重滚
+    // 幂等（insets padding 已落也只会微调）。
+    el.scrollIntoView({ block: "center", behavior: "instant" });
+    setTimeout(() => el.scrollIntoView({ block: "center", behavior: "instant" }), 120);
+});

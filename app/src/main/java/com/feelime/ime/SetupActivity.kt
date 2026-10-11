@@ -55,6 +55,9 @@ class SetupActivity : AppCompatActivity() {
      * finishing or has been destroyed. */
     @Volatile private var destroyed = false
 
+    /** #60：最近一次注入页面的 insets CSS 变量脚本（去重 + 页面重载重放）。 */
+    @Volatile private var lastInsetScript: String? = null
+
     /** K1 gate oracle: the launch nonce rides this dedicated 1px view - a
      * populated WebView a11y tree shadows the WebView's own
      * contentDescription, so the dump would never show it there. */
@@ -252,6 +255,46 @@ class SetupActivity : AppCompatActivity() {
         }
         rootLayout.addView(launchMarker, LinearLayout.LayoutParams(1, 1))
         bridge = SettingsBridge(this, host)
+        // #60：edge-to-edge 下 WebView 的 env(safe-area-inset-*) 只映射
+        // 挖孔（cutout），三键导航栏不属于 cutout——无挖孔的机器 inset
+        // 恒 0，CSS 避让全失效（AVD 实录：底部设置行被导航条压住）；且
+        // adjustResize 在 decorFits=false 下失效，软键盘 insets 无人消费
+        // （输入框被键盘盖住）。真实 insets 由 native 测得注入 CSS 变量
+        // （--app-inset-* / --app-ime-bottom），settings.css 以
+        // max(env(), var()) 兜住——注入的是变量不是 padding，页面背景
+        // 仍铺满全屏，不会露出 1.3.9 二轮反馈的 native 深底割裂带。
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
+            val bars = insets.getInsets(
+                androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                    androidx.core.view.WindowInsetsCompat.Type.displayCutout(),
+            )
+            val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime())
+            // WindowInsets 是物理 px，页面 CSS 要 CSS px——除以 density
+            // 再注入（否则 density≠1 的机器避让量随密度成倍放大）。
+            val density = resources.displayMetrics.density
+            fun css(px: Int) = (px / density).toInt().toString() + "px"
+            val script = buildString {
+                append("document.documentElement.style.setProperty('--app-inset-top','").append(css(bars.top)).append("');")
+                append("document.documentElement.style.setProperty('--app-inset-bottom','").append(css(bars.bottom)).append("');")
+                append("document.documentElement.style.setProperty('--app-inset-left','").append(css(bars.left)).append("');")
+                append("document.documentElement.style.setProperty('--app-inset-right','").append(css(bars.right)).append("');")
+                append("document.documentElement.style.setProperty('--app-ime-bottom','").append(css(ime.bottom)).append("');")
+                // 键盘弹起注入完成后重滚获焦元素：focusin 时刻的同步滚动
+                // 会被 clamp（此刻 --app-ime-bottom 还没落到 body padding，
+                // 文档高度不够，scrollIntoView 的目标 scrollY 超出上限，
+                // AVD 实录被压回原位）；兜底 setTimeout 又撞上键盘弹起的
+                // 窗口 timer 冻结整批丢。注入是 native 侧 evaluate，执行
+                // 不依赖页面 timer——在这里重滚一次即可到位。
+                append("var a=document.activeElement;")
+                append("if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')")
+                append("&&a.scrollIntoView)a.scrollIntoView({block:'center',behavior:'instant'});")
+            }
+            if (script != lastInsetScript) {
+                lastInsetScript = script
+                pushInsetScript()
+            }
+            insets
+        }
         contentResolver.registerContentObserver(
             Settings.Secure.getUriFor(Settings.Secure.DEFAULT_INPUT_METHOD),
             false,
@@ -433,6 +476,17 @@ class SetupActivity : AppCompatActivity() {
             .put("uiLocale", UiLanguage.locale(this))
             .put("appIcon", com.feelime.ime.appIconDataUri(this))
         bridge.evaluate("window.FeelimeSettings && window.FeelimeSettings.onBridgeHello($payload)")
+        // 页面（重）加载后 documentElement 上的 CSS 变量随 DOM 重置——
+        // ready 时机重放一次最近 insets（#60）。
+        pushInsetScript()
+    }
+
+    /** #60 的 insets 注入（值变化时由 listener 记录在 lastInsetScript）。 */
+    private fun pushInsetScript() {
+        val script = lastInsetScript ?: return
+        val view = webView ?: return
+        runCatching { view.evaluateJavascript(script, null) }
+            .onFailure { Log.w(TAG, "inset css push failed", it) }
     }
 
     private fun themeName(): String {
