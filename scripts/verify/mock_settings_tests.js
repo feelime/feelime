@@ -2505,12 +2505,20 @@ test('skin hex boxes: invalid input rolls back; follow state composes from the t
     const last = m => world.native.of(m).pop().args[0];
     equal(last('setKeyHue'), -1, 'follow resets the hue');
     equal(last('setKeyL'), 0, 'follow resets the lift too');
-    // state 回显：亮度偏移下发光回到框里。
+    // state 回显：亮度偏移下发后，框显与合成一致；确认值同步（非法
+    // 回滚的目标）。
     const state = JSON.parse(JSON.stringify(BASE_STATE));
     state.themeL = 20; state.keyL = -10;
     world.push(state);
-    assert(g.feelHexOf('theme') === world.$('themeHex').value
-        || true, 'composed color consistent after push');
+    equal(world.$('themeHex').value, g.feelHexOf('theme'),
+        'composed color consistent after push');
+    // 截限后的实际采用色必须回显（review P3：旧实现提交后仍显示用户
+    // 输入的假色）。
+    const box = world.$('themeHex');
+    box.value = '#FFF3B0';
+    box.oninput(); box.onchange();
+    equal(box.value, g.feelHexOf('theme'), 'clamped result is echoed back after commit');
+    assert(box.value !== '#FFF3B0', 'the unattainable input is not echoed');
 });
 
 test('skin page row order: tints, saturations, hex codes, opacity, backgrounds, preview last', () => {

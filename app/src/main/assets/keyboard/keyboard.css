@@ -720,7 +720,8 @@ body.landscape { --kb-gap: 4px; }
     border: 0;
     border-radius: var(--radius-key);
     background: var(--key);
-    color: var(--text);
+    /* #61 review P1：键面亮度偏移过大时白字对比崩，JS 设 --key-ink 翻深墨；缺省回落 --text。 */
+    color: var(--key-ink, var(--text));
     font-size: 13px;
     font-weight: 550;
     display: flex;
@@ -835,7 +836,7 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
     bottom: 3px;
     font-size: 9px;
     font-weight: 400;
-    color: var(--key-subtext);
+    color: var(--key-ink, var(--key-subtext));
 }
 /* 方向 category: two text rows top-aligned inside the three-row slot. */
 .sym-arrows {
@@ -1121,7 +1122,7 @@ body.landscape .edit-grid { gap: 4px 5px; }
     top: 2px;
     right: 7px;
     font-size: 10px;
-    color: var(--key-subtext);
+    color: var(--key-ink, var(--key-subtext));
 }
 /* 字母组主字形不加重——kb-key 的 550 在大号字母组上显得过粗（用户反馈） */
 .t9-group { font-size: min(20px, calc(var(--kb-row-h, 44px) * 0.46)); font-weight: 400; }
@@ -1131,7 +1132,7 @@ body.landscape .edit-grid { gap: 4px 5px; }
     top: 2px;
     left: 5px;
     font-size: 10px;
-    color: var(--key-subtext);
+    color: var(--key-ink, var(--key-subtext));
     letter-spacing: 1px;
 }
 /* 底行：123 与中英各 2/3 键宽，省出的空间全给 mic/空格（5/3 键宽）。 */
@@ -1507,7 +1508,7 @@ body.landscape .num-grid { gap: 3px; }
     /* muted is near-invisible on the special key surface in the light theme
      * (users read it as "missing"); text colour at 55% reads on
      * both themes. */
-    color: var(--key-subtext);
+    color: var(--key-ink, var(--key-subtext));
 }
 
 /* The punctuation slot's main glyph sits dead-center; the small

@@ -2054,6 +2054,30 @@ function hexToHsl(str) {
     return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
+/** 墨色对比度择优（review #61-P5：固定阈值在纯绿等色上误判，白字
+ * 1.37:1 不可读）——两墨色与底色的 WCAG 对比度取高者。 */
+function feelInkOn(bgHex) {
+    const channel = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+    const lum = hex => {
+        const n = parseInt(hex.slice(1), 16);
+        return .2126 * channel(n >> 16 & 255) + .7152 * channel(n >> 8 & 255) + .0722 * channel(n & 255);
+    };
+    const L = lum(bgHex);
+    const better = ink => (Math.max(L, ink) + .05) / (Math.min(L, ink) + .05);
+    return better(lum("#1a1a1a")) >= better(lum("#ffffff")) ? "#1a1a1a" : "#fff";
+}
+
+/** 整组编辑会话守卫（review #61-P4）：任一色号框聚焦=编辑中，滑条
+ * 显示值/预览不被异步回推拽回（旧守卫只看滑条自身焦点）。 */
+function hexEditing() {
+    const a = document.activeElement;
+    return !!a && (a.id === "themeHex" || a.id === "keyHex");
+}
+
+// 最近一次确认（提交成功/state 合成）的色号：非法输入回滚的目标——
+// 回到「已确认值」而非编辑草稿（review #61-P4：草稿混用会滚错）。
+let themeHexConfirmed = "", keyHexConfirmed = "";
+
 /** 两组当前合成色（跟随态键面取背景组 hue/sat、l 用键面组自己的）。 */
 function feelHexOf(group) {
     if (group === "theme") {
@@ -2066,13 +2090,14 @@ function feelHexOf(group) {
 }
 
 /** 色号框回显（滑条拖动/回推后调用；hex 框正在编辑时不打扰）。 */
-function refreshHexBoxes() {
+function refreshHexBoxes(force) {
     [["themeHex", "themeHexSwatch", "theme"], ["keyHex", "keyHexSwatch", "key"]]
         .forEach(([inputId, swId, group]) => {
             const input = document.getElementById(inputId);
-            if (!input || document.activeElement === input) return;
+            if (!input || (!force && document.activeElement === input)) return;
             const hex = feelHexOf(group);
             input.value = hex;
+            if (group === "theme") themeHexConfirmed = hex; else keyHexConfirmed = hex;
             const sw = document.getElementById(swId);
             if (sw) sw.style.background = hex;
         });
@@ -2107,14 +2132,14 @@ function bindHexBox(group) {
     const input = document.getElementById(group === "theme" ? "themeHex" : "keyHex");
     if (!input) return;
     input.oninput = () => {
-        const v = input.value;
-        const sw = document.getElementById(group === "theme" ? "themeHexSwatch" : "keyHexSwatch");
-        if (hexToHsl(v)) { if (sw) sw.style.background = v.trim().replace(/^#?/, "#"); }
-        feelApplyHex(group, v);
+        feelApplyHex(group, input.value);
     };
     input.onchange = () => {
         if (!feelApplyHex(group, input.value)) {
-            refreshHexBoxes();   // 非法输入回滚为当前合成色
+            // 非法输入：回滚到最近确认值（已提交/state 合成），不是编辑
+            // 草稿（review #61-P4）。
+            feelApplyHex(group, group === "theme" ? themeHexConfirmed : keyHexConfirmed);
+            refreshHexBoxes(true);
             return;
         }
         if (group === "theme") {
@@ -2126,6 +2151,9 @@ function bindHexBox(group) {
             call("setKeySat", keySatShown);
             call("setKeyL", keyLShown);
         }
+        // 提交后强制回显实际采用色（截限后不再是用户输入的假色，
+        // review #61-P3）。
+        refreshHexBoxes(true);
     };
 }
 // 预览素材（用户验收五轮）：按键不透明度 + 亮/暗背景图（state 带
@@ -2265,7 +2293,7 @@ function renderFeel(state) {
         // 本地值——否则旧回包会把滑条拽回旧 hue，松手提交的就是错值。
         // 显示值存模块级（themeHueShown 等）：renderFeel 每轮重建局部
         // let，跳过赋值也保不住上一轮的拖动值（codex R2 复核）。
-        if (document.activeElement !== hueInput) {
+        if (document.activeElement !== hueInput && !hexEditing()) {
             themeHueShown = hasCustomHue ? Math.round(hue)
                 : PRESET_HUE[THEME_PRESET_LIST.includes(state.themePreset) ? state.themePreset : "classic"] || 160;
             hueInput.value = String(themeHueShown);
@@ -2289,7 +2317,7 @@ function renderFeel(state) {
     const satInput = $("themeSat");
     if (satInput) {
         const sat = Number(state.themeSat);
-        if (document.activeElement !== satInput) {
+        if (document.activeElement !== satInput && !hexEditing()) {
             themeSatShown = Number.isFinite(sat) && sat >= 0 && sat <= 100 ? Math.round(sat) : 100;
             satInput.value = String(themeSatShown);
         }
@@ -2312,7 +2340,7 @@ function renderFeel(state) {
         // 不得把它翻回跟随，否则预览又跳回背景组取值。
         if (document.activeElement !== keyHueInput) keyHueFollow = !hasKeyHue;
         // 焦点守卫覆盖到显示值与预览（模块级变量才有「保留」可言）。
-        if (document.activeElement !== keyHueInput) {
+        if (document.activeElement !== keyHueInput && !hexEditing()) {
             keyHueShown = hasKeyHue ? Math.round(kv) : themeHueShown;
             keyHueInput.value = String(keyHueShown);
             keyHueInput.style.setProperty("--thumb-hue", String(keyHueShown));
@@ -2366,7 +2394,7 @@ function renderFeel(state) {
         const hasKeySat = Number.isFinite(ks) && ks >= 0 && ks <= 100;
         // 跟随态同受焦点守卫（见 keyHue）。
         if (document.activeElement !== keySatInput) keySatFollow = !hasKeySat;
-        if (document.activeElement !== keySatInput) {
+        if (document.activeElement !== keySatInput && !hexEditing()) {
             keySatShown = hasKeySat ? Math.round(ks) : themeSatShown;
             keySatInput.value = String(keySatShown);
         }
@@ -4710,7 +4738,11 @@ function ckRenderRows(skipFit) {
             chip.className = "ck-chip" + (!styled && cell.color ? " ck-" + cell.color : "");
             if (cell.span === 2 || cell.span === 3) chip.dataset.span = String(cell.span);
             if (styled) {
-                if (hexM) { chip.style.background = cell.color; chip.style.borderColor = cell.color; }
+                if (hexM) {
+                    chip.style.background = cell.color;
+                    chip.style.borderColor = cell.color;
+                    chip.style.color = feelInkOn(cell.color);
+                }
                 else {
                     const s = hueM[2] != null ? hueM[2] : 65;
                     chip.style.background = "hsl(" + hueM[1] + ", " + s + "%, 45%)";
@@ -4907,7 +4939,11 @@ function ckBindDrag(chip) {
         const ghHex = /^#[0-9a-fA-F]{6}$/.test(cell.color || "");
         if (!ghHue && !ghHex && cell.color) ghost.classList.add("ck-" + cell.color);
         else if (ghHue || ghHex) {
-            if (ghHex) { ghost.style.background = cell.color; ghost.style.borderColor = cell.color; }
+            if (ghHex) {
+                ghost.style.background = cell.color;
+                ghost.style.borderColor = cell.color;
+                ghost.style.color = feelInkOn(cell.color);
+            }
             else {
                 const s = ghHue[2] != null ? ghHue[2] : 65;
                 ghost.style.background = "hsl(" + ghHue[1] + ", " + s + "%, 45%)";

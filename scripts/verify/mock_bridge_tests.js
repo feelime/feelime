@@ -7480,7 +7480,7 @@ test('mode switch clears assoc words', {since: '3.33.0'}, () => {
     equal(assocCount(), 0, 'mode change clears the assoc bar');
 });
 
-test('t9 long-press popup: all cells land literally (digit included, #62)', {since: '3.35.0'}, () => {
+test('t9 long-press popup: letters/symbols land literally, digit feeds the engine', {since: '3.35.0', until: '3.73.41'}, () => {
     const world = fresh({ mode: 't9' });
     world.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
@@ -7606,8 +7606,22 @@ test('t9 long-press popup: all cells land literally (digit included, #62)', {sin
     worldFling.touchUp(four, 460, 700);
     equal(worldFling.native.of('key').length, 0, 'fling-out release lands nothing');
     equal(worldFling.native.of('commitText').length, 0, 'fling-out release commits nothing');
-    // 不拖直接松手 = 预选数字格，字面落 editor（issue #62：旧规则「与
-    // 点按同义、通配进引擎」让长按选数字形同直接按键）。
+    // 旧规则（≤3.73.41）：不拖松手 = 预选数字格，与点按同义（通配数字
+    // 进引擎）。新规则（#62，3.73.42 起数字字面落）由下方的专测覆盖。
+    const world2 = fresh({ mode: 't9' });
+    world2.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    const two2 = world2.key('2');
+    world2.touchDown(two2);
+    world2.clock.advance(360);
+    world2.touchUp(two2);
+    const keys2 = world2.native.of('key');
+    equal(keys2[keys2.length - 1].args[0], '2', 'release on the digit cell feeds the wildcard');
+});
+
+test('t9 long-press digit lands literally with composing + slide-back (#62)', {since: '3.73.42'}, () => {
+    // 新规则专测：不拖松手 = 预选数字格，字面落 editor（#62 用户裁定：
+    // 旧规则「与点按同义、通配进引擎」让长按选数字形同直接按键）。
     const world2 = fresh({ mode: 't9' });
     world2.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
@@ -7635,7 +7649,8 @@ test('t9 long-press popup: all cells land literally (digit included, #62)', {sin
     const worldB = fresh({ mode: 't9' });
     worldB.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
-    pinCard(worldB);
+    worldB.document.getElementById('keyPopup').getBoundingClientRect =
+        () => ({ left: 0, top: 0, right: 500, bottom: 400, width: 500, height: 400 });
     const sevenB = worldB.key('7');
     worldB.touchDown(sevenB, 20, 20);
     worldB.clock.advance(360);
@@ -9294,16 +9309,25 @@ test('lang keys: layouts map modes (dp/direct) and t9 stays default', {since: '3
         true, 'direct mode reads the english table');
 });
 
-console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
-    (skipped ? `, ${skipped} skipped (era-gated)` : '') +
-    ` [keyboard ${KEYBOARD_VERSION}] ==`);
-if (failed) {
-    console.log('failures:', failures.join(' | '));
-    process.exit(1);
-}// 版本双处一致性（发版纪律，1.2.2 曾漂移 5 个版本）：keyboard.js 的
+// 版本双处一致性（发版纪律，1.2.2 曾漂移 5 个版本）：keyboard.js 的
 // KEYBOARD_VERSION 常量（握手上报给 native，设置页显示用它）必须与
 // assets/keyboard/VERSION 文件（built-in 副本刷新判断用它）一致——
 // 两处漏一处 = 设备副本刷新了但版本显示滞后的隐性漂移。
+test('bright keycap lift flips the ink for readability (#61 review P1)', {since: '3.73.42'}, () => {
+    // 暗色模式：键面设计 l=37，偏移 +45 → 合成 82（>60）翻深墨；
+    // +10 → 47（≤60）保持白墨（回落 --text）。
+    const hot = fresh({ keyL: 45 });
+    equal(hot.document.documentElement.style.getPropertyValue('--key-ink'), '#1a1a1a',
+        'over-bright keycap gets dark ink');
+    const cool = fresh({ keyL: 10 });
+    assert(!cool.document.documentElement.style.getPropertyValue('--key-ink'),
+        'moderate lift keeps the default ink');
+    // 亮色模式：--text 本就是深墨，不干预。
+    const light = fresh({ keyL: 45, themeMode: 'light' });
+    assert(!light.document.documentElement.style.getPropertyValue('--key-ink'),
+        'light theme never overrides the ink');
+});
+
 test('skin lift offsets apply as --bg-l/--key-l inline vars (#61)', {since: '3.73.42'}, () => {
     const world = fresh({ themeHue: 200, themeSat: 80, themeL: 25, keyHue: 300, keySat: 60, keyL: -15 });
     const root = world.document.documentElement;

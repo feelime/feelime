@@ -594,8 +594,30 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             w.setBackgroundDrawable(object : android.graphics.drawable.Drawable() {
                 private val paint = android.graphics.Paint()
                 override fun draw(canvas: android.graphics.Canvas) {
-                    val strip = navBottomInset()
-                    if (strip <= 0 || color == Color.TRANSPARENT) return
+                    if (color == Color.TRANSPARENT) return
+                    // #57b（小米平板 A14 横屏底部镂空，codex 定位）：补色
+                    // 带要盖的是「窗口里没被 WebView 盖住」的底边——旧代码
+                    // 用 navBottomInset()（=WebView 已覆盖导航区的 overlap）
+                    // 当补色高度：Decor 给内容根留 bottomMargin 时 WebView
+                    // 底边高于窗口底，overlap=0 → 补 0px → 那段窗口背景
+                    // （导航栏已置透明）镂空透出宿主。两个几何量分开取：
+                    // overlap 管 CSS 避让语义，hole 管「窗口底 - WebView
+                    // 底」的真正缺口，取大者保证都不露底。
+                    var hole = 0
+                    if (android.os.Build.VERSION.SDK_INT >= 30 && isInputViewShown) {
+                        val view = keyboardView
+                        if (view != null && view.isLaidOut && view.height > 0) {
+                            val location = IntArray(2)
+                            view.getLocationOnScreen(location)
+                            val metrics = getSystemService(
+                                android.view.WindowManager::class.java,
+                            ).currentWindowMetrics
+                            hole = (metrics.bounds.bottom -
+                                (location[1] + view.height)).coerceAtLeast(0)
+                        }
+                    }
+                    val strip = maxOf(navBottomInset(), hole)
+                    if (strip <= 0) return
                     paint.color = color
                     canvas.drawRect(
                         0f, (bounds.height() - strip).toFloat(),

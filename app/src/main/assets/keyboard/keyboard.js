@@ -5958,13 +5958,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         const hueM = cell.color ? /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color) : null;
                         const hexM = cell.color ? /^#[0-9a-fA-F]{6}$/.test(cell.color) : false;
                         if (hexM) {
-                            // #61 色号键帽：亮度定文字黑/白（l>60 深字）。
-                            const n = parseInt(cell.color.slice(1), 16);
-                            const lum = 0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255)
-                                + 0.114 * (n & 255);
+                            // #61 色号键帽：两墨色与底色的 WCAG 对比度
+                            // 择优（review P5：亮度阈值在纯绿上误判）。
+                            const chan = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+                            const lum = hex => {
+                                const n = parseInt(hex.slice(1), 16);
+                                return .2126 * chan(n >> 16 & 255) + .7152 * chan(n >> 8 & 255) + .0722 * chan(n & 255);
+                            };
+                            const L = lum(cell.color);
+                            const better = ink => (Math.max(L, ink) + .05) / (Math.min(L, ink) + .05);
                             button.style.background = cell.color;
                             button.style.borderColor = cell.color;
-                            button.style.color = lum > 150 ? '#1a1a1a' : '#fff';
+                            button.style.color = better(lum('#1a1a1a')) >= better(lum('#ffffff')) ? '#1a1a1a' : '#fff';
                         } else if (cell.color && !hueM && CUSTOM_KEY_COLORS.includes(cell.color)) {
                             button.classList.add('ck-' + cell.color);
                         } else if (hueM) {
@@ -10328,6 +10333,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // token 已就绪，直调（同 pushStores 的旧原生守卫）。
                     if (typeof Native.setQuickPref === 'function' && this.token) {
                         Native.setQuickPref('themeMode', legacy, this.token);
+                    }
+                }
+            }
+            // #61 review P1：键帽墨色自适应——暗色模式键面设计 l=37，
+            // 偏移把合成 l 顶过 60 时白字对比不足 3:1，翻深墨（--key-ink
+            // 被 keyboard.css 的键帽主字/小字回落引用）。亮色模式基准
+            // 97 本就是深墨（--text #181818），不处理。放在 themeMode
+            // 消费之后：applyTheme 本轮刚挂上 theme-light class，早于此
+            // 读 class 会误走暗色分支。
+            {
+                const klv = Number(payload.keyL);
+                if (document.documentElement.classList.contains('theme-light')) {
+                    document.documentElement.style.removeProperty('--key-ink');
+                } else {
+                    const keyLift = (Number.isFinite(klv) ? klv : 0) + 37;
+                    if (keyLift > 60) {
+                        document.documentElement.style.setProperty('--key-ink', '#1a1a1a');
+                    } else {
+                        document.documentElement.style.removeProperty('--key-ink');
                     }
                 }
             }
