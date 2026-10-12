@@ -4256,8 +4256,12 @@ function ckSettingAnchors() {
             const control = row.querySelector("select[id], input[id]:not([type=hidden]), button[id], [id]");
             const id = (control && control.id) || row.id;
             if (!id) return;
-            const label = (row.querySelector(".row-label span:not(small), .row-label")?.childNodes[0]?.textContent ||
-                row.getAttribute("aria-label") || id).trim().slice(0, 16);
+            // 可选链要贯穿索引访问（x?.childNodes[0] 在 childNodes 缺失
+            // 时仍会炸 reading 0）：文本首子节点统一走安全取值。
+            const labelEl = row.querySelector(".row-label span:not(small), .row-label");
+            const labelText = labelEl && labelEl.childNodes && labelEl.childNodes[0]
+                ? labelEl.childNodes[0].textContent : "";
+            const label = (labelText || row.getAttribute("aria-label") || id).trim().slice(0, 16);
             if (!label) return;
             out.push([id, `${pageTitle} · ${label}`]);
         });
@@ -4836,7 +4840,9 @@ function ckOpenNew(r) {
 /** 语言键盘键的虚拟按键槽 draft 互转：槽值是 tap DSL 串（含新
  *  [edit:x]），「键盘默认」= 未设置。 */
 function ckLangSlotParse(tap) {
-    if (!tap) return { mode: "def" };
+    // 三态：undefined/null=未设置（def）；""=显式关闭（none）；其余反猜型别。
+    if (tap === undefined || tap === null) return { mode: "def" };
+    if (tap === "") return { mode: "none" };
     const parsed = ckTapParse(tap);
     return { ...parsed, dsl: tap };
 }
@@ -4902,6 +4908,10 @@ function ckBuildLangKeyForm(body, d) {
                     : m === "panel" ? { panel: "clipboard" }
                     : m === "single" ? { single: "esc" }
                     : m === "combo" ? { comboKey: "s", mods: new Set(["ctrl"]) }
+                    : m === "text" ? { text: "" }
+                    : m === "open" ? { open: "" }
+                    : m === "setting" ? { setting: "" }
+                    : m === "advanced" ? { dsl: "" }
                     : {}) };
             ckBuildForm(); // 整体重建（ckBuildForm 会清空 body 再走 langkey 分支）
         });
@@ -5201,7 +5211,7 @@ function ckBuildAction(holder, target) {
         const input = document.createElement("input");
         input.id = "ckText";
         input.className = "ck-input";
-        input.value = d.text;
+        input.value = d.text || "";
         input.placeholder = t("ck.f.text");
         input.addEventListener("input", () => { d.text = input.value; });
         holder.append(ckField(t("ck.f.mode.text"), input));
@@ -5262,7 +5272,7 @@ function ckBuildAction(holder, target) {
         presetSel.addEventListener("change", () => {
             if (!presetSel.value) return;
             d.open = presetSel.value;
-            if (!d.t.trim()) {
+            if (typeof d.t === "string" && !d.t.trim()) {
                 d.t = (CK_OPEN_PRESETS.find(p => p.uri === presetSel.value) || {}).t || "";
             }
             ckBuildForm();
@@ -5291,7 +5301,7 @@ function ckBuildAction(holder, target) {
         sel.value = anchors.some(([id]) => id === d.setting) ? d.setting : "";
         sel.addEventListener("change", () => {
             d.setting = sel.value;
-            if (!d.t.trim()) {
+            if (typeof d.t === "string" && !d.t.trim()) {
                 const found = anchors.find(([id]) => id === sel.value);
                 if (found) d.t = found[1].slice(0, 6);
             }
@@ -5315,7 +5325,8 @@ function ckBuildAction(holder, target) {
         sel.value = targets.some(([value]) => value === d.panel) ? d.panel : "clipboard";
         sel.addEventListener("change", () => {
             d.panel = sel.value;
-            if (!d.t.trim()) {
+            // 键面文案联动只属定制键（语言键的槽 draft 无 t 字段）。
+            if (typeof d.t === "string" && !d.t.trim()) {
                 const found = targets.find(([value]) => value === sel.value);
                 if (found) d.t = found[1].slice(0, 6);
             }
@@ -5343,7 +5354,7 @@ function ckBuildAction(holder, target) {
         const input = document.createElement("input");
         input.id = "ckDsl";
         input.className = "ck-input";
-        input.value = d.dsl;
+        input.value = d.dsl || "";
         input.placeholder = t("ck.f.dsl");
         input.addEventListener("input", () => { d.dsl = input.value; });
         const row = ckField(null, input);
@@ -5405,6 +5416,21 @@ $("ckApply").addEventListener("click", () => {
     // 槽「关闭」落空串（键盘侧 tap==="" 吞掉手势），「键盘默认」不落。
     if (ckEditorTarget === "langkey") {
         const lay = d.langLay, key = d.langKey;
+        for (const slot of ["up", "down"]) {
+            const s = d[slot] || {};
+            if (s.mode === "open") {
+                const uri = (s.open || "").trim();
+                const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) &&
+                    !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
+                if (!ok) return setNote("ckEditNote", t("ck.err.open"));
+            }
+            if (s.mode === "setting") {
+                const id = (s.setting || "").trim();
+                if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
+                    return setNote("ckEditNote", t("ck.err.setting"));
+                }
+            }
+        }
         const table = (ckLangKeys[lay] = ckLangKeys[lay] || {});
         const cell = {};
         if (d.alt) cell.alt = [...d.alt].slice(0, 3).join("");

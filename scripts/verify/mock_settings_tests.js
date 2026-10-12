@@ -2645,6 +2645,40 @@ test('lang keys: none slot saves as empty string (gesture off)', () => {
     equal(parsed.langKeys.pinyin.l.up, '', 'off slot persists as empty string');
 });
 
+
+test('lang keys: every slot type renders inputs without undefined values', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const hKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'h');
+    hKey.click();
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 上滑槽遍历全部类型：每个类型重建后所有 input.value 都不得是
+    // "undefined"（缺省字段没建时的典型症状，真机验收实录）。
+    for (const mode of ['text', 'open', 'setting', 'panel', 'single', 'combo', 'op', 'advanced', 'none', 'def']) {
+        const body = world.doc.getElementById('ckEditBody');
+        const typeSel = body.querySelectorAll('.ck-lang-sec')[0].querySelector('select');
+        typeSel.value = mode;
+        fire(typeSel, 'change');
+        const rebuilt = world.doc.getElementById('ckEditBody');
+        rebuilt.querySelectorAll('input').forEach(input => {
+            if (String(input.value) === 'undefined') {
+                throw new Error('slot type ' + mode + ' rendered undefined in input');
+            }
+        });
+    }
+    // 关闭态回填：保存 none 后重开编辑器，类型应显示「关闭」而非「文本」。
+    const body2 = world.doc.getElementById('ckEditBody');
+    const s = body2.querySelectorAll('.ck-lang-sec')[0].querySelector('select');
+    s.value = 'none'; fire(s, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.h.up, '', 'none saved as empty string');
+});
+
 console.log(`\n== settings mock-bridge suite: ${RESULTS.length - failed.length}/${RESULTS.length} passed ==`);
 if (failed.length) {
     console.log('failures: ' + failed.map(([name]) => name).join(' | '));
