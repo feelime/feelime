@@ -1044,14 +1044,14 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
     color: var(--card-sub); max-width: 60%; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
 .ck-lang-sec-cur.set { color: var(--accent-text); font-weight: 600; }
-.page[data-page="customkeys"] {
-    display: flex; flex-direction: column;
-    height: calc(100dvh - 16px - max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)));
-}
 /* flex 列容器会吞掉 page-head 的块级宽度（shrink-to-fit 后整体右移，
  * 与其他页左对齐不一致——用户实录）：显式拉满。 */
-.page[data-page="customkeys"] > .page-head { width: 100%; }
-.page[data-page="customkeys"] > main {
+.page[data-page="customkeys"] > .page-head,
+.page[data-page="cksymbol"] > .page-head,
+.page[data-page="cklang"] > .page-head { width: 100%; }
+.page[data-page="customkeys"] > main,
+.page[data-page="cksymbol"] > main,
+.page[data-page="cklang"] > main {
     flex: 1; min-height: 0; overflow-y: auto;
     width: 100%; max-width: 680px; margin: 0 auto;
     padding-bottom: 4px;
@@ -1204,12 +1204,18 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
 
 /* 长按 chips 不触发文字选择/呼出菜单（用户实录）：交互元素禁选，
  * JSON textarea/input 保持可选可输。 */
-.page[data-page="customkeys"] {
+.page[data-page="customkeys"],
+.page[data-page="cksymbol"],
+.page[data-page="cklang"] {
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
 }
 .page[data-page="customkeys"] input,
-.page[data-page="customkeys"] textarea {
+.page[data-page="customkeys"] textarea,
+.page[data-page="cksymbol"] input,
+.page[data-page="cksymbol"] textarea,
+.page[data-page="cklang"] input,
+.page[data-page="cklang"] textarea {
     -webkit-user-select: text; user-select: text;
 }
 
