@@ -261,7 +261,7 @@ const I18N = {
         "ck.quick.title.hint": "点按键改内容，长按调整位置；点「＋」添加新按键。",
         "ck.edit.title": "编辑按键",
         "ck.apply": "确定",
-        "ck.save": "保存全部",
+        "ck.save": "保存",
         "ck.add": "＋",
         "ck.f.t": "键面文案",
         "ck.f.t.hint": "按钮上显示的字",
@@ -286,7 +286,7 @@ const I18N = {
         "ck.lang.hint1": "点字母键 / 逗号句号键定制角标与上滑、下滑；布局、单击与长按不变。",
         "ck.lang.hint2": "分词 / 退格 / 123 / 中英 / 回车不可定制；空格长按沿用「长按空格动作」（跨键盘统一）。",
         "ck.lang.reset": "全部恢复",
-        "ck.lang.resetDone": "已恢复默认（记得「保存全部」）",
+        "ck.lang.resetDone": "已恢复默认（记得保存）",
         "ck.lang.editTitle": "编辑键 {0}",
         "ck.lang.editKey": "定制键 {0}",
         "ck.lang.editPunct": "定制逗号键",
@@ -1019,7 +1019,7 @@ const I18N = {
         "ck.quick.title.hint": "Tap a key to edit it, hold to rearrange; tap ＋ to add.",
         "ck.edit.title": "Edit key",
         "ck.apply": "Apply",
-        "ck.save": "Save all",
+        "ck.save": "Save",
         "ck.add": "＋",
         "ck.f.t": "Label",
         "ck.f.t.hint": "Text shown on the key",
@@ -1934,9 +1934,12 @@ function showPage(name) {
         if (typeof memo === "number" && memo > 0) window.scrollTo(0, memo);
         else window.scrollTo(0, 0);
     }
-    // 定制按键家族三页共享一条保存条（同一脏态草稿）：DOM 随当前页
-    // 移动（page = header + 滚动 main + 保存条的 flex 布局见 css）。
-    if (CK_FAMILY.includes(name)) {
+    // 定制按键家族三页共享一条脏态草稿，但保存条只随两个四级页走
+    // （分页各自保存，2026-10-12 用户裁定：首页纯导航+开关，无保存
+    // 动作）：DOM 随当前页移动（page = header + 滚动 main + 保存条的
+    // flex 布局见 css）。离开家族（含回首页）时条随上一次所在子页
+    // 隐藏，脏态由离开确认兜底。
+    if (name === "cksymbol" || name === "cklang") {
         const bar = document.getElementById("ckSaveBar");
         const pageEl = document.querySelector('[data-page="' + name + '"]');
         if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
@@ -1959,7 +1962,7 @@ function showPage(name) {
     call("reportPage", name, back?.dataset?.back || "home");
     if (name === "customkeys" && !wasCustomkeys && typeof ckEnter === "function") {
         // 只重置编辑态/弹层，不清脏标：三页共享同一草稿，从子页返回
-        // 首页清脏标会让未保存改动失去「保存全部」的引导（验收实录：
+        // 首页清脏标会让未保存改动失去保存引导（验收实录：
         // 改完子页回首页提示消失，退出即丢）。
         ckEnter();
     }
@@ -3765,7 +3768,7 @@ $("btnSaveAsr").addEventListener("click", () => {
 });
 
 $("btnSaveCustom").addEventListener("click", () => {
-    // 与「保存全部」同一条链：先吸收 textarea 进草稿（坏 JSON 就地
+    // 与保存条「保存」同一条链：先吸收 textarea 进草稿（坏 JSON 就地
     // 报错不落盘），再统一打包（带 langKeys）。
     if (!ckAbsorbJson()) {
         setNote("customNote", t("input.custom.badjson"));
@@ -3782,7 +3785,7 @@ $("customEnabled").addEventListener("change", event => call("setCustomEnabled", 
 // 模板要覆盖每个特性——含单键/文本+键混排/组合键/功能键/光标/⌫/[open:]）。
 $("btnCustomTemplate").addEventListener("click", () => {
     // 程序赋值不触发 input 事件：手动置脏+吸收，贴完模板编辑器立即可
-    // 见（「保存全部」也才带得上）。
+    // 见（保存条「保存」也才带得上）。
     $("customJson").value = CK_TEMPLATE;
     ckMarkDirty(true);
     ckAbsorbJson();
@@ -4172,7 +4175,7 @@ $("btnCustomDocs").addEventListener("click", () => call("openDocs"));
 
 /* ===== #39-12 定制按键编辑器（三级页，免 JSON）============================
  * 数据：ckRows = [[cell,...],[],[]]（cell {t,tap,note,span?,color?}），进入
- * 页面时从 state.custom.json 载入；「保存全部」校验后走同一条 saveCustom
+ * 页面时从 state.custom.json 载入；保存条「保存」校验后走同一条 saveCustom
  * 桥（JSON 兜底与编辑器共享真相源，textarea 同步刷新）。
  * tap 的可视化构造：文本/单键/组合键/高级 DSL 四型；编辑已有键时按 tap
  * 内容反猜型别（ckTapParse），切型重造。 */
@@ -4232,7 +4235,7 @@ let ckSel = null;   // 正在编辑的位置 {r, c, isNew}
 let ckDraft = null; // 表单草稿
 let ckDirty = false;
 // 语言键盘定制段（langKeys：{layout:{key:{alt,up,down}}}）：与 ckRows
-// 同一脏态/同一保存条（「保存全部」一并提交）。来源是 customJson
+// 同一脏态草稿、保存条随子页各自触发提交（分页保存）。来源是 customJson
 // textarea 的 JSON（state 推送或用户粘贴），编辑器改动写回草稿。
 let ckLangKeys = {};
 let ckLeaveTarget = null;   // 脏态离开确认的目标页
@@ -5629,7 +5632,7 @@ document.getElementById("cklangReset").addEventListener("click", () => {
 });
 
 /* ===== 草稿的单一真相源与三条同源路径 ====================================
- * 草稿（ckRows + ckLangKeys）是唯一真相：「保存全部」「保存定制」、
+ * 草稿（ckRows + ckLangKeys）是唯一真相：保存条「保存」「保存定制」、
  * 「高级」textarea 的投影/吸收都走同一打包口径。此前「保存定制」直存
  * textarea 内容不带 langKeys，会把语言键盘定制静默清掉；textarea 也不
  * 随编辑器改动刷新，「高级」看到的不是当前实际（验收实录）。 */

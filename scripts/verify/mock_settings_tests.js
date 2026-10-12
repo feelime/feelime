@@ -2682,6 +2682,25 @@ test('lang keys: every slot type renders inputs without undefined values', () =>
     equal(parsed.langKeys.pinyin.h.up, '', 'none saved as empty string');
 });
 
+test('custom keys: save bar lives on the two editor pages only (分页保存裁定)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const S = world.FeelimeSettings();
+    const bar = world.doc.getElementById('ckSaveBar');
+    const pageOf = el => el && el.parentElement && el.parentElement.dataset
+        && el.parentElement.dataset.page;
+    S.showPage('customkeys');
+    equal(pageOf(bar), 'cksymbol', 'home does not host the save bar (initial home entry)');
+    S.showPage('cksymbol');
+    equal(pageOf(bar), 'cksymbol', 'symbol page hosts it');
+    S.showPage('cklang');
+    equal(pageOf(bar), 'cklang', 'lang page hosts it');
+    S.showPage('customkeys');
+    equal(pageOf(bar), 'cklang', 'back on home the bar stays with the last editor page');
+    equal(world.doc.querySelector('[data-i18n="ck.save"]').textContent, '保存',
+        'button label is just 保存 now');
+});
+
 test('custom keys: dirty survives a family round-trip; home no longer resets it (验收反馈)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });

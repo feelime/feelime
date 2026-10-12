@@ -1208,15 +1208,6 @@
       </div>
     </section>
   </main>
-
-  <!-- 保存条：页内流式布局（page = header + 滚动 main + 本条），滚动
-       区域就是保存条之上的可见空间——不 fixed、不遮挡、无需垫层
-       （fixed+垫层挡住 JSON 卡，用户两轮实录）。 -->
-  <div class="ck-save-bar" id="ckSaveBar">
-    <span id="ckDirtyHint" class="ck-dirty-hint" hidden data-i18n="ck.dirty">有未保存的修改</span>
-    <button class="btn" id="ckSave" type="button" data-i18n="ck.save">保存全部</button>
-    <span class="save-note" id="ckSaveNote" role="status" aria-live="polite"></span>
-  </div>
 </div>
 
 <div class="page" data-page="cksymbol" hidden>
@@ -1248,6 +1239,17 @@
       </div>
     </details>
   </main>
+
+  <!-- 保存条：页内流式布局（page = header + 滚动 main + 本条），滚动
+       区域就是保存条之上的可见空间——不 fixed、不遮挡、无需垫层
+       （fixed+垫层挡住 JSON 卡，用户两轮实录）。分页各自保存
+       （2026-10-12 用户裁定）：保存条只随符号页/语言键盘页走，首页
+       不显示。 -->
+  <div class="ck-save-bar" id="ckSaveBar">
+    <span id="ckDirtyHint" class="ck-dirty-hint" hidden data-i18n="ck.dirty">有未保存的修改</span>
+    <button class="btn" id="ckSave" type="button" data-i18n="ck.save">保存</button>
+    <span class="save-note" id="ckSaveNote" role="status" aria-live="polite"></span>
+  </div>
 </div>
 
 <div class="page" data-page="cklang" hidden>
