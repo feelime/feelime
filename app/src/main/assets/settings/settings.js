@@ -249,6 +249,7 @@ const I18N = {
         "input.custom.jsonPlaceholder": "粘贴定制 JSON",
         "input.custom.note": "保存在本机，键盘下次载入时生效。",
         "input.custom.manage": "管理定制按键",
+        "input.custom.badjson": "JSON 无效，请检查格式（version/rows）",
         "page.customkeys": "定制按键",
         "ck.status.title": "定制按键",
         "ck.openEditor": "打开编辑器",
@@ -630,7 +631,6 @@ const I18N = {
         "about.inputStats": "输入字数",
         "about.inputStatsValue": "今日 {today} · 累计 {total}",
         "note.saved": "已保存",
-        "note.customSaved": "已保存，键盘下次载入时生效",
         "note.copied": "已复制",
         "custom.none": "未定制",
         "custom.count": "已定制 {count} 个键",
@@ -1007,6 +1007,7 @@ const I18N = {
         "input.custom.jsonPlaceholder": "Paste custom JSON",
         "input.custom.note": "Saved on this device and applied the next time the keyboard loads.",
         "input.custom.manage": "Manage custom keys",
+        "input.custom.badjson": "Invalid JSON — check the format (version/rows)",
         "page.customkeys": "Custom keys",
         "ck.status.title": "Custom keys",
         "ck.openEditor": "Open editor",
@@ -1384,7 +1385,6 @@ const I18N = {
         "about.inputStats": "Characters typed",
         "about.inputStatsValue": "Today {today} · Total {total}",
         "note.saved": "Saved",
-        "note.customSaved": "Saved; applied the next time the keyboard loads",
         "note.copied": "Copied",
         "custom.none": "No custom keys",
         "custom.count": "{count} custom keys",
@@ -1958,8 +1958,20 @@ function showPage(name) {
     const back = document.querySelector(`.page[data-page="${name}"] .page-back`);
     call("reportPage", name, back?.dataset?.back || "home");
     if (name === "customkeys" && !wasCustomkeys && typeof ckEnter === "function") {
+        // 只重置编辑态/弹层，不清脏标：三页共享同一草稿，从子页返回
+        // 首页清脏标会让未保存改动失去「保存全部」的引导（验收实录：
+        // 改完子页回首页提示消失，退出即丢）。
         ckEnter();
-        ckMarkDirty(false);
+    }
+    // 符号页四级化后 ckRowList 的首次渲染发生在进首页时（cksymbol
+    // 此刻 hidden、clientWidth=0，ckFitStrip 全跳过）——进符号页补一
+    // 轮渲染，恢复「超宽行缩放进容器」约束；「高级」textarea 同步
+    // 投影当前草稿。rAF 等首帧布局把宽度量准。
+    if (name === "cksymbol" && typeof ckEnter === "function") {
+        if (typeof ckSyncJsonView === "function") ckSyncJsonView();
+        requestAnimationFrame(() => {
+            if (currentPage === "cksymbol") ckRenderRows();
+        });
     }
 }
 
@@ -2613,7 +2625,7 @@ function renderCustom(state) {
     const ckStatus = document.getElementById("ckStatus");
     if (ckStatus) ckStatus.textContent = customSummary(custom.summary);
     if (document.activeElement !== $("customEnabled")) $("customEnabled").checked = !!custom.enabled;
-    if (document.activeElement !== $("customJson") && !$(`customJson`).value) {
+    if (document.activeElement !== $("customJson") && !$(`customJson`).value && !ckDirty) {
         $("customJson").value = custom.json || "";
     }
 }
@@ -3753,8 +3765,13 @@ $("btnSaveAsr").addEventListener("click", () => {
 });
 
 $("btnSaveCustom").addEventListener("click", () => {
-    call("saveCustom", $("customJson").value || "{}", $("customEnabled").checked);
-    setNote("customNote", t("note.customSaved"));
+    // 与「保存全部」同一条链：先吸收 textarea 进草稿（坏 JSON 就地
+    // 报错不落盘），再统一打包（带 langKeys）。
+    if (!ckAbsorbJson()) {
+        setNote("customNote", t("input.custom.badjson"));
+        return;
+    }
+    ckSaveAll("customNote");
 });
 // 启用开关拨动即生效（#39-2）：此前只随「保存定制」提交，拨了不点
 // 保存=从未落盘，重进被回读洗回「开」。
@@ -3764,7 +3781,11 @@ $("customEnabled").addEventListener("change", event => call("setCustomEnabled", 
 // 默认表 CK_TEMPLATE 同源），「开发者模板」承载全覆盖验收（2026-09-24
 // 模板要覆盖每个特性——含单键/文本+键混排/组合键/功能键/光标/⌫/[open:]）。
 $("btnCustomTemplate").addEventListener("click", () => {
+    // 程序赋值不触发 input 事件：手动置脏+吸收，贴完模板编辑器立即可
+    // 见（「保存全部」也才带得上）。
     $("customJson").value = CK_TEMPLATE;
+    ckMarkDirty(true);
+    ckAbsorbJson();
 });
 
 $("btnCustomTemplateDev").addEventListener("click", () => {
@@ -3796,6 +3817,8 @@ $("btnCustomTemplateDev").addEventListener("click", () => {
             ],
         ],
     }, null, 2);
+    ckMarkDirty(true);
+    ckAbsorbJson();
 });
 
 $("btnCheckUpdate").addEventListener("click", () => call("checkUpdate", $("updateSource").value));
@@ -4334,6 +4357,9 @@ function ckLoad() {
     } catch (_) { /* textarea 空/坏 JSON → 模板 */ }
     if (!rows || !rows.some(row => row && row.length)) rows = JSON.parse(CK_TEMPLATE).rows;
     ckRows = [0, 1, 2].map(i => Array.isArray(rows[i]) ? rows[i].slice() : []);
+    // 草稿来源就是本 textarea：对齐投影基准，进符号页时按草稿重新
+    // 投影（统一为缩进格式）而不是被当成「手上有更新」再吸收一遍。
+    ckJsonProjected = $("customJson").value;
 }
 
 /** 编辑器默认表（用户裁定 2026-10-03 二轮）：三行填满、大多数人打开
@@ -5602,15 +5628,56 @@ document.getElementById("cklangReset").addEventListener("click", () => {
     setNote("ckSaveNote", t("ck.lang.resetDone"));
 });
 
-$("ckSave").addEventListener("click", () => {
+/* ===== 草稿的单一真相源与三条同源路径 ====================================
+ * 草稿（ckRows + ckLangKeys）是唯一真相：「保存全部」「保存定制」、
+ * 「高级」textarea 的投影/吸收都走同一打包口径。此前「保存定制」直存
+ * textarea 内容不带 langKeys，会把语言键盘定制静默清掉；textarea 也不
+ * 随编辑器改动刷新，「高级」看到的不是当前实际（验收实录）。 */
+function ckPackJson() {
     const pack = { version: 1, rows: ckRows };
     if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
-    const json = JSON.stringify(pack);
-    call("saveCustom", json, $("customEnabled").checked);
-    $("customJson").value = json;
-    ckMarkDirty(false);
-    setNote("ckSaveNote", t("ck.note.saved"));
+    return pack;
+}
+/** 最近一次投影/保存写进 textarea 的串：区分「textarea 手上有更新」
+ *  （≠投影值 → 吸收进草稿）与「编辑器改了、textarea 是旧的」（==投影
+ *  值 → 投影新草稿）。 */
+let ckJsonProjected = "";
+function ckSyncJsonView() {
+    const ta = $("customJson");
+    if (document.activeElement === ta) return;
+    if (ta.value !== ckJsonProjected) { ckAbsorbJson(); return; }
+    ta.value = ckJsonProjected = JSON.stringify(ckPackJson(), null, 2);
+}
+/** textarea → 草稿吸收（input 防抖/进页/保存前调用）：能解析即更新
+ *  ckRows/ckLangKeys；坏 JSON 返回 false（保存时就地报错）。与 ckLoad
+ *  不同：rows 全空不回落模板——手改清空是显式意图。 */
+function ckAbsorbJson() {
+    try {
+        const parsed = JSON.parse($("customJson").value || "null");
+        if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.rows)) return false;
+        ckRows = [0, 1, 2].map(i => Array.isArray(parsed.rows[i]) ? parsed.rows[i].slice() : []);
+        ckLangKeys = parsed.langKeys && typeof parsed.langKeys === "object"
+            && !Array.isArray(parsed.langKeys) ? parsed.langKeys : {};
+        if (currentPage === "cksymbol") ckRenderRows();
+        return true;
+    } catch (_) { return false; }
+}
+let ckJsonAbsorbTimer = null;
+$("customJson").addEventListener("input", () => {
+    ckMarkDirty(true);
+    clearTimeout(ckJsonAbsorbTimer);
+    ckJsonAbsorbTimer = setTimeout(ckAbsorbJson, 250);
 });
+/** 统一保存链：序列化草稿 → saveCustom 桥 → 投影回 textarea（缩进
+ *  格式便于「高级」里阅读；桥参数同串，格式对 native 透明）。 */
+function ckSaveAll(noteId) {
+    const json = JSON.stringify(ckPackJson(), null, 2);
+    call("saveCustom", json, $("customEnabled").checked);
+    $("customJson").value = ckJsonProjected = json;
+    ckMarkDirty(false);
+    setNote(noteId, t("ck.note.saved"));
+}
+$("ckSave").addEventListener("click", () => ckSaveAll("ckSaveNote"));
 
 $("btnOpenCustomKeys").addEventListener("click", () => showPage("customkeys"));
 // 2026-09-30 验收拆分：模糊音/键盘选择收进三级页，input 页只留入口。

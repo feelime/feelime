@@ -552,14 +552,19 @@ test('保存识别设置 sends the checkbox + textarea verbatim', () => {
     assert(world.$('asrNote').textContent.includes('已保存'), 'save note shown');
 });
 
-test('保存定制 sends the JSON + switch; 插入模板 fills valid JSON without calling the bridge', () => {
+test('保存定制 absorbs the box into the unified save chain; 插入模板 fills valid JSON without calling the bridge', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     world.$('customJson').value = '{"version":1,"rows":[[]]}';
     world.$('customEnabled').checked = true;
     world.$('btnSaveCustom').click();
-    equal(world.lastCall('saveCustom').args,
-        ['{"version":1,"rows":[[]]}', true, world.token], 'saveCustom args');
+    // 统一保存链（验收实录：「保存定制」曾直存 textarea 原串、不带
+    // langKeys）：rows 语义保留（空行补齐到 3 行），enabled+token 随行。
+    const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(saved.version, 1, 'version');
+    equal(JSON.stringify(saved.rows), JSON.stringify([[], [], []]),
+        'rows absorbed and normalized');
+    equal(world.lastCall('saveCustom').args[1], true, 'enabled switch');
     world.$('btnCustomTemplate').click();
     const filled = world.$('customJson').value;
     assert(/"version":\s*1/.test(filled) && filled.includes('rows'), 'template JSON');
@@ -2520,8 +2525,6 @@ test('dictionary operation progress stays in its own card after reopening', () =
 
 // ---------------------------------------------------------------- runner
 
-const failed = RESULTS.filter(([, ok]) => !ok);
-
 test('showPage restores each page scroll offset (issue #51)', () => {
     const world = new SettingsWorld();
     const S = world.FeelimeSettings();
@@ -2678,6 +2681,93 @@ test('lang keys: every slot type renders inputs without undefined values', () =>
     const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
     equal(parsed.langKeys.pinyin.h.up, '', 'none saved as empty string');
 });
+
+test('custom keys: dirty survives a family round-trip; home no longer resets it (验收反馈)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('customkeys');
+    // 经编辑器真实路径置脏（ckDirty 是 let，不进 vm 全局——脏态以
+    // 保存条 DOM 为载体断言）。
+    const g = world.sandbox;
+    g.ckOpenNew(0);
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const tInput = g.document.getElementById('ckT');
+    tInput.value = '脏键'; fire(tInput, 'input');
+    g.document.getElementById('ckApply').click();
+    equal(g.document.getElementById('ckDirtyHint').hidden, false, 'edit marks dirty');
+    // 子页改完 → 回首页：脏标保留（旧实现回首页即清，未保存改动失去
+    // 「保存全部」引导，退出即丢）。
+    world.FeelimeSettings().showPage('customkeys');
+    equal(g.document.getElementById('ckDirtyHint').hidden, false,
+        'dirty keeps glowing after returning to the home');
+});
+
+test('custom keys: entering the symbol page syncs the advanced box with the live draft (验收主诉)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    world.FeelimeSettings().showPage('customkeys');
+    // 编辑器改动（草稿变、textarea 未刷新——旧实现进页不投影，「高
+    // 级」看到的不是当前实际）。
+    g.ckOpenNew(0);
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const tInput = g.document.getElementById('ckT');
+    tInput.value = '投影键'; fire(tInput, 'input');
+    g.document.getElementById('ckApply').click();
+    world.FeelimeSettings().showPage('cksymbol');
+    assert(world.$('customJson').value.includes('投影键'),
+        'advanced textarea reflects the draft after entering the page');
+    // 进页补一轮渲染（真机语义：首次渲染发生在 hidden 容器里
+    // clientWidth=0、行缩放 fit 全跳过——进页重渲才恢复「行缩放进
+    // 容器」约束；mock 无布局，以 DOM 反映新草稿作载体断言）。
+    assert(g.document.getElementById('ckRowList').textContent.includes('投影键'),
+        'entering the page re-renders the rows (the fit carrier on real devices)');
+});
+
+test('custom keys: hand-edited JSON is absorbed on page entry, not clobbered by the projection', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    world.FeelimeSettings().showPage('customkeys');
+    world.FeelimeSettings().showPage('cksymbol');
+    // 用户在「高级」手改（≠ 当前投影）→ 离开再进：先吸收进草稿，
+    // 不被投影覆盖；吸收结果经「保存全部」的桥参数断言（草稿变量
+    // 是 let 不进 vm 全局）。
+    world.$('customJson').value = JSON.stringify({
+        version: 1,
+        rows: [[{ t: '手改', tap: '手改' }], [], []],
+        langKeys: { pinyin: { h: { up: 'hi' } } },
+    });
+    world.FeelimeSettings().showPage('customkeys');
+    world.FeelimeSettings().showPage('cksymbol');
+    assert(world.$('customJson').value.includes('手改'),
+        'textarea keeps the hand-edited content');
+    world.$('ckSave').click();
+    const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(saved.rows[0][0].t, '手改', 'hand-edited rows absorbed into the draft');
+    equal(saved.langKeys.pinyin.h.up, 'hi', 'hand-edited langKeys absorbed');
+});
+
+test('custom keys: bad JSON in the advanced box is rejected without touching the bridge', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.$('customJson').value = '{broken';
+    world.$('btnSaveCustom').click();
+    equal(world.native.of('saveCustom').length, 0, 'no saveCustom call on bad JSON');
+    assert(world.$('customNote').textContent.length > 0, 'rejection is surfaced in the note');
+    // 修好后再存：同一条统一链落盘。
+    world.$('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: '好', tap: '好' }], [], []],
+    });
+    world.$('btnSaveCustom').click();
+    const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(saved.rows[0][0].t, '好', 'fixed JSON saves through the unified chain');
+});
+
+// failed 快照必须在【全部】test() 之后（曾放在文件中部 runner 注释
+// 处：此后追加的测试失败不进统计、exit 0 假绿——2026-10-12 新增尾部
+// 测试时暴露）。
+const failed = RESULTS.filter(([, ok]) => !ok);
 
 console.log(`\n== settings mock-bridge suite: ${RESULTS.length - failed.length}/${RESULTS.length} passed ==`);
 if (failed.length) {
