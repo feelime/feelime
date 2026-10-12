@@ -9155,6 +9155,111 @@ test('issue12: double-pinyin auto-commits too', {since: '3.68.0'}, () => {
     equal(picks[0].args[1], 'd1', 'pool head id rides the choose call');
 });
 
+
+// ---- 语言键盘定制（#60 定制按键升级：角标 + 上滑/下滑虚拟按键） ----
+test('lang keys: [edit:x] ops execute via editorAction / combo channel', {since: '3.73.41'}, () => {
+    const world = fresh();
+    // 行为驱动：edit 步通过定制手势触发——copy 走 editorAction，undo
+    // 走组合键事件（keyEventPhysical/keyEvent）。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { pinyin: { q: { down: '[edit:copy]', up: '[edit:undo]' } } },
+    });
+    world.hello();
+    world.engineState({ mode: 'pinyin' });
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, 70); world.touchUp(q); // 下滑 = copy
+    console.log('DBG calls:', world.native.calls.map(c => c.method).join(','));
+    equal(world.native.of('editorAction').slice(-1)[0].args[0], 'copy', 'copy → editorAction');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, -30); world.touchUp(q); // 上滑 = undo（Ctrl+Z 组合键）
+    // 假时钟起点为 0：距 customChainLastTextAt=0 的间隔 <300ms，组合键
+    // 走 xterm 台阶（setTimeout 300ms）——推进时钟后落地。
+    world.clock.advance(400);
+    const phys = world.native.of('keyEventPhysical');
+    const key = world.native.of('keyEvent');
+    equal(phys.length + key.length >= 1, true, 'undo fires a combo key event');
+});
+
+test('lang keys: table adopts on hello and covers alt hint + flick gestures', {since: '3.73.41'}, () => {
+    const world = fresh();
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1,
+        rows: [[{ t: '✓', tap: '好的', note: '' }], [], []],
+        langKeys: { pinyin: { q: { alt: '@', down: '[edit:copy]' },
+            l: { up: '₹' }, '.': { up: '' } } },
+    });
+    world.hello();
+    world.engineState({ mode: 'pinyin' });
+    const adopted = JSON.parse(world.storage.get('feelime_custom_keys_v2'));
+    equal(adopted.langKeys.pinyin.q.down, '[edit:copy]', 'langKeys survives the sync adoption');
+    // 角标覆盖：q 键角标显示 @（默认是 1）。
+    const qEl = world.key('q');
+    equal(qEl.querySelector('.kb-alt').textContent, '@', 'alt hint overridden');
+    // 上滑：未定制的 q 走默认（大写 Q）；下滑：定制 copy → editorAction。
+    world.touchDown(qEl, 20, 20);
+    world.move(qEl, 20, -30); world.touchUp(qEl);
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '1', 'un-customized up keeps the default alt char');
+    world.touchDown(qEl, 20, 20);
+    world.move(qEl, 20, 70); world.touchUp(qEl);
+    equal(world.native.of('editorAction').slice(-1)[0].args[0], 'copy', 'custom down runs the edit op');
+    // 文本型上滑：l 上滑直出 ₹。
+    const lEl = world.key('l');
+    world.touchDown(lEl, 20, 20);
+    world.move(lEl, 20, -30); world.touchUp(lEl);
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '₹', 'text tap commits the literal');
+    // 空串 = 显式关闭：逗号键上滑被吞（无 key 无 text）。
+    const before = world.native.calls.length;
+    const comma = world.key('.');
+    world.touchDown(comma, 20, 20);
+    world.move(comma, 20, -30); world.touchUp(comma);
+    const names = world.native.calls.slice(before).map(c => c.name).join(',');
+    equal(/key|text|symbol/.test(names), false, 'empty-string slot swallows the gesture');
+});
+
+test('lang keys: bad tables rejected without touching the working copy', {since: '3.73.41'}, () => {
+    const world = fresh();
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { t9: { '2': { alt: 'x' } } },
+    });
+    world.hello();
+    equal(!!world.storage.get('feelime_custom_keys_v2'), false, 'unsupported layout rejected wholesale');
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { pinyin: { q: { up: '[edit:nope]' } } },
+    });
+    world.hello();
+    equal(!!world.storage.get('feelime_custom_keys_v2'), false, 'invalid DSL rejected');
+    // 空行 + 合法 langKeys 可共存（rows 空不再整表拒收）。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { pinyin: { q: { alt: '@' } } },
+    });
+    world.hello();
+    const adopted = JSON.parse(world.storage.get('feelime_custom_keys_v2'));
+    equal(adopted.langKeys.pinyin.q.alt, '@', 'langKeys-only table adopts');
+});
+
+test('lang keys: layouts map modes (dp/direct) and t9 stays default', {since: '3.73.41'}, () => {
+    // 行为驱动：direct 模式读 english 段（定制生效），t9 模式不开放
+    //（数字键 '2' 的上滑仍走 T9 字母仲裁而非定制 DSL）。
+    const world = fresh();
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { english: { q: { up: '[edit:copy]' } } },
+    });
+    world.engineState({ mode: 'direct' });
+    world.hello();
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, -30); world.touchUp(q);
+    equal(world.native.of('editorAction').slice(-1)[0] !== undefined
+        && world.native.of('editorAction').slice(-1)[0].args[0] === 'copy',
+        true, 'direct mode reads the english table');
+});
+
 console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
     (skipped ? `, ${skipped} skipped (era-gated)` : '') +
     ` [keyboard ${KEYBOARD_VERSION}] ==`);

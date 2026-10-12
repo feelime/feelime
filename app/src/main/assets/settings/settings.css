@@ -1002,6 +1002,48 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
 /* ===== #39-12 定制按键页布局：header + 滚动 main + 流内保存条 =====
  * 保存条占用的空间从滚动区扣除（不 fixed 不遮挡——fixed+垫层会挡住
  * 页底内容，用户两轮实录）。body 底 padding 兜 safe area。 */
+.page[data-page="customkeys"],
+.page[data-page="cksymbol"],
+.page[data-page="cklang"] {
+    display: flex; flex-direction: column;
+    height: calc(100dvh - 16px - max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)));
+}
+
+/* ===== 语言键盘定制页（cklang）：布局预览 ===== */
+.ck-lang-kb { display: flex; flex-direction: column; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px 8px; }
+.ck-lang-row { display: flex; gap: 5px; justify-content: center; }
+/* 第二行 a–l 缩进对齐（复刻键盘 kb-indent）。 */
+.ck-lang-indent { padding-left: 4.9%; }
+.ck-lang-key { position: relative; flex: 1; min-width: 0; height: 46px;
+    border: 1px solid transparent; border-radius: 8px;
+    background: var(--pill); color: var(--card-text);
+    font: 500 18px/1 system-ui, sans-serif; cursor: pointer;
+    display: grid; place-items: center; }
+.ck-lang-key:active { filter: brightness(.95); }
+.ck-lang-key-sp { background: transparent; color: var(--card-sub);
+    font-size: 13px; font-weight: 600; cursor: default; }
+.ck-lang-w15 { flex: 1.5; } .ck-lang-w2 { flex: 2.05; } .ck-lang-w3 { flex: 3.2; }
+.ck-lang-sub { position: absolute; right: 5px; top: 3px;
+    font-size: 9.5px; color: var(--card-sub); font-weight: 400; }
+.ck-lang-custom { border-color: var(--accent); }
+.ck-lang-custom::after { content: ""; position: absolute; left: 4px; top: 4px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+/* 编辑弹层：语言键固定行 + 上滑/下滑小节 */
+.ck-lang-lock { display: flex; align-items: center; gap: 10px;
+    background: var(--panel); border-radius: 10px; padding: 9px 12px;
+    font-size: 13.5px; color: var(--card-sub); }
+.ck-lang-lock .ck-lang-k { background: var(--pill); color: var(--card-text);
+    border-radius: 6px; min-width: 30px; height: 30px;
+    display: grid; place-items: center; font-weight: 600; font-size: 14px; }
+.ck-lang-sec { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.ck-lang-sec-t { display: flex; align-items: center; gap: 8px;
+    font-size: 13.5px; font-weight: 650; margin: 2px 0 4px; }
+.ck-lang-sec-cur { margin-left: auto; font-weight: 400; font-size: 12px;
+    color: var(--card-sub); max-width: 60%; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+.ck-lang-sec-cur.set { color: var(--accent-text); font-weight: 600; }
 .page[data-page="customkeys"] {
     display: flex; flex-direction: column;
     height: calc(100dvh - 16px - max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)));

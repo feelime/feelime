@@ -1170,6 +1170,61 @@
         </div>
       </div>
     </section>
+    <!-- 语言键盘定制入口：每个语言键盘一个四级页（布局预览 + 点键改
+         角标/上滑/下滑）；双拼不分方案存一份。 -->
+    <section class="card" aria-labelledby="ckLangHead">
+      <div class="section-heading"><h2 id="ckLangHead" data-i18n="ck.lang.title">语言键盘</h2></div>
+      <div class="rows" id="ckLangRows">
+        <div class="row" data-cklang="pinyin" data-keywords="全拼 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.pinyin">全拼键盘</span><small id="cklangCount-pinyin">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" data-cklang="dp" data-keywords="双拼 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.dp">双拼键盘</span><small id="cklangCount-dp">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" data-cklang="english" data-keywords="英文 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.english">英文键盘</span><small id="cklangCount-english">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" data-cklang="french" data-keywords="法语 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.french">法语键盘</span><small id="cklangCount-french">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" data-cklang="russian" data-keywords="俄语 键盘 定制 上滑 下滑 角标">
+          <span class="row-label"><span data-i18n="ck.lang.russian">俄语键盘</span><small id="cklangCount-russian">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+      </div>
+    </section>
+    <!-- 「定制」符号页（原有 tab 迁入四级页）。 -->
+    <section class="card" aria-labelledby="ckSymHead">
+      <div class="section-heading"><h2 id="ckSymHead" data-i18n="ck.sym.title">符号键盘</h2></div>
+      <div class="rows">
+        <div class="row" id="ckSymbolEntry" data-keywords="符号 定制 剪贴板 收藏 常用语">
+          <span class="row-label"><span data-i18n="ck.sym.entry">「定制」符号页</span><small data-i18n="ck.sym.hint">点按修改，长按移动/删除</small></span>
+          <span class="chev">›</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 保存条：页内流式布局（page = header + 滚动 main + 本条），滚动
+       区域就是保存条之上的可见空间——不 fixed、不遮挡、无需垫层
+       （fixed+垫层挡住 JSON 卡，用户两轮实录）。 -->
+  <div class="ck-save-bar" id="ckSaveBar">
+    <span id="ckDirtyHint" class="ck-dirty-hint" hidden data-i18n="ck.dirty">有未保存的修改</span>
+    <button class="btn" id="ckSave" type="button" data-i18n="ck.save">保存全部</button>
+    <span class="save-note" id="ckSaveNote" role="status" aria-live="polite"></span>
+  </div>
+</div>
+
+<div class="page" data-page="cksymbol" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.sym.pageTitle">「定制」符号页</h2>
+  </header>
+  <main>
     <section class="card" aria-labelledby="ckRowsHead">
       <div class="section-heading"><h2 id="ckRowsHead" data-i18n="ck.rows.title">按键：点按修改，长按可移动/删除</h2></div>
       <div id="ckEditBar" class="ck-edit-bar" hidden>
@@ -1179,63 +1234,6 @@
       <div id="ckRowList" aria-live="polite"></div>
       <p class="hint" data-i18n="ck.quick.title.hint">先点一行里的「＋」，或在下面常用键里一键添加。</p>
     </section>
-    <!-- 脏态离开确认（页内实现：confirm 依赖 WebChromeClient，不支持时
-         恒 false 会把用户锁死在页面里）。 -->
-    <div id="ckLeaveModal" class="ck-modal" hidden>
-      <div class="ck-modal-mask"></div>
-      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
-        <div class="ck-modal-head"><span data-i18n="ck.confirmLeaveTitle">未保存的修改</span></div>
-        <p class="ck-leave-text" data-i18n="ck.confirmLeave">有未保存的修改，离开将丢失。仍要离开吗？</p>
-        <div class="ck-modal-foot">
-          <button id="ckLeaveGo" type="button" class="btn ck-btn-danger" data-i18n="ck.leaveGo">丢弃并离开</button>
-          <button id="ckLeaveStay" type="button" class="btn primary" data-i18n="ck.leaveStay">留下</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 编辑态系统 BACK 确认（2026-10-04 用户裁定）：放弃编辑（退出编辑
-         态，已做改动保留为脏态）/继续编辑。 -->
-    <div id="ckBackModal" class="ck-modal" hidden>
-      <div class="ck-modal-mask" id="ckBackModalMask"></div>
-      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
-        <div class="ck-modal-head"><span data-i18n="ck.back.title">正在编辑按键</span></div>
-        <p class="ck-leave-text" data-i18n="ck.back.text">还在编辑模式（拖动移动、点 x 删除）。放弃编辑还是继续？</p>
-        <div class="ck-modal-foot">
-          <button id="ckBackGo" type="button" class="btn ck-btn-danger" data-i18n="ck.back.go">放弃编辑</button>
-          <button id="ckBackStay" type="button" class="btn primary" data-i18n="ck.back.stay">继续编辑</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- × 删除二次确认（2026-10-04 用户裁定：误触即真删太狠）。 -->
-    <div id="ckDelModal" class="ck-modal" hidden>
-      <div class="ck-modal-mask" id="ckDelModalMask"></div>
-      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
-        <div class="ck-modal-head"><span data-i18n="ck.del.title">删除按键</span></div>
-        <p class="ck-leave-text" id="ckDelText">确定删除吗？</p>
-        <div class="ck-modal-foot">
-          <button id="ckDelGo" type="button" class="btn ck-btn-danger" data-i18n="ck.del.go">删除</button>
-          <button id="ckDelCancel" type="button" class="btn primary" data-i18n="ck.del.cancel">取消</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 编辑 popup（bottom sheet）：点已有键/「＋」都从这里改，apply
-         后关闭、列表与预览当场刷新（每个动作的变化必须在当前屏可见）。 -->
-    <div id="ckModal" class="ck-modal" hidden>
-      <div class="ck-modal-mask" id="ckModalMask"></div>
-      <div class="ck-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="ckModalTitle">
-        <div class="ck-modal-head">
-          <span id="ckModalTitle" data-i18n="ck.edit.title">编辑按键</span>
-          <button id="ckModalCancel" type="button" class="ck-modal-x" aria-label="取消" data-i18n-aria="ck.cancel">×</button>
-        </div>
-        <div id="ckEditBody"></div>
-        <div class="ck-modal-foot">
-          <span class="save-note" id="ckEditNote" role="status" aria-live="polite"></span>
-          <button class="btn primary" id="ckApply" type="button" data-i18n="ck.apply">确定</button>
-        </div>
-      </div>
-    </div>
     <details class="card ck-json-fold">
       <summary data-i18n="ck.json.title">高级</summary>
       <p class="hint" data-i18n="ck.json.hint">编辑器够用的日常不需要动这里；批量导入/导出或高级玩法可直接粘贴 JSON。</p>
@@ -1250,15 +1248,21 @@
       </div>
     </details>
   </main>
+</div>
 
-  <!-- 保存条：页内流式布局（page = header + 滚动 main + 本条），滚动
-       区域就是保存条之上的可见空间——不 fixed、不遮挡、无需垫层
-       （fixed+垫层挡住 JSON 卡，用户两轮实录）。 -->
-  <div class="ck-save-bar" id="ckSaveBar">
-    <span id="ckDirtyHint" class="ck-dirty-hint" hidden data-i18n="ck.dirty">有未保存的修改</span>
-    <button class="btn" id="ckSave" type="button" data-i18n="ck.save">保存全部</button>
-    <span class="save-note" id="ckSaveNote" role="status" aria-live="polite"></span>
-  </div>
+<div class="page" data-page="cklang" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" id="cklangTitle">全拼键盘</h2>
+    <button class="btn" id="cklangReset" type="button" data-i18n="ck.lang.reset">全部恢复</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.lang.hint1">点字母键 / 逗号句号键定制角标与上滑、下滑；布局、单击与长按不变。</p>
+      <div id="cklangKb" class="ck-lang-kb"></div>
+      <p class="hint" data-i18n="ck.lang.hint2">分词 / 退格 / 123 / 中英 / 回车不可定制；空格长按沿用「长按空格动作」（跨键盘统一）。</p>
+    </section>
+  </main>
 </div>
 
 <div class="page" data-page="licenses" hidden>
@@ -1354,6 +1358,61 @@
   </main>
 </div>
 
+         恒 false 会把用户锁死在页面里）。 -->
+    <div id="ckLeaveModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask"></div>
+      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
+        <div class="ck-modal-head"><span data-i18n="ck.confirmLeaveTitle">未保存的修改</span></div>
+        <p class="ck-leave-text" data-i18n="ck.confirmLeave">有未保存的修改，离开将丢失。仍要离开吗？</p>
+        <div class="ck-modal-foot">
+          <button id="ckLeaveGo" type="button" class="btn ck-btn-danger" data-i18n="ck.leaveGo">丢弃并离开</button>
+          <button id="ckLeaveStay" type="button" class="btn primary" data-i18n="ck.leaveStay">留下</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑态系统 BACK 确认（2026-10-04 用户裁定）：放弃编辑（退出编辑
+         态，已做改动保留为脏态）/继续编辑。 -->
+    <div id="ckBackModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="ckBackModalMask"></div>
+      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
+        <div class="ck-modal-head"><span data-i18n="ck.back.title">正在编辑按键</span></div>
+        <p class="ck-leave-text" data-i18n="ck.back.text">还在编辑模式（拖动移动、点 x 删除）。放弃编辑还是继续？</p>
+        <div class="ck-modal-foot">
+          <button id="ckBackGo" type="button" class="btn ck-btn-danger" data-i18n="ck.back.go">放弃编辑</button>
+          <button id="ckBackStay" type="button" class="btn primary" data-i18n="ck.back.stay">继续编辑</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- × 删除二次确认（2026-10-04 用户裁定：误触即真删太狠）。 -->
+    <div id="ckDelModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="ckDelModalMask"></div>
+      <div class="ck-modal-sheet" role="alertdialog" aria-modal="true">
+        <div class="ck-modal-head"><span data-i18n="ck.del.title">删除按键</span></div>
+        <p class="ck-leave-text" id="ckDelText">确定删除吗？</p>
+        <div class="ck-modal-foot">
+          <button id="ckDelGo" type="button" class="btn ck-btn-danger" data-i18n="ck.del.go">删除</button>
+          <button id="ckDelCancel" type="button" class="btn primary" data-i18n="ck.del.cancel">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑 popup（bottom sheet）：点已有键/「＋」都从这里改，apply
+         后关闭、列表与预览当场刷新（每个动作的变化必须在当前屏可见）。 -->
+    <div id="ckModal" class="ck-modal" hidden>
+      <div class="ck-modal-mask" id="ckModalMask"></div>
+      <div class="ck-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="ckModalTitle">
+        <div class="ck-modal-head">
+          <span id="ckModalTitle" data-i18n="ck.edit.title">编辑按键</span>
+          <button id="ckModalCancel" type="button" class="ck-modal-x" aria-label="取消" data-i18n-aria="ck.cancel">×</button>
+        </div>
+        <div id="ckEditBody"></div>
+        <div class="ck-modal-foot">
+          <span class="save-note" id="ckEditNote" role="status" aria-live="polite"></span>
+          <button class="btn primary" id="ckApply" type="button" data-i18n="ck.apply">确定</button>
+        </div>
+      </div>
 <script src="dp-data.js"></script>
 <script src="settings.js"></script>
 </body>

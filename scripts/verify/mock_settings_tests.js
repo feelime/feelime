@@ -1219,13 +1219,15 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
         home: false, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
-        backup: true, about: true, customkeys: true, licenses: true, test: true,
+        backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
+        licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
         home: true, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
-        backup: true, about: true, customkeys: true, licenses: true, test: true,
+        backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
+        licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', 'home', world.token], 'reportPage(page, parent) on sub-page');
 
@@ -2069,7 +2071,7 @@ test('issue-39/50: hold-space virtual custom key (summary + editor) / volume / h
     equal(world.$('ckModalTitle').textContent, '长按空格动作', 'space editor title');
     const modeSel = world.doc.getElementById('ckMode');
     equal(modeSel.tagName, 'SELECT', 'type picker is a dropdown (9 kinds)');
-    equal([...modeSel.querySelectorAll('option')].length, 9, 'voice/none prepended for space');
+    equal([...modeSel.querySelectorAll('option')].length, 10, 'voice/none prepended for space (+动作)');
     equal(modeSel.value, 'text', 'current tap back-fills the type');
     const textInput = world.doc.getElementById('ckText');
     textInput.value = 'me@x.com'; fire(textInput, 'input');
@@ -2567,6 +2569,80 @@ test('custom key setting mode round-trips [setting:id] (issue #51)', () => {
     const parsed = S.ckTapParse('[setting:candidateFont]');
     equal(parsed.mode, 'setting', 'parse recognizes the token');
     equal(parsed.setting, 'candidateFont', 'anchor id kept');
+});
+
+
+// ---- 语言键盘定制（#60 定制按键升级：三级页入口 + 四级页 + 编辑器） ----
+test('lang keys: entry page lists keyboards and counts customized keys', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    try {
+    equal(world.doc.querySelectorAll('[data-cklang]').length, 5, 'five language keyboard entries');
+    world.FeelimeSettings().showPage('cklang');
+    const kb = world.doc.getElementById('cklangKb');
+    const allKeys = kb.querySelectorAll('.ck-lang-key');
+    const locked = kb.querySelectorAll('.ck-lang-key-sp');
+    equal(allKeys.length - locked.length, 27,
+        '26 letters + comma key are customizable');
+    equal(locked.length, 6, 'locked keys: shift/split/bs/123/space/cnEn/enter');
+    } catch (e) { console.error('STACK', e.stack); throw e; }
+});
+
+test('lang keys: editor saves alt + flick slots into langKeys and the pack', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    // 渲染器进入 pinyin（默认）后点 q。
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const qKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'q');
+    qKey.click();
+    const body = world.doc.getElementById('ckEditBody');
+    equal(!!body.querySelector('.ck-lang-lock'), true, 'lock row renders');
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 角标 @（编辑器里唯一的 input）。
+    const alt = body.querySelector('input');
+    alt.value = '@'; fire(alt, 'input');
+    // 下滑=动作·复制：类型下拉在第二小节。
+    const secs = body.querySelectorAll('.ck-lang-sec');
+    equal(secs.length, 2, 'up + down sections');
+    const downType = secs[1].querySelector('select');
+    downType.value = 'op';
+    fire(downType, 'change');
+    const secSel = world.doc.getElementById('ckEditBody').querySelectorAll('.ck-lang-sec')[1]
+        .querySelectorAll('select');
+    const opSel = secSel[secSel.length - 1];
+    // fake DOM 的 select 无 options 集合：直接设值触发（选项集由保存
+    // 结果断言覆盖——[edit:copy] 只有下拉选 copy 才会合成）。
+    opSel.value = 'copy'; fire(opSel, 'change');
+    world.$('ckApply').click();
+    // 计数与「保存全部」的 JSON 带 langKeys。
+    equal(world.doc.getElementById('cklangCount-pinyin').textContent.includes('1'), true,
+        'entry count updates');
+    world.$('ckSave').click();
+    const saved = world.lastCall('saveCustom').args[0];
+    const parsed = JSON.parse(saved);
+    equal(parsed.langKeys.pinyin.q.alt, '@', 'alt saved');
+    equal(parsed.langKeys.pinyin.q.down, '[edit:copy]', 'down slot saved as [edit:x]');
+});
+
+test('lang keys: none slot saves as empty string (gesture off)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const lKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'l');
+    lKey.click();
+    const secs = world.doc.querySelectorAll('#ckEditBody .ck-lang-sec');
+    const fire2 = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const upType = secs[0].querySelector('select');
+    upType.value = 'none';
+    fire2(upType, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.l.up, '', 'off slot persists as empty string');
 });
 
 console.log(`\n== settings mock-bridge suite: ${RESULTS.length - failed.length}/${RESULTS.length} passed ==`);
