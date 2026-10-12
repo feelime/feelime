@@ -627,6 +627,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private fun assertCutoutMode() {
         val w = window?.window ?: return
         if (Build.VERSION.SDK_INT < 28) return
+        // #57 v3（MIUI 14/A13 复发）：v1.3.9 只换了 cutout 模式，但 IME
+        // 的 Decor 从未关掉默认 fitSystemWindows 避让（#52 修 SetupActivity
+        // 时的同款根因，edge-to-edge 一直没落到 IME 窗口）——A13 的
+        // WindowLayout 先按 insets 收缩内容、cutout 模式只解除「禁画」，
+        // 不撤销收缩。Decor 关闭自动避让后，键盘自己用已下发的 insets
+        // CSS 变量避让挖孔（keyboard.css 键区 padding，背景仍铺满）。
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(w, false)
         val mode = if (Build.VERSION.SDK_INT >= 30)
             android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         else
@@ -1957,8 +1964,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
  // Each orientation keeps its own height.
             keyboardHeightOverride = storedKeyboardHeight()
             (keyboardView?.parent as? View)?.requestLayout()
-            // #39 旋转切换导航条隐藏/恢复。
+            // #39 旋转切换导航条隐藏/恢复。#57：旋转走窗口重建路径，
+            // 铺满策略（decorFits/cutout）一并重放——重建后的新 Window
+            // 不带旧设置（codex #57 定位：重放时机缺旋转一环）。
             applyLandscapeNavBars()
+            assertCutoutMode()
             pushBridgeHello()
             pushState()
         }
@@ -2064,6 +2074,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("englishPos", readEnglishPos(this))
             .put("keyHue", readKeyHue(this))
             .put("keySat", readKeySat(this))
+            .put("themeL", readThemeL(this))
+            .put("keyL", readKeyL(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("kbLayout", readKbLayout(this))
             .put("spaceHoldTap", readSpaceHoldTap(this))

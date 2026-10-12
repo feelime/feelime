@@ -247,6 +247,17 @@
                aria-label="键盘饱和度" />
       </span>
     </div>
+    <div class="row language-row stack" data-keywords="色号 hex 颜色代码 亮色 color code rgb">
+      <span class="row-label">
+        <span data-i18n="input.feel.themeHex">键盘色号</span>
+        <small data-i18n="input.feel.themeHexHint">整套配色的基础色（暗色模式基准）；输入 #RRGGBB，可选比滑条更亮的颜色。</small>
+      </span>
+      <span class="hex-wrap">
+        <span class="hex-swatch" id="themeHexSwatch" aria-hidden="true"></span>
+        <input type="text" id="themeHex" class="hex-input" spellcheck="false" autocomplete="off"
+               data-i18n-placeholder="input.feel.hexPlaceholder" placeholder="#RRGGBB" />
+      </span>
+    </div>
     <div class="row language-row stack" data-keywords="键面 色调 key hue">
       <span class="row-label">
         <span data-i18n="input.feel.keyHue">键面色调</span>
@@ -264,6 +275,17 @@
       </span>
       <span class="preset-wrap">
         <input type="range" id="keySat" min="0" max="100" step="1" value="100" aria-label="键面饱和度" />
+      </span>
+    </div>
+    <div class="row language-row stack" data-keywords="键面 色号 hex 颜色代码 亮色 key color code rgb">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyHex">键面色号</span>
+        <small data-i18n="input.feel.keyHexHint">键帽/强调色的基础色（暗色模式基准）；跟随键盘时显示背景组的合成色。</small>
+      </span>
+      <span class="hex-wrap">
+        <span class="hex-swatch" id="keyHexSwatch" aria-hidden="true"></span>
+        <input type="text" id="keyHex" class="hex-input" spellcheck="false" autocomplete="off"
+               data-i18n-placeholder="input.feel.hexPlaceholder" placeholder="#RRGGBB" />
       </span>
     </div>
     <div class="row language-row">

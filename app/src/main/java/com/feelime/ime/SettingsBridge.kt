@@ -377,6 +377,22 @@ fun readThemeSat(context: Context): Int =
         .getInt(PREF_THEME_SAT, 100)
         .takeIf { it in 0..100 } ?: 100
 
+/** #61 亮度偏移（色号编辑的主维度，中间态方案）：offset 直接加在各
+ *  表面色的设计 l 上（组内同向、层次近似保持），0=无偏移。范围
+ *  [-50,50]；「选不了亮色」的根因就是 l 不可控。 */
+const val PREF_THEME_L = "theme_l"
+const val PREF_KEY_L = "key_l"
+
+fun readThemeL(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_THEME_L, 0)
+        .takeIf { it in -50..50 } ?: 0
+
+fun readKeyL(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_KEY_L, 0)
+        .takeIf { it in -50..50 } ?: 0
+
 /** 背景图片（亮/暗各一组）：设置页压缩到 ≤720px 宽 JPEG 后经桥写入。
  *  variant 只认 light/dark；「无」= 删文件。src 记录来源供设置页回显。 */
 fun isValidBgVariant(variant: String): Boolean = variant == "light" || variant == "dark"
@@ -838,6 +854,8 @@ class SettingsBridge(
             .put("englishPos", readEnglishPos(context))
             .put("keyHue", readKeyHue(context))
             .put("keySat", readKeySat(context))
+            .put("themeL", readThemeL(context))
+            .put("keyL", readKeyL(context))
             .put("kbHeightPortrait", readKbHeightPortrait(context))
             .apply {
                 val (min, max) = readKbHeightBounds(context)
@@ -1589,6 +1607,30 @@ class SettingsBridge(
         if (sat !in -1..100) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_KEY_SAT, sat).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #61 亮度偏移：[-50,50] 落盘，0=无偏移。 */
+    @JavascriptInterface
+    fun setThemeL(offset: Int, token: String) = guarded(token) {
+        if (offset !in -50..50) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_THEME_L, offset).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #61 键面组亮度偏移：[-50,50] 落盘，0=无偏移。 */
+    @JavascriptInterface
+    fun setKeyL(offset: Int, token: String) = guarded(token) {
+        if (offset !in -50..50) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_KEY_L, offset).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

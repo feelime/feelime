@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.41';
+    const KEYBOARD_VERSION = '3.73.42';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -4401,9 +4401,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         /** 长按全后选：数字 + 字母组逐个（4 → [4 g h i]）。 */
         /** T9 长按（issue #9）：三行弹层——上行=字母组小写、中行=左符号
-         * ·数字·右符号、下行=大写。字母与符号都是 literal 直上屏
-         * （commitText，大小写原样落）；数字格=通配，进引擎（与点按
-         * 同义）。拼音里确认字母由下滑/横滑手势承担，不经弹层。 */
+         * ·数字·右符号、下行=大写。全部 literal 直上屏（commitText，
+         * 大小写原样落）——数字格也字面落 editor（issue #62 用户裁定：
+         * 长按选数字就是要打这个数字；旧规则「数字格=通配进引擎、与
+         * 点按同义」让长按弹数字形同虚设）。已有组合时 commitText 先
+         * 落现有组合再插数字（TextInputCoordinator 语义，与字母/符号
+         * literal 同通道）。拼音里确认字母由下滑/横滑手势承担，不经
+         * 弹层；7/9 下滑拆分（opts.split）仍走引擎通道不变。 */
         openT9HoldPopup(button, press) {
             this.hideKeyBubble();
             const key = button.dataset.key;
@@ -4412,7 +4416,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const cells = [
                 ...letters.map(ch => ({ char: ch, literal: true })),
                 { char: syms[0], literal: true },
-                { char: key },
+                { char: key, literal: true },
                 { char: syms[1], literal: true },
                 ...letters.map(ch => ({ char: ch.toUpperCase(), literal: true })),
             ].filter(cell => cell.char);
@@ -4421,10 +4425,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         /** 笔画长按（issue #18，用户定稿 2026-09-19）：与 T9 同款三排——
          * 小写字母组 / 左符号 · 数字 · 右符号 / 大写字母组。字母组沿用
-         * T9 的数字键位分配（2=abc…9=wxyz，拨号键盘肌肉记忆），上屏规
-         * 则同 T9：字母（含大写）与符号 literal 直上屏（commitText），中
-         * 格数字=点按同义（发部件编码，send 字段），预选中格、相对跟手。
-         * 1 键无字母组：退回单排 符号·数字·符号。 */
+         * T9 的数字键位分配（2=abc…9=wxyz，拨号键盘肌肉记忆）。上屏
+         * 规则与 T9 有一处分歧（#62 起）：字母（含大写）与符号同样
+         * literal 直上屏（commitText），但**中格数字=点按同义（发部件
+         * 编码，send 字段）**——笔画的数字键面印的是笔画部件，长按选
+         * 数字=选部件，不字面上屏；T9 的中格数字才字面落。预选中格、
+         * 相对跟手。1 键无字母组：退回单排 符号·数字·符号。 */
         openStrokeHoldPopup(button, press) {
             this.hideKeyBubble();
             const key = button.dataset.key;
@@ -4445,10 +4451,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 Object.assign(letters.length ? { grid: true } : { middle: true }, { press }));
         }
 
-        /** T9 浮层：长按=三行大小写+符号弹层（opts.grid）；7/9 下滑=拆分
-         * 字母（opts.split：按触点 x 半边判定下左/下右，不按格子距离——
-         * 拖动方向与浮层位置相反，距离命中会立刻取消）。格子默认走引擎
-         * 通道（enginePath → sendText），literal 格直上屏（commitText）。
+        /** T9 浮层：长按=三行大小写+符号+数字弹层（opts.grid，#62 起
+         * 全格 literal 直上屏）；7/9 下滑=拆分字母（opts.split：按触点
+         * x 半边判定下左/下右，不按格子距离——拖动方向与浮层位置相反，
+         * 距离命中会立刻取消），split 格走引擎通道（enginePath →
+         * sendText）。literal 格直上屏（commitText）；笔画中格带 send
+         * 字段走 strokeActivate（部件编码，语义与 T9 数字不同）。
          */
         openT9Popup(button, cells, opts = {}) {
             const popup = document.getElementById('keyPopup');
@@ -5562,11 +5570,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         }
                     }
                     if (cell.color != null) {
+                        // #61：#RRGGBB 直存（渲染时直上 style）；hex 合法
+                        // 就不再走 hue/色名校验。
+                        const hex = /^#[0-9a-fA-F]{6}$/.test(cell.color);
                         const hue = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color);
                         const hueOk = hue && Number(hue[1]) <= 359
                             && (hue[2] == null || Number(hue[2]) <= 100);
-                        if (!hueOk && !CUSTOM_KEY_COLORS.includes(cell.color)) {
-                            return { error: t("「{0}」的 color 只能是：{1} 或自定义色调 h0-h359", label, CUSTOM_KEY_COLORS.join('/')) };
+                        if (!hex && !hueOk && !CUSTOM_KEY_COLORS.includes(cell.color)) {
+                            return { error: t("「{0}」的 color 只能是：{1}、自定义色调 h0-h359 或 #RRGGBB", label, CUSTOM_KEY_COLORS.join('/')) };
                         }
                     }
                     // 行对齐（2026-10-03）：可选 align 挂在行内任意 cell 上，
@@ -5945,7 +5956,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         const button = document.createElement('button');
                         button.className = 'kb-key sym-custom-key';
                         const hueM = cell.color ? /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color) : null;
-                        if (cell.color && !hueM && CUSTOM_KEY_COLORS.includes(cell.color)) {
+                        const hexM = cell.color ? /^#[0-9a-fA-F]{6}$/.test(cell.color) : false;
+                        if (hexM) {
+                            // #61 色号键帽：亮度定文字黑/白（l>60 深字）。
+                            const n = parseInt(cell.color.slice(1), 16);
+                            const lum = 0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255)
+                                + 0.114 * (n & 255);
+                            button.style.background = cell.color;
+                            button.style.borderColor = cell.color;
+                            button.style.color = lum > 150 ? '#1a1a1a' : '#fff';
+                        } else if (cell.color && !hueM && CUSTOM_KEY_COLORS.includes(cell.color)) {
                             button.classList.add('ck-' + cell.color);
                         } else if (hueM) {
                             const sat = hueM[2] != null ? hueM[2] : 65;
@@ -10262,6 +10282,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     document.documentElement.style.setProperty('--kb-sat', String(sat / 100));
                 } else {
                     document.documentElement.style.removeProperty('--kb-sat');
+                }
+                // #61 亮度偏移（色号编辑的主维度）：offset 直接加在各表面
+                // 色的设计 l 上（组内同向，层次/对比近似保持）；0/缺省 =
+                // 无偏移，清内联回设计值。
+                const tl = Number(payload.themeL);
+                if (Number.isFinite(tl) && tl >= -50 && tl <= 50 && tl !== 0) {
+                    document.documentElement.style.setProperty('--bg-l', String(tl) + '%');
+                } else {
+                    document.documentElement.style.removeProperty('--bg-l');
+                }
+                const kl = Number(payload.keyL);
+                if (Number.isFinite(kl) && kl >= -50 && kl <= 50 && kl !== 0) {
+                    document.documentElement.style.setProperty('--key-l', String(kl) + '%');
+                } else {
+                    document.documentElement.style.removeProperty('--key-l');
                 }
                 // hue 变了背景色跟着变：#27 手势条涂色要重推。
                 this.pushChromeColor();

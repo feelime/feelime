@@ -833,33 +833,33 @@ details summary {
 .tp-tag { font-size: 11px; color: var(--card-sub); }
 .tp-board { display: flex; flex-direction: column; gap: 5px; padding: 8px; border-radius: 8px;
     background-size: cover; background-position: center; }
-.tp-board-dark { background-color: hsl(var(--pv-hue, 160) calc(22% * var(--pv-sat, 1)) 12%);
+.tp-board-dark { background-color: hsl(var(--pv-hue, 160) calc(22% * var(--pv-sat, 1)) calc(12% + var(--pv-bg-l, 0%)));
     background-image: var(--pv-bg-img-dark, none); }
-.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(32% * var(--pv-sat, 1)) 88%);
+.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(32% * var(--pv-sat, 1)) calc(88% + var(--pv-bg-l, 0%)));
     background-image: var(--pv-bg-img-light, none); }
 .tp-row { display: flex; gap: 5px; }
 .tp-key { display: inline-flex; align-items: center; justify-content: center;
     width: 34px; height: 30px; border-radius: 5px; font-size: 14px; font-weight: 500; }
 /* 暗组键帽（/ 不透明度过底图）。 */
 .tp-board-dark .tp-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(16% * var(--pv-key-sat, var(--pv-sat, 1))) 37% / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(16% * var(--pv-key-sat, var(--pv-sat, 1))) calc( / var(--pv-key-alpha, 1)% + var(--pv-key-l, 0%))37);
     color: #e8e8e8; }
 .tp-board-dark .tp-accent-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) 48% / var(--pv-key-alpha, 1));
-    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) 95%); }
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc( / var(--pv-key-alpha, 1)% + var(--pv-key-l, 0%))48);
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(% + var(--pv-key-l, 0%))95); }
 .tp-board-dark .tp-special-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) 26% / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc( / var(--pv-key-alpha, 1)% + var(--pv-key-l, 0%))26);
     color: #e8e8e8; }
 /* 亮组键帽：对齐 keyboard.css html.theme-light 公式（键 38%/97%、
  * accent 62%/42%、special 42%/72%）。 */
 .tp-board-light .tp-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(38% * var(--pv-key-sat, var(--pv-sat, 1))) 97% / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(38% * var(--pv-key-sat, var(--pv-sat, 1))) calc( / var(--pv-key-alpha, 1)% + var(--pv-key-l, 0%))97);
     color: #181818; }
 .tp-board-light .tp-accent-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) 42% / var(--pv-key-alpha, 1));
-    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) 95%); }
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc( / var(--pv-key-alpha, 1)% + var(--pv-key-l, 0%))42);
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(% + var(--pv-key-l, 0%))95); }
 .tp-board-light .tp-special-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) 72% / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc( / var(--pv-key-alpha, 1)% + var(--pv-key-l, 0%))72);
     color: #181818; }
 .preset-swatches { display: flex; gap: 10px; align-items: center; flex: none; }
 .preset-swatch {
@@ -1030,6 +1030,14 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
 .ck-lang-key-sp { background: transparent; color: var(--card-sub);
     font-size: 13px; font-weight: 600; cursor: default; }
 .ck-lang-w15 { flex: 1.5; } .ck-lang-w2 { flex: 2.05; } .ck-lang-w3 { flex: 3.2; }
+/* #61 色号行：色块 + 等宽输入框（与滑条同一行式风格）。 */
+.hex-wrap { display: flex; align-items: center; gap: 10px; }
+.hex-swatch { width: 30px; height: 30px; border-radius: 8px;
+    border: 1px solid var(--line, #8884); flex: none; }
+.hex-input { width: 110px; font: 600 14px/1 ui-monospace, SFMono-Regular,
+    Menlo, Consolas, monospace; letter-spacing: .5px;
+    padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line, #8884);
+    background: var(--pill, #8882); color: inherit; text-transform: uppercase; }
 .ck-lang-sub { position: absolute; left: 0; right: 0; top: 3px;
     text-align: center;
     font-size: 9.5px; color: var(--card-sub); font-weight: 400; }

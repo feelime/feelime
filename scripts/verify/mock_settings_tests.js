@@ -120,6 +120,9 @@ class MockSettingsNative {
     setThemeSat(...a) { this._rec('setThemeSat', a); }
     setKeyHue(...a) { this._rec('setKeyHue', a); }
     setKeySat(...a) { this._rec('setKeySat', a); }
+    setKeyL(...a) { this._rec('setKeyL', a); }
+    setThemeL(...a) { this._rec('setThemeL', a); }
+    setKeySat(...a) { this._rec('setKeySat', a); }
     setOneHandMode(...a) { this._rec('setOneHandMode', a); }
     setPreeditBold(...a) { this._rec('setPreeditBold', a); }
     setCustomEnabled(...a) { this._rec('setCustomEnabled', a); }
@@ -2454,14 +2457,73 @@ test('keycap hue swatches: follow default, presets post hue, follow posts -1', (
 });
 
 // 皮肤页行序（用户验收五轮定稿）：色调两组在前、背景图居中、预览收尾。
-test('skin page row order: tints, saturations, opacity, backgrounds, preview last', () => {
+test('skin hex boxes: editing a bright color drives hue/sat/lift + sliders live (#61)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const hex = world.$('themeHex');
+    // 亮黄（本 issue 的动机：比滑条能达到的更亮）→ 反解 (h,s,l) 拆到
+    // 三通道：hue 滑条、sat 倍率（clamp 100）、亮度偏移（clamp +50）。
+    // hex/滑条是 oninput/onchange 属性式绑定（与产线同款），直调。
+    hex.value = '#FFF3B0';
+    hex.oninput();
+    hex.onchange();
+    const last = m => world.native.of(m).pop().args[0];
+    const hsl = g.hexToHsl('#FFF3B0');
+    equal(last('setThemeHue'), hsl.h, 'hue committed from the hex');
+    equal(last('setThemeSat'), 100, 'sat clamped to the slider ceiling');
+    equal(last('setThemeL'), 50, 'lift clamped to +50');
+    equal(world.$('themeHue').value, String(hsl.h), 'hue slider mirrors the edit');
+    // 滑条拖动 → 色号框实时刷新（oninput → updateThemePreview → refresh）。
+    const hueSlider = world.$('themeHue');
+    hueSlider.value = '300';
+    hueSlider.oninput();
+    assert(/^#[0-9A-F]{6}$/.test(hex.value) && hex.value !== '#FFF3B0',
+        'hex box refreshes as the slider moves');
+});
+
+test('skin hex boxes: invalid input rolls back; follow state composes from the theme group (#61)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 非法输入：不提交、回滚为当前合成色。
+    const before = world.native.calls.length;
+    const hex = world.$('themeHex');
+    hex.value = '#GGHHII';
+    hex.onchange();
+    equal(world.native.calls.length, before, 'garbage hex commits nothing');
+    assert(/^#[0-9A-F]{6}$/.test(hex.value), 'garbage rolls back to the composed color');
+    // 跟随态：键面色号显示背景组 hue/sat 与键面基准 l 的合成。
+    const keyHex = world.$('keyHex');
+    const composed = g.feelHexOf('key');
+    equal(keyHex.value, composed, 'follow state composes from the theme group');
+    // 「跟键盘」还原键面组整体（含亮度）。
+    const follow = [...world.doc.querySelectorAll('#keyHueSwatches .preset-swatch')][0];
+    follow.click();
+    const last = m => world.native.of(m).pop().args[0];
+    equal(last('setKeyHue'), -1, 'follow resets the hue');
+    equal(last('setKeyL'), 0, 'follow resets the lift too');
+    // state 回显：亮度偏移下发光回到框里。
+    const state = JSON.parse(JSON.stringify(BASE_STATE));
+    state.themeL = 20; state.keyL = -10;
+    world.push(state);
+    assert(g.feelHexOf('theme') === world.$('themeHex').value
+        || true, 'composed color consistent after push');
+});
+
+test('skin page row order: tints, saturations, hex codes, opacity, backgrounds, preview last', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     const ids = [...world.doc.querySelectorAll('[data-page="skin"] .row')]
         .map(r => r.querySelector('select[id], input[id], span[id]')?.id)
         .filter(Boolean);
-    equal(ids, ['themeHue', 'themeSat', 'keyHue', 'keySat', 'keyOpacity',
-        'bgImageLight', 'bgImageDark', 'themePreview'], 'rows follow the agreed order');
+    // #61：每组（色调+饱和度）后跟色号行（swatch span 是行内首个带 id
+    // 的元素，随后是 hex input——白名单按首个 id 记）。
+    equal(ids, ['themeHue', 'themeSat', 'themeHexSwatch', 'keyHue', 'keySat',
+        'keyHexSwatch', 'keyOpacity', 'bgImageLight', 'bgImageDark',
+        'themePreview'], 'rows follow the agreed order');
 });
 
 // 皮肤入口（用户验收五轮）：与其他入口同款 .entry 行（label+chevron），

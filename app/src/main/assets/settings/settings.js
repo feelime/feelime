@@ -345,6 +345,8 @@ const I18N = {
         "ck.f.color": "颜色",
         "ck.color.default": "默认",
         "ck.color.custom": "自定义",
+        "ck.color.hex": "色号",
+        "ck.color.hexLabel": "键帽色号",
         "ck.color.hue": "色调",
         "ck.color.sat": "饱和度",
         "ck.f.note": "备注",
@@ -708,6 +710,11 @@ const I18N = {
         "input.english.pos3": "第 3 位",
         "input.english.pos5": "第 5 位",
         "input.feel.themeSatHint": "拉到最左是黑白灰（明暗模式定黑白基底），往右色彩渐浓。",
+        "input.feel.themeHex": "键盘色号",
+        "input.feel.themeHexHint": "整套配色的基础色（暗色模式基准）；输入 #RRGGBB，可选比滑条更亮的颜色。",
+        "input.feel.keyHex": "键面色号",
+        "input.feel.keyHexHint": "键帽/强调色的基础色（暗色模式基准）；跟随键盘时显示背景组的合成色。",
+        "input.feel.hexPlaceholder": "#RRGGBB",
         "preset.classic": "默认绿",
         "preset.ocean": "海蓝",
         "preset.violet": "紫罗兰",
@@ -1103,6 +1110,8 @@ const I18N = {
         "ck.f.color": "Color",
         "ck.color.default": "Default",
         "ck.color.custom": "Custom",
+        "ck.color.hex": "Hex",
+        "ck.color.hexLabel": "Keycap color code",
         "ck.color.hue": "Hue",
         "ck.color.sat": "Saturation",
         "ck.f.note": "Note",
@@ -1451,6 +1460,11 @@ const I18N = {
         "input.feel.keyHueHint": "Recolors keycaps/accents only (background stays); tap Follow to inherit again.",
         "input.feel.keySat": "Keycap saturation",
         "input.feel.keySatHint": "Color intensity of the keycap group only; far left makes keycaps grayscale.",
+        "input.feel.themeHex": "Keyboard color code",
+        "input.feel.themeHexHint": "Base color of the whole palette (dark-mode reference); type #RRGGBB for brighter colors than the sliders reach.",
+        "input.feel.keyHex": "Keycap color code",
+        "input.feel.keyHexHint": "Base color of keycaps/accents (dark-mode reference); shows the composed background color while following.",
+        "input.feel.hexPlaceholder": "#RRGGBB",
         "preset.followKey": "Follow keyboard",
         "preset.classic": "Classic green",
         "preset.ocean": "Ocean",
@@ -1994,6 +2008,126 @@ function showPage(name) {
 let themeHueShown = 160, themeSatShown = 100;
 let keyHueShown = 160, keySatShown = 100;
 let keyHueFollow = true, keySatFollow = true;
+// #61 亮度偏移显示值（themeL/keyL：加在各表面色设计 l 上的 offset）。
+let themeLShown = 0, keyLShown = 0;
+/* #61 色号合成基准（暗色模式基础位点）：s/l 与 keyboard.css 暗色段
+ * 的 --bg(22%/12%)、--key(16%/37%) 同源（两处硬编码互链，改要同改）。
+ * 饱和度滑条是倍率语义（0-100=0-1×设计s），色号反解 s 先除基准换算
+ * 倍率再 clamp——超亮高饱和色会被压到 100%（中间态近似，文档注明）。 */
+const FEEL_BASE = { theme: { s: 22, l: 12 }, key: { s: 16, l: 37 } };
+
+function hslToHex(h, s, l) {
+    s = Math.max(0, Math.min(100, s)) / 100;
+    l = Math.max(0, Math.min(100, l)) / 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const hp = ((h % 360) + 360) % 360 / 60;
+    const x = c * (1 - Math.abs(hp % 2 - 1));
+    let r = 0, g = 0, b = 0;
+    if (hp < 1) [r, g, b] = [c, x, 0];
+    else if (hp < 2) [r, g, b] = [x, c, 0];
+    else if (hp < 3) [r, g, b] = [0, c, x];
+    else if (hp < 4) [r, g, b] = [0, x, c];
+    else if (hp < 5) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    const m = l - c / 2;
+    const ch = v => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+    return ("#" + ch(r) + ch(g) + ch(b)).toUpperCase();
+}
+
+/** #RRGGBB（# 可省、忽略空格）→ {h,s,l}；非法返回 null。 */
+function hexToHsl(str) {
+    const m = /^\s*#?([0-9a-fA-F]{6})\s*$/.exec(String(str || ""));
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > .5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h *= 60;
+    }
+    return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+/** 两组当前合成色（跟随态键面取背景组 hue/sat、l 用键面组自己的）。 */
+function feelHexOf(group) {
+    if (group === "theme") {
+        return hslToHex(themeHueShown, FEEL_BASE.theme.s * themeSatShown / 100,
+            FEEL_BASE.theme.l + themeLShown);
+    }
+    const kh = keyHueFollow ? themeHueShown : keyHueShown;
+    const ks = keySatFollow ? themeSatShown : keySatShown;
+    return hslToHex(kh, FEEL_BASE.key.s * ks / 100, FEEL_BASE.key.l + keyLShown);
+}
+
+/** 色号框回显（滑条拖动/回推后调用；hex 框正在编辑时不打扰）。 */
+function refreshHexBoxes() {
+    [["themeHex", "themeHexSwatch", "theme"], ["keyHex", "keyHexSwatch", "key"]]
+        .forEach(([inputId, swId, group]) => {
+            const input = document.getElementById(inputId);
+            if (!input || document.activeElement === input) return;
+            const hex = feelHexOf(group);
+            input.value = hex;
+            const sw = document.getElementById(swId);
+            if (sw) sw.style.background = hex;
+        });
+}
+
+/** 色号输入 → 拆 (h,s,l) → 滑条显示值 + 预览（不落盘，change 才提交）。 */
+function feelApplyHex(group, hex) {
+    const hsl = hexToHsl(hex);
+    if (!hsl) return false;
+    const base = FEEL_BASE[group];
+    const satPct = Math.max(0, Math.min(100, Math.round(hsl.s / base.s * 100)));
+    const lOff = Math.max(-50, Math.min(50, hsl.l - base.l));
+    if (group === "theme") {
+        themeHueShown = hsl.h; themeSatShown = satPct; themeLShown = lOff;
+        const hueEl = $("themeHue"), satEl = $("themeSat");
+        if (hueEl) { hueEl.value = String(hsl.h); hueEl.style.setProperty("--thumb-hue", String(hsl.h)); }
+        if (satEl) satEl.value = String(satPct);
+    } else {
+        keyHueFollow = false; keySatFollow = false;
+        keyHueShown = hsl.h; keySatShown = satPct; keyLShown = lOff;
+        const hueEl = $("keyHue"), satEl = $("keySat");
+        if (hueEl) { hueEl.value = String(hsl.h); hueEl.style.setProperty("--thumb-hue", String(hsl.h)); }
+        if (satEl) satEl.value = String(satPct);
+    }
+    updateThemePreview();
+    return true;
+}
+
+/** 色号框事件绑定（renderFeel 里 DOM 稳定，绑一次即可——oninput/onchange
+ *  直接赋值同滑条模式，重复 render 覆盖无泄漏）。 */
+function bindHexBox(group) {
+    const input = document.getElementById(group === "theme" ? "themeHex" : "keyHex");
+    if (!input) return;
+    input.oninput = () => {
+        const v = input.value;
+        const sw = document.getElementById(group === "theme" ? "themeHexSwatch" : "keyHexSwatch");
+        if (hexToHsl(v)) { if (sw) sw.style.background = v.trim().replace(/^#?/, "#"); }
+        feelApplyHex(group, v);
+    };
+    input.onchange = () => {
+        if (!feelApplyHex(group, input.value)) {
+            refreshHexBoxes();   // 非法输入回滚为当前合成色
+            return;
+        }
+        if (group === "theme") {
+            call("setThemeHue", themeHueShown);
+            call("setThemeSat", themeSatShown);
+            call("setThemeL", themeLShown);
+        } else {
+            call("setKeyHue", keyHueShown);
+            call("setKeySat", keySatShown);
+            call("setKeyL", keyLShown);
+        }
+    };
+}
 // 预览素材（用户验收五轮）：按键不透明度 + 亮/暗背景图（state 带
 // base64，source=none 时无图）。
 let pvKeyAlpha = 1;
@@ -2014,6 +2148,11 @@ function updateThemePreview() {
     pv.style.setProperty("--pv-key-alpha", String(pvKeyAlpha));
     pv.style.setProperty("--pv-bg-img-light", pvBgLightImg);
     pv.style.setProperty("--pv-bg-img-dark", pvBgDarkImg);
+    // #61 亮度偏移进预览 + 色号框随滑条实时刷新。
+    pv.style.setProperty("--pv-bg-l", themeLShown + "%");
+    const kl = keyLShown;
+    pv.style.setProperty("--pv-key-l", kl + "%");
+    refreshHexBoxes();
 }
 
 /* --- render ------------------------------------------------------------ */
@@ -2094,6 +2233,14 @@ function renderFeel(state) {
     // 自定义 hue（0-360）优先于预置：有自定义值时滑条亮「已自定义」态
     // 且预置全不选中；-1（未自定义）时滑条停在各预置对应的 hue。
     const swatches = $("themePresetSwatches");
+    // #61 亮度偏移回显（hex 框编辑中不受回推打扰——refreshHexBoxes 自带
+    // activeElement 守卫；shown 值仍要更新，失焦后能对齐最新状态）。
+    const tl = Number(state.themeL);
+    if (Number.isFinite(tl) && tl >= -50 && tl <= 50) themeLShown = Math.round(tl);
+    const klv = Number(state.keyL);
+    if (Number.isFinite(klv) && klv >= -50 && klv <= 50) keyLShown = Math.round(klv);
+    bindHexBox("theme");
+    bindHexBox("key");
     const hueInput = $("themeHue");
     const hue = Number(state.themeHue);
     const hasCustomHue = Number.isFinite(hue) && hue >= 0 && hue <= 360;
@@ -2196,6 +2343,8 @@ function renderFeel(state) {
             follow.addEventListener("click", () => {
                 call("setKeyHue", -1);
                 call("setKeySat", -1);
+                // #61：跟随=键面组整体还原（亮度偏移一并清零）。
+                call("setKeyL", 0);
             });
             keySwatches.append(follow);
             THEME_PRESET_LIST.forEach(id => {
@@ -4552,12 +4701,21 @@ function ckRenderRows(skipFit) {
             const held = ckDrag && ckDrag.cell === cell && ckDrag.chip;
             const chip = held || document.createElement("button");
             chip.type = "button";
-            const isHue = /^h\d+$/.test(cell.color || "");
-            chip.className = "ck-chip" + (!isHue && cell.color ? " ck-" + cell.color : "");
+            // #61：自定义色三种编码统一渲染——hN（存量，s 缺省 65）/
+            // hNsN（编辑器现行编码，此前这里不识别、走类名分支=没上色，
+            // codex #61 定位发现的存量不一致）/ #RRGGBB（新）。
+            const hueM = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color || "");
+            const hexM = /^#[0-9a-fA-F]{6}$/.test(cell.color || "");
+            const styled = hueM || hexM;
+            chip.className = "ck-chip" + (!styled && cell.color ? " ck-" + cell.color : "");
             if (cell.span === 2 || cell.span === 3) chip.dataset.span = String(cell.span);
-            if (isHue) {
-                chip.style.background = "hsl(" + cell.color.slice(1) + ", 65%, 45%)";
-                chip.style.borderColor = "hsl(" + cell.color.slice(1) + ", 65%, 35%)";
+            if (styled) {
+                if (hexM) { chip.style.background = cell.color; chip.style.borderColor = cell.color; }
+                else {
+                    const s = hueM[2] != null ? hueM[2] : 65;
+                    chip.style.background = "hsl(" + hueM[1] + ", " + s + "%, 45%)";
+                    chip.style.borderColor = "hsl(" + hueM[1] + ", " + s + "%, 35%)";
+                }
                 chip.style.color = "#fff";
             }
             chip.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
@@ -4745,11 +4903,16 @@ function ckBindDrag(chip) {
         const ghost = document.createElement("div");
         ghost.className = "ck-ghost";
         ghost.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
-        const isHue = /^h\d+$/.test(cell.color || "");
-        if (!isHue && cell.color) ghost.classList.add("ck-" + cell.color);
-        else if (isHue) {
-            ghost.style.background = "hsl(" + cell.color.slice(1) + ", 65%, 45%)";
-            ghost.style.borderColor = "hsl(" + cell.color.slice(1) + ", 65%, 35%)";
+        const ghHue = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color || "");
+        const ghHex = /^#[0-9a-fA-F]{6}$/.test(cell.color || "");
+        if (!ghHue && !ghHex && cell.color) ghost.classList.add("ck-" + cell.color);
+        else if (ghHue || ghHex) {
+            if (ghHex) { ghost.style.background = cell.color; ghost.style.borderColor = cell.color; }
+            else {
+                const s = ghHue[2] != null ? ghHue[2] : 65;
+                ghost.style.background = "hsl(" + ghHue[1] + ", " + s + "%, 45%)";
+                ghost.style.borderColor = "hsl(" + ghHue[1] + ", " + s + "%, 35%)";
+            }
             ghost.style.color = "#fff";
         }
         if (cell.span === 2 || cell.span === 3) ghost.style.minWidth = rect.width + "px";
@@ -5173,14 +5336,41 @@ function ckBuildForm() {
         return;
     }
     const HUE_RE = /^h\d{1,3}(?:s\d{1,3})?$/;
+    const HEX_RE = /^#[0-9a-fA-F]{6}$/;
     const isCustomHue = HUE_RE.test(d.color || "");
-    const colorSeg = ckSegment([["", t("ck.color.default")], ["custom", t("ck.color.custom")]],
-        isCustomHue ? "custom" : "", v => {
-            if (v === "custom") { if (!HUE_RE.test(d.color || "")) d.color = "h210s65"; }
-            else d.color = "";
+    // #61：定制键色第三档「色号」——存 #RRGGBB（键盘侧直上 style），
+    // 亮色键帽不再被 hNsN 的固定 l=45 卡住。
+    const isCustomHex = HEX_RE.test(d.color || "");
+    const colorSeg = ckSegment([["", t("ck.color.default")],
+        ["custom", t("ck.color.custom")], ["hex", t("ck.color.hex")]],
+        isCustomHex ? "hex" : (isCustomHue ? "custom" : ""), v => {
+            if (v === "custom") {
+                if (!HUE_RE.test(d.color || "")) d.color = "h210s65";
+            } else if (v === "hex") {
+                if (!HEX_RE.test(d.color || "")) d.color = "#FF8A00";
+            } else d.color = "";
             ckBuildForm();
         });
     body.append(ckField(t("ck.f.color"), colorSeg, "ck-row-color"));
+    if (isCustomHex) {
+        const hexWrap = document.createElement("div");
+        hexWrap.className = "hex-wrap";
+        const hexSwatch = document.createElement("span");
+        hexSwatch.className = "hex-swatch";
+        hexSwatch.style.background = d.color;
+        const hexInput = document.createElement("input");
+        hexInput.type = "text";
+        hexInput.className = "hex-input";
+        hexInput.value = d.color.toUpperCase();
+        hexInput.maxLength = 7;
+        hexInput.spellcheck = false;
+        hexInput.addEventListener("input", () => {
+            const v = hexInput.value.trim();
+            if (HEX_RE.test(v)) { d.color = v.toUpperCase(); hexSwatch.style.background = d.color; }
+        });
+        hexWrap.append(hexSwatch, hexInput);
+        body.append(ckField(t("ck.color.hexLabel"), hexWrap, "ck-row-hexcolor"));
+    }
     if (isCustomHue) {
         // 双滑块：色调（全谱渐变轨道）+ 饱和度（灰->纯色，色相联动）。
         const parts = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(d.color) || [null, "210", "65"];
