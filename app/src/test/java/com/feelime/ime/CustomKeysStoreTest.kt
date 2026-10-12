@@ -52,15 +52,24 @@ class CustomKeysStoreTest {
     }
 
     @Test
-    fun explicitOffAnswersDisabledAndWins() {
+    fun explicitOffEmptiesRowsButKeepsLangKeys() {
         val prefs = FakePrefs()
         val store = CustomKeysStore(prefs)
-        store.save("""{"version":1,"rows":[[{"t":"✓","tap":"好的"}]]}""", enabled = true)
-        assertEquals("""{"version":1,"rows":[[{"t":"✓","tap":"好的"}]]}""", store.syncAnswer())
+        store.save("""{"version":1,"rows":[[{"t":"✓","tap":"好的"}]],"langKeys":{"pinyin":{"h":{"up":"hi"}}}}""",
+            enabled = true)
+        assertEquals("""{"version":1,"rows":[[{"t":"✓","tap":"好的"}]],"langKeys":{"pinyin":{"h":{"up":"hi"}}}}""",
+            store.syncAnswer())
         store.setEnabled(false)
         assertFalse(store.enabled())
-        assertEquals("the settings switch must still reach the keyboard as disabled",
-            "disabled", store.syncAnswer())
+        // 开关只关符号层（2026-10-12 裁定）：rows 置空、langKeys 保留。
+        // 旧契约答 "disabled" 会让键盘删整个镜像，语言键盘定制被连坐。
+        val off = org.json.JSONObject(store.syncAnswer())
+        assertEquals("""[[],[],[]]""", off.getJSONArray("rows").toString())
+        assertEquals("hi", off.getJSONObject("langKeys").getJSONObject("pinyin")
+            .getJSONObject("h").getString("up"))
+        // pref 里的完整 json 不动，开关拨回即恢复。
+        store.setEnabled(true)
+        assertTrue(store.syncAnswer().contains("好的"))
     }
 
     @Test

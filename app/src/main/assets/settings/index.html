@@ -1154,15 +1154,10 @@
   <main>
     <section class="card" aria-labelledby="ckHead">
       <div class="section-heading"><h2 id="ckHead" data-i18n="ck.status.title">定制按键</h2><span class="eyebrow" data-i18n="input.custom.badge">高级</span></div>
-      <div class="rows">
-        <label class="row switch-row" for="customEnabled">
-          <span class="row-label"><span data-i18n="input.custom.enabled">启用定制按键</span><small id="ckStatus">未定制</small></span>
-          <input type="checkbox" id="customEnabled" class="toggle">
-        </label>
-      </div>
       <!-- #50 长按空格=虚拟定制键（用户裁定）：动作与定制按键同编辑器
            同 DSL（文本/组合键/链接/设置项/面板/多步链），语音输入与关闭
-           为两个特殊类型。 -->
+           为两个特殊类型。启用开关已随符号页定制一起迁入符号页四级页
+           （只控制符号层，语言键盘定制不受其影响）。 -->
       <div class="rows">
         <div class="row" id="spaceHoldRow" data-keywords="语音 长按空格 麦克风 剪贴板 表情 编辑 控制键 关闭 定制 voice hold space clipboard favorites edit control custom">
           <span class="row-label"><span data-i18n="voice.holdSpace">长按空格</span><small id="spaceHoldSummary">语音输入</small></span>
@@ -1197,8 +1192,9 @@
         </div>
       </div>
     </section>
-    <!-- 「定制」符号页（原有 tab 迁入四级页）。 -->
-    <section class="card" aria-labelledby="ckSymHead">
+    <!-- 「定制」符号页（原有 tab 迁入四级页）：关闭符号页定制时整卡
+         隐藏（开关在符号页内，renderCustom 按 state 显隐）。 -->
+    <section class="card" id="ckSymCard" aria-labelledby="ckSymHead">
       <div class="section-heading"><h2 id="ckSymHead" data-i18n="ck.sym.title">符号键盘</h2></div>
       <div class="rows">
         <div class="row" id="ckSymbolEntry" data-keywords="符号 定制 剪贴板 收藏 常用语">
@@ -1216,6 +1212,14 @@
     <h2 class="page-title" data-i18n="ck.sym.pageTitle">「定制」符号页</h2>
   </header>
   <main>
+    <section class="card">
+      <div class="rows">
+        <label class="row switch-row" for="customEnabled">
+          <span class="row-label"><span data-i18n="input.custom.enabled">启用符号页定制</span><small id="ckStatus">未定制</small></span>
+          <input type="checkbox" id="customEnabled" class="toggle">
+        </label>
+      </div>
+    </section>
     <section class="card" aria-labelledby="ckRowsHead">
       <div class="section-heading"><h2 id="ckRowsHead" data-i18n="ck.rows.title">按键：点按修改，长按可移动/删除</h2></div>
       <div id="ckEditBar" class="ck-edit-bar" hidden>

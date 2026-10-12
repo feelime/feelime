@@ -2682,6 +2682,56 @@ test('lang keys: every slot type renders inputs without undefined values', () =>
     equal(parsed.langKeys.pinyin.h.up, '', 'none saved as empty string');
 });
 
+test('lang keys preview: left key and punct alt mirror the real keyboard (排版验收)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const S = world.FeelimeSettings();
+    const leftKeyLabel = () => {
+        const rows = [...world.doc.querySelectorAll('#cklangKb .ck-lang-row')];
+        return rows[2].firstElementChild.textContent;
+    };
+    // 中文键盘第三行左键=分词；英文/法俄=Shift 图标（真机 isChineseMode
+    // 分支，验收实录预览恒画「分词」与真机不符）。
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    equal(leftKeyLabel(), '分词', 'pinyin row-3 left key is the split key');
+    world.doc.querySelector('[data-cklang="english"]').click();
+    equal(leftKeyLabel(), '\u21e7', 'english row-3 left key is the shift icon');
+    // 标点槽默认角标=「。」（真机中文态主「，」+顶角标「。」；预览旧版
+    // 角标为空）。
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const punct = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => {
+            const main = el.querySelector('.ck-lang-main');
+            return main && main.textContent === '，';
+        });
+    equal(punct && punct.querySelector('.ck-lang-sub').textContent, '。',
+        'punct slot default alt is 。');
+});
+
+test('custom keys: symbol-page switch hides the home entry card when off (开关迁移裁定)', () => {
+    const world = new SettingsWorld();
+    const S = world.FeelimeSettings();
+    const card = () => world.doc.getElementById('ckSymCard');
+    // BASE_STATE 的开关默认关：先推 enabled=true 再断言可见。
+    const on = JSON.parse(JSON.stringify(BASE_STATE));
+    on.custom.enabled = true;
+    world.push(on);
+    equal(card().hidden, false, 'entry visible while enabled');
+    // 关闭（state 回推驱动，与开关 change→桥→回推同链）。
+    const state = JSON.parse(JSON.stringify(BASE_STATE));
+    state.custom.enabled = false;
+    world.push(state);
+    equal(card().hidden, true, 'entry hidden when the switch is off');
+    const state2 = JSON.parse(JSON.stringify(BASE_STATE));
+    state2.custom.enabled = true;
+    world.push(state2);
+    equal(card().hidden, false, 'entry back when re-enabled');
+    // 开关本体随符号页（首页不再承载）。
+    S.showPage('cksymbol');
+    const host = world.doc.getElementById('customEnabled').closest('.page');
+    equal(host.dataset.page, 'cksymbol', 'the switch lives on the symbol page');
+});
+
 test('custom keys: save bar lives on the two editor pages only (分页保存裁定)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });

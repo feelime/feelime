@@ -49,17 +49,21 @@ const CK_EDIT_OPS = [
 // 角标取 alts 的首值；底行固定 [123][，][空格][中/英][⏎]，逗号键可
 // 定制（寻址 '.'，与 dataset.key 一致），其余锁定）。
 const LANG_KB = {
-    pinyin: { title: 'ck.lang.pinyin', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'],
+    /* leftKey：第三行左键形态（复刻 keyboard.js isChineseMode 分支）——
+     * 中文键盘（pinyin/dp）是「分词」，非中文键盘（法俄英）是 Shift
+     * 图标；双拼 sogou/ziguang 方案的 ing 特例不在预览层复刻（方案是
+     * 运行时设置，预览画主形态即可）。 */
+    pinyin: { title: 'ck.lang.pinyin', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'sep',
         alts: { q: '1', w: '2', e: '3', r: '4', t: '5', y: '6', u: '7', i: '8', o: '9', p: '0',
             a: '-', s: '/', d: ':', f: ';', g: '(', h: ')', j: '~', k: '"', l: "'",
             z: '@', x: '_', c: '#', v: '&', b: '?', n: '!', m: '…', '.': ',' } },
-    dp: { title: 'ck.lang.dp', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], share: 'pinyin' },
-    english: { title: 'ck.lang.english', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], share: 'pinyin' },
-    french: { title: 'ck.lang.french', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'],
+    dp: { title: 'ck.lang.dp', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'sep', share: 'pinyin' },
+    english: { title: 'ck.lang.english', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'shift', share: 'pinyin' },
+    french: { title: 'ck.lang.french', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'shift',
         alts: { q: '1', w: '2', e: 'é', r: '4', t: '5', y: 'ÿ', u: 'ù', i: 'î', o: 'ô', p: '0',
             a: 'à', s: '/', d: ':', f: ';', g: '(', h: ')', j: '«', k: '»', l: '’',
             z: '@', x: '_', c: 'ç', v: '&', b: '?', n: '!', m: '.', '.': ',' } },
-    russian: { title: 'ck.lang.russian', rows: ['йцукенгшщзхъ', 'фывапролджэ', 'ячсмитьбю'],
+    russian: { title: 'ck.lang.russian', rows: ['йцукенгшщзхъ', 'фывапролджэ', 'ячсмитьбю'], leftKey: 'shift',
         alts: { й: '1', ц: '2', у: '3', к: '4', е: '5', н: '6', г: '7', ш: '8', щ: '9', з: '0', х: '-', ъ: '=',
             ф: '\\', ы: '/', в: ':', а: ';', п: '(', р: ')', о: '~', л: '"', д: "'", ж: '«', э: '»',
             я: '@', ч: '_', с: '#', м: '&', и: '?', т: '!', ь: '…', б: ',', ю: '.', '.': ',' } },
@@ -244,7 +248,7 @@ const I18N = {
         "input.double.mapCaption": "韵母键位图（键名下方为该键韵母，右下为双声母）",
         "input.custom.title": "定制按键",
         "input.custom.badge": "高级",
-        "input.custom.enabled": "启用定制按键",
+        "input.custom.enabled": "启用符号页定制",
         "input.custom.jsonLabel": "定制 JSON（{\"version\":1,\"rows\":[[{\"t\":\"键面\",\"tap\":\"点击输出\",\"note\":\"备注\"}]]}）",
         "input.custom.jsonPlaceholder": "粘贴定制 JSON",
         "input.custom.note": "保存在本机，键盘下次载入时生效。",
@@ -1002,7 +1006,7 @@ const I18N = {
         "input.double.mapCaption": "Final key map (finals under each key, double initials bottom-right)",
         "input.custom.title": "Custom keys",
         "input.custom.badge": "Advanced",
-        "input.custom.enabled": "Enable custom symbols",
+        "input.custom.enabled": "Enable the custom symbols page",
         "input.custom.jsonLabel": "Custom JSON ({\"version\":1,\"rows\":[[{\"t\":\"key label\",\"tap\":\"output\",\"note\":\"note\"}]]})",
         "input.custom.jsonPlaceholder": "Paste custom JSON",
         "input.custom.note": "Saved on this device and applied the next time the keyboard loads.",
@@ -1971,6 +1975,9 @@ function showPage(name) {
     // 轮渲染，恢复「超宽行缩放进容器」约束；「高级」textarea 同步
     // 投影当前草稿。rAF 等首帧布局把宽度量准。
     if (name === "cksymbol" && typeof ckEnter === "function") {
+        // 深链直达符号页（未经过首页 ckEnter→ckLoad）时草稿未载：
+        // null 渲染会崩，先补载（ckSyncJsonView 也依赖草稿）。
+        if (!ckRows) ckLoad();
         if (typeof ckSyncJsonView === "function") ckSyncJsonView();
         requestAnimationFrame(() => {
             if (currentPage === "cksymbol") ckRenderRows();
@@ -2627,6 +2634,10 @@ function renderCustom(state) {
     $("customSummary").textContent = customSummary(custom.summary);
     const ckStatus = document.getElementById("ckStatus");
     if (ckStatus) ckStatus.textContent = customSummary(custom.summary);
+    // 开关只管符号页定制（用户裁定 2026-10-12）：关闭时首页入口卡随
+    // 之隐藏（undefined=未下发=默认显示，与 native 恒推 enabled 对齐）。
+    const symCard = document.getElementById("ckSymCard");
+    if (symCard) symCard.hidden = custom.enabled === false;
     if (document.activeElement !== $("customEnabled")) $("customEnabled").checked = !!custom.enabled;
     if (document.activeElement !== $("customJson") && !$(`customJson`).value && !ckDirty) {
         $("customJson").value = custom.json || "";
@@ -5557,9 +5568,11 @@ function renderLangKb(lay) {
         const rowEl = document.createElement("div");
         rowEl.className = "ck-lang-row" + (idx === 1 ? " ck-lang-indent" : "");
         if (idx === 2) {
+            // 第三行左键复刻真实键盘（LANG_KB.leftKey）：中文键盘「分词」
+            // / 非中文键盘 Shift 图标（⇧ 近似 ICONS.shift）。
             const shift = document.createElement("span");
             shift.className = "ck-lang-key ck-lang-key-sp ck-lang-w15";
-            shift.textContent = t("ck.lang.shiftKey");
+            shift.textContent = conf.leftKey === "shift" ? "\u21e7" : t("ck.lang.shiftKey");
             rowEl.append(shift);
         }
         [...rowKeys].forEach(key => rowEl.append(ckLangKeyEl(lay, key, table[key])));
@@ -5595,7 +5608,10 @@ function ckLangKeyEl(lay, key, cell) {
     const isPunct = key === ".";
     el.innerHTML = '<span class="ck-lang-sub"></span><span class="ck-lang-main"></span>';
     el.querySelector(".ck-lang-main").textContent = isPunct ? "，" : key;
-    const sub = cell && cell.alt != null ? cell.alt : (isPunct ? "" : ckLangDefaultAlt(lay, key));
+    // 标点槽默认角标复刻真机中文态：主字「，」下沉 + 顶部居中角标「。」
+    // （上滑值）；字母键取布局 alts 默认表。定制值恒优先。
+    const sub = cell && cell.alt != null ? cell.alt
+        : (isPunct ? "。" : ckLangDefaultAlt(lay, key));
     el.querySelector(".ck-lang-sub").textContent = sub;
     if (cell && Object.keys(cell).length) el.classList.add("ck-lang-custom");
     el.setAttribute("aria-label", t(isPunct ? "ck.lang.editPunct" : "ck.lang.editKey")

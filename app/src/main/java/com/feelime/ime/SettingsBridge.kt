@@ -3382,8 +3382,20 @@ class CustomKeysStore internal constructor(private val prefs: SharedPreferences)
     }
 
     /** 键盘桥 customKeys() 的应答串：空串=未设置（触发键盘 localStorage
-     *  表上推迁移），"disabled"=显式关闭（键盘删镜像），其余=json 本体。 */
-    fun syncAnswer(): String = if (enabled()) json() else "disabled"
+     *  表上推迁移），其余=json 本体。关闭开关（enabled=false）时 rows
+     *  置空、langKeys 保留（2026-10-12 用户裁定：开关只关符号页定制，
+     *  语言键盘定制不受连坐——此前答 "disabled" 会让键盘删掉整个镜像，
+     *  langKeys 一起没）。pref 里的完整 json 不动，开关拨回即恢复。 */
+    fun syncAnswer(): String {
+        if (enabled()) return json()
+        val raw = json()
+        if (raw.isEmpty()) return ""
+        return runCatching {
+            val obj = JSONObject(raw)
+            obj.put("rows", JSONArray("[[],[],[]]"))
+            obj.toString()
+        }.getOrDefault("")
+    }
 
     private fun JSONArray.iterate(): Sequence<JSONArray> = sequence {
         for (index in 0 until length()) yield(optJSONArray(index) ?: JSONArray())
