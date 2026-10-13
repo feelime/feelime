@@ -714,10 +714,10 @@ const I18N = {
         "input.feel.keyGroup": "键面",
         "input.feel.keyFollow": "跟随键盘",
         "input.feel.keyFollowHint": "开启时键面的色调/饱和度跟随键盘组；关闭后各自独立。",
-        "input.feel.themeHex": "键盘色号",
-        "input.feel.themeHexHint": "整套配色的基础色（暗色模式基准）；输入 #RRGGBB，可选比滑条更亮的颜色。",
-        "input.feel.keyHex": "键面色号",
-        "input.feel.keyHexHint": "键帽/强调色的基础色（暗色模式基准）；跟随键盘时显示背景组的合成色。",
+        "input.feel.themeHex": "键盘原色",
+        "input.feel.themeHexHint": "生成背景/面板配色的输入色（不是最终像素色）；键面跟随「键盘」时一起调整。",
+        "input.feel.keyHex": "键面原色",
+        "input.feel.keyHexHint": "生成键帽/强调色的输入色；跟随开启时显示键盘原色，实际效果见下方预览。",
         "input.feel.hexPlaceholder": "#RRGGBB",
         "preset.classic": "默认绿",
         "preset.ocean": "海蓝",
@@ -1468,10 +1468,10 @@ const I18N = {
         "input.feel.keyGroup": "Keycaps",
         "input.feel.keyFollow": "Follow keyboard",
         "input.feel.keyFollowHint": "Keycap hue/saturation follow the keyboard group while on; turn off to tune them independently.",
-        "input.feel.themeHex": "Keyboard color code",
-        "input.feel.themeHexHint": "Base color of the whole palette (dark-mode reference); type #RRGGBB for brighter colors than the sliders reach.",
-        "input.feel.keyHex": "Keycap color code",
-        "input.feel.keyHexHint": "Base color of keycaps/accents (dark-mode reference); shows the composed background color while following.",
+        "input.feel.themeHex": "Keyboard source color",
+        "input.feel.themeHexHint": "The input color that generates backgrounds and panels (not the final pixel color); keycaps follow it while Follow is on.",
+        "input.feel.keyHex": "Keycap source color",
+        "input.feel.keyHexHint": "The input color that generates keycaps and accents; shows the keyboard source color while following.",
         "input.feel.hexPlaceholder": "#RRGGBB",
         "preset.followKey": "Follow keyboard",
         "preset.classic": "Classic green",
@@ -2020,14 +2020,16 @@ function showPage(name) {
 // 本身要在拖动期间保留本地值）。
 let themeHueShown = 160, themeSatShown = 100;
 let keyHueShown = 160, keySatShown = 100;
-let keyHueFollow = true, keySatFollow = true;
+let keyHueFollow = true, keySatFollow = true, keyLFollow = true;
 // #61 亮度偏移显示值（themeL/keyL：加在各表面色设计 l 上的 offset）。
 let themeLShown = 0, keyLShown = 0;
-/* #61 色号合成基准（暗色模式基础位点）：s/l 与 keyboard.css 暗色段
- * 的 --bg(22%/12%)、--key(16%/37%) 同源（两处硬编码互链，改要同改）。
- * 饱和度滑条是倍率语义（0-100=0-1×设计s），色号反解 s 先除基准换算
- * 倍率再 clamp——超亮高饱和色会被压到 100%（中间态近似，文档注明）。 */
-const FEEL_BASE = { theme: { s: 22, l: 12 }, key: { s: 16, l: 37 } };
+/* #61 三轮（codex 方案 e）：色号/色块=「配色原色」——生成这组配色的
+ * 输入色，不对应任何实际表面像素。基准 s=100/l=50：色号显示
+ * hsl(hue, sat%, 50%+lift)；用户拖滑条色块即明显变化（旧「暗色基准
+ * 底色」l=12% 让色块恒近黑——三轮验收实录）。实际表面由 CSS 按
+ * 设计系数派生（s: 设计s×sat/100；l: N+(100-N)·w·t），l=50 时完全
+ * 等于原设计。 */
+const FEEL_BASE = { theme: { s: 100, l: 50 }, key: { s: 100, l: 50 } };
 
 function hslToHex(h, s, l) {
     s = Math.max(0, Math.min(100, s)) / 100;
@@ -2091,7 +2093,7 @@ function hexEditing() {
 // 回到「已确认值」而非编辑草稿（review #61-P4：草稿混用会滚错）。
 let themeHexConfirmed = "", keyHexConfirmed = "";
 
-/** 两组当前合成色（跟随态键面取背景组 hue/sat、l 用键面组自己的）。 */
+/** 两组当前原色（跟随态键面取背景组 hue/sat、l 用键面组自己的）。 */
 function feelHexOf(group) {
     if (group === "theme") {
         return hslToHex(themeHueShown, FEEL_BASE.theme.s * themeSatShown / 100,
@@ -2120,11 +2122,11 @@ function refreshHexBoxes(force) {
 function feelApplyHex(group, hex) {
     const hsl = hexToHsl(hex);
     if (!hsl) return false;
-    const base = FEEL_BASE[group];
-    const satPct = Math.max(0, Math.min(100, Math.round(hsl.s / base.s * 100)));
-    // 上限 +70（2026-10-13 二轮验收）：±50 时键盘组底色天花板 62%，
-    // 用户输入的亮色全被折成暗土色——「看着永远是黑的」的第二根因。
-    const lOff = Math.max(-50, Math.min(70, hsl.l - base.l));
+    // 原色语义（三轮）：s 直接落滑条（0-100=原色饱和度）；l 相对中位
+    // 50 的偏移 = 原色亮度-50，clamp ±50（50=原色 l=100）。表面派生
+    // 由 CSS 系数管（见 FEEL_BASE 注释），不再在此折损用户的输入。
+    const satPct = Math.max(0, Math.min(100, hsl.s));
+    const lOff = Math.max(-50, Math.min(50, hsl.l - 50));
     if (group === "theme") {
         themeHueShown = hsl.h; themeSatShown = satPct; themeLShown = lOff;
         const hueEl = $("themeHue"), satEl = $("themeSat");
@@ -2196,10 +2198,11 @@ function updateThemePreview() {
     pv.style.setProperty("--pv-key-alpha", String(pvKeyAlpha));
     pv.style.setProperty("--pv-bg-img-light", pvBgLightImg);
     pv.style.setProperty("--pv-bg-img-dark", pvBgDarkImg);
-    // #61 亮度偏移进预览 + 色号框随滑条实时刷新。
-    pv.style.setProperty("--pv-bg-l", themeLShown + "%");
-    const kl = keyLShown;
-    pv.style.setProperty("--pv-key-l", kl + "%");
+    // #61 三轮（原色模型）：预览推派生系数 t=lift/50（CSS 按组系数
+    // 乘法派生）；键面跟随（keyL=-1 语义）时取背景组 lift。
+    pv.style.setProperty("--pv-bg-lt", themeLShown / 50);
+    const kl = keyLFollow ? themeLShown : keyLShown;
+    pv.style.setProperty("--pv-key-lt", kl / 50);
     refreshHexBoxes();
 }
 
@@ -2286,7 +2289,10 @@ function renderFeel(state) {
     const tl = Number(state.themeL);
     if (Number.isFinite(tl) && tl >= -50 && tl <= 50) themeLShown = Math.round(tl);
     const klv = Number(state.keyL);
-    if (Number.isFinite(klv) && klv >= -50 && klv <= 50) keyLShown = Math.round(klv);
+    if (Number.isFinite(klv) && (klv === -1 || (klv >= -50 && klv <= 50))) {
+        keyLFollow = klv === -1;
+        keyLShown = keyLFollow ? (Number.isFinite(tl) ? Math.round(tl) : 0) : Math.round(klv);
+    }
     bindHexBox("theme");
     bindHexBox("key");
     // 跟随键盘（组级开关，2026-10-13）：开=hue/sat 都继承（-1）；关=把
@@ -2299,9 +2305,11 @@ function renderFeel(state) {
             if (keyFollow.checked) {
                 call("setKeyHue", -1);
                 call("setKeySat", -1);
+                call("setKeyL", -1);   // 整原色跟随（三轮）
             } else {
                 call("setKeyHue", keyHueFollow ? themeHueShown : keyHueShown);
                 call("setKeySat", keySatFollow ? themeSatShown : keySatShown);
+                call("setKeyL", keyLShown);
             }
         };
     }

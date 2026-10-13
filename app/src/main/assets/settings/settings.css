@@ -833,33 +833,33 @@ details summary {
 .tp-tag { font-size: 11px; color: var(--card-sub); }
 .tp-board { display: flex; flex-direction: column; gap: 5px; padding: 8px; border-radius: 8px;
     background-size: cover; background-position: center; }
-.tp-board-dark { background-color: hsl(var(--pv-hue, 160) calc(22% * var(--pv-sat, 1)) calc(12% + var(--pv-bg-l, 0%)));
+.tp-board-dark { background-color: hsl(var(--pv-hue, 160) calc(22% * var(--pv-sat, 1)) calc(12% + (100% - 12%) * 0.35 * var(--pv-bg-lt, 0)));
     background-image: var(--pv-bg-img-dark, none); }
-.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(32% * var(--pv-sat, 1)) calc(88% + var(--pv-bg-l, 0%)));
+.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(32% * var(--pv-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--pv-bg-lt, 0)));
     background-image: var(--pv-bg-img-light, none); }
 .tp-row { display: flex; gap: 5px; }
 .tp-key { display: inline-flex; align-items: center; justify-content: center;
     width: 34px; height: 30px; border-radius: 5px; font-size: 14px; font-weight: 500; }
 /* 暗组键帽（/ 不透明度过底图）。 */
 .tp-board-dark .tp-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(16% * var(--pv-key-sat, var(--pv-sat, 1))) calc(37% + var(--pv-key-l, 0%)) / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(16% * var(--pv-key-sat, var(--pv-sat, 1))) calc(37% + (100% - 37%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #e8e8e8; }
 .tp-board-dark .tp-accent-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc(48% + var(--pv-key-l, 0%)) / var(--pv-key-alpha, 1));
-    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(95% + var(--pv-key-l, 0%))); }
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc(48% + (100% - 48%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(95% + (100% - 95%) * 0.75 * var(--pv-key-lt, 0))); }
 .tp-board-dark .tp-special-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc(26% + var(--pv-key-l, 0%)) / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc(26% + (100% - 26%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #e8e8e8; }
 /* 亮组键帽：对齐 keyboard.css html.theme-light 公式（键 38%/97%、
  * accent 62%/42%、special 42%/72%）。 */
 .tp-board-light .tp-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(38% * var(--pv-key-sat, var(--pv-sat, 1))) calc(97% + var(--pv-key-l, 0%)) / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(38% * var(--pv-key-sat, var(--pv-sat, 1))) calc(97% + (100% - 97%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #181818; }
 .tp-board-light .tp-accent-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc(42% + var(--pv-key-l, 0%)) / var(--pv-key-alpha, 1));
-    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(95% + var(--pv-key-l, 0%))); }
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc(42% + (100% - 42%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(95% + (100% - 95%) * 0.75 * var(--pv-key-lt, 0))); }
 .tp-board-light .tp-special-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc(72% + var(--pv-key-l, 0%)) / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc(72% + (100% - 72%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #181818; }
 .preset-swatches { display: flex; gap: 10px; align-items: center; flex: none; }
 .preset-swatch {

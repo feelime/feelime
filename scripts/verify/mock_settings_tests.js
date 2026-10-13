@@ -2467,8 +2467,8 @@ test('skin hex boxes: editing a bright color drives hue/sat/lift + sliders live 
     const last = m => world.native.of(m).pop().args[0];
     const hsl = g.hexToHsl('#FFF3B0');
     equal(last('setThemeHue'), hsl.h, 'hue committed from the hex');
-    equal(last('setThemeSat'), 100, 'sat clamped to the slider ceiling');
-    equal(last('setThemeL'), 70, 'lift clamped to +70');
+    equal(last('setThemeSat'), 100, 'source saturation lands directly (no base division)');
+    equal(last('setThemeL'), 35, 'source lift = hex lightness - 50 (faithful round-trip)');
     equal(world.$('themeHue').value, String(hsl.h), 'hue slider mirrors the edit');
     // 真实打字态（焦点在框上）输入不被合成色回写吃掉；失焦提交后才
     // 收敛为采用色。焦点守卫是防线（mock 里直设 activeElement）。

@@ -9328,15 +9328,19 @@ test('bright keycap lift flips the ink for readability (#61 review P1)', {since:
         'light theme never overrides the ink');
 });
 
-test('skin lift offsets apply as --bg-l/--key-l inline vars (#61)', {since: '3.73.42'}, () => {
+test('skin source-color lift applies as --bg-lt/--key-lt (t) inline vars (#61 三轮)', {since: '3.73.42'}, () => {
     const world = fresh({ themeHue: 200, themeSat: 80, themeL: 25, keyHue: 300, keySat: 60, keyL: -15 });
     const root = world.document.documentElement;
-    equal(root.style.getPropertyValue('--bg-l'), '25%', 'theme lift lands on --bg-l');
-    equal(root.style.getPropertyValue('--key-l'), '-15%', 'key lift lands on --key-l');
-    // 0/缺省=清内联回设计值（不留 --bg-l:0% 的死变量）。
+    equal(root.style.getPropertyValue('--bg-lt'), '0.5', 'theme lift 25 → t=0.5 on --bg-lt');
+    equal(root.style.getPropertyValue('--key-lt'), '-0.3', 'key lift -15 → t=-0.3 on --key-lt');
+    // keyL=-1 = 跟随键盘组（整原色跟随）：t 取背景组。
+    const worldF = fresh({ themeHue: 200, themeSat: 80, themeL: 40, keyHue: -1, keySat: -1, keyL: -1 });
+    equal(worldF.document.documentElement.style.getPropertyValue('--key-lt'), '0.8',
+        'keyL=-1 inherits the theme lift');
+    // 0/缺省=清内联回设计值。
     const world0 = fresh({ themeL: 0, keyL: 0 });
-    const v0 = world0.document.documentElement.style.getPropertyValue('--bg-l');
-    assert(!v0, 'zero lift clears the inline var');
+    assert(!world0.document.documentElement.style.getPropertyValue('--bg-lt'),
+        'zero lift clears the inline var');
 });
 
 test('custom key hex color renders directly with readable ink (#61)', {since: '3.73.42'}, () => {

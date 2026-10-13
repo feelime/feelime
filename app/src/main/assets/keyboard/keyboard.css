@@ -33,29 +33,29 @@
     /* 键帽不透明度滑块（外观页）：hsla 的 alpha 位由 JS 只调
      * --key-alpha（0-1），键帽文字保持实色。 */
     --key-alpha: 1;
-    --bg: hsl(var(--bg-hue) calc(22% * var(--bg-sat, 1)) calc(12% + var(--bg-l, 0%)));
-    --key: hsl(var(--key-hue) calc(16% * var(--key-sat, 1)) calc(37% + var(--key-l, 0%)) / var(--key-alpha));
-    --special: hsl(var(--key-hue) calc(22% * var(--key-sat, 1)) calc(25% + var(--key-l, 0%)) / var(--key-alpha));
-    --pressed: hsl(var(--key-hue) calc(16% * var(--key-sat, 1)) calc(43% + var(--key-l, 0%)) / var(--key-alpha));
+    --bg: hsl(var(--bg-hue) calc(22% * var(--bg-sat, 1)) calc(12% + (100% - 12%) * 0.35 * var(--bg-lt, 0)));
+    --key: hsl(var(--key-hue) calc(16% * var(--key-sat, 1)) calc(37% + (100% - 37%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --special: hsl(var(--key-hue) calc(22% * var(--key-sat, 1)) calc(25% + (100% - 25%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --pressed: hsl(var(--key-hue) calc(16% * var(--key-sat, 1)) calc(43% + (100% - 43%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
     --text: #e8e8e8;
     --muted: #b0b0b0;
-    --accent: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(48% + var(--key-l, 0%)));
-    --accent-strong: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(30% + var(--key-l, 0%)));
+    --accent: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(48% + (100% - 48%) * 0.75 * var(--key-lt, 0)));
+    --accent-strong: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
     --danger: #ff6b6b;
     --recording: #ff4d4d;
-    --panel: hsl(var(--bg-hue) calc(22% * var(--bg-sat, 1)) calc(16% + var(--bg-l, 0%)));
-    --panel-a: hsl(var(--bg-hue) calc(22% * var(--bg-sat, 1)) calc(16% + var(--bg-l, 0%)) / var(--key-alpha));
-    --pill: hsl(var(--bg-hue) calc(20% * var(--bg-sat, 1)) calc(24% + var(--bg-l, 0%)));
-    --logo-bg: hsl(var(--bg-hue) calc(8% * var(--bg-sat, 1)) calc(30% + var(--bg-l, 0%)));
-    --icon: hsl(var(--bg-hue) calc(5% * var(--bg-sat, 1)) calc(60% + var(--bg-l, 0%)));
-    --card-bg: hsl(var(--bg-hue) calc(9% * var(--bg-sat, 1)) calc(21% + var(--bg-l, 0%)));
+    --panel: hsl(var(--bg-hue) calc(22% * var(--bg-sat, 1)) calc(16% + (100% - 16%) * 0.35 * var(--bg-lt, 0)));
+    --panel-a: hsl(var(--bg-hue) calc(22% * var(--bg-sat, 1)) calc(16% + (100% - 16%) * 0.35 * var(--bg-lt, 0)) / var(--key-alpha));
+    --pill: hsl(var(--bg-hue) calc(20% * var(--bg-sat, 1)) calc(24% + (100% - 24%) * 0.35 * var(--bg-lt, 0)));
+    --logo-bg: hsl(var(--bg-hue) calc(8% * var(--bg-sat, 1)) calc(30% + (100% - 30%) * 0.35 * var(--bg-lt, 0)));
+    --icon: hsl(var(--bg-hue) calc(5% * var(--bg-sat, 1)) calc(60% + (100% - 60%) * 0.35 * var(--bg-lt, 0)));
+    --card-bg: hsl(var(--bg-hue) calc(9% * var(--bg-sat, 1)) calc(21% + (100% - 21%) * 0.35 * var(--bg-lt, 0)));
     --card-text: #e8e8e8;
     --card-sub: #a2a2ac;
     --input-placeholder: #dedede;
     --key-subtext: #dedede;
-    --accent-text: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(66% + var(--key-l, 0%)));
-    --accent-ink: hsl(var(--key-hue) calc(45% * var(--key-sat, 1)) calc(95% + var(--key-l, 0%)));
-    --line: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(28% + var(--bg-l, 0%)));
+    --accent-text: hsl(var(--key-hue) calc(60% * var(--key-sat, 1)) calc(66% + (100% - 66%) * 0.75 * var(--key-lt, 0)));
+    --accent-ink: hsl(var(--key-hue) calc(45% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
+    --line: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(28% + (100% - 28%) * 0.35 * var(--bg-lt, 0)));
     --radius-key: 5px;
     --radius-card: 10px;
     --scrim: #000000b8;
@@ -63,10 +63,10 @@
 
 html.theme-light {
     color-scheme: light;
-    --key: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(97% + var(--key-l, 0%)) / var(--key-alpha));
-    --special: hsl(var(--key-hue) calc(42% * var(--key-sat, 1)) calc(72% + var(--key-l, 0%)) / var(--key-alpha));
-    --pressed: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(92% + var(--key-l, 0%)) / var(--key-alpha));
-    --bg: hsl(var(--bg-hue) calc(32% * var(--bg-sat, 1)) calc(88% + var(--bg-l, 0%)));
+    --key: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(97% + (100% - 97%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --special: hsl(var(--key-hue) calc(42% * var(--key-sat, 1)) calc(72% + (100% - 72%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --pressed: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(92% + (100% - 92%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+    --bg: hsl(var(--bg-hue) calc(32% * var(--bg-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--bg-lt, 0)));
     --text: #181818;
     /* The old #b0b0b0 sat at ~2.1:1 on the light surfaces -
      * quick-settings text was effectively invisible. #5c616b keeps the
@@ -74,25 +74,25 @@ html.theme-light {
      * sits on (6.1 on --key, 5.7 on --panel, 4.9 on --bg; --special surfaces
      * carry --text, not muted). */
     --muted: #5c616b;
-    --accent: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(42% + var(--key-l, 0%)));
-    --accent-strong: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(30% + var(--key-l, 0%)));
+    --accent: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(42% + (100% - 42%) * 0.75 * var(--key-lt, 0)));
+    --accent-strong: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
     --danger: #d93025;
     --recording: #e5484d;
-    --panel: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + var(--bg-l, 0%)));
-    --panel-a: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + var(--bg-l, 0%)) / var(--key-alpha));
-    --pill: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(99% + var(--bg-l, 0%)));
-    --logo-bg: hsl(var(--bg-hue) calc(20% * var(--bg-sat, 1)) calc(99% + var(--bg-l, 0%)));
-    --icon: hsl(var(--bg-hue) calc(5% * var(--bg-sat, 1)) calc(47% + var(--bg-l, 0%)));
-    --card-bg: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(97% + var(--bg-l, 0%)));
+    --panel: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)));
+    --panel-a: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--key-alpha));
+    --pill: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+    --logo-bg: hsl(var(--bg-hue) calc(20% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+    --icon: hsl(var(--bg-hue) calc(5% * var(--bg-sat, 1)) calc(47% + (100% - 47%) * 0.35 * var(--bg-lt, 0)));
+    --card-bg: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(97% + (100% - 97%) * 0.35 * var(--bg-lt, 0)));
     --card-text: #1c1c24;
     --card-sub: #6a6a78;
     --input-placeholder: #5c616b;
     --key-subtext: #5c616b;
-    --accent-text: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(26% + var(--key-l, 0%)));
-    --accent-ink: hsl(var(--key-hue) calc(45% * var(--key-sat, 1)) calc(95% + var(--key-l, 0%)));
-    --line: hsl(var(--bg-hue) calc(26% * var(--bg-sat, 1)) calc(82% + var(--bg-l, 0%)));
+    --accent-text: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(26% + (100% - 26%) * 0.75 * var(--key-lt, 0)));
+    --accent-ink: hsl(var(--key-hue) calc(45% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
+    --line: hsl(var(--bg-hue) calc(26% * var(--bg-sat, 1)) calc(82% + (100% - 82%) * 0.35 * var(--bg-lt, 0)));
     --scrim: #ffffffb0;
-    --mod-active-bg: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(89% + var(--key-l, 0%)));
+    --mod-active-bg: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(89% + (100% - 89%) * 0.75 * var(--key-lt, 0)));
 }
 
 /* ===== #31 预置色调：六预置=六个固定 --kb-hue（classic=默认绿 160），
@@ -115,31 +115,31 @@ html.theme-dark {
 @media (prefers-color-scheme: light) {
     html:not(.theme-light):not(.theme-dark) {
         color-scheme: light;
-        --key: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(97% + var(--key-l, 0%)) / var(--key-alpha));
-        --special: hsl(var(--key-hue) calc(42% * var(--key-sat, 1)) calc(72% + var(--key-l, 0%)) / var(--key-alpha));
-        --pressed: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(92% + var(--key-l, 0%)) / var(--key-alpha));
-        --bg: hsl(var(--bg-hue) calc(32% * var(--bg-sat, 1)) calc(88% + var(--bg-l, 0%)));
+        --key: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(97% + (100% - 97%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+        --special: hsl(var(--key-hue) calc(42% * var(--key-sat, 1)) calc(72% + (100% - 72%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+        --pressed: hsl(var(--key-hue) calc(38% * var(--key-sat, 1)) calc(92% + (100% - 92%) * 0.75 * var(--key-lt, 0)) / var(--key-alpha));
+        --bg: hsl(var(--bg-hue) calc(32% * var(--bg-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--bg-lt, 0)));
         --text: #181818;
         --muted: #5c616b; /* See html.theme-light */
-        --accent: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(42% + var(--key-l, 0%)));
-    --accent-strong: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(30% + var(--key-l, 0%)));
+        --accent: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(42% + (100% - 42%) * 0.75 * var(--key-lt, 0)));
+    --accent-strong: hsl(var(--key-hue) calc(62% * var(--key-sat, 1)) calc(30% + (100% - 30%) * 0.75 * var(--key-lt, 0)));
         --danger: #d93025;
         --recording: #e5484d;
-        --panel: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + var(--bg-l, 0%)));
-        --panel-a: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + var(--bg-l, 0%)) / var(--key-alpha));
-        --pill: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(99% + var(--bg-l, 0%)));
-        --logo-bg: hsl(var(--bg-hue) calc(20% * var(--bg-sat, 1)) calc(99% + var(--bg-l, 0%)));
-        --icon: hsl(var(--bg-hue) calc(5% * var(--bg-sat, 1)) calc(47% + var(--bg-l, 0%)));
-        --card-bg: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(97% + var(--bg-l, 0%)));
+        --panel: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)));
+        --panel-a: hsl(var(--bg-hue) calc(34% * var(--bg-sat, 1)) calc(95% + (100% - 95%) * 0.35 * var(--bg-lt, 0)) / var(--key-alpha));
+        --pill: hsl(var(--bg-hue) calc(45% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+        --logo-bg: hsl(var(--bg-hue) calc(20% * var(--bg-sat, 1)) calc(99% + (100% - 99%) * 0.35 * var(--bg-lt, 0)));
+        --icon: hsl(var(--bg-hue) calc(5% * var(--bg-sat, 1)) calc(47% + (100% - 47%) * 0.35 * var(--bg-lt, 0)));
+        --card-bg: hsl(var(--bg-hue) calc(18% * var(--bg-sat, 1)) calc(97% + (100% - 97%) * 0.35 * var(--bg-lt, 0)));
         --card-text: #1c1c24;
         --card-sub: #6a6a78;
         --input-placeholder: #5c616b;
         --key-subtext: #5c616b;
-        --accent-text: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(26% + var(--key-l, 0%)));
-    --accent-ink: hsl(var(--key-hue) calc(45% * var(--key-sat, 1)) calc(95% + var(--key-l, 0%)));
-        --line: hsl(var(--bg-hue) calc(26% * var(--bg-sat, 1)) calc(82% + var(--bg-l, 0%)));
+        --accent-text: hsl(var(--key-hue) calc(70% * var(--key-sat, 1)) calc(26% + (100% - 26%) * 0.75 * var(--key-lt, 0)));
+    --accent-ink: hsl(var(--key-hue) calc(45% * var(--key-sat, 1)) calc(95% + (100% - 95%) * 0.75 * var(--key-lt, 0)));
+        --line: hsl(var(--bg-hue) calc(26% * var(--bg-sat, 1)) calc(82% + (100% - 82%) * 0.35 * var(--bg-lt, 0)));
         --scrim: #ffffffb0;
-        --mod-active-bg: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(89% + var(--key-l, 0%)));
+        --mod-active-bg: hsl(var(--key-hue) calc(55% * var(--key-sat, 1)) calc(89% + (100% - 89%) * 0.75 * var(--key-lt, 0)));
     }
 }
 

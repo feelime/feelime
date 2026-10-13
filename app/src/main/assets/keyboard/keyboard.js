@@ -10288,20 +10288,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 } else {
                     document.documentElement.style.removeProperty('--kb-sat');
                 }
-                // #61 亮度偏移（色号编辑的主维度）：offset 直接加在各表面
-                // 色的设计 l 上（组内同向，层次/对比近似保持）；0/缺省 =
-                // 无偏移，清内联回设计值。
+                // #61 三轮（原色模型）：亮度偏移=原色亮度-50（±50），
+                // 表面派生 t=偏移/50，CSS 按 N+(100-N)·w·t 乘法派生
+                // （w 由 CSS 按组写死：键面 0.75、背景 0.35）——l=50 时
+                // 与原设计完全一致，亮向不会统一撞顶。
                 const tl = Number(payload.themeL);
-                if (Number.isFinite(tl) && tl >= -50 && tl <= 70 && tl !== 0) {
-                    document.documentElement.style.setProperty('--bg-l', String(tl) + '%');
+                if (Number.isFinite(tl) && tl >= -50 && tl <= 50 && tl !== 0) {
+                    document.documentElement.style.setProperty('--bg-lt', String(tl / 50));
                 } else {
-                    document.documentElement.style.removeProperty('--bg-l');
+                    document.documentElement.style.removeProperty('--bg-lt');
                 }
-                const kl = Number(payload.keyL);
-                if (Number.isFinite(kl) && kl >= -50 && kl <= 70 && kl !== 0) {
-                    document.documentElement.style.setProperty('--key-l', String(kl) + '%');
+                // keyL 的 -1=跟随键盘组（跟随=整原色，H/S/L 一起继承）。
+                let kl = Number(payload.keyL);
+                if (!Number.isFinite(kl)) kl = 0;
+                const keyLt = kl === -1 ? (Number.isFinite(tl) ? tl : 0) : kl;
+                if (keyLt >= -50 && keyLt <= 50 && keyLt !== 0) {
+                    document.documentElement.style.setProperty('--key-lt', String(keyLt / 50));
                 } else {
-                    document.documentElement.style.removeProperty('--key-l');
+                    document.documentElement.style.removeProperty('--key-lt');
                 }
                 // hue 变了背景色跟着变：#27 手势条涂色要重推。
                 this.pushChromeColor();
@@ -10343,12 +10347,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 消费之后：applyTheme 本轮刚挂上 theme-light class，早于此
             // 读 class 会误走暗色分支。
             {
-                const klv = Number(payload.keyL);
+                let klv = Number(payload.keyL);
+                if (!Number.isFinite(klv)) klv = 0;
+                if (klv === -1) klv = Number.isFinite(Number(payload.themeL)) ? Number(payload.themeL) : 0;
                 if (document.documentElement.classList.contains('theme-light')) {
                     document.documentElement.style.removeProperty('--key-ink');
                 } else {
-                    const keyLift = (Number.isFinite(klv) ? klv : 0) + 37;
-                    if (keyLift > 60) {
+                    // 键帽派生亮度（N=37,w=0.75）>60 时白字对比不足，翻深墨。
+                    const cap = 37 + 63 * 0.75 * (klv / 50);
+                    if (cap > 60) {
                         document.documentElement.style.setProperty('--key-ink', '#1a1a1a');
                     } else {
                         document.documentElement.style.removeProperty('--key-ink');
