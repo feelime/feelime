@@ -2209,21 +2209,19 @@ test('keyboard height slider commits setKbHeight; reset writes 0; preview follow
         'dragging alone does not commit');
 });
 
-test('entering the appearance page pops the REAL keyboard; leaving dismisses it', () => {
+test('appearance no longer auto-pops the keyboard; skin page does (2026-10-13 裁定)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
-    world.native.calls.length = 0;
-
-    const previewCalls = () => world.native.of('previewKeyboard').map(c => c.args[0]);
-    equal(world.$('previewEditor') != null, true, 'demo editor exists on the page');
-
-    world.FeelimeSettings().showPage('appearance');
-    equal(previewCalls(), [true], 'entering appearance shows the real keyboard');
-    world.FeelimeSettings().showPage('home');
-    equal(previewCalls(), [true, false], 'leaving appearance dismisses it');
-    // 重复进入/离开（单页路由重复 showPage 不重复发）。
-    world.FeelimeSettings().showPage('home');
-    equal(previewCalls(), [true, false], 'staying off appearance sends nothing');
+    const S = world.FeelimeSettings();
+    S.showPage('appearance');
+    equal(world.native.of('previewKeyboard').length, 0,
+        'entering appearance does NOT auto-pop the real keyboard');
+    S.showPage('skin');
+    equal(world.native.of('previewKeyboard').slice(-1)[0].args, [true, world.token],
+        'entering skin pops it (live color preview)');
+    S.showPage('appearance');
+    equal(world.native.of('previewKeyboard').slice(-1)[0].args, [false, world.token],
+        'leaving skin dismisses it');
 });
 
 test('bridge validation errors surface on the feel note', () => {
@@ -2433,27 +2431,24 @@ test('issue-39 toggles reach the bridge: preedit bold and custom-keyboard enable
 
 // 键面色调同款取色（用户验收五轮）：跟随档 + 六预置；未自定义时跟随
 // 选中，点预置=setKeyHue(预置 hue)，点跟随=setKeyHue(-1) 还原继承。
-test('keycap hue swatches: follow default, presets post hue, follow posts -1', () => {
+test('keycap hue swatches carry presets only; follow is a separate switch (2026-10-13)', () => {
     const world = new SettingsWorld();
-    world.push({ ...BASE_STATE, keyHue: -1 });
+    world.push({ ...BASE_STATE });
     const dots = [...world.doc.querySelectorAll('#keyHueSwatches .preset-swatch')];
-    equal(dots.length, 7, 'follow + six presets');
-    const follow = dots[0];
-    equal(follow.className.includes('active'), true, 'follow active when unset');
-    equal(dots.filter(d => d !== follow && d.className.includes('active')).length, 0,
-        'no preset active when unset');
-    // 自定义=某预置 hue 时该预置选中、跟随让位。
-    world.push({ ...BASE_STATE, keyHue: 212 });
-    const dots2 = [...world.doc.querySelectorAll('#keyHueSwatches .preset-swatch')];
-    equal(dots2[0].className.includes('active'), false, 'follow inactive when custom');
-    const oceanIdx = dots2.findIndex(d => d.getAttribute('aria-label') === '海蓝');
-    equal(dots2[oceanIdx].className.includes('active'), true, 'matching preset active');
-    // 点选与还原：预置档下发预置 hue，跟随档双复位（hue+sat 都回 -1）。
-    dots2[oceanIdx].click();
+    equal(dots.length, 6, 'six presets, no follow chip');
+    dots[1].click();
     equal(world.lastCall('setKeyHue').args[0], 212, 'preset click posts its hue');
-    world.$('keyHueSwatches').querySelectorAll('.preset-swatch')[0].click();
-    equal(world.lastCall('setKeyHue').args[0], -1, 'follow click posts hue -1');
-    equal(world.lastCall('setKeySat').args[0], -1, 'follow click also resets saturation');
+    // 开关：开=继承（-1/-1），关=写显式值。
+    const sw = world.$('keyFollow');
+    equal(sw.checked, true, 'follow on by default (inherit)');
+    sw.checked = false;
+    sw.onchange();
+    equal(world.lastCall('setKeyHue').args[0] >= 0, true, 'turning off posts an explicit hue');
+    equal(world.lastCall('setKeySat').args[0] >= 0, true, 'turning off posts an explicit sat');
+    sw.checked = true;
+    sw.onchange();
+    equal(world.lastCall('setKeyHue').args[0], -1, 'turning on restores inherit');
+    equal(world.lastCall('setKeySat').args[0], -1, 'turning on restores sat inherit');
 });
 
 // 皮肤页行序（用户验收五轮定稿）：色调两组在前、背景图居中、预览收尾。
@@ -2499,12 +2494,8 @@ test('skin hex boxes: invalid input rolls back; follow state composes from the t
     const keyHex = world.$('keyHex');
     const composed = g.feelHexOf('key');
     equal(keyHex.value, composed, 'follow state composes from the theme group');
-    // 「跟键盘」还原键面组整体（含亮度）。
-    const follow = [...world.doc.querySelectorAll('#keyHueSwatches .preset-swatch')][0];
-    follow.click();
-    const last = m => world.native.of(m).pop().args[0];
-    equal(last('setKeyHue'), -1, 'follow resets the hue');
-    equal(last('setKeyL'), 0, 'follow resets the lift too');
+    // 跟随键盘开关（2026-10-13 改独立开关）：开=继承（亮度本就独立，
+    // 开关不动 keyL——与旧色板档位一并清零的行为不同，见新测试）。
     // state 回显：亮度偏移下发后，框显与合成一致；确认值同步（非法
     // 回滚的目标）。
     const state = JSON.parse(JSON.stringify(BASE_STATE));
@@ -2529,9 +2520,11 @@ test('skin page row order: tints, saturations, hex codes, opacity, backgrounds, 
         .filter(Boolean);
     // #61：每组（色调+饱和度）后跟色号行（swatch span 是行内首个带 id
     // 的元素，随后是 hex input——白名单按首个 id 记）。
-    equal(ids, ['themeHue', 'themeSat', 'themeHexSwatch', 'keyHue', 'keySat',
-        'keyHexSwatch', 'keyOpacity', 'bgImageLight', 'bgImageDark',
-        'themePreview'], 'rows follow the agreed order');
+    // 2026-10-13 分块：键盘（hue/sat/hex/背景图）→ 键面（跟随开关/
+    // hue/sat/hex/不透明度）→ 预览。开关行内首控件是 keyFollow。
+    equal(ids, ['themeHue', 'themeSat', 'themeHexSwatch', 'bgImageLight',
+        'bgImageDark', 'keyFollow', 'keyHue', 'keySat', 'keyHexSwatch',
+        'keyOpacity', 'themePreview'], 'rows follow the agreed order');
 });
 
 // 皮肤入口（用户验收五轮）：与其他入口同款 .entry 行（label+chevron），

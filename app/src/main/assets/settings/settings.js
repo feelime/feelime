@@ -710,6 +710,10 @@ const I18N = {
         "input.english.pos3": "第 3 位",
         "input.english.pos5": "第 5 位",
         "input.feel.themeSatHint": "拉到最左是黑白灰（明暗模式定黑白基底），往右色彩渐浓。",
+        "input.feel.kbGroup": "键盘",
+        "input.feel.keyGroup": "键面",
+        "input.feel.keyFollow": "跟随键盘",
+        "input.feel.keyFollowHint": "开启时键面的色调/饱和度跟随键盘组；关闭后各自独立。",
         "input.feel.themeHex": "键盘色号",
         "input.feel.themeHexHint": "整套配色的基础色（暗色模式基准）；输入 #RRGGBB，可选比滑条更亮的颜色。",
         "input.feel.keyHex": "键面色号",
@@ -733,7 +737,7 @@ const I18N = {
         "entry.appearance.subtitle": "色彩模式 · 背景图片 · 透明度",
         "input.appearance.title": "外观",
         "input.appearance.preview": "预览",
-        "input.appearance.previewHint": "进入本页时，真实键盘会在屏幕底部弹出（本页自动让位），上面的设置实时生效，直接在这里打字试。",
+        "input.appearance.previewHint": "键盘不再自动弹出（想实时看配色去「皮肤」页）；点这个输入框可以唤起键盘试打。",
         "input.appearance.previewPlaceholder": "直接在这里打字试试",
         "input.appearance.badge": "主题",
         "input.feel.bgImageHint": "铺满整个键盘区域（工具条到底部留白），压缩到 720px 宽存储，只在本机生效。",
@@ -1460,6 +1464,10 @@ const I18N = {
         "input.feel.keyHueHint": "Recolors keycaps/accents only (background stays); tap Follow to inherit again.",
         "input.feel.keySat": "Keycap saturation",
         "input.feel.keySatHint": "Color intensity of the keycap group only; far left makes keycaps grayscale.",
+        "input.feel.kbGroup": "Keyboard",
+        "input.feel.keyGroup": "Keycaps",
+        "input.feel.keyFollow": "Follow keyboard",
+        "input.feel.keyFollowHint": "Keycap hue/saturation follow the keyboard group while on; turn off to tune them independently.",
         "input.feel.themeHex": "Keyboard color code",
         "input.feel.themeHexHint": "Base color of the whole palette (dark-mode reference); type #RRGGBB for brighter colors than the sliders reach.",
         "input.feel.keyHex": "Keycap color code",
@@ -1489,7 +1497,7 @@ const I18N = {
         "page.skin": "Skin",
         "input.appearance.title": "Appearance",
         "input.appearance.preview": "Preview",
-        "input.appearance.previewHint": "On this page the real keyboard pops up at the bottom of the screen (this page yields). Every setting above applies to it live - type here to try.",
+        "input.appearance.previewHint": "The keyboard no longer pops up automatically here (use the Skin page for live colors); tap this box to summon it and try typing.",
         "input.appearance.previewPlaceholder": "Type here to try it",
         "input.appearance.badge": "Theme",
         "input.feel.bgImageHint": "Covers the whole keyboard (toolbar to bottom padding), compressed to 720px wide and stored locally.",
@@ -1923,7 +1931,9 @@ function showPage(name) {
         document.getElementById("ckLeaveModal").hidden = false;
         return;
     }
-    const wasAppearance = currentPage === "appearance" || currentPage === "skin";
+    // 预览页只有 skin（2026-10-13）：上一页已在皮肤页则不重复弹；
+    // 从外观页（已不自动弹）进皮肤页要弹。
+    const wasPreview = currentPage === "skin";
     // 页内深链会再次 showPage(本页)：customkeys 此时不能 ckMarkDirty(false)
     // ——脏标被清、内存编辑还在，离开不再确认，改动静默丢失（评审 P3-11）。
     const wasCustomkeys = currentPage === "customkeys";
@@ -1970,9 +1980,12 @@ function showPage(name) {
     // 皮肤页（从外观拆出）同样要真实键盘预览：调色时看得见效果——进出
     // 两个预览页（appearance↔skin）不收键盘（codex P1：隐藏条件要与
     // 显示条件同一个集合，否则外观→皮肤会把预览键盘收掉）。
-    const isPreviewPage = name === "appearance" || name === "skin";
-    if (isPreviewPage && !wasAppearance) call("previewKeyboard", true);
-    if (!isPreviewPage && wasAppearance) call("previewKeyboard", false);
+    // 自动弹键盘只在皮肤页（调色实时预览所在）：外观页曾默认弹，用户
+    // 感知为「默认 focus 预览输入框」（2026-10-13 验收裁定撤）——外观
+    // 页要试打点输入框自然唤起。
+    const isPreviewPage = name === "skin";
+    if (isPreviewPage && !wasPreview) call("previewKeyboard", true);
+    if (!isPreviewPage && wasPreview) call("previewKeyboard", false);
     // 页面父级随页上报：系统 BACK 逐级返回用。层级唯一事实源是本页
     // ‹ 按钮的 data-back（index.html），壳侧不再维护第二份映射——
     // userwords/customkeys 曾因此各自漂移回 home（用户验收实录）。
@@ -2132,7 +2145,11 @@ function bindHexBox(group) {
     const input = document.getElementById(group === "theme" ? "themeHex" : "keyHex");
     if (!input) return;
     input.oninput = () => {
-        feelApplyHex(group, input.value);
+        const applied = feelApplyHex(group, input.value);
+        // 输入过程即时刷色块（refreshHexBoxes 的 focus 守卫会挡住本框，
+        // 不补这块就是「永远黑」——验收实录）。
+        const sw = document.getElementById(group === "theme" ? "themeHexSwatch" : "keyHexSwatch");
+        if (sw && applied) sw.style.background = input.value.trim().replace(/^#?/, "#");
     };
     input.onchange = () => {
         if (!feelApplyHex(group, input.value)) {
@@ -2269,6 +2286,22 @@ function renderFeel(state) {
     if (Number.isFinite(klv) && klv >= -50 && klv <= 50) keyLShown = Math.round(klv);
     bindHexBox("theme");
     bindHexBox("key");
+    // 跟随键盘（组级开关，2026-10-13）：开=hue/sat 都继承（-1）；关=把
+    // 当前显示值写成显式（否则 -1 关掉后没有独立值可用）。亮度偏移
+    // 恒独立（keyL 无继承语义），开关不动它。
+    const keyFollow = $("keyFollow");
+    if (keyFollow) {
+        if (document.activeElement !== keyFollow) keyFollow.checked = keyHueFollow && keySatFollow;
+        keyFollow.onchange = () => {
+            if (keyFollow.checked) {
+                call("setKeyHue", -1);
+                call("setKeySat", -1);
+            } else {
+                call("setKeyHue", keyHueFollow ? themeHueShown : keyHueShown);
+                call("setKeySat", keySatFollow ? themeSatShown : keySatShown);
+            }
+        };
+    }
     const hueInput = $("themeHue");
     const hue = Number(state.themeHue);
     const hasCustomHue = Number.isFinite(hue) && hue >= 0 && hue <= 360;
@@ -2357,24 +2390,12 @@ function renderFeel(state) {
             const v = Math.round(Number(keyHueInput.value));
             if (Number.isFinite(v) && v >= 0 && v <= 360) call("setKeyHue", v);
         };
-        // 键面色调同款取色（用户验收五轮）：预置色板点选=setKeyHue(预置 hue)，
-        // 「跟键盘」档=键面组整体还原跟随（hue+sat 都回 -1）；自定义值
-        // 恰为某预置 hue 时该档选中。
+        // 键面色调同款取色（用户验收五轮）：预置色板点选=setKeyHue(预置
+        // hue)。跟随不再走色板档位（2026-10-13 验收裁定）：独立开关
+        // keyFollow 承担（见下方），色板只留预置。
         const keySwatches = $("keyHueSwatches");
         if (keySwatches) {
             keySwatches.textContent = "";
-            const follow = document.createElement("button");
-            follow.type = "button";
-            follow.className = "preset-swatch follow" + (hasKeyHue ? "" : " active");
-            follow.setAttribute("aria-label", t("preset.followKey"));
-            follow.setAttribute("aria-pressed", hasKeyHue ? "false" : "true");
-            follow.addEventListener("click", () => {
-                call("setKeyHue", -1);
-                call("setKeySat", -1);
-                // #61：跟随=键面组整体还原（亮度偏移一并清零）。
-                call("setKeyL", 0);
-            });
-            keySwatches.append(follow);
             THEME_PRESET_LIST.forEach(id => {
                 const dot = document.createElement("button");
                 dot.type = "button";

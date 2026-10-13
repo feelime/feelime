@@ -1032,9 +1032,9 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
 .ck-lang-w15 { flex: 1.5; } .ck-lang-w2 { flex: 2.05; } .ck-lang-w3 { flex: 3.2; }
 /* #61 色号行：色块 + 等宽输入框（与滑条同一行式风格）。 */
 .hex-wrap { display: flex; align-items: center; gap: 10px; }
-.hex-swatch { width: 30px; height: 30px; border-radius: 8px;
+.hex-swatch { width: 46px; height: 30px; border-radius: 8px;
     border: 1px solid var(--line, #8884); flex: none; }
-.hex-input { width: 110px; font: 600 14px/1 ui-monospace, SFMono-Regular,
+.hex-wrap .hex-input { width: 84px; font: 600 14px/1 ui-monospace, SFMono-Regular,
     Menlo, Consolas, monospace; letter-spacing: .5px;
     padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line, #8884);
     background: var(--pill, #8882); color: inherit; text-transform: uppercase; }

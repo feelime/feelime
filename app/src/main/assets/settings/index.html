@@ -224,7 +224,8 @@
     <h2 class="page-title" data-i18n="page.skin">皮肤</h2>
   </header>
   <main>
-  <section class="card">
+  <section class="card" aria-labelledby="kbGroupHead">
+    <div class="section-heading"><h2 id="kbGroupHead" data-i18n="input.feel.kbGroup">键盘</h2></div>
     <!-- #31 键盘色调：预置色板（accent 三件套风格包），点击切换即时生效。 -->
     <div class="row language-row stack" id="themePresetRow" data-keywords="色调 颜色 调色板 预置 风格 accent preset color 色相 滑条">
       <span class="row-label">
@@ -258,10 +259,44 @@
                data-i18n-placeholder="input.feel.hexPlaceholder" placeholder="#RRGGBB" />
       </span>
     </div>
+  <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.bgImageLight">亮色背景</span>
+        <small data-i18n="input.feel.bgImageHint">铺满整个键盘区域（工具条到底部留白），压缩到 720px 宽存储，只在本机生效。</small>
+      </span>
+      <select id="bgImageLight" class="select" aria-label="亮色背景" data-i18n-aria="input.feel.bgImageLight">
+        <option value="none" data-i18n="无">无</option>
+        <option value="builtin" data-i18n="内置">内置</option>
+        <option value="pick" data-i18n="选择图片">选择图片…</option>
+      </select>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.bgImageDark">暗色背景</span>
+        <small data-i18n="input.feel.bgImageHintDark">亮暗切换时各自使用对应组的图片。</small>
+      </span>
+      <select id="bgImageDark" class="select" aria-label="暗色背景" data-i18n-aria="input.feel.bgImageDark">
+        <option value="none" data-i18n="无">无</option>
+        <option value="builtin" data-i18n="内置">内置</option>
+        <option value="pick" data-i18n="选择图片">选择图片…</option>
+      </select>
+    </div>
+</section>
+  <section class="card" aria-labelledby="keyGroupHead">
+    <div class="section-heading"><h2 id="keyGroupHead" data-i18n="input.feel.keyGroup">键面</h2></div>
+    <!-- 跟随键盘（组级开关，2026-10-13 验收裁定）：开=色调与饱和度都
+         继承键盘组（色号/亮度仍独立可调）；关=两者独立。 -->
+    <div class="row switch-row" id="keyFollowRow" data-keywords="跟随 键盘 继承 联动 follow inherit">
+      <span class="row-label">
+        <span data-i18n="input.feel.keyFollow">跟随键盘</span>
+        <small data-i18n="input.feel.keyFollowHint">开启时键面的色调/饱和度跟随上面的键盘组；关闭后各自独立。</small>
+      </span>
+      <input type="checkbox" id="keyFollow" class="toggle">
+    </div>
     <div class="row language-row stack" data-keywords="键面 色调 key hue">
       <span class="row-label">
         <span data-i18n="input.feel.keyHue">键面色调</span>
-        <small data-i18n="input.feel.keyHueHint">只调键帽/强调色的色相（背景不动）；点「跟键盘」还原跟随。</small>
+        <small data-i18n="input.feel.keyHueHint">只调键帽/强调色的色相（背景不动）。</small>
       </span>
       <span class="preset-wrap">
         <input type="range" id="keyHue" min="0" max="360" step="1" value="160" aria-label="键面色调" />
@@ -295,29 +330,7 @@
       </span>
       <input type="range" id="keyOpacity" class="slider" min="5" max="100" step="5" aria-label="按键不透明度" data-i18n-aria="input.feel.keyOpacity">
     </div>
-    <div class="row language-row">
-      <span class="row-label">
-        <span data-i18n="input.feel.bgImageLight">亮色背景</span>
-        <small data-i18n="input.feel.bgImageHint">铺满整个键盘区域（工具条到底部留白），压缩到 720px 宽存储，只在本机生效。</small>
-      </span>
-      <select id="bgImageLight" class="select" aria-label="亮色背景" data-i18n-aria="input.feel.bgImageLight">
-        <option value="none" data-i18n="无">无</option>
-        <option value="builtin" data-i18n="内置">内置</option>
-        <option value="pick" data-i18n="选择图片">选择图片…</option>
-      </select>
-    </div>
-    <div class="row language-row">
-      <span class="row-label">
-        <span data-i18n="input.feel.bgImageDark">暗色背景</span>
-        <small data-i18n="input.feel.bgImageHintDark">亮暗切换时各自使用对应组的图片。</small>
-      </span>
-      <select id="bgImageDark" class="select" aria-label="暗色背景" data-i18n-aria="input.feel.bgImageDark">
-        <option value="none" data-i18n="无">无</option>
-        <option value="builtin" data-i18n="内置">内置</option>
-        <option value="pick" data-i18n="选择图片">选择图片…</option>
-      </select>
-    </div>
-    <div class="row stack" data-keywords="预览 效果 preview">
+        <div class="row stack" data-keywords="预览 效果 preview">
       <span class="row-label">
         <span data-i18n="input.feel.themePreview">效果预览</span>
         <small data-i18n="input.feel.themePreviewHint">色调、饱和度、按键不透明度与背景图在这里实时反映；亮暗各一组。</small>
