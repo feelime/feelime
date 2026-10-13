@@ -386,12 +386,12 @@ const val PREF_KEY_L = "key_l"
 fun readThemeL(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_THEME_L, 0)
-        .takeIf { it in -50..50 } ?: 0
+        .takeIf { it in -50..70 } ?: 0
 
 fun readKeyL(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_KEY_L, 0)
-        .takeIf { it in -50..50 } ?: 0
+        .takeIf { it in -50..70 } ?: 0
 
 /** 背景图片（亮/暗各一组）：设置页压缩到 ≤720px 宽 JPEG 后经桥写入。
  *  variant 只认 light/dark；「无」= 删文件。src 记录来源供设置页回显。 */
@@ -1616,7 +1616,7 @@ class SettingsBridge(
     /** #61 亮度偏移：[-50,50] 落盘，0=无偏移。 */
     @JavascriptInterface
     fun setThemeL(offset: Int, token: String) = guarded(token) {
-        if (offset !in -50..50) return@guarded
+        if (offset !in -50..70) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_THEME_L, offset).commit()
         context.sendBroadcast(
@@ -1628,7 +1628,7 @@ class SettingsBridge(
     /** #61 键面组亮度偏移：[-50,50] 落盘，0=无偏移。 */
     @JavascriptInterface
     fun setKeyL(offset: Int, token: String) = guarded(token) {
-        if (offset !in -50..50) return@guarded
+        if (offset !in -50..70) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_KEY_L, offset).commit()
         context.sendBroadcast(

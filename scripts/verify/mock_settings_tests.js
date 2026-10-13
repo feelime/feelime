@@ -2468,8 +2468,16 @@ test('skin hex boxes: editing a bright color drives hue/sat/lift + sliders live 
     const hsl = g.hexToHsl('#FFF3B0');
     equal(last('setThemeHue'), hsl.h, 'hue committed from the hex');
     equal(last('setThemeSat'), 100, 'sat clamped to the slider ceiling');
-    equal(last('setThemeL'), 50, 'lift clamped to +50');
+    equal(last('setThemeL'), 70, 'lift clamped to +70');
     equal(world.$('themeHue').value, String(hsl.h), 'hue slider mirrors the edit');
+    // 真实打字态（焦点在框上）输入不被合成色回写吃掉；失焦提交后才
+    // 收敛为采用色。焦点守卫是防线（mock 里直设 activeElement）。
+    const box2 = world.$('themeHex');
+    world.doc.activeElement = box2;
+    box2.value = '#FFE9A8';
+    box2.oninput();
+    equal(box2.value, '#FFE9A8', 'typing (focused) is not eaten by the composed echo');
+    world.doc.activeElement = null;
     // 滑条拖动 → 色号框实时刷新（oninput → updateThemePreview → refresh）。
     const hueSlider = world.$('themeHue');
     hueSlider.value = '300';

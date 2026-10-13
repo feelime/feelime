@@ -2122,7 +2122,9 @@ function feelApplyHex(group, hex) {
     if (!hsl) return false;
     const base = FEEL_BASE[group];
     const satPct = Math.max(0, Math.min(100, Math.round(hsl.s / base.s * 100)));
-    const lOff = Math.max(-50, Math.min(50, hsl.l - base.l));
+    // 上限 +70（2026-10-13 二轮验收）：±50 时键盘组底色天花板 62%，
+    // 用户输入的亮色全被折成暗土色——「看着永远是黑的」的第二根因。
+    const lOff = Math.max(-50, Math.min(70, hsl.l - base.l));
     if (group === "theme") {
         themeHueShown = hsl.h; themeSatShown = satPct; themeLShown = lOff;
         const hueEl = $("themeHue"), satEl = $("themeSat");
@@ -2145,11 +2147,12 @@ function bindHexBox(group) {
     const input = document.getElementById(group === "theme" ? "themeHex" : "keyHex");
     if (!input) return;
     input.oninput = () => {
-        const applied = feelApplyHex(group, input.value);
-        // 输入过程即时刷色块（refreshHexBoxes 的 focus 守卫会挡住本框，
-        // 不补这块就是「永远黑」——验收实录）。
+        const raw = String(input.value || "");
+        const applied = feelApplyHex(group, raw);
+        // 输入过程即时刷色块：显示用户输入的原色（合法时），不要等提
+        // 交后的合成色（基准暗、被钳制，验收实录「看着永远是黑的」）。
         const sw = document.getElementById(group === "theme" ? "themeHexSwatch" : "keyHexSwatch");
-        if (sw && applied) sw.style.background = input.value.trim().replace(/^#?/, "#");
+        if (sw && applied) sw.style.background = raw.trim().replace(/^#?/, "#");
     };
     input.onchange = () => {
         if (!feelApplyHex(group, input.value)) {

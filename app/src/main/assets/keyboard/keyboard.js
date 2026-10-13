@@ -10292,13 +10292,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 色的设计 l 上（组内同向，层次/对比近似保持）；0/缺省 =
                 // 无偏移，清内联回设计值。
                 const tl = Number(payload.themeL);
-                if (Number.isFinite(tl) && tl >= -50 && tl <= 50 && tl !== 0) {
+                if (Number.isFinite(tl) && tl >= -50 && tl <= 70 && tl !== 0) {
                     document.documentElement.style.setProperty('--bg-l', String(tl) + '%');
                 } else {
                     document.documentElement.style.removeProperty('--bg-l');
                 }
                 const kl = Number(payload.keyL);
-                if (Number.isFinite(kl) && kl >= -50 && kl <= 50 && kl !== 0) {
+                if (Number.isFinite(kl) && kl >= -50 && kl <= 70 && kl !== 0) {
                     document.documentElement.style.setProperty('--key-l', String(kl) + '%');
                 } else {
                     document.documentElement.style.removeProperty('--key-l');
