@@ -1520,6 +1520,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         setup() {
+            const moveAt = {};
+            ['touchstart', 'touchmove', 'touchend', 'touchcancel',
+             'pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach(type => {
+                document.addEventListener(type, event => {
+                    if (!this.touchDiagnostics) return;
+                    if (type.endsWith('move')) {
+                        const now = Date.now();
+                        if (moveAt[type] !== undefined && now - moveAt[type] < 100) return;
+                        moveAt[type] = now;
+                    }
+                    this.traceTouch(type, event);
+                }, { capture: true, passive: true });
+            });
             window.addEventListener('blur', () => this.cancelTouches());
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) this.cancelTouches();
@@ -1527,6 +1540,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The view can disappear while a finger is down. A new touch
             // sequence must not inherit a press whose end was never delivered.
             document.addEventListener('touchstart', event => {
+                this.reconcileTouchSnapshot(event, true);
                 // 事件对账：浮层 owner 不在本事件快照 = 失联（end 丢失或
                 // 浏览器触点报告停滞）。多指打字风格会屏蔽下面「全新
                 // 序列」的 cancelTouches 兜底（每次 start 屏上都有他指），
@@ -1557,6 +1571,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 });
             }, { capture: true, passive: true });
             document.addEventListener('touchstart', event => {
+                const liveIds = new Set(Array.from(event.touches, t => t.identifier));
+                const newIds = new Set(Array.from(event.changedTouches, t => t.identifier));
+                for (const [id, pointer] of pointers) {
+                    if (pointer.touch && (!liveIds.has(pointer.touch.identifier) ||
+                        newIds.has(pointer.touch.identifier))) pointers.delete(id);
+                }
                 for (const touch of event.changedTouches) {
                     const pointer = Array.from(pointers.values()).find(p =>
                         !p.touch && p.target === (touch.target || event.target)
@@ -1571,16 +1591,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
             };
             document.addEventListener('touchend', event => {
+                this.reconcileTouchSnapshot(event);
                 this.finishPopupTouch(event, false);
                 // 页面先注销结束的手指；原键被替换时也不能留下可开层的记录。
                 for (const touch of event.changedTouches) this.pressById.delete(touch.identifier);
                 forgetPointers(event);
             }, { capture: true, passive: true });
             document.addEventListener('touchcancel', event => {
+                this.reconcileTouchSnapshot(event);
                 this.cancelTouchEvent(event);
                 forgetPointers(event);
             }, { capture: true, passive: true });
             document.addEventListener('pointerup', event => pointers.delete(event.pointerId),
+                { capture: true, passive: true });
+            document.addEventListener('touchmove', event => this.reconcileTouchSnapshot(event),
                 { capture: true, passive: true });
             document.addEventListener('pointercancel', event => {
                 const pointer = pointers.get(event.pointerId);
@@ -3681,6 +3705,55 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (bubble && !bubble.hidden) bubble.hidden = true;
         }
 
+        /** design §10.6: reconcile pending holds against the live snapshot too.
+         * Changed end/cancel contacts still get their normal finish path.
+         * A newly started ID is a new session, even if an old end was lost. */
+        reconcileTouchSnapshot(event, starting = false) {
+            const live = new Set(Array.from(event.touches || [], t => t.identifier));
+            const changed = new Set(Array.from(event.changedTouches || [], t => t.identifier));
+            const ending = event.type === 'touchend' || event.type === 'touchcancel';
+            const missing = Array.from(this.pressById.values()).filter(press =>
+                press.id !== undefined && ((starting && changed.has(press.id)) ||
+                (!live.has(press.id) && !(ending && changed.has(press.id)))));
+            if (!missing.length) return;
+            this.traceTouch(starting && missing.some(p => changed.has(p.id))
+                ? 'fault-id-reuse' : 'fault-missing-contact', event);
+            for (const press of missing) this.popupRetiredIds.add(press.id);
+            this.cancelTouchEvent({ target: null, touches: event.touches,
+                changedTouches: missing.map(p => ({ identifier: p.id })),
+                reason: 'snapshot-missing' });
+        }
+
+        /** Contact metadata only: no key glyphs, candidates or editor text. */
+        traceTouch(kind, event) {
+            if (!this.touchDiagnostics || !this.token || typeof Native.diagEvent !== 'function') return;
+            const targetId = target => {
+                if (!target) return '-';
+                const key = target.closest?.('.kb-key') || target;
+                if (!this._touchTargets) this._touchTargets = new WeakMap();
+                if (!this._touchTargets.has(key)) {
+                    this._touchTargets.set(key, this._touchTargetSeq = (this._touchTargetSeq || 0) + 1);
+                }
+                return this._touchTargets.get(key);
+            };
+            const points = list => Array.from(list || []).slice(0, 6).map(t =>
+                `${t.identifier}:${Math.round(t.clientX || 0)}:${Math.round(t.clientY || 0)}`).join(',');
+            const popup = this.popup;
+            const dom = document.getElementById('keyPopup');
+            const line = `${kind.startsWith('fault-') ? 'touchFault' : 'touchTrace'}` +
+                ` n=${this._touchTraceSeq = (this._touchTraceSeq || 0) + 1}` +
+                ` t=${Date.now()} e=${kind} ts=${Math.round(event?.timeStamp || 0)}` +
+                ` changed=${points(event?.changedTouches)} live=${points(event?.touches)}` +
+                ` ptr=${event?.pointerId ?? '-'}/${event?.pointerType || '-'}` +
+                ` target=${targetId(event?.target)}` +
+                ` ledger=${Array.from(this.pressById.keys()).slice(0, 12).join(',')}` +
+                ` bindings=${Array.from(this.pressById.values()).slice(0, 12).map(p => `${p.id}:${targetId(p.button)}`).join(',')}` +
+                ` origin=${this.touchOrigin?.id ?? '-'} press=${this.pressedKeys.size}` +
+                ` owner=${popup?.fingerId ?? '-'} age=${popup ? Date.now() - popup.openedAt : 0}` +
+                ` dom=${dom?.classList.contains('open') ? 1 : 0} swipe=${this.swiping ? 1 : 0}`;
+            try { Native.diagEvent(line, this.token); } catch (_) { /* diagnostics must not interrupt input */ }
+        }
+
         bindTouch(button, options = {}) {
             if (!button) return; // Toolbar tools may not exist
             if (button.dataset.bound) return;
@@ -3692,7 +3765,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 跟手都以它认手指——重叠双指下 event.touches[0] 可能是
             // 别根手指，坐标张冠李戴。
             let press = null;
-            const clear = () => { clearTimeout(holdTimer); clearInterval(repeatTimer); holdTimer = repeatTimer = 0; };
+            const clear = () => {
+                if (holdTimer || repeatTimer) this.traceTouch('timer-clear/' + (press?.id ?? '?'));
+                clearTimeout(holdTimer);
+                clearInterval(repeatTimer);
+                holdTimer = repeatTimer = 0;
+            };
             // Review: the flick layer cancels pending repeats when
             // a swipe takes over the gesture (the finger may stay on the key).
             button._cancelRepeat = clear;
@@ -3716,6 +3794,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 press = { x: touch.clientX, y: touch.clientY,
                     id: touch.identifier, button };
                 this.pressById.set(press.id, press);
+                this.traceTouch('press-start/' + press.id, event);
                 // 同 id 的新按下是新会话：撤销标记不跨会话。
                 this.popupRetiredIds.delete(press.id);
                 // 防御性重占：owner 手指已不在场（其 touchend 没被本层
@@ -3733,6 +3812,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     holdTimer = setTimeout(() => { repeatTimer = setInterval(() => button.click(), 75); }, this.holdMs + 40);
                 } else if (button.dataset.lp === 'popup' && button.dataset.key) {
                     holdTimer = setTimeout(() => {
+                        this.traceTouch('popup-timer-fire/' + (press?.id ?? '?'));
                         if (this.swiping) return;
                         // 同键双指：闭包 press 只剩最后按下者，弹层锚点优先
                         // 取手势 owner 的按压记录（owner 也在本键上时），
@@ -3742,9 +3822,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             ? this.pressById.get(this.touchOrigin.id) : null;
                         // 同键他指取消会保留共享计时器，闭包 press 却可能已
                         // 结束。只从活跃账本取锚点，避免开出无人能松手的层。
-                        const base = ownerPress || (press && this.pressById.get(press.id))
+                        const base = (ownerPress?.button === button ? ownerPress : null)
+                            || (press && this.pressById.get(press.id)?.button === button
+                                ? this.pressById.get(press.id) : null)
                             || Array.from(this.pressById.values()).find(p => p.button === button);
                         if (!base) return;
+                        this.traceTouch('popup-base/' + base.id);
                         // T9：长按=数字+字母组全后选（引擎通道）；1 键=
                         // 符号行并收起工具栏；qwerty 维持 accent 备选弹层。
                         if (this.mode === 't9') {
@@ -3789,6 +3872,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }, { passive: true });
             button.addEventListener('touchend', event => {
                 event.preventDefault();
+                this.traceTouch('press-end/' + (press?.id ?? '?'), event);
                 // 先判归属再清整键共享标记（1.3.4）：同键非所属手指
                 // 先松时，不能撤掉仍按着的 owner 的按压态与计时器。
                 // 页面 capture 已收层时仍消费这次松手，不能再补发键面字符。
@@ -3840,6 +3924,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         /** 页面级取消出口：事件即使没经过原键，也按手指账本收尾。 */
         cancelTouchEvent(event) {
+            this.traceTouch('press-cancel/' + (event.reason || 'event'), event);
             const ids = new Set(Array.from(event.changedTouches || [], t => t.identifier));
             const buttons = new Set();
             for (const id of ids) {
@@ -3873,6 +3958,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         cancelTouches() {
+            this.traceTouch('cancel-all');
             this.inkCancelTouch();
             // 在途定制宏链一并作废（#48 双击/换代防线）：键盘都收走了，
             // 台阶里的延迟键步没有合法去处。
@@ -4500,6 +4586,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 挂了只会误撤正常停留——它有 fingerId 认手与终判，失联
             // 由 start/move 对账兜。
             if (!opts.split) this.armPopupStallWatchdog();
+            this.traceTouch('popup-open');
         }
 
         /** 松手/取消共用的弹层终判：不依赖原键还在文档中，也不依赖
@@ -4520,7 +4607,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     touch => touch.identifier === popup.fingerId);
                 if (last) this.movePopup(last);
             }
-            this.closePopup(cancelled || !ownsPopup);
+            this.closePopup(cancelled || !ownsPopup,
+                !ownsPopup ? 'end-owner-missing' : cancelled ? 'touch-cancel' : 'touch-end');
             return ownsPopup;
         }
 
@@ -4600,6 +4688,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 高亮跟随手指位移，不要求手先滑上浮层。
             this.attachRelativeTracking(popup, selected, press);
             this.armPopupStallWatchdog();
+            this.traceTouch('popup-open');
         }
 
         /** owner 停滞看门狗（最后防线，1.3.9 复发分析 §5）：owner 的
@@ -4615,7 +4704,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 二轮 P2——movePopup 路径也曾绕过开层时的豁免）。
             if (!popup || popup.split) return;
             this._popupStallTimer = setTimeout(() => {
-                if (this.popup === popup) this.closePopup(true);
+                if (this.popup === popup) {
+                    this.traceTouch('fault-popup-stall');
+                    this.closePopup(true, 'stall');
+                }
             }, 5000);
         }
 
@@ -4716,9 +4808,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.popup.selected = selected;
         }
 
-        closePopup(cancel) {
+        closePopup(cancel, reason = 'explicit') {
             clearTimeout(this._popupStallTimer);
             const popup = this.popup;
+            if (popup) this.traceTouch('popup-close/' + reason + '/' + (cancel ? 'cancel' : 'commit'));
             this.popup = null;
             // 撤销即终止 owner 的手势会话：其迟到的 touchend 不再点按
             // 落键（用户自己松手触发的撤销，end 已被消费，标记无害）。
@@ -10076,6 +10169,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             this.applyToolbarLayout();
             this.associationOn = !!payload.associationOn;
+            this.touchDiagnostics = payload.touchDiagnostics === true;
             if (!this.associationOn) this.assocWords = [];
             // 联想让位态退格清联想（issue #46）。
             this.backspaceAssocOn = !!payload.backspaceAssocOn;
@@ -10793,6 +10887,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             keyboard.applyHeight();
         },
         onHeightSaved: ok => keyboard.onHeightSaved(ok),
+        // Read-only native all-up audit: never commits or cancels a gesture.
+        touchState: () => ({
+            popup: !!keyboard.popup,
+            dom: !!document.getElementById('keyPopup')?.classList.contains('open'),
+            owner: keyboard.popup?.fingerId ?? null,
+            ids: Array.from(keyboard.pressById.keys()).slice(0, 12),
+            press: keyboard.pressedKeys.size,
+        }),
         // Read-only automation probe (device gates): the keyboard instance is
         // a closure, so gates cannot reach runtime fields without this.
         debugState: () => ({

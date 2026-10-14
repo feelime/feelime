@@ -866,6 +866,9 @@ class MockNative {
     openSetup(token) {
         this._record('openSetup', [token]);
     }
+    diagEvent(line, token) {
+        this._record('diagEvent', [line, token]);
+    }
 
     openLink(uri, token) {
         this._record('openLink', [uri, token]);
@@ -1131,6 +1134,7 @@ class KeyboardWorld {
 // ancestor chain capture-first, honors stopPropagation, then bubbles.
 function fakeDispatch(el, type, x, y, details = {}) {
     const event = {
+        type,
         target: el,
         defaultPrevented: false,
         touches: [{ clientX: x, clientY: y }],

@@ -5,11 +5,63 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ai.onnxruntime.NodeInfo
+import ai.onnxruntime.OnnxJavaType
+import ai.onnxruntime.TensorInfo
+import java.nio.ByteBuffer
+import java.nio.FloatBuffer
 
 /** 手写识别纯函数层（design/handwriting.md §4.1-§4.3）：
  * 预处理形状/归一化数值、CTC DP 手算期望、t2s 归一聚合、非汉字过滤。
  * 模型文件不进单测——没有模型时引擎走 unavailable 回调。 */
 class HandwritingEngineTest {
+    private fun inputInfo() = NodeInfo("image", TensorInfo.constructFromBuffer(
+        ByteBuffer.allocate(96 * 96), longArrayOf(1, 96, 96, 1), OnnxJavaType.UINT8))
+
+    private fun outputInfo(classes: Int) = NodeInfo("prob", TensorInfo.constructFromBuffer(
+        FloatBuffer.allocate(classes), longArrayOf(1, classes.toLong()), OnnxJavaType.FLOAT))
+
+    @Test fun readsTheTensorInsideNodeInfoAndValidatesVocabulary() {
+        assertEquals("image", HandwritingInk.validateModelInfo(
+            mapOf("image" to inputInfo()), mapOf("prob" to outputInfo(3755)), 3755))
+    }
+
+    @Test fun acceptsTheRealModelsDynamicBatchWithFixedImageAndVocabularyDimensions() {
+        // Buffer construction requires concrete dimensions. The JNI metadata
+        // constructor represents the symbolic dimensions in the real model.
+        val constructor = TensorInfo::class.java.getDeclaredConstructor(
+            LongArray::class.java, Array<String>::class.java, Int::class.javaPrimitiveType)
+        constructor.isAccessible = true
+        val input = NodeInfo("image", constructor.newInstance(longArrayOf(-1, 96, 96, 1),
+            arrayOf("N", "", "", ""), TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8.value) as TensorInfo)
+        val output = NodeInfo("prob", constructor.newInstance(longArrayOf(-1, 3755),
+            arrayOf("N", ""), TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT.value) as TensorInfo)
+        assertEquals("image", HandwritingInk.validateModelInfo(mapOf("image" to input), mapOf("prob" to output), 3755))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsMismatchedVocabulary() {
+        HandwritingInk.validateModelInfo(mapOf("image" to inputInfo()), mapOf("prob" to outputInfo(3)), 3755)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsNonFiniteModelOutputBeforeDispatch() {
+        HandwritingInk.rankSoftmax(floatArrayOf(Float.NaN, 0.5f), listOf("甲", "乙"), 8)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsNonFiniteCandidateBeforeJsonSerialization() {
+        HandwritingInk.resultPayload(1, listOf(InkCandidate("甲", Float.POSITIVE_INFINITY)), null)
+    }
+
+    @Test fun buildsFailedAndSuccessfulResultPayloads() {
+        val failed = HandwritingInk.resultPayload(2, emptyList(), "failed")
+        assertEquals("failed", failed.getString("error"))
+        assertEquals(0, failed.getJSONArray("candidates").length())
+        val ok = HandwritingInk.resultPayload(3, listOf(InkCandidate("甲", 0.5f)), null)
+        assertTrue(ok.isNull("error"))
+        assertEquals(0.5, ok.getJSONArray("candidates").getJSONObject(0).getDouble("score"), 0.001)
+    }
     // ---- §3 payload 解析 ----
 
     @Test

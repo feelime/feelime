@@ -1028,8 +1028,135 @@ test('long-press popup follows the pressing finger while a co-touch holds', {sin
 });
 
 // ---- 1.3.9 复发（Android 16 真机，多指打字风格）四道防线 ----
-// 根因：owner 手指的 end 永不到达（或浏览器触点报告停滞）+ 多指在场
+// 假设路径：owner 手指的 end 永不到达（或浏览器触点报告停滞）+ 多指在场
 // 屏蔽「全新序列」cancelTouches 兜底 → 浮层没有任何未来关闭事件。
+function touchWorld(overrides) {
+    const world = new KeyboardWorld();
+    world.js = world.js.replace('const keyboard = new FeelimeKeyboard();',
+        'const keyboard = window.testKeyboard = new FeelimeKeyboard();');
+    world.build();
+    world.hello(overrides);
+    return world;
+}
+test('missing key end is reconciled before its pending hold can open a ghost popup', () => {
+    for (const boundary of ['touchstart', 'touchmove', 'touchend']) {
+        const world = touchWorld();
+        const kb = world.context.testKeyboard;
+        const q = world.key('q'), e = world.key('e'), h = world.key('h');
+        const a = touchPoint(1, 20, 20), b = touchPoint(2, 100, 20);
+        world.dispatch(q, 'touchstart', 20, 20, { changedTouches: [a], touches: [a] });
+        world.clock.advance(40);
+        world.dispatch(e, 'touchstart', 100, 20, { changedTouches: [b], touches: [a, b] });
+        // A 的结束事件故意丢失；后续快照明确不含 A。旧实现只对已开的
+        // popup 对账，尚未到点的长按仍把幽灵 A 视为活跃。
+        const c = touchPoint(3, 180, 20);
+        world.dispatch(boundary === 'touchstart' ? h : e, boundary, 100, 20, {
+            changedTouches: boundary === 'touchstart' ? [c] : [b],
+            touches: boundary === 'touchstart' ? [b, c] : boundary === 'touchend' ? [] : [b],
+        });
+        assert(!kb.pressById.has(1), boundary + ' retires the missing contact');
+        world.clock.advance(300); // A 达到 holdMs，B 尚未达到。
+        assert(!kb.popup, boundary + ' leaves no phantom A popup');
+        if (boundary !== 'touchend') {
+            world.dispatch(e, 'touchend', 100, 20,
+                { changedTouches: [b], touches: boundary === 'touchstart' ? [c] : [] });
+        }
+        if (boundary === 'touchstart') {
+            world.dispatch(h, 'touchend', 180, 20, { changedTouches: [c], touches: [] });
+        }
+        world.clock.advance(1000);
+        assert(!kb.popup && !world.$('keyPopup').classList.contains('open'), 'all released stays closed');
+        equal(kb.pressById.size, 0, 'ledger empty');
+        equal(kb.pressedKeys.size, 0, 'no phantom pressed key');
+    }
+});
+
+test('touch trace records ownership and faults without key or editor contents', () => {
+    const world = touchWorld({ touchDiagnostics: true }), kb = world.context.testKeyboard;
+    const q = world.key('q'), e = world.key('e');
+    const a = touchPoint(1, 20, 20), b = touchPoint(2, 100, 20);
+    world.dispatch(q, 'touchstart', 20, 20, { changedTouches: [a], touches: [a] });
+    world.dispatch(e, 'touchstart', 100, 20, { changedTouches: [b], touches: [a, b] });
+    world.dispatch(e, 'touchend', 100, 20, { changedTouches: [b], touches: [] });
+    const logs = world.native.of('diagEvent').map(c => c.args[0]);
+    const fault = logs.find(line => line.startsWith('touchFault ') && line.includes('e=fault-missing-contact'));
+    assert(fault && fault.includes('ledger=1,2'), 'fault captures the ledger BEFORE cancellation');
+    assert(fault.includes('live=') && fault.includes('changed=2:100:20'), 'actual contact snapshot captured');
+    assert(logs.some(line => line.includes('timer-clear/1')), 'timer cancellation traced');
+    assert(logs.every(line => line.length <= 1024), 'trace fits the bridge budget');
+    assert(!logs.some(line => line.includes('key=') || line.includes('text=')), 'no input contents');
+    equal(kb.pressById.size, 0, 'trace does not interfere with cleanup');
+    const off = touchWorld();
+    off.tap(off.key('h'));
+    equal(off.native.of('diagEvent').length, 0, 'detailed trace is off by default');
+});
+
+test('heartbeat actually crosses the native diagnostic length gate', () => {
+    const world = touchWorld();
+    world.context.__diagErr = 'TypeError: popup state finalization failed';
+    world.clock.advance(2500);
+    const line = world.native.of('diagEvent').find(c => c.args[0].startsWith('heartbeat '))?.args[0];
+    assert(line && line.length > 160, 'real heartbeat generator exceeds the old gate');
+    assert(line.length <= 1024 && line.includes('pop=0') && line.includes('popup state'), 'complete diagnostic fits new budget');
+});
+
+test('normal crossed touches leave no residue or false incident across 240 sequences', () => {
+    const world = touchWorld({ touchDiagnostics: true }), kb = world.context.testKeyboard;
+    const q = world.key('q'), e = world.key('e');
+    for (let n = 0; n < 240; n++) {
+        const second = n % 2 ? q : e;
+        const a = touchPoint(1, 20, 20), b = touchPoint(2, second === q ? 24 : 100, 20);
+        world.dispatch(q, 'touchstart', 20, 20, { changedTouches: [a], touches: [a] });
+        world.clock.advance([0, 40, 150][n % 3]);
+        world.dispatch(second, 'touchstart', b.clientX, 20, { changedTouches: [b], touches: [a, b] });
+        world.clock.advance([20, 200, 360, 700][n % 4]);
+        const order = n % 2 ? [[second, b], [q, a]] : [[q, a], [second, b]];
+        order.forEach(([key, point], i) => {
+            world.dispatch(key, n % 5 === i ? 'touchcancel' : 'touchend', point.clientX, 20,
+                { changedTouches: [point], touches: i === 0 ? [order[1][1]] : [] });
+        });
+        world.clock.advance(1000);
+        assert(!kb.popup && !world.$('keyPopup').classList.contains('open'), 'no popup after sequence ' + n);
+        equal(kb.pressById.size, 0, 'no contact residue at ' + n);
+        equal(kb.pressedKeys.size, 0, 'no key residue at ' + n);
+    }
+    assert(!world.native.of('diagEvent').some(c => c.args[0].startsWith('touchFault ')),
+        'complete normal event streams never report a fault');
+});
+
+test('cancelled stale same-key contact preserves the remaining legitimate hold', () => {
+    const world = touchWorld(), kb = world.context.testKeyboard;
+    const q = world.key('q');
+    const a = touchPoint(1, 20, 20), b = touchPoint(2, 24, 20);
+    world.dispatch(q, 'touchstart', 20, 20, { changedTouches: [a], touches: [a] });
+    world.dispatch(q, 'touchstart', 24, 20, { changedTouches: [b], touches: [a, b] });
+    world.dispatch(world.document, 'touchmove', 24, 20, { changedTouches: [b], touches: [b] });
+    equal(kb.pressById.size, 1, 'only stale A is retired');
+    world.clock.advance(360);
+    equal(kb.popup?.fingerId, 2, 'remaining B owns the legitimate popup');
+    world.dispatch(q, 'touchend', 24, 20, { changedTouches: [b], touches: [] });
+    assert(!kb.popup, 'B ends normally');
+});
+
+test('reused contact id cannot attach an old key timer to a new key', () => {
+    const world = touchWorld(), kb = world.context.testKeyboard;
+    const q = world.key('q'), e = world.key('e'), h = world.key('h');
+    const a = touchPoint(1, 20, 20), b = touchPoint(2, 100, 20);
+    world.dispatch(q, 'touchstart', 20, 20, { changedTouches: [a], touches: [a] });
+    world.clock.advance(40);
+    world.dispatch(e, 'touchstart', 100, 20, { changedTouches: [b], touches: [a, b] });
+    world.clock.advance(40);
+    const reused = touchPoint(1, 180, 20);
+    world.dispatch(h, 'touchstart', 180, 20, { changedTouches: [reused], touches: [b, reused] });
+    world.clock.advance(280); // 旧 q 的 timer 到期，新 h 不到期。
+    assert(!kb.popup, 'old key timer cannot borrow the reused contact');
+    assert(!q.classList.contains('active-touch'), 'old key released');
+    world.dispatch(e, 'touchend', 100, 20, { changedTouches: [b], touches: [reused] });
+    world.dispatch(h, 'touchend', 180, 20, { changedTouches: [reused], touches: [] });
+    world.clock.advance(1000);
+    assert(!kb.popup, 'no late popup after release');
+});
+
 test('disconnected popup owner retracts on any later touchstart snapshot', {since: '3.73.38'}, () => {
     const world = fresh();
     const v = world.key('v');

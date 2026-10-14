@@ -1,6 +1,8 @@
 package com.feelime.ime
 
 import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.NodeInfo
+import ai.onnxruntime.OnnxJavaType
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.TensorInfo
@@ -11,7 +13,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.util.Log
 import java.io.File
-import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -39,277 +41,220 @@ class HandwritingEngine(
     interface Listener {
         /** 后台线程回调。[error] 为 null 时 [candidates] 有效（可为空）；
          * "unavailable"=模型未落地，"failed"=payload/推理异常。 */
-        fun onInkResult(reqId: Int, candidates: List<InkCandidate>, error: String?)
+        fun onInkResult(reqId: Int, candidates: List<InkCandidate>, error: String?, pageToken: String)
     }
 
-    // IME 是常驻进程，worker 线程的漏网异常一律吞掉并落诊断（默认
-    // uncaughtExceptionHandler 会 killProcess——1.3.6 真机手写连环
-    // 进程死亡的兜底防线；native crash 走 tombstone 不经此处）。
-    private val worker = Executors.newSingleThreadExecutor { task ->
+    private val engineId = engineIds.incrementAndGet()
+    private var activeRequest = -1
+    private val worker = InkWorkQueue { task ->
         Thread(task, "feelime-ink").apply {
             setUncaughtExceptionHandler { thread, failure ->
                 Log.e(TAG, "ink worker uncaught on ${thread.name}", failure)
-                Diagnostics.log(
-                    "inkWorker",
-                    "uncaught ${failure.javaClass.name}: ${failure.message ?: ""}",
-                )
+                Diagnostics.logCritical("inkWorker", "e=$engineId thread=${thread.name} ${failure.javaClass.name}")
             }
         }
     }
     private val modelStore = ModelStore(context)
     @Volatile private var session: OrtSession? = null
-    @Volatile private var environment: OrtEnvironment? = null
-    @Volatile private var vocabulary: List<String> = emptyList()
+    private var environment: OrtEnvironment? = null
+    private var vocabulary: List<String> = emptyList()
+    private var inputName: String? = null
     @Volatile private var released = false
 
-    /** hello 的 engineDataReady 判定（§3）：模型落地即可用，不触发加载。
-     * assets（full 包）或 ModelStore 下载完成皆算落地。 */
     fun isModelAvailable(): Boolean = modelStore.sourceFor(MODEL_ROLE) != null
 
-    fun recognizeInk(reqId: Int, payload: String) {
+    fun recognizeInk(reqId: Int, payload: String, pageToken: String) {
         if (released) return
-        // 到达点同步落盘（logCritical）：用户实录（1.3.7 PJC110 五连
-        // 崩溃循环）里 begin 无一存活——从桥进 worker 到 begin 之间还有
-        // 排队/bitmap 绘制一段，死亡点用到达点+begin 二分定位。
-        Diagnostics.logCritical("inkReq", "arrive req=$reqId bytes=${payload.length}")
-        worker.execute {
-            val result = runCatching { recognize(reqId, payload) }
-                .getOrElse { failure ->
-                    Log.w(TAG, "ink recognition failed", failure)
-                    Diagnostics.log(
-                        "inkFail",
-                        "${failure.javaClass.name}: ${failure.message ?: ""} req=$reqId",
-                    )
-                    InkResult(reqId, emptyList(), "failed")
-                }
-            // 结果分发也在 worker 线程：回调抛异常不能拖垮常驻进程。
-            runCatching { listener.onInkResult(result.reqId, result.candidates, result.error) }
-                .onFailure { Log.w(TAG, "ink result dispatch failed", it) }
+        val arrived = android.os.SystemClock.elapsedRealtime()
+        // 主线程只入队；worker 在任何业务 native 调用前同步标记。
+        Diagnostics.log("inkReq", "arrive e=$engineId req=$reqId chars=${payload.length}")
+        worker.submit {
+            activeRequest = reqId
+            Diagnostics.logCritical("inkReq", "start e=$engineId req=$reqId tid=${android.os.Process.myTid()} " +
+                "waitMs=${android.os.SystemClock.elapsedRealtime() - arrived}")
+            val result = runCatching { recognize(reqId, payload) }.getOrElse { failure ->
+                Log.w(TAG, "ink recognition failed", failure)
+                Diagnostics.logCritical("inkFail", "e=$engineId req=$reqId ${failure.javaClass.name}: " +
+                    "${(failure.message ?: "").take(110)}")
+                InkResult(reqId, emptyList(), "failed")
+            }
+            if (!released) runCatching {
+                listener.onInkResult(result.reqId, result.candidates, result.error, pageToken)
+            }.onFailure {
+                Log.w(TAG, "ink result dispatch failed", it)
+                Diagnostics.logCritical("inkDispatch", "e=$engineId req=$reqId ${it.javaClass.name}")
+            }
         }
     }
 
     fun release() {
         released = true
-        worker.execute { closeSession() }
-        worker.shutdown()
+        worker.close { closeSession() }
+    }
+
+    /** handwriting §12：同一 worker 上的业务 native 段；异常也标记。
+     * 绘图的同类逐点调用按一笔分段，避免每个点都同步刷盘。 */
+    private inline fun <T> nativeStep(stage: String, block: () -> T): T {
+        if (!Diagnostics.isRecording()) return block()
+        val start = android.os.SystemClock.elapsedRealtime()
+        val detail = "e=$engineId req=$activeRequest tid=${android.os.Process.myTid()} stage=$stage"
+        Diagnostics.logCritical("inkNative", "begin $detail")
+        return try {
+            block().also {
+                Diagnostics.logCritical("inkNative", "done $detail ms=${android.os.SystemClock.elapsedRealtime() - start}")
+            }
+        } catch (failure: Throwable) {
+            Diagnostics.logCritical("inkNative", "throw $detail ${failure.javaClass.simpleName}")
+            throw failure
+        }
     }
 
     private fun recognize(reqId: Int, payload: String): InkResult {
-        // 取证 v2（2026-10-09）：到达点→begin 之间的每一步都有同步标记，
-        // 硬崩时死点不再是黑盒；早退路径（parse 失败/无会话/空预处理）
-        // 也入档——1.3.8 实录里就有「没崩也没走到推理」的静默世代。
-        val request = HandwritingInk.parseInkRequest(payload)
-            ?: run {
-                Diagnostics.logCritical("inkSkip", "reason=parse req=$reqId")
-                return InkResult(reqId, emptyList(), "failed")
-            }
-        // 取证 v3（2026-10-10 一次到位）：链路上每个 native 调用边界
-        // 都有标记，任何一份未来的报告死点直接点名，不再逐轮加标记。
-        Diagnostics.logCritical("inkParse",
-            "req=$reqId strokes=${request.strokes.size} points=${request.strokes.sumOf { it.size }}")
-        if (!ensureSession()) {
-            Diagnostics.logCritical("inkSkip", "reason=noSession req=$reqId")
-            return InkResult(reqId, emptyList(), "unavailable")
+        val request = HandwritingInk.parseInkRequest(payload) ?: run {
+            Diagnostics.logCritical("inkSkip", "reason=parse e=$engineId req=$reqId")
+            return InkResult(reqId, emptyList(), "failed")
         }
-        val activeSession = checkNotNull(session)
-        // §4.1 渲染：内容 bbox 归一到 256×256（长边撑满、短边居中留白），
-        // 笔宽 = 渲染画布短边的 2.2%，白底纯黑笔画、圆头圆角、抗锯齿。
-        val transform = HandwritingInk.inkTransform(request.strokes, SIZE_PX.toFloat())
-        Diagnostics.logCritical("inkXform",
-            "req=$reqId scale=${"%.3f".format(transform.scale)}")
-        val paint = Paint().apply {
-            color = android.graphics.Color.BLACK
-            isAntiAlias = true
-            strokeWidth = SIZE_PX * STROKE_WIDTH_RATIO
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            style = Paint.Style.STROKE
-        }
-        val bitmap = Bitmap.createBitmap(SIZE_PX, SIZE_PX, Bitmap.Config.ARGB_8888)
-        Diagnostics.logCritical("inkBitmap", "req=$reqId ${SIZE_PX}x$SIZE_PX")
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(android.graphics.Color.WHITE)
-        request.strokes.forEach { stroke ->
-            if (stroke.isEmpty()) return@forEach
-            val first = stroke.first()
-            if (stroke.size == 1) {
-                // 单点成笔：Android 的 ROUND cap 不画零长度线。
-                canvas.drawPoint(
-                    first.x * transform.scale + transform.offsetX,
-                    first.y * transform.scale + transform.offsetY,
-                    paint,
-                )
-                return@forEach
-            }
-            val path = Path()
-            path.moveTo(
-                first.x * transform.scale + transform.offsetX,
-                first.y * transform.scale + transform.offsetY,
-            )
-            stroke.drop(1).forEach { point ->
-                path.lineTo(
-                    point.x * transform.scale + transform.offsetX,
-                    point.y * transform.scale + transform.offsetY,
-                )
-            }
-            canvas.drawPath(path, paint)
-        }
-        // v3：Skia 绘制与 getPixels（同为 native）各占一窗。
-        Diagnostics.logCritical("inkRender", "req=$reqId")
-        val pixels = IntArray(SIZE_PX * SIZE_PX)
-        bitmap.getPixels(pixels, 0, SIZE_PX, 0, 0, SIZE_PX, SIZE_PX)
-        bitmap.recycle()
-        // 取证 v2：drawn 后落一笔形态（笔数/点数，判读崩溃是否随笔迹
-        // 形态变化——1.3.8 实录死亡与存活世代笔数相近，需要此字段佐证）。
-        Diagnostics.logCritical("inkDrawn", "req=$reqId strokes=${request.strokes.size} " +
+        Diagnostics.logCritical("inkParse", "e=$engineId req=$reqId strokes=${request.strokes.size} " +
             "points=${request.strokes.sumOf { it.size }}")
-        // 预处理 + 解码（纯函数，参数钉死）：96×96 反色 uint8 NHWC。
-        val input = HandwritingInk.preprocessMelnyk(pixels, SIZE_PX, SIZE_PX)
-        if (input.isEmpty()) {
-            // 静默早退路径入档（1.3.8 实录的存活世代没走到 begin，此处
-            // 是候选解释之一）。
-            Diagnostics.logCritical("inkSkip", "reason=emptyPre req=$reqId")
-            return InkResult(reqId, emptyList(), null)
-        }
-        // DEBUG-INK 真迹采集（仅 debug 包）：全量落盘每次识别的模型输入
-        // 张量（每个 reqId 一份不覆盖），host 离线分析识别率用。正式包
-        // （BuildConfig.DEBUG=false）不开启，不留任何落盘开销。
-        if (BuildConfig.DEBUG) runCatching {
-            val dir = java.io.File(context.filesDir, "ink-inputs").apply { mkdirs() }
-            java.io.File(dir, "req-%04d.bin".format(reqId)).writeBytes(input)
-            java.io.File(dir, "payload-%04d.json".format(reqId)).writeText(payload)
-        }
-        val env = checkNotNull(environment)
-        // 模型输入 (1,96,96,1) uint8（NHWC，tf2onnx 转换保真）。
-        val shape = longArrayOf(1, MELNYK_SIZE.toLong(), MELNYK_SIZE.toLong(), 1)
-        // native crash 取证埋点：begin 无对应的 diag 结尾 = 死在 run 内
-        //（runCatching 接不住 SIGSEGV）。1.3.6 真机手写连环进程死亡用；
-        // 1.3.8 起改 logCritical 同步落盘——硬崩时异步队尾必丢，begin
-        // 必须先到介质（PJC110 实录：连 begin 都没活下来）。
-        Diagnostics.logCritical("inkInfer", "begin req=$reqId")
-        // 取证 v2：pre 标记把「绘图/预处理」与「张量构建」再切一刀。
-        Diagnostics.logCritical("inkPre", "req=$reqId bytes=${input.size}")
-        OnnxTensor.createTensor(
-            env,
-            java.nio.ByteBuffer.wrap(input),
-            shape,
-            ai.onnxruntime.OnnxJavaType.UINT8,
-        ).use { tensor ->
-            // v3：张量构建（JNI 分配）与 session.run（推理）各占一窗。
-            Diagnostics.logCritical("inkRun", "req=$reqId")
-            activeSession.run(mapOf(checkNotNull(inputName) to tensor)).use { output ->
-                // done 升级为同步（v2）：begin→done 之间死 = ORT run 内；
-                // done 之后死 = 解码/分发。异步 done 在硬崩时同样丢队尾。
-                Diagnostics.logCritical("inkInfer", "done req=$reqId")
-                val tensor = output[0] as OnnxTensor
-                val buffer = tensor.floatBuffer
-                val probs = FloatArray(buffer.remaining())
-                buffer.get(probs)
-                val candidates = HandwritingInk.rankSoftmax(probs, vocabulary, CANDIDATE_LIMIT)
-                // v3：done→decode 窗内只有 floatBuffer 读取（JNI），
-                // 解码后入档；分发异常另有 runCatching 兜底日志。
-                Diagnostics.logCritical("inkDecode", "req=$reqId n=${candidates.size}")
-                return InkResult(reqId, candidates, null)
+        if (!ensureSession()) return InkResult(reqId, emptyList(), "unavailable")
+        val activeSession = checkNotNull(session)
+        val transform = HandwritingInk.inkTransform(request.strokes, SIZE_PX.toFloat())
+        val paint = nativeStep("paint-config") {
+            Paint().apply {
+                color = android.graphics.Color.BLACK
+                isAntiAlias = true
+                strokeWidth = SIZE_PX * STROKE_WIDTH_RATIO
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                style = Paint.Style.STROKE
             }
         }
+        val bitmap = nativeStep("bitmap-create") {
+            Bitmap.createBitmap(SIZE_PX, SIZE_PX, Bitmap.Config.ARGB_8888)
+        }
+        val pixels = try {
+            val canvas = nativeStep("canvas-create") { Canvas(bitmap) }
+            nativeStep("canvas-clear") { canvas.drawColor(android.graphics.Color.WHITE) }
+            request.strokes.forEachIndexed { index, stroke ->
+                val first = stroke.first()
+                if (stroke.size == 1) {
+                    nativeStep("point-draw/$index") {
+                        canvas.drawPoint(first.x * transform.scale + transform.offsetX,
+                            first.y * transform.scale + transform.offsetY, paint)
+                    }
+                } else {
+                    val path = nativeStep("path-build/$index") {
+                        Path().apply {
+                            moveTo(first.x * transform.scale + transform.offsetX,
+                                first.y * transform.scale + transform.offsetY)
+                            stroke.drop(1).forEach { point ->
+                                lineTo(point.x * transform.scale + transform.offsetX,
+                                    point.y * transform.scale + transform.offsetY)
+                            }
+                        }
+                    }
+                    nativeStep("path-draw/$index") { canvas.drawPath(path, paint) }
+                }
+            }
+            IntArray(SIZE_PX * SIZE_PX).also { pixels ->
+                nativeStep("bitmap-pixels") { bitmap.getPixels(pixels, 0, SIZE_PX, 0, 0, SIZE_PX, SIZE_PX) }
+            }
+        } finally { nativeStep("bitmap-recycle") { bitmap.recycle() } }
+        val input = HandwritingInk.preprocessMelnyk(pixels, SIZE_PX, SIZE_PX)
+        if (input.isEmpty()) return InkResult(reqId, emptyList(), null)
+        if (BuildConfig.DEBUG) runCatching {
+            val dir = File(context.filesDir, "ink-inputs").apply { mkdirs() }
+            File(dir, "req-%04d.bin".format(reqId)).writeBytes(input)
+            File(dir, "payload-%04d.json".format(reqId)).writeText(payload)
+        }
+        val tensor = nativeStep("tensor-create") {
+            OnnxTensor.createTensor(checkNotNull(environment), java.nio.ByteBuffer.wrap(input),
+                longArrayOf(1, MELNYK_SIZE.toLong(), MELNYK_SIZE.toLong(), 1), OnnxJavaType.UINT8)
+        }
+        try {
+            val output = nativeStep("session-run") { activeSession.run(mapOf(checkNotNull(inputName) to tensor)) }
+            try {
+                val probs = nativeStep("output-read") {
+                    val result = output[0] as OnnxTensor
+                    require(result.info.type == OnnxJavaType.FLOAT) { "output must be float" }
+                    val buffer = result.floatBuffer
+                    require(buffer.remaining() == vocabulary.size) { "output length does not match vocabulary" }
+                    FloatArray(buffer.remaining()).also { buffer.get(it) }
+                }
+                val candidates = HandwritingInk.rankSoftmax(probs, vocabulary, CANDIDATE_LIMIT)
+                Diagnostics.logCritical("inkDecode", "e=$engineId req=$reqId n=${candidates.size}")
+                return InkResult(reqId, candidates, null)
+            } finally { nativeStep("output-close") { output.close() } }
+        } finally { nativeStep("tensor-close") { tensor.close() } }
     }
 
-    /** 词表（v2）：assets `vocab.json` 的 3755 字数组，下标 = softmax
-     * 输出类目。转换自 CASIA tagcode 顺序（issue #32 spike 同源）。 */
-    private fun loadVocabulary(): List<String> = runCatching {
-        context.assets.open(VOCAB_ASSET).use { stream ->
-            val parsed = org.json.JSONArray(stream.readBytes().decodeToString())
-            List(parsed.length()) { parsed.optString(it) }
-        }
-    }.getOrDefault(emptyList())
+    private fun loadVocabulary(): List<String> = context.assets.open(VOCAB_ASSET).use { stream ->
+        val parsed = org.json.JSONArray(stream.readBytes().decodeToString())
+        List(parsed.length()) { parsed.optString(it) }
+    }
 
-    /** 模型来源标签（取证行用）。 */
     private fun sourceLabel(source: ModelSource): String = when (source) {
         is ModelSource.Assets -> "assets"
         is ModelSource.Directory -> "dir:" + File(source.root).name
     }
 
-    /** 模型落地才创建 session（1 线程后台 init）；失败按 unavailable 上报。 */
     private fun ensureSession(): Boolean {
-        if (session != null) return vocabulary.isNotEmpty()
-        val source = modelStore.sourceFor(MODEL_ROLE) ?: run {
-            // 取证 v2：模型源缺失是静默 unavailable 的第一分支（1.3.8
-            // 实录存活世代没走到 begin 的候选解释）。
-            Diagnostics.logCritical("inkSession", "fail stage=noModel")
-            return false
-        }
+        if (session != null) return true
+        var pending: OrtSession? = null
         return try {
-            val bytes = when (source) {
-                is ModelSource.Assets ->
-                    context.assets.open(MODEL_FILE).use { it.readBytes() }
-                is ModelSource.Directory -> File(source.root, MODEL_FILE).readBytes()
+            val source = nativeStep("model-source") { modelStore.sourceFor(MODEL_ROLE) } ?: return false
+            val bytes = nativeStep("model-read") {
+                when (source) {
+                    is ModelSource.Assets -> context.assets.open(MODEL_FILE).use { it.readBytes() }
+                    is ModelSource.Directory -> File(source.root, MODEL_FILE).readBytes()
+                }
             }
-            // 模型变源入档（崩溃取证：bundled vs 下载模型的分叉排除）；
-            // sha 短摘排查下载模型半写/损坏（assets 段的理论恒定值）。
-            Diagnostics.logCritical("inkSession",
-                "model=${sourceLabel(source)} bytes=${bytes.size} sha=${shaHead(bytes)}")
-            val env = OrtEnvironment.getEnvironment()
-            val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(1) }
-            val created = env.createSession(bytes, options)
-            // 会话建成即同步入档（v2）：1.3.8 实录的死亡点夹在「model= 行」
-            // 与 begin 之间——createSession 是窗口内最重的 native 操作，
-            // ready 标记把「会话创建」与「绘图/预处理」切开。
-            Diagnostics.logCritical("inkSession", "created")
-            val vocab = loadVocabulary()
-            // 取证 v3（2026-10-10）：1.3.9 PJC110 六次崩溃全部死在
-            // created→ready 之间（ready 从未到达，inkDrawn/inkInfer 零次），
-            // 窗口内只有两个 native 调用——词表 AssetManager 读取与
-            // outputInfo。两行标记把窗口一分为二，下一份报告直接点名。
-            Diagnostics.logCritical("inkSession", "vocabLoaded n=${vocab.size}")
-            if (vocab.isEmpty()) {
-                created.close()
-                Log.w(TAG, "handwriting vocab asset missing")
-                Diagnostics.logCritical("inkSession", "fail stage=vocabEmpty")
-                return false
-            }
-            // 输出类目数必须 = 词表大小；不符说明词表与模型错配
-            // （解码出的字符会整体漂移），按不可用处理。
-            val outputVocab = (created.outputInfo.values.firstOrNull() as? TensorInfo)
-                ?.let { it.shape.lastOrNull()?.toInt() } ?: 0
-            Diagnostics.logCritical("inkSession", "outInfoRead n=$outputVocab")
-            // 动态/符号维度读不出来时（outputVocab<=0）放行。
-            if (outputVocab > 0 && outputVocab != vocab.size) {
-                created.close()
-                Log.w(TAG, "handwriting vocab mismatch: output=$outputVocab vocab=${vocab.size}")
-                Diagnostics.logCritical("inkSession",
-                    "fail stage=vocabMismatch output=$outputVocab vocab=${vocab.size}")
-                return false
-            }
-            Log.i(TAG, "handwriting outputVocab=$outputVocab vocab=${vocab.size}")
-            closeSession()
+            val sha = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+                .take(8).joinToString("") { "%02x".format(it) }
+            Diagnostics.logCritical("inkSession", "e=$engineId model=${sourceLabel(source)} bytes=${bytes.size} sha=$sha")
+            val env = nativeStep("environment-create") { OrtEnvironment.getEnvironment() }
+            val version = nativeStep("runtime-version") { env.version }
+            Diagnostics.logCritical("inkRuntime", "e=$engineId ort=$version heapKb=${Runtime.getRuntime().totalMemory() / 1024}")
+            val options = nativeStep("options-create") { OrtSession.SessionOptions() }
+            val created = try {
+                nativeStep("options-threads") { options.setIntraOpNumThreads(1) }
+                nativeStep("session-create") { env.createSession(bytes, options) }.also { pending = it }
+            } finally { nativeStep("options-close") { options.close() } }
+            Diagnostics.logCritical("inkSession", "e=$engineId created")
+            val vocab = nativeStep("vocabulary-read") { loadVocabulary() }
+            require(vocab.isNotEmpty()) { "vocabulary empty" }
+            val inputs = nativeStep("input-info") { created.inputInfo }
+            val outputs = nativeStep("output-info") { created.outputInfo }
+            val name = HandwritingInk.validateModelInfo(inputs, outputs, vocab.size)
+            Diagnostics.logCritical("inkSession", "e=$engineId outInfoRead n=${vocab.size}")
             environment = env
-            session = created
             vocabulary = vocab
-            Diagnostics.logCritical("inkSession", "ready vocab=${vocab.size}")
-            Log.i(TAG, "handwriting model ready vocab=${vocab.size}")
+            inputName = name
+            session = created
+            pending = null // 所有权移交；失败时 finally 只清理未移交的会话。
+            Diagnostics.logCritical("inkSession", "e=$engineId ready vocab=${vocab.size}")
             true
         } catch (failure: Throwable) {
             Log.w(TAG, "handwriting model load failed", failure)
-            Diagnostics.logCritical("inkSession",
-                "fail stage=exc ${failure.javaClass.name}: ${(failure.message ?: "").take(90)}")
+            Diagnostics.logCritical("inkSession", "e=$engineId fail ${failure.javaClass.name}: ${(failure.message ?: "").take(100)}")
             false
+        } finally {
+            pending?.let { failed ->
+                runCatching { nativeStep("session-close-unowned") { failed.close() } }
+                    .onFailure { Log.w(TAG, "failed session close", it) }
+            }
         }
     }
 
-    /** 模型字节 sha256 前 16 hex（取证：下载模型半写/损坏 vs 内置恒定）。 */
-    private fun shaHead(bytes: ByteArray): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
-        return digest.take(8).joinToString("") { "%02x".format(it) }
-    }
-
     private fun closeSession() {
-        runCatching { session?.close() }
+        val owned = session
         session = null
+        inputName = null
         vocabulary = emptyList()
+        environment = null // OrtEnvironment 是进程共享对象，不在这里 close。
+        if (owned != null) runCatching { nativeStep("session-close") { owned.close() } }
+            .onFailure { Log.w(TAG, "ink session close failed", it) }
     }
-
-    private val inputName: String?
-        get() = session?.inputNames?.firstOrNull()
 
     private data class InkResult(
         val reqId: Int,
@@ -318,7 +263,9 @@ class HandwritingEngine(
     )
 
     companion object {
+        private val engineIds = AtomicInteger()
         private const val TAG = "FeelimeInk"
+        const val MAX_PAYLOAD_CHARS = 512 * 1024
         const val MODEL_ROLE = "handwriting-rec"
         const val MODEL_FILE = "handwriting/model.onnx"
         private const val VOCAB_ASSET = "engine-data/handwriting/vocab.json"
@@ -343,6 +290,31 @@ data class InkCandidate(val text: String, val score: Float)
 /** 手写识别的纯函数层（无 Android 依赖，JVM 单测直接覆盖）。
  * 参数钉死在 [HandwritingEngine] companion，与 host spike 一致。 */
 object HandwritingInk {
+    internal fun validateModelInfo(inputs: Map<String, NodeInfo>, outputs: Map<String, NodeInfo>, vocab: Int): String {
+        require(inputs.size == 1 && outputs.size == 1) { "expected one input and output" }
+        val input = inputs.values.single().info as? TensorInfo ?: error("input must be tensor")
+        val output = outputs.values.single().info as? TensorInfo ?: error("output must be tensor")
+        fun singleBatch(shape: LongArray, tail: LongArray): Boolean =
+            shape.size == tail.size + 1 && shape[0] in longArrayOf(-1, 1) &&
+                shape.copyOfRange(1, shape.size).contentEquals(tail)
+        require(input.type == OnnxJavaType.UINT8 && singleBatch(input.shape, longArrayOf(96, 96, 1))) {
+            "input ${input.type} ${input.shape.contentToString()} must be uint8 [1,96,96,1]"
+        }
+        require(output.type == OnnxJavaType.FLOAT && singleBatch(output.shape, longArrayOf(vocab.toLong()))) {
+            "output ${output.type} ${output.shape.contentToString()} must be float [1,$vocab]"
+        }
+        return inputs.keys.single()
+    }
+
+    internal fun resultPayload(reqId: Int, candidates: List<InkCandidate>, error: String?): org.json.JSONObject {
+        require(candidates.all { it.score.isFinite() }) { "non-finite candidate score" }
+        return org.json.JSONObject().put("reqId", reqId)
+            .put("candidates", org.json.JSONArray().apply {
+                candidates.forEach { candidate ->
+                    put(org.json.JSONObject().put("text", candidate.text).put("score", candidate.score.toDouble()))
+                }
+            }).put("error", error ?: org.json.JSONObject.NULL)
+    }
     data class InkPoint(val x: Float, val y: Float)
     data class InkRequest(
         val width: Float,
@@ -531,6 +503,7 @@ object HandwritingInk {
         vocabulary: List<String>,
         limit: Int,
     ): List<InkCandidate> {
+        require(probs.all { it.isFinite() }) { "non-finite model output" }
         val order = Array(probs.size) { it }
         order.sortByDescending { probs[it] }
         return order.take(limit.coerceAtMost(probs.size))

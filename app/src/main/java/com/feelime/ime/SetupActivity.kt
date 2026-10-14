@@ -207,6 +207,7 @@ class SetupActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        debugCrashIfRequested(intent)
         destroyed = false
         // #52 复发修复（XYNEXT：MIUI 14 / Android 13 顶底黑条）：v1.3.3
         // 的沉浸式依赖「targetSdk 35 + Android 15+」的强制 edge-to-edge，
@@ -789,6 +790,7 @@ class SetupActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        debugCrashIfRequested(intent)
         Diagnostics.log("route", "SetupActivity onNewIntent target=${intent.getStringExtra(SETUP_PAGE_EXTRA) ?: ""}")
         setIntent(intent)
         updateSetupLaunchMarker(intent)
@@ -804,6 +806,17 @@ class SetupActivity : AppCompatActivity() {
             applyFixturesVisibility(intent)
         }
         if (intent.getStringExtra(KeyboardUpdateCenter.INBOX_EXTRA) != null) installFromInbox()
+    }
+
+    /** 仅 debug 取证门禁：在真实主线程抛异常，避免系统 am crash 的平台差异。 */
+    private fun debugCrashIfRequested(intent: Intent) {
+        if (BuildConfig.DEBUG && Diagnostics.isRecording() &&
+            intent.getBooleanExtra(EXTRA_DEBUG_JAVA_CRASH, false)) {
+            intent.removeExtra(EXTRA_DEBUG_JAVA_CRASH)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                throw IllegalStateException("controlled diagnostics Java crash")
+            }
+        }
     }
 
     /** Installs the ZIP pushed by scripts/push-keyboard.sh (same mechanism). */
@@ -1036,6 +1049,7 @@ class SetupActivity : AppCompatActivity() {
         // Debug fixtures show ONLY when the launcher passes this
         // boolean extra (automation does; humans never see the block).
         const val EXTRA_SHOW_FIXTURES = "com.feelime.ime.extra.SHOW_DEBUG_FIXTURES"
+        const val EXTRA_DEBUG_JAVA_CRASH = "com.feelime.ime.extra.DEBUG_JAVA_CRASH"
         const val CLIPBOARD_SEED_DESCRIPTION = "feelime-clipboard-seed"
         private const val SHORTCUT_ID = "ime-picker"
         private const val KEY_PENDING_MODEL_IMPORT_ID =

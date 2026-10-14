@@ -2,7 +2,6 @@ package com.feelime.ime
 
 import android.content.Context
 import android.os.SystemClock
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
@@ -46,6 +45,7 @@ object Diagnostics {
     private const val KEY_LAST_EXIT_TS = "last_exit_ts"
     private const val MAX_EVENTS = 400
     private const val MAX_EVENT_CHARS = 220
+    internal const val MAX_JS_EVENT_CHARS = 1024
     /** snapshot() 对心跳行保留的尾部条数（issue #13 v3）。 */
     private const val KEEP_BEATS = 10 // #12 复发取证：最近 25s 心跳（含 touch/noClick 计数）全保留
 
@@ -65,6 +65,11 @@ object Diagnostics {
     private var startedAt = 0L
     private var seq = 0L
     private var sink: DiagSink? = null
+    private var touchIncidentFile: File? = null
+    private var touchIncident: List<String> = emptyList()
+    private val incidentWriter = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "feelime-touch-incident").apply { isDaemon = true }
+    }
     /** tombstone 全量落盘目录（v3，refresh 时随 filesDir 定位）。 */
     private var tombstoneDir: File? = null
     private var beatCount = 0
@@ -87,6 +92,7 @@ object Diagnostics {
     fun refresh(context: Context) {
         synchronized(lock) {
             if (sink == null) sink = DiagSink(File(context.noBackupFilesDir, "diag-events.log"))
+            if (touchIncidentFile == null) touchIncidentFile = File(context.noBackupFilesDir, "diag-touch-incident.log")
             if (tombstoneDir == null) tombstoneDir = File(context.filesDir, "diagnostics-tombstones")
             recording = enabled(context)
             if (recording && startedAt == 0L) {
@@ -98,6 +104,8 @@ object Diagnostics {
                 // 的 ApplicationExitInfo 不随进程死——进程启动时扫上一
                 // 个死进程的退因（REASON_CRASH_NATIVE 的 description 自
                 // 带 signal + native 回溯头），同步落盘进导出。
+            }
+            if (recording) {
                 logExitReasonsLocked(context)
                 installCrashHandlerLocked(context)
             }
@@ -136,56 +144,28 @@ object Diagnostics {
                 }
             }
             if (info.reason in TRACE_WORTHY_REASONS) {
-                // Android 12+ 的 tombstone 是 protobuf 而非文本（发版
-                // review：按文本解只能得到乱码）——限量读原始字节，文本
-                // 才走帧表抽取；二进制就记录事实与规模，完整解码另立项。
-                // 限量在读取侧（readText().take() 是先全量读再丢）。
-                val raw = runCatching {
-                    info.traceInputStream?.use { input ->
-                        val buffer = ByteArrayOutputStream()
-                        val chunk = ByteArray(16 * 1024)
-                        var total = 0
-                        while (total < MAX_TRACE_READ) {
-                            val read = input.read(chunk, 0, minOf(chunk.size, MAX_TRACE_READ - total))
-                            if (read < 0) break
-                            buffer.write(chunk, 0, read)
-                            total += read
-                        }
-                        buffer.toByteArray()
-                    }
-                }.getOrNull()
-                if (raw == null) {
-                    logSyncLocked("exitTrace", "tombstone read failed")
-                } else if (raw.isEmpty()) {
-                    logSyncLocked("exitTrace", "tombstone empty")
+                val read = runCatching {
+                    info.traceInputStream?.use { DiagnosticTraceArchive.read(it) }
+                }
+                val trace = read.getOrNull()
+                if (read.isFailure) {
+                    logSyncLocked("exitTrace", "read failed ${read.exceptionOrNull()?.javaClass?.simpleName}")
+                } else if (trace == null || trace.bytes.isEmpty()) {
+                    logSyncLocked("exitTrace", "trace unavailable or empty pid=${info.pid}")
                 } else {
-                    // protobuf 载荷按字段 tag 编码，文本 tombstone 以
-                    // '#'/换行开头——按可打印率判。
-                    val isText = runCatching {
-                        val head = raw.decodeToString(0, minOf(raw.size, 4096))
-                        val printable = head.count { !it.isISOControl() }
-                        printable * 10 >= head.length * 9
-                    }.getOrDefault(false)
-                    if (!isText) {
-                        // v3（2026-10-10 一次到位）：protobuf tombstone 只在
-                        // 日志里留 8 字节头等于把已读到的 128KB 证据扔掉——
-                        // 全量落盘（留最近 3 份），导出诊断时 base64 内嵌，
-                        // 用户照常导一份 txt 就带上完整 native 栈，不再需要
-                        // 额外抓 bugreport。
-                        val saved = runCatching {
-                            val dir = File(context.filesDir, "diagnostics-tombstones")
-                            dir.mkdirs()
-                            val f = File(dir, "tb-${info.pid}-${info.timestamp}.bin")
-                            f.writeBytes(raw)
-                            dir.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }
-                                ?.drop(3)?.forEach { it.delete() }
-                            f.name
-                        }.getOrNull()
-                        logSyncLocked("exitTrace", "binary tombstone (protobuf), ${raw.size}B " +
-                            "head=${raw.take(8).joinToString(",") { (it.toInt() and 0xff).toString() }} " +
-                            "saved=$saved")
-                    } else {
-                        extractTraceLines(String(raw, Charsets.UTF_8)).forEachIndexed { i, line ->
+                    // Android 12+ native trace 明确为 protobuf；其他 trace 也
+                    // 先保存原始字节，文本摘录不再决定是否保全证据。
+                    val name = "tb-${info.pid}-${info.timestamp}.bin"
+                    val saved = runCatching {
+                        DiagnosticTraceArchive.save(checkNotNull(tombstoneDir), name, trace)
+                        name
+                    }
+                    val format = if (info.reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE &&
+                        android.os.Build.VERSION.SDK_INT >= 31) "protobuf" else "raw"
+                    logSyncLocked("exitTrace", "format=$format bytes=${trace.bytes.size} truncated=${trace.truncated} " +
+                        "saved=${saved.getOrNull()} error=${saved.exceptionOrNull()?.javaClass?.simpleName ?: "none"}")
+                    if (format != "protobuf") {
+                        extractTraceLines(trace.bytes.decodeToString()).forEachIndexed { i, line ->
                             logSyncLocked("exitTrace", "[$i] $line")
                         }
                     }
@@ -195,8 +175,6 @@ object Diagnostics {
         prefs.edit().putLong(KEY_LAST_EXIT_TS, lastExitTs).commit()
     }
 
-    /** trace 抽取的读取上限（tombstone 全文可达百 KB，只留头部+帧表）。 */
-    private const val MAX_TRACE_READ = 128 * 1024
     private val TRACE_WORTHY_REASONS = setOf(
         android.app.ApplicationExitInfo.REASON_CRASH_NATIVE,
         android.app.ApplicationExitInfo.REASON_CRASH,
@@ -300,7 +278,12 @@ object Diagnostics {
             seq = 0
             startedAt = if (on) SystemClock.elapsedRealtime() else 0L
             beatCount = 0
-            if (on) logLocked("diag", "recording started")
+            if (on) {
+                // 开关可能在进程已启动、甚至 IME 尚未创建时开启。
+                // 此时也要初始化落盘、读取退出记录并安装 Java 栈采集。
+                refresh(context)
+                logLocked("diag", "recording started pid=${android.os.Process.myPid()}")
+            }
         }
     }
 
@@ -310,9 +293,55 @@ object Diagnostics {
         synchronized(lock) { if (recording) logLocked(tag, detail) }
     }
 
+    /** Split before the 220-char sink limit. Dynamic heartbeat fields must not
+     * cause the bridge to silently discard the complete message. */
+    internal fun jsEventParts(line: String): List<String> =
+        line.take(MAX_JS_EVENT_CHARS).chunked(180)
+
+    fun logJs(line: String) {
+        synchronized(lock) {
+            if (!recording) return
+            if (line.length > MAX_JS_EVENT_CHARS) {
+                logLocked("js", "diagClamped chars=${line.length} cap=$MAX_JS_EVENT_CHARS")
+            }
+            jsEventParts(line).forEachIndexed { index, part ->
+                logLocked(if (index == 0) "js" else "js+", part)
+            }
+            if (line.startsWith("touchFault ")) captureTouchIncidentLocked("js-touch-fault")
+        }
+    }
+
+    /** Keep the last incident separately so subsequent typing and opening the
+     * export page cannot rotate away the causal touch sequence. */
+    fun captureTouchIncident(reason: String) {
+        synchronized(lock) {
+            if (recording) captureTouchIncidentLocked(reason)
+        }
+    }
+
+    private fun captureTouchIncidentLocked(reason: String) {
+        logLocked("touchIncident", "capture reason=$reason wall=${wallClock()}")
+        val live = events.toList()
+        val liveSet = live.toHashSet()
+        val persisted = runCatching { sink?.readTail(EXPORT_FILE_TAIL).orEmpty() }.getOrDefault(emptyList())
+        touchIncident = (persisted.filterNot { it in liveSet } + live)
+            .takeLast(EXPORT_FILE_TAIL)
+        val file = touchIncidentFile ?: return
+        val text = touchIncident.joinToString("\n")
+        // Persist off the input/UI thread; serialize writes so an older capture
+        // cannot overwrite a newer one. The memory copy is immediately ready.
+        incidentWriter.execute {
+            runCatching {
+                val temp = File(file.parentFile, "${file.name}.tmp")
+                temp.writeText(text)
+                check(temp.renameTo(file)) { "incident rename failed" }
+            }.onFailure { log("touchIncident", "persist failed ${it.javaClass.simpleName}") }
+        }
+    }
+
     /** 关键取证行（硬崩前的最后一跳）：同步写盘 + fsync，绕过异步
      *  队列——崩溃瞬间队尾必丢（1.3.7 手写连环死亡实录：inkInfer
-     *  begin 无一存活）。识别节奏每次手写一笔一次，fsync 开销可忽略。 */
+     *  begin 无一存活）。手写标记在 worker 上执行，图形路径按笔分段。 */
     fun logCritical(tag: String, detail: String) {
         synchronized(lock) { if (recording) logSyncLocked(tag, detail) }
     }
@@ -351,25 +380,21 @@ object Diagnostics {
         val liveSet = live.toHashSet()
         val persisted = sink?.readTail(EXPORT_FILE_TAIL).orEmpty()
             .filterNot { it in liveSet }
-        foldBeats(if (persisted.isEmpty()) live else persisted + live)
+        val recent = foldBeats(if (persisted.isEmpty()) live else persisted + live)
+        val incident = touchIncident.ifEmpty {
+            runCatching { touchIncidentFile?.readLines()?.takeLast(EXPORT_FILE_TAIL) }.getOrNull().orEmpty()
+        }
+        if (incident.isEmpty()) recent else recent +
+            listOf("--- last touch incident (frozen, may repeat recent events) ---") + incident +
+            listOf("--- end touch incident ---")
     }
 
-    /** 导出用 tombstone 附件（v3）：文件名+字节对，新→旧，[maxTotalBytes]
-     *  预算内尽量多带——崩溃栈在 protobuf 里，host 离线按 schema 解。 */
-    fun tombstoneAttachments(maxTotalBytes: Int = 384 * 1024): List<Pair<String, ByteArray>> {
+    /** 所有格式均导出原始字节，预算不足与读取失败必须显式入档。 */
+    internal fun tombstoneAttachments(): List<DiagnosticTraceArchive.Attachment> {
         val dir = tombstoneDir ?: return emptyList()
-        val files = runCatching {
-            dir.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }
-        }.getOrNull().orEmpty()
-        val out = ArrayList<Pair<String, ByteArray>>()
-        var used = 0
-        for (f in files) {
-            val bytes = runCatching { f.readBytes() }.getOrNull() ?: continue
-            if (used + bytes.size > maxTotalBytes) continue
-            out.add(f.name to bytes)
-            used += bytes.size
-        }
-        return out
+        val exported = DiagnosticTraceArchive.export(dir)
+        exported.omissions.forEach { log("exitTrace", it) }
+        return exported.attachments
     }
 
     private fun foldBeats(all: List<String>): List<String> {

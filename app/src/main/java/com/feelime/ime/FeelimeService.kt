@@ -1975,6 +1975,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         val payload = JSONObject()
             .put("nativeApiVersion", NATIVE_API_VERSION)
             .put("capabilities", JSONArray(CAPABILITIES.toList()))
+            .put("touchDiagnostics", Diagnostics.isRecording())
             .put("theme", systemTheme())
             .put("uiLanguage", UiLanguage.choice(this))
             .put("uiLocale", UiLanguage.locale(this))
@@ -2382,23 +2383,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     /** 手写识别回调（design/handwriting.md §3）：后台线程 → 主线程推送。
      *  reqId 单调，JS 侧与最新请求不符时丢弃。 */
-    override fun onInkResult(reqId: Int, candidates: List<InkCandidate>, error: String?) = onMain {
-        val payload = JSONObject()
-            .put("reqId", reqId)
-            .put(
-                "candidates",
-                JSONArray().apply {
-                    candidates.forEach { candidate ->
-                        put(
-                            JSONObject()
-                                .put("text", candidate.text)
-                                .put("score", candidate.score.toDouble()),
-                        )
-                    }
-                },
-            )
-            .put("error", error ?: JSONObject.NULL)
-        evaluate("window.Feelime && window.Feelime.onInkCandidates && window.Feelime.onInkCandidates($payload)")
+    override fun onInkResult(reqId: Int, candidates: List<InkCandidate>, error: String?, pageToken: String) {
+        // 在调用线程完成校验和 JSON 构造；不能让异步主线程抛出未捕获异常。
+        val payload = runCatching { HandwritingInk.resultPayload(reqId, candidates, error) }.getOrElse {
+            Diagnostics.log("inkDispatch", "req=$reqId invalid result ${it.javaClass.simpleName}")
+            HandwritingInk.resultPayload(reqId, emptyList(), "failed")
+        }
+        onMain {
+            if (pageToken != this.pageToken || handwritingEngine == null) return@onMain
+            evaluate("window.Feelime && window.Feelime.onInkCandidates && window.Feelime.onInkCandidates($payload)")
+        }
     }
 
     inner class ImeBridge {
@@ -2407,8 +2401,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
          *  无条件低频上报（2.5s 一条）。token 校验挡掉旧页面/预览 iframe。 */
         @JavascriptInterface
         fun diagEvent(line: String, token: String) {
-            if (token != pageToken || line.length > 160) return
-            Diagnostics.log("js", line)
+            if (token != pageToken) return
+            Diagnostics.logJs(line)
         }
 
         @JavascriptInterface
@@ -3114,11 +3108,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         @JavascriptInterface
         fun recognizeInk(reqId: Int, payload: String, token: String) =
             guarded(token, limited = false) {
-                if (reqId < 0 || payload.length > MAX_JSON_CHARS) {
+                if (reqId < 0 || payload.length > HandwritingEngine.MAX_PAYLOAD_CHARS) {
                     rejectedCalls += 1
+                    Diagnostics.log("inkReject", "req=$reqId chars=${payload.length} reason=budget-or-id")
+                    if (reqId >= 0) onInkResult(reqId, emptyList(), "failed", token)
                     return@guarded
                 }
-                handwritingEngine?.recognizeInk(reqId, payload)
+                handwritingEngine?.recognizeInk(reqId, payload, token)
             }
 
         @JavascriptInterface
@@ -3991,6 +3987,33 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     }
 
     private inner class DiagWebView(context: android.content.Context) : WebView(context) {
+        private var touchTraceSeq = 0L
+        private var touchTraceMoveAt = 0L
+
+        private fun traceTouchInput(event: android.view.MotionEvent): Long {
+            if (!Diagnostics.isRecording()) return 0L
+            val seq = ++touchTraceSeq
+            val moving = event.actionMasked == android.view.MotionEvent.ACTION_MOVE
+            if (moving && event.eventTime - touchTraceMoveAt < 100L) return 0L
+            if (moving) touchTraceMoveAt = event.eventTime
+            val points = (0 until event.pointerCount).take(6).joinToString(",") { i ->
+                "${event.getPointerId(i)}:${event.getX(i).toInt()}:${event.getY(i).toInt()}"
+            }
+            val line = "in s=$seq a=${event.actionMasked} i=${event.actionIndex} " +
+                "t=${event.eventTime} down=${event.downTime} pc=${event.pointerCount} " +
+                "pts=$points hist=${event.historySize}"
+            line.chunked(180).forEachIndexed { i, part ->
+                Diagnostics.log(if (i == 0) "touchN" else "touchN+", part)
+            }
+            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+                val runtime = if (android.os.Build.VERSION.SDK_INT >= 26)
+                    WebView.getCurrentWebViewPackage()?.versionName else "unknown"
+                Diagnostics.log("touchN", "runtime webview=$runtime " +
+                    "density=${resources.displayMetrics.density} moveSampleMs=100")
+            }
+            return seq
+        }
+
         // #12 取证七期（codex 诊断矩阵）：M133 BrowserViewRenderer::
         // IsClientVisible 要求「未 pause + attached + window visible」，
         // 否则断 BeginFrame 帧时钟（JS rAF 停摆的机制路径）。这里把
@@ -4020,6 +4043,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             visDiag("vis=${if (visibility == android.view.View.VISIBLE) "V" else "G"}")
         }
         override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+            val traceSeq = traceTouchInput(event)
             // 收起取证：down/up 聚合计数 + cancel 即时带坐标（见各 note
             //  的注释）。多指也即时落行——平板（PJC110 一类）手写手掌
             //  误触第二指是收起的另一候选路径，聚合计数看不到指头数。
@@ -4046,7 +4070,38 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                                 "rawY=${(event.getY(1) + offY).toInt()}")
                     }
             }
-            return super.dispatchTouchEvent(event)
+            val handled = super.dispatchTouchEvent(event)
+            if (traceSeq != 0L && event.actionMasked != android.view.MotionEvent.ACTION_MOVE) {
+                Diagnostics.log("touchN", "out s=$traceSeq handled=$handled")
+            }
+            if (traceSeq != 0L && (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
+                    event.actionMasked == android.view.MotionEvent.ACTION_CANCEL)) {
+                postDelayed({
+                    if (traceSeq != touchTraceSeq || !Diagnostics.isRecording()) return@postDelayed
+                    Diagnostics.log("touchN", "allUp audit-request s=$traceSeq")
+                    var replied = false
+                    postDelayed({
+                        if (!replied && traceSeq == touchTraceSeq && Diagnostics.isRecording()) {
+                            Diagnostics.captureTouchIncident("native-all-up-no-js-reply")
+                        }
+                    }, 1500L)
+                    evaluateJavascript("window.Feelime && window.Feelime.touchState && " +
+                        "JSON.stringify(window.Feelime.touchState())") { raw ->
+                        replied = true
+                        if (traceSeq != touchTraceSeq || !Diagnostics.isRecording()) return@evaluateJavascript
+                        val state = runCatching {
+                            val text = org.json.JSONTokener(raw).nextValue() as? String
+                            if (text == null) null else JSONObject(text)
+                        }.getOrNull()
+                        Diagnostics.log("touchN", "allUp audit-result s=$traceSeq state=${state ?: "unavailable"}")
+                        if (state != null && (state.optBoolean("popup") || state.optBoolean("dom") ||
+                                state.optInt("press") > 0 || (state.optJSONArray("ids")?.length() ?: 0) > 0)) {
+                            Diagnostics.captureTouchIncident("native-all-up-residue")
+                        }
+                    }
+                }, 200L)
+            }
+            return handled
         }
         // 窗口焦点通道两轮真机验证均不触发（ViewTreeObserver 与 View
         // override 都试过）：IME 窗口（TYPE_INPUT_METHOD）语义上不拿

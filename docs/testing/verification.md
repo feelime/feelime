@@ -9,6 +9,34 @@
 
 ## 0. 原则
 
+双手交叉输入导致长按浮层残留时，设置 → 诊断先开启记录，复现后导出。
+原生 `touchN in/out` 行包含 MotionEvent 动作（0=按下、1=最后一指松手、
+2=移动、3=取消、5/6=新增/释放一指）、触点编号与物理坐标；网页
+`touchTrace` 包含 changed/live 触点、编号到按键元素的匿名映射、长按
+timer 与浮层归属。两层编号不保证相同，以坐标、事件顺序、density
+换算对账。移动每 100ms 抽样，序号空洞可能来自抽样；边界不抽样。
+
+`touchFault` 表示快照发现失联或编号复用，或 owner 停滞看门狗触发；
+原生最后一指松手后 200ms 的 `allUp audit-result` 仅读取网页状态。
+没有新的原生触摸时若仍有浮层或按压记录，会冻结事件窗口。导出的
+`last touch incident` 独立保留最后一次异常，不被后续打字与打开设置页
+覆盖；窗口可能重复普通事件，带 capture 的墙钟时间辨认历史现场。
+网页 1.5 秒内未响应对账时冻结 `native-all-up-no-js-reply` 现场；只有
+audit-request 没有 result、并且网页心跳也停了，应查网页执行停摆。
+原生有释放而网页没有，查 WebView 投递；两层均收到释放却仍残留，
+查按压/浮层状态处理。诊断桥分段保留动态心跳，超预算明确记 clamped。
+
+mock 覆盖交叉按压、同键双指、取消、编号复用与丢结束事件的故障注入。
+故障注入能证明代码路径，不能据此断言某次真机报告一定丢了结束事件；
+设备层还必须使用真实 MotionEvent 或 CDP Input 接口验证。
+
+专用回归入口：`FEELIME_ADB_SERIAL=<serial> python3
+scripts/verify/device_touch_popup_verify.py`（需 debug 包与 websocket-client）。
+它使用设置页测试输入框，检查 CDP 双指交叉/同键/长按/取消、Android
+真实松手后的对账，再注入网页漏收结束和短暂停摆，验证异常冻结、日志
+滚动、导出和进程重启后直接从设置页导出。CDP 执行异常直接失败，
+每次原生探针用唯一标记排除旧日志。
+
 - **mock 优先**：UI 逻辑与桥接行为先在 `mock_bridge_tests.js`
   （fake DOM + fake Native，node 直跑）验证；Kotlin 纯函数用 JVM 单测
   钉住；设备只做端到端回归。
@@ -314,3 +342,40 @@ table 实测词频错位到 51.7% 命中）。重编链路（host，无需 NDK�
 CDP 僵尸读数，只有链路打点能区分。改时序/状态语义前列全交互场景
 （冷启/热启/搜索/预览触发的 ready 重入），每轮修完跑一遍场景清单，
 只回归报障场景必然把新引入的 bug 带进下一轮。
+
+## 手写原生崩溃回归
+
+`FEELIME_ADB_SERIAL=<serial> python3 scripts/verify/device_handwriting_verify.py`
+需要已核验安装的 debug APK 和 websocket-client；run-all 的 `9s handwriting`
+及 input/kotlin-service profiles 会执行。本套件使用设置页测试输入框，
+不清应用数据。真机 DevTools 端口可用 FEELIME_DEVTOOLS_PORT 指定。
+
+检查实际 Melnyk 模型的冷/热加载与候选、NodeInfo 维度、无效请求后的恢复、
+超过旧 4Ki 字符预算的笔迹、快速提交合并、切换默认 IME 后的服务销毁和
+会话关闭、重新建立会话。最后对调试包主动发 SIGABRT，直接重启设置页
+导出；校验原始 protobuf 的 PID、信号、模块帧和 Build ID，以及附件大小、
+SHA-256 和截断标志。主动崩溃验证取证机制，不代表复现了用户的崩溃。
+`--skip-crash` 仅调试识别段时使用，不能替代完整门禁。
+
+新 `inkNative begin/done/throw` 包含引擎编号 e、req、线程 tid、阶段和耗时。
+对同一引擎和请求逐段判读，包括 options/output/tensor/session 的 close；
+业务 native 调用前同步写盘，图形路径按一笔构建/绘制分段。`inkReq` 的
+arrive 是异步行，start 是 worker 同步行，waitMs 可判断积压。崩溃线程
+可能在后台，不能单凭最后标记把某个 API 判作根因。
+
+退出 trace 总是保留原始字节，不再以可打印率决定是否保存。每份 2MiB，
+最近三份合计导出预算 6MiB；truncated=false 表示读到 EOF，true 表示超出
+预算，unknown 是旧版附件。导出 header 带 SHA-256，可复核文件完整性。
+缺失 trace、读取失败、保存失败和预算遗漏都有记录；系统可能已覆盖
+trace，缺少附件时仍需从报障设备提供 bugreport/tombstone。
+
+门禁临时移除模型来源这一项显式选择，验证 thin 默认能使用内置手写；
+其余设置和数据保留，结束后恢复原来源选择。也检查进程以诊断关闭状态
+启动后开启记录，主动 Java 主线程崩溃能同步保存栈。原始 trace 可离线
+提取：`python3 scripts/verify/diagnostic_trace.py <诊断.txt> --output <目录>`。
+无需设备或 protobuf 依赖；保存附件并生成 summary.json，含崩溃线程、
+信号、模块、相对 PC、Build ID。旧截断附件解析失败会明确标记并保留原文。
+
+Java 崩溃段使用 debug 且诊断开启时才响应的 DEBUG_JAVA_CRASH intent，
+在应用主线程真实抛出异常；不采用 am crash 代替（部分设备实测返回
+CRASH_NATIVE / SIGTRAP）。该入口没有产品控件，release 不响应。

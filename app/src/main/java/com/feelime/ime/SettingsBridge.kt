@@ -2306,6 +2306,7 @@ class SettingsBridge(
     @JavascriptInterface
     fun setDiagnostics(on: Boolean, token: String) = guarded(token) {
         Diagnostics.setEnabled(context, on)
+        context.sendBroadcast(Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName))
         pushState()
     }
 
@@ -2313,6 +2314,8 @@ class SettingsBridge(
      *  返回文件名供 JS 提示。不再进剪贴板（2026-09-18 用户反馈）。 */
     @JavascriptInterface
     fun exportDiagnostics(token: String) = guarded(token) {
+        Diagnostics.refresh(context)
+        val tombstones = Diagnostics.tombstoneAttachments()
         val events = Diagnostics.snapshot()
         val header = listOf(
             "Feelime 诊断导出 ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
@@ -2325,10 +2328,10 @@ class SettingsBridge(
         )
         // v3：tombstone 全量 base64 内嵌（崩溃取证——native 栈在系统
         // protobuf 里，报告人只导这份 txt 就带上完整证据，host 离线解）。
-        val tombstones = Diagnostics.tombstoneAttachments()
-        val tombstoneLines = tombstones.flatMap { (name, bytes) ->
-            val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-            listOf("--- tombstone $name bytes=${bytes.size} base64 ---") + b64.chunked(120)
+        val tombstoneLines = tombstones.flatMap { attachment ->
+            val b64 = android.util.Base64.encodeToString(attachment.bytes, android.util.Base64.NO_WRAP)
+            listOf("--- tombstone ${attachment.name} bytes=${attachment.bytes.size} " +
+                "sha256=${attachment.sha256} truncated=${attachment.truncated} base64 ---") + b64.chunked(120)
         }
         val text = (header + events + tombstoneLines).joinToString("\n")
         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)

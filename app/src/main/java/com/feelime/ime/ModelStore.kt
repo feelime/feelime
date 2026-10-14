@@ -452,11 +452,18 @@ class ModelStore(
      * voice entry must report the model as missing. */
     fun sourceFor(role: String): ModelSource? {
         val model = spec(role) ?: return null
-        if (modelBackend() == ModelBackend.AUTO && assetsComplete(model)) {
+        // 默认按当前模型判断。thin 只内置手写，不能因为语音模型没
+        // 内置就忽略它；用户明确选择下载模型时仍尊重该选择。
+        val bundled = assetsComplete(model)
+        if (backendForModel(bundled) == ModelBackend.AUTO && bundled) {
             return ModelSource.Assets
         }
         return installedSource(model)
     }
+
+    private fun backendForModel(bundled: Boolean): ModelBackend =
+        ModelBackend.fromValue(backendPreferences.getString(KEY_MODEL_BACKEND, null))
+            ?: ModelBackend.defaultFor(BuildConfig.PLAY_DISTRIBUTION, bundled)
 
     private fun installedSource(model: ModelSpec): ModelSource.Directory? {
         val root = modelRoot()
@@ -557,7 +564,8 @@ class ModelStore(
     /** Live status for the settings UI. */
     fun state(model: ModelSpec): State {
         if (activeId == model.id) return activeOperation ?: State.DOWNLOADING
-        if (modelBackend() == ModelBackend.AUTO && assetsComplete(model)) {
+        val bundled = assetsComplete(model)
+        if (backendForModel(bundled) == ModelBackend.AUTO && bundled) {
             return State.BUILT_IN
         }
         val record = installRecord(model) ?: return State.MISSING
