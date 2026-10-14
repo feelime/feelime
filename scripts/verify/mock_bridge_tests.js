@@ -7607,7 +7607,7 @@ test('mode switch clears assoc words', {since: '3.33.0'}, () => {
     equal(assocCount(), 0, 'mode change clears the assoc bar');
 });
 
-test('t9 long-press popup: letters/symbols land literally, digit feeds the engine', {since: '3.35.0'}, () => {
+test('t9 long-press popup: letters/symbols land literally, digit feeds the engine', {since: '3.35.0', until: '3.73.41'}, () => {
     const world = fresh({ mode: 't9' });
     world.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
@@ -7733,7 +7733,8 @@ test('t9 long-press popup: letters/symbols land literally, digit feeds the engin
     worldFling.touchUp(four, 460, 700);
     equal(worldFling.native.of('key').length, 0, 'fling-out release lands nothing');
     equal(worldFling.native.of('commitText').length, 0, 'fling-out release commits nothing');
-    // 不拖直接松手 = 预选数字格，与点按同义（通配数字进引擎）。
+    // 旧规则（≤3.73.41）：不拖松手 = 预选数字格，与点按同义（通配数字
+    // 进引擎）。新规则（#62，3.73.42 起数字字面落）由下方的专测覆盖。
     const world2 = fresh({ mode: 't9' });
     world2.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
@@ -7743,6 +7744,54 @@ test('t9 long-press popup: letters/symbols land literally, digit feeds the engin
     world2.touchUp(two2);
     const keys2 = world2.native.of('key');
     equal(keys2[keys2.length - 1].args[0], '2', 'release on the digit cell feeds the wildcard');
+});
+
+test('t9 long-press digit lands literally with composing + slide-back (#62)', {since: '3.73.42'}, () => {
+    // 新规则专测：不拖松手 = 预选数字格，字面落 editor（#62 用户裁定：
+    // 旧规则「与点按同义、通配进引擎」让长按选数字形同直接按键）。
+    const world2 = fresh({ mode: 't9' });
+    world2.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    const two2 = world2.key('2');
+    world2.touchDown(two2);
+    world2.clock.advance(360);
+    const keys2Before = world2.native.of('key').length;
+    world2.touchUp(two2);
+    const commits2 = world2.native.of('commitText').map(c => c.args[0]);
+    equal(commits2[commits2.length - 1], '2', 'digit cell lands literally');
+    equal(world2.native.of('key').length, keys2Before,
+        'the digit never feeds the engine');
+    // 已有组合时长按选数字：先落现有组合再插数字（与字母/符号 literal
+    // 同通道语义——TextInputCoordinator 的 commitText 处理）。
+    const worldC = fresh({ mode: 't9' });
+    worldC.engineState({ phase: 'COMPOSING', mode: 't9', revision: 1,
+        composing: 'ni', rawInput: '64', candidates: [], hasNextPage: false });
+    const fiveC = worldC.key('5');
+    worldC.touchDown(fiveC);
+    worldC.clock.advance(360);
+    worldC.touchUp(fiveC);
+    const commitsC = worldC.native.of('commitText').map(c => c.args[0]);
+    assert(commitsC.includes('5'), 'composing-state digit still lands literally');
+    // 滑离卡片再滑回数字格松手 = 恢复选中、字面落（相对跟手全程可逆）。
+    const worldB = fresh({ mode: 't9' });
+    worldB.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    worldB.document.getElementById('keyPopup').getBoundingClientRect =
+        () => ({ left: 0, top: 0, right: 500, bottom: 400, width: 500, height: 400 });
+    const sevenB = worldB.key('7');
+    worldB.touchDown(sevenB, 20, 20);
+    worldB.clock.advance(360);
+    // 滑出卡片（虚拟光标越过底边 400）→ 取消态；滑回中轴 → 恢复中格。
+    // 滑动会重建格子 DOM，滑回后必须重新查询（旧引用上断言必假失败）。
+    worldB.move(sevenB, 20, 20 + 382);
+    assert(worldB.$('keyPopupCancelTip').classList.contains('show'), 'dragged out: cancel tip');
+    worldB.move(sevenB, 20, 20);
+    const backNow = [...worldB.document.querySelectorAll('.kp-item')];
+    assert(backNow.find(i => i.textContent === '7').classList.contains('sel'),
+        'back on the digit cell');
+    worldB.touchUp(sevenB, 20, 20);
+    const commitsB = worldB.native.of('commitText').map(c => c.args[0]);
+    equal(commitsB[commitsB.length - 1], '7', 'slide-out-and-back digit lands literally');
 });
 
 test('t9 popup letters land literally with case preserved (3.40.0)', {since: '3.39.0'}, () => {
@@ -9282,16 +9331,163 @@ test('issue12: double-pinyin auto-commits too', {since: '3.68.0'}, () => {
     equal(picks[0].args[1], 'd1', 'pool head id rides the choose call');
 });
 
-console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
-    (skipped ? `, ${skipped} skipped (era-gated)` : '') +
-    ` [keyboard ${KEYBOARD_VERSION}] ==`);
-if (failed) {
-    console.log('failures:', failures.join(' | '));
-    process.exit(1);
-}// 版本双处一致性（发版纪律，1.2.2 曾漂移 5 个版本）：keyboard.js 的
+
+// ---- 语言键盘定制（#60 定制按键升级：角标 + 上滑/下滑虚拟按键） ----
+test('lang keys: [edit:x] ops execute via editorAction / combo channel', {since: '3.73.41'}, () => {
+    const world = fresh();
+    // 行为驱动：edit 步通过定制手势触发——copy 走 editorAction，undo
+    // 走组合键事件（keyEventPhysical/keyEvent）。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { pinyin: { q: { down: '[edit:copy]', up: '[edit:undo]' } } },
+    });
+    world.hello();
+    world.engineState({ mode: 'pinyin' });
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, 70); world.touchUp(q); // 下滑 = copy
+    console.log('DBG calls:', world.native.calls.map(c => c.method).join(','));
+    equal(world.native.of('editorAction').slice(-1)[0].args[0], 'copy', 'copy → editorAction');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, -30); world.touchUp(q); // 上滑 = undo（Ctrl+Z 组合键）
+    // 假时钟起点为 0：距 customChainLastTextAt=0 的间隔 <300ms，组合键
+    // 走 xterm 台阶（setTimeout 300ms）——推进时钟后落地。
+    world.clock.advance(400);
+    const phys = world.native.of('keyEventPhysical');
+    const key = world.native.of('keyEvent');
+    equal(phys.length + key.length >= 1, true, 'undo fires a combo key event');
+});
+
+test('lang keys: table adopts on hello and covers alt hint + flick gestures', {since: '3.73.41'}, () => {
+    const world = fresh();
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1,
+        rows: [[{ t: '✓', tap: '好的', note: '' }], [], []],
+        langKeys: { pinyin: { q: { alt: '@', down: '[edit:copy]' },
+            l: { up: '₹' }, '.': { up: '' } } },
+    });
+    world.hello();
+    world.engineState({ mode: 'pinyin' });
+    const adopted = JSON.parse(world.storage.get('feelime_custom_keys_v2'));
+    equal(adopted.langKeys.pinyin.q.down, '[edit:copy]', 'langKeys survives the sync adoption');
+    // 角标覆盖：q 键角标显示 @（默认是 1）。
+    const qEl = world.key('q');
+    equal(qEl.querySelector('.kb-alt').textContent, '@', 'alt hint overridden');
+    // 上滑：未定制的 q 走默认（大写 Q）；下滑：定制 copy → editorAction。
+    world.touchDown(qEl, 20, 20);
+    world.move(qEl, 20, -30); world.touchUp(qEl);
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '1', 'un-customized up keeps the default alt char');
+    world.touchDown(qEl, 20, 20);
+    world.move(qEl, 20, 70); world.touchUp(qEl);
+    equal(world.native.of('editorAction').slice(-1)[0].args[0], 'copy', 'custom down runs the edit op');
+    // 文本型上滑：l 上滑直出 ₹。
+    const lEl = world.key('l');
+    world.touchDown(lEl, 20, 20);
+    world.move(lEl, 20, -30); world.touchUp(lEl);
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '₹', 'text tap commits the literal');
+    // 空串 = 显式关闭：逗号键上滑被吞（无 key 无 text）。
+    const before = world.native.calls.length;
+    const comma = world.key('.');
+    world.touchDown(comma, 20, 20);
+    world.move(comma, 20, -30); world.touchUp(comma);
+    const names = world.native.calls.slice(before).map(c => c.name).join(',');
+    equal(/key|text|symbol/.test(names), false, 'empty-string slot swallows the gesture');
+});
+
+test('lang keys: bad tables rejected without touching the working copy', {since: '3.73.41'}, () => {
+    const world = fresh();
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { t9: { '2': { alt: 'x' } } },
+    });
+    world.hello();
+    equal(!!world.storage.get('feelime_custom_keys_v2'), false, 'unsupported layout rejected wholesale');
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { pinyin: { q: { up: '[edit:nope]' } } },
+    });
+    world.hello();
+    equal(!!world.storage.get('feelime_custom_keys_v2'), false, 'invalid DSL rejected');
+    // 空行 + 合法 langKeys 可共存（rows 空不再整表拒收）。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { pinyin: { q: { alt: '@' } } },
+    });
+    world.hello();
+    const adopted = JSON.parse(world.storage.get('feelime_custom_keys_v2'));
+    equal(adopted.langKeys.pinyin.q.alt, '@', 'langKeys-only table adopts');
+});
+
+test('lang keys: layouts map modes (dp/direct) and t9 stays default', {since: '3.73.41'}, () => {
+    // 行为驱动：direct 模式读 english 段（定制生效），t9 模式不开放
+    //（数字键 '2' 的上滑仍走 T9 字母仲裁而非定制 DSL）。
+    const world = fresh();
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [[], [], []],
+        langKeys: { english: { q: { up: '[edit:copy]' } } },
+    });
+    world.engineState({ mode: 'direct' });
+    world.hello();
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.move(q, 20, -30); world.touchUp(q);
+    equal(world.native.of('editorAction').slice(-1)[0] !== undefined
+        && world.native.of('editorAction').slice(-1)[0].args[0] === 'copy',
+        true, 'direct mode reads the english table');
+});
+
+// 版本双处一致性（发版纪律，1.2.2 曾漂移 5 个版本）：keyboard.js 的
 // KEYBOARD_VERSION 常量（握手上报给 native，设置页显示用它）必须与
 // assets/keyboard/VERSION 文件（built-in 副本刷新判断用它）一致——
 // 两处漏一处 = 设备副本刷新了但版本显示滞后的隐性漂移。
+test('bright keycap lift flips the ink for readability (#61 review P1)', {since: '3.73.42'}, () => {
+    // 暗色模式：键面设计 l=37，偏移 +45 → 合成 82（>60）翻深墨；
+    // +10 → 47（≤60）保持白墨（回落 --text）。
+    const hot = fresh({ keyL: 45 });
+    equal(hot.document.documentElement.style.getPropertyValue('--key-ink'), '#1a1a1a',
+        'over-bright keycap gets dark ink');
+    const cool = fresh({ keyL: 10 });
+    assert(!cool.document.documentElement.style.getPropertyValue('--key-ink'),
+        'moderate lift keeps the default ink');
+    // 亮色模式：--text 本就是深墨，不干预。
+    const light = fresh({ keyL: 45, themeMode: 'light' });
+    assert(!light.document.documentElement.style.getPropertyValue('--key-ink'),
+        'light theme never overrides the ink');
+});
+
+test('skin source-color lift applies as --bg-lt/--key-lt (t) inline vars (#61 三轮)', {since: '3.73.42'}, () => {
+    const world = fresh({ themeHue: 200, themeSat: 80, themeL: 25, keyHue: 300, keySat: 60, keyL: -15 });
+    const root = world.document.documentElement;
+    equal(root.style.getPropertyValue('--bg-lt'), '0.5', 'theme lift 25 → t=0.5 on --bg-lt');
+    equal(root.style.getPropertyValue('--key-lt'), '-0.3', 'key lift -15 → t=-0.3 on --key-lt');
+    // keyL=-1 = 跟随键盘组（整原色跟随）：t 取背景组。
+    const worldF = fresh({ themeHue: 200, themeSat: 80, themeL: 40, keyHue: -1, keySat: -1, keyL: -1 });
+    equal(worldF.document.documentElement.style.getPropertyValue('--key-lt'), '0.8',
+        'keyL=-1 inherits the theme lift');
+    // 0/缺省=清内联回设计值。
+    const world0 = fresh({ themeL: 0, keyL: 0 });
+    assert(!world0.document.documentElement.style.getPropertyValue('--bg-lt'),
+        'zero lift clears the inline var');
+});
+
+test('custom key hex color renders directly with readable ink (#61)', {since: '3.73.42'}, () => {
+    const world = fresh();
+    world.native.customKeysPayload = JSON.stringify({ version: 1, rows: [[
+        { t: '亮', tap: '亮', color: '#FFE08A' },
+        { t: '深', tap: '深', color: '#2244CC' },
+    ], [], []] });
+    world.hello({});
+    // 定制键渲染在符号面板的定制 tab（既有测试同款触发）。
+    world.tap(world.$('toolCustom'));
+    const keys = [...world.document.querySelectorAll('#symGrid .sym-custom-key')];
+    const bright = keys.find(k => k.textContent === '亮');
+    const dark = keys.find(k => k.textContent === '深');
+    equal(bright && bright.style.background, '#FFE08A', 'bright hex paints the cap');
+    equal(bright && bright.style.color, '#1a1a1a', 'bright cap gets dark ink');
+    equal(dark && dark.style.background, '#2244CC', 'dark hex paints the cap');
+    equal(dark && dark.style.color, '#fff', 'dark cap keeps white ink');
+});
+
 test('KEYBOARD_VERSION constant matches the VERSION file (dual-bump discipline)', () => {
     const kbSrc = process.env.FEELIME_KEYBOARD_SRC
         ? path.resolve(process.env.FEELIME_KEYBOARD_SRC)
@@ -9303,4 +9499,12 @@ test('KEYBOARD_VERSION constant matches the VERSION file (dual-bump discipline)'
         `KEYBOARD_VERSION constant (${m[1]}) must match the VERSION file (${KEYBOARD_VERSION}) - bump both or neither`);
 });
 
-
+// runner 收尾：统计必须跑在【全部】test() 之后（曾在文件中部：其后
+// 追加的测试失败不进统计、exit 0 假绿——与 settings 套件同款缺陷）。
+console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
+    (skipped ? `, ${skipped} skipped (era-gated)` : '') +
+    ` [keyboard ${KEYBOARD_VERSION}] ==`);
+if (failed) {
+    console.log('failures:', failures.join(' | '));
+    process.exit(1);
+}

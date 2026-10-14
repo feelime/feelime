@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.40';
+    const KEYBOARD_VERSION = '3.73.42';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1095,6 +1095,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         f7: 'F7', f8: 'F8', f9: 'F9', f10: 'F10', f11: 'F11', f12: 'F12',
     };
     const CUSTOM_MOD_TOKENS = { ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', win: 'Meta', meta: 'Meta' };
+    // [edit:x] 编辑操作记号（语言键盘定制/长按空格的「动作」类型）：
+    // 值域集中在 native editorAction 与等价组合键，执行映射见
+    // runEditStep。undo/redo/光标移动无原生 action，走组合键事件。
+    const EDIT_STEP_TOKENS = {
+        undo: 1, redo: 1, cut: 1, copy: 1, paste: 1, selectAll: 1, clear: 1,
+        cursorLeft: 1, cursorRight: 1, lineStart: 1, lineEnd: 1,
+    };
     // 定制键色板（cell.color 的合法值）：预设色名而非任意 CSS 色，
     // 零注入面；rgba 在亮/暗两种键底上都可辨。
     const CUSTOM_KEY_COLORS = ['blue', 'green', 'orange', 'red', 'purple'];
@@ -4140,6 +4147,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         // 垂直让路（上滑是 bindSpaceHold 的语音长按/撤销）。
                         if (button.id === 'spaceKey') return;
                         const key = button.dataset.key;
+                        // 语言键盘定制（上滑/下滑虚拟按键）：命中即执行定制
+                        // DSL，不再走默认大写/角标语义（含底行逗号键）。
+                        // flickSwap 只互换默认语义，定制槽恒按物理方向。
+                        {
+                            const table = this.langKeysTable();
+                            const cell = table && table[key];
+                            const raw = cell ? (dy < 0 ? cell.up : cell.down) : undefined;
+                            // undefined = 未定制走默认；空串 = 显式关闭
+                            // （吞掉手势）；非空 = 执行定制 DSL。
+                            if (raw !== undefined) {
+                                if (raw) this.runTapDsl(raw);
+                                return;
+                            }
+                        }
                         // Chinese-mode punct slot : the main glyph is
                         // 。so a tap/down-flick commits it; up commits the
                         // alt ，- both via the engine punctuator (ASCII '.'
@@ -4451,6 +4472,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** 键面角标显示：hintsOnly 布局（t9）也要画出字母组，但走的是
          * 展示语义，与 altCandidates 的可上屏备选分开。 */
         keyAltHint(key) {
+            // 语言键盘定制的角标覆盖（设置页「角标 alt-text」）：用户显式
+            // 定制优先于一切默认角标（含中文符号态的 CN_ALTS——覆盖正
+            // 是定制的意义）。
+            const custom = this.langKeysTable();
+            const cell = custom && custom[key];
+            if (cell && cell.alt != null) return cell.alt;
             if (this.chineseSymMode() && CN_ALTS[key]) return CN_ALTS[key];
             const layout = LAYOUTS[(MODES[this.mode] || MODES.direct).layout] || LAYOUTS.qwerty;
             const value = layout.alts[key];
@@ -4460,9 +4487,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         /** 长按全后选：数字 + 字母组逐个（4 → [4 g h i]）。 */
         /** T9 长按（issue #9）：三行弹层——上行=字母组小写、中行=左符号
-         * ·数字·右符号、下行=大写。字母与符号都是 literal 直上屏
-         * （commitText，大小写原样落）；数字格=通配，进引擎（与点按
-         * 同义）。拼音里确认字母由下滑/横滑手势承担，不经弹层。 */
+         * ·数字·右符号、下行=大写。全部 literal 直上屏（commitText，
+         * 大小写原样落）——数字格也字面落 editor（issue #62 用户裁定：
+         * 长按选数字就是要打这个数字；旧规则「数字格=通配进引擎、与
+         * 点按同义」让长按弹数字形同虚设）。已有组合时 commitText 先
+         * 落现有组合再插数字（TextInputCoordinator 语义，与字母/符号
+         * literal 同通道）。拼音里确认字母由下滑/横滑手势承担，不经
+         * 弹层；7/9 下滑拆分（opts.split）仍走引擎通道不变。 */
         openT9HoldPopup(button, press) {
             this.hideKeyBubble();
             const key = button.dataset.key;
@@ -4471,7 +4502,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const cells = [
                 ...letters.map(ch => ({ char: ch, literal: true })),
                 { char: syms[0], literal: true },
-                { char: key },
+                { char: key, literal: true },
                 { char: syms[1], literal: true },
                 ...letters.map(ch => ({ char: ch.toUpperCase(), literal: true })),
             ].filter(cell => cell.char);
@@ -4480,10 +4511,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         /** 笔画长按（issue #18，用户定稿 2026-09-19）：与 T9 同款三排——
          * 小写字母组 / 左符号 · 数字 · 右符号 / 大写字母组。字母组沿用
-         * T9 的数字键位分配（2=abc…9=wxyz，拨号键盘肌肉记忆），上屏规
-         * 则同 T9：字母（含大写）与符号 literal 直上屏（commitText），中
-         * 格数字=点按同义（发部件编码，send 字段），预选中格、相对跟手。
-         * 1 键无字母组：退回单排 符号·数字·符号。 */
+         * T9 的数字键位分配（2=abc…9=wxyz，拨号键盘肌肉记忆）。上屏
+         * 规则与 T9 有一处分歧（#62 起）：字母（含大写）与符号同样
+         * literal 直上屏（commitText），但**中格数字=点按同义（发部件
+         * 编码，send 字段）**——笔画的数字键面印的是笔画部件，长按选
+         * 数字=选部件，不字面上屏；T9 的中格数字才字面落。预选中格、
+         * 相对跟手。1 键无字母组：退回单排 符号·数字·符号。 */
         openStrokeHoldPopup(button, press) {
             this.hideKeyBubble();
             const key = button.dataset.key;
@@ -4504,10 +4537,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 Object.assign(letters.length ? { grid: true } : { middle: true }, { press }));
         }
 
-        /** T9 浮层：长按=三行大小写+符号弹层（opts.grid）；7/9 下滑=拆分
-         * 字母（opts.split：按触点 x 半边判定下左/下右，不按格子距离——
-         * 拖动方向与浮层位置相反，距离命中会立刻取消）。格子默认走引擎
-         * 通道（enginePath → sendText），literal 格直上屏（commitText）。
+        /** T9 浮层：长按=三行大小写+符号+数字弹层（opts.grid，#62 起
+         * 全格 literal 直上屏）；7/9 下滑=拆分字母（opts.split：按触点
+         * x 半边判定下左/下右，不按格子距离——拖动方向与浮层位置相反，
+         * 距离命中会立刻取消），split 格走引擎通道（enginePath →
+         * sendText）。literal 格直上屏（commitText）；笔画中格带 send
+         * 字段走 strokeActivate（部件编码，语义与 T9 数字不同）。
          */
         openT9Popup(button, cells, opts = {}) {
             const popup = document.getElementById('keyPopup');
@@ -5414,6 +5449,55 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return null;
         }
 
+        /** 语言键盘定制变化后的字母层重画：只在当前显示的就是字母层
+         *  时立即重渲染（符号/T9 层的角标不来自 langKeys，切回时
+         *  renderLetters 自然读新值）。 */
+        rerenderLangKeys() {
+            const qwerty = document.getElementById('qwertyLayer');
+            if (qwerty && !qwerty.hidden) {
+                this.renderLetters((MODES[this.mode] || MODES.direct).layout);
+            }
+        }
+
+        /** 语言键盘定制段（当前输入法的布局）：读 localStorage 镜像，
+         *  坏数据/未设置 = null（所有查表点自然走默认行为）。双拼不分
+         *  方案存一份（dp）；direct=english。 */
+        langKeysTable() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(CUSTOM_KEYS_STORE) || 'null');
+                if (!parsed || parsed.version !== 1 || !parsed.langKeys) return null;
+                const lay = this.langKeyLayoutId();
+                const table = lay && parsed.langKeys[lay];
+                return table && typeof table === 'object' ? table : null;
+            } catch (_) { return null; }
+        }
+
+        /** 全量 langKeys 段（跨布局；符号页编辑器整包保存时带回），
+         *  未设置/坏数据 = null。 */
+        storedLangKeys() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(CUSTOM_KEYS_STORE) || 'null');
+                if (parsed && parsed.version === 1 && parsed.langKeys
+                    && typeof parsed.langKeys === 'object') {
+                    return parsed.langKeys;
+                }
+            } catch (_) { /* unset */ }
+            return null;
+        }
+
+        /** 输入法 mode → 语言键盘定制 layout id（与设置页四级页一致；
+         *  不在集合内（T9/笔画/手写/音形等）返回 null=不开放）。 */
+        langKeyLayoutId() {
+            switch (this.mode) {
+                case 'pinyin': return 'pinyin';
+                case 'double-pinyin': return 'dp';
+                case 'direct': return 'english';
+                case 'french': return 'french';
+                case 'russian': return 'russian';
+                default: return null;
+            }
+        }
+
         /** [open:URI] 的表单校验（与 native openLink 桥同口径，桥侧
          *  再校验一次兜底）：http(s) 网页地址或应用自定义 scheme；
          *  intent://（点名组件）、data:（塞标记给浏览器）、android-app:
@@ -5487,6 +5571,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         return { error: t("「{0}」面板名无效", match[0]) };
                     }
                     steps.push({ panel: target });
+                    continue;
+                }
+                // [edit:x]：编辑操作（语言键盘定制的「动作」类型；空格
+                // 长按动作同用）。执行映射集中在 runEditStep。
+                if (raw.toLowerCase().startsWith('edit:')) {
+                    const op = raw.slice(5).trim();
+                    if (!EDIT_STEP_TOKENS[op]) {
+                        return { error: t("「{0}」编辑操作名无效", match[0]) };
+                    }
+                    steps.push({ edit: op });
                     continue;
                 }
                 const body = raw.toLowerCase();
@@ -5569,11 +5663,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         }
                     }
                     if (cell.color != null) {
+                        // #61：#RRGGBB 直存（渲染时直上 style）；hex 合法
+                        // 就不再走 hue/色名校验。
+                        const hex = /^#[0-9a-fA-F]{6}$/.test(cell.color);
                         const hue = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color);
                         const hueOk = hue && Number(hue[1]) <= 359
                             && (hue[2] == null || Number(hue[2]) <= 100);
-                        if (!hueOk && !CUSTOM_KEY_COLORS.includes(cell.color)) {
-                            return { error: t("「{0}」的 color 只能是：{1} 或自定义色调 h0-h359", label, CUSTOM_KEY_COLORS.join('/')) };
+                        if (!hex && !hueOk && !CUSTOM_KEY_COLORS.includes(cell.color)) {
+                            return { error: t("「{0}」的 color 只能是：{1}、自定义色调 h0-h359 或 #RRGGBB", label, CUSTOM_KEY_COLORS.join('/')) };
                         }
                     }
                     // 行对齐（2026-10-03）：可选 align 挂在行内任意 cell 上，
@@ -5595,8 +5692,78 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
                 rows.push(keys);
             }
-            if (!rows.some(row => row.length)) return { error: t("至少要定义一个键") };
-            return { rows };
+            const langParsed = this.parseLangKeys(data.langKeys || null);
+            if (langParsed.error) return { error: langParsed.error };
+            if (!rows.some(row => row.length) && !langParsed.value) {
+                return { error: t("至少要定义一个键") };
+            }
+            const out = { rows };
+            if (langParsed.value) out.langKeys = langParsed.value;
+            return out;
+        }
+
+        /** langKeys 段（语言键盘定制）校验：{layout:{key:{alt,up,down}}}。
+         *  layout 白名单与设置页四级页一致；key 是布局按键字符；alt ≤3
+         *  字；up/down 是 tap DSL（parseTapDsl 权威校验，长度同 tapChars）。
+         *  返回 {ok,value?} 或 {ok:false,error}。null/undefined = 未设置
+         *  （合法，value null）。 */
+        parseLangKeys(data) {
+            if (data == null) return { ok: true, value: null };
+            if (typeof data !== 'object' || Array.isArray(data)) {
+                return { ok: false, error: t("langKeys 必须是对象") };
+            }
+            const LAYOUTS_OK = ['pinyin', 'dp', 'english', 'french', 'russian'];
+            const out = {};
+            let any = false;
+            for (const lay of Object.keys(data)) {
+                if (!LAYOUTS_OK.includes(lay)) {
+                    return { ok: false, error: t("langKeys 不支持的语言键盘：{0}", lay) };
+                }
+                const table = data[lay];
+                if (typeof table !== 'object' || Array.isArray(table)) {
+                    return { ok: false, error: t("langKeys.{0} 必须是对象", lay) };
+                }
+                const cleanTable = {};
+                for (const key of Object.keys(table)) {
+                    if ([...key].length !== 1) {
+                        return { ok: false, error: t("langKeys.{0} 的键名必须是单字符：{1}", lay, key) };
+                    }
+                    const cell = table[key];
+                    if (!cell || typeof cell !== 'object' || Array.isArray(cell)) {
+                        return { ok: false, error: t("langKeys.{0}.{1} 必须是对象", lay, key) };
+                    }
+                    const clean = {};
+                    if (cell.alt != null) {
+                        if (typeof cell.alt !== 'string' || [...cell.alt].length < 1
+                            || [...cell.alt].length > 3) {
+                            return { ok: false, error: t("langKeys.{0}.{1} 的 alt 需为 1-3 个字符", lay, key) };
+                        }
+                        clean.alt = cell.alt;
+                    }
+                    for (const slot of ['up', 'down']) {
+                        const tap = cell[slot];
+                        if (tap == null) continue;
+                        // 空串 = 显式「关闭」（命中吞掉手势，不执行也不
+                        // 走默认）；设置页 langkey 编辑器的 none 类型。
+                        if (typeof tap !== 'string' || [...tap].length > CUSTOM_LIMITS.tapChars) {
+                            return { ok: false, error: t("langKeys.{0}.{1} 的 {2} 需为 1-{3} 字符",
+                                lay, key, slot, CUSTOM_LIMITS.tapChars) };
+                        }
+                        const parsed = this.parseTapDsl(tap);
+                        if (parsed.error) {
+                            return { ok: false, error: t("langKeys.{0}.{1} 的 {2} {3}", lay, key, slot, parsed.error) };
+                        }
+                        clean[slot] = tap;
+                    }
+                    if (!Object.keys(clean).length) {
+                        return { ok: false, error: t("langKeys.{0}.{1} 至少要定义 alt/up/down 之一", lay, key) };
+                    }
+                    cleanTable[key] = clean;
+                    any = true;
+                }
+                if (Object.keys(cleanTable).length) out[lay] = cleanTable;
+            }
+            return { ok: true, value: any ? out : null };
         }
 
         /** Fire one custom key - text chunks commit literally,
@@ -5693,6 +5860,56 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             else if (target === 'control') this.setControlView(true);
         }
 
+        /** [edit:x] 的组合键形态（无则 null：cut/copy/paste/selectAll/clear
+         *  走原生通道，不占用组合键事件）。供台阶判断与执行共用。 */
+        editOpCombo(op) {
+            switch (op) {
+                case 'undo': return ['Ctrl', 'Z'];
+                case 'redo': return ['Ctrl', 'Shift', 'Z'];
+                case 'cursorLeft': return ['Ctrl', 'ArrowLeft'];
+                case 'cursorRight': return ['Ctrl', 'ArrowRight'];
+                case 'lineStart': return ['Home'];
+                case 'lineEnd': return ['End'];
+                default: return null;
+            }
+        }
+
+        /** [edit:x] 执行：原生 action 优先（与编辑工具栏同通道），无原生
+         *  action 的（undo/redo/光标类）发等价组合键。 */
+        runEditStep(op) {
+            const native = { cut: 1, copy: 1, paste: 1, selectAll: 1 }[op];
+            if (native) {
+                if (typeof Native.editorAction !== 'function') {
+                    this.showToast(t("此按键需要升级 App 后使用（编辑操作）"));
+                    return;
+                }
+                this.call(() => Native.editorAction(op, this.token));
+                return;
+            }
+            if (op === 'clear') {
+                if (typeof Native.clearEditorText !== 'function') {
+                    this.showToast(t("此按键需要升级 App 后使用（编辑操作）"));
+                    return;
+                }
+                this.call(() => Native.clearEditorText(this.token));
+                return;
+            }
+            const combo = this.editOpCombo(op);
+            if (combo) this.sendCombo(combo);
+        }
+
+        /** 纯 DSL 串执行（虚拟按键用：语言键盘上滑/下滑、空格长按）：
+         *  与定制键宏同一队列同一台阶语义，错误给 toast。 */
+        runTapDsl(tap) {
+            const parsed = this.parseTapDsl(tap);
+            if (parsed.error) {
+                this.showToast(t("按键无效：{0}", parsed.error));
+                return;
+            }
+            this.customChainQueue.push(parsed.steps);
+            this.pumpCustomChain();
+        }
+
         /** #48：DSL 步骤执行器。文本步→键步的通道切换处垫台阶到
          *  距最后一次文本发送满 300ms（见 runCustomCell 上方注释）；
          *  同步跑到台阶点，余下步骤 setTimeout 续跑（无 async，假时钟
@@ -5726,6 +5943,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // [panel:x]（#50 定制按键复用）：与长按空格动作同一
                     // 分发点，一次性打开面板/图层。
                     this.runPanelStep(step.panel);
+                }
+                else if (step.edit) {
+                    // [edit:x]：编辑操作（undo/redo/光标类无原生 action，
+                    // 等价组合键直发；台阶语义同键步——文本步后紧跟的
+                    // edit 组合也要让 xterm 类宿主的 composition 落地）。
+                    const sinceEdit = Date.now() - this.customChainLastTextAt;
+                    const combo = this.editOpCombo(step.edit);
+                    if (combo && sinceEdit < 300) {
+                        this.customChainTimer = setTimeout(() => {
+                            this.customChainTimer = 0;
+                            if (!this.customChainActive) return;
+                            this.runEditStep(step.edit);
+                            this.runCustomStepsFrom(steps, i + 1);
+                        }, 300 - sinceEdit);
+                        return;
+                    }
+                    this.runEditStep(step.edit);
                 }
                 else if (step.text) {
                     this.sendSymbol(step.text);
@@ -5815,7 +6049,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         const button = document.createElement('button');
                         button.className = 'kb-key sym-custom-key';
                         const hueM = cell.color ? /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color) : null;
-                        if (cell.color && !hueM && CUSTOM_KEY_COLORS.includes(cell.color)) {
+                        const hexM = cell.color ? /^#[0-9a-fA-F]{6}$/.test(cell.color) : false;
+                        if (hexM) {
+                            // #61 色号键帽：两墨色与底色的 WCAG 对比度
+                            // 择优（review P5：亮度阈值在纯绿上误判）。
+                            const chan = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+                            const lum = hex => {
+                                const n = parseInt(hex.slice(1), 16);
+                                return .2126 * chan(n >> 16 & 255) + .7152 * chan(n >> 8 & 255) + .0722 * chan(n & 255);
+                            };
+                            const L = lum(cell.color);
+                            const better = ink => (Math.max(L, ink) + .05) / (Math.min(L, ink) + .05);
+                            button.style.background = cell.color;
+                            button.style.borderColor = cell.color;
+                            button.style.color = better(lum('#1a1a1a')) >= better(lum('#ffffff')) ? '#1a1a1a' : '#fff';
+                        } else if (cell.color && !hueM && CUSTOM_KEY_COLORS.includes(cell.color)) {
                             button.classList.add('ck-' + cell.color);
                         } else if (hueM) {
                             const sat = hueM[2] != null ? hueM[2] : 65;
@@ -8289,7 +8537,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 return;
             }
             try {
-                const payload = JSON.stringify({ version: 1, rows: parsed.rows });
+                // 符号页编辑器只动 rows；语言键盘定制段（langKeys）原样
+                // 带回，不被本入口的整包重写洗掉。
+                const payload = JSON.stringify({ version: 1, rows: parsed.rows,
+                    langKeys: parsed.langKeys || this.storedLangKeys() || undefined });
                 localStorage.setItem(CUSTOM_KEYS_STORE, payload);
                 Native.setCustomKeys(payload, this.token);
             } catch (_) {
@@ -10130,6 +10381,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 } else {
                     document.documentElement.style.removeProperty('--kb-sat');
                 }
+                // #61 三轮（原色模型）：亮度偏移=原色亮度-50（±50），
+                // 表面派生 t=偏移/50，CSS 按 N+(100-N)·w·t 乘法派生
+                // （w 由 CSS 按组写死：键面 0.75、背景 0.35）——l=50 时
+                // 与原设计完全一致，亮向不会统一撞顶。
+                const tl = Number(payload.themeL);
+                if (Number.isFinite(tl) && tl >= -50 && tl <= 50 && tl !== 0) {
+                    document.documentElement.style.setProperty('--bg-lt', String(tl / 50));
+                } else {
+                    document.documentElement.style.removeProperty('--bg-lt');
+                }
+                // keyL 的 -1=跟随键盘组（跟随=整原色，H/S/L 一起继承）。
+                let kl = Number(payload.keyL);
+                if (!Number.isFinite(kl)) kl = 0;
+                const keyLt = kl === -1 ? (Number.isFinite(tl) ? tl : 0) : kl;
+                if (keyLt >= -50 && keyLt <= 50 && keyLt !== 0) {
+                    document.documentElement.style.setProperty('--key-lt', String(keyLt / 50));
+                } else {
+                    document.documentElement.style.removeProperty('--key-lt');
+                }
                 // hue 变了背景色跟着变：#27 手势条涂色要重推。
                 this.pushChromeColor();
             }
@@ -10160,6 +10430,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     // token 已就绪，直调（同 pushStores 的旧原生守卫）。
                     if (typeof Native.setQuickPref === 'function' && this.token) {
                         Native.setQuickPref('themeMode', legacy, this.token);
+                    }
+                }
+            }
+            // #61 review P1：键帽墨色自适应——暗色模式键面设计 l=37，
+            // 偏移把合成 l 顶过 60 时白字对比不足 3:1，翻深墨（--key-ink
+            // 被 keyboard.css 的键帽主字/小字回落引用）。亮色模式基准
+            // 97 本就是深墨（--text #181818），不处理。放在 themeMode
+            // 消费之后：applyTheme 本轮刚挂上 theme-light class，早于此
+            // 读 class 会误走暗色分支。
+            {
+                let klv = Number(payload.keyL);
+                if (!Number.isFinite(klv)) klv = 0;
+                if (klv === -1) klv = Number.isFinite(Number(payload.themeL)) ? Number(payload.themeL) : 0;
+                if (document.documentElement.classList.contains('theme-light')) {
+                    document.documentElement.style.removeProperty('--key-ink');
+                } else {
+                    // 键帽派生亮度（N=37,w=0.75）>60 时白字对比不足，翻深墨。
+                    const cap = 37 + 63 * 0.75 * (klv / 50);
+                    if (cap > 60) {
+                        document.documentElement.style.setProperty('--key-ink', '#1a1a1a');
+                    } else {
+                        document.documentElement.style.removeProperty('--key-ink');
                     }
                 }
             }
@@ -10250,8 +10542,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         // bad table is ignored (never bricked keys).
                         const parsed = this.parseCustomKeys(nativeCustom);
                         if (!parsed.error) {
+                            // 语言键盘定制变化时重渲染字母层：角标覆盖
+                            // （keyAltHint）在 letterKey 创建时读取，sync
+                            // 落地不重画的话新角标要等下次模式切换。
+                            const prevLang = this.storedLangKeys();
+                            const langChanged = JSON.stringify(prevLang || null)
+                                !== JSON.stringify(parsed.langKeys || null);
                             localStorage.setItem(CUSTOM_KEYS_STORE,
-                                JSON.stringify({ version: 1, rows: parsed.rows }));
+                                JSON.stringify({ version: 1, rows: parsed.rows,
+                                    langKeys: parsed.langKeys || undefined }));
+                            if (langChanged) this.rerenderLangKeys();
                         }
                     } else {
                         // A keyboard upgraded from a pre-migration

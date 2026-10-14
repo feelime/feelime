@@ -264,6 +264,23 @@ class FakeElement {
         this.append(node);
         return node;
     }
+    prepend(...nodes) {
+        this._materializeTextCache();
+        // 逆序 insert 到队首，保持调用序（标准 DOM prepend 语义）。
+        [...nodes].reverse().forEach(node => {
+            if (node === null || node === undefined) return;
+            if (typeof node === 'string' || typeof node === 'number') {
+                const textNode = new FakeElement('#text');
+                textNode.nodeType = 3;
+                textNode._textContent = String(node);
+                node = textNode;
+            }
+            if (node.parentNode) node.remove();
+            node.parentNode = this;
+            this.children.unshift(node);
+        });
+        this._textContent = undefined;
+    }
     replaceChildren(...nodes) {
         this.children = [];
         this._textContent = undefined;

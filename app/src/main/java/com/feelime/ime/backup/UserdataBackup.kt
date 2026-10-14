@@ -381,6 +381,11 @@ class UserdataBackup(
             "feelime_keyboard" to mapOf(
                 "keyboard_height_portrait" to (0..100000),
                 "keyboard_height_landscape" to (0..100000),
+                // #61 亮度偏移（readThemeL/readKeyL 读侧 getInt）：未登记时
+                // 恢复流程会把字符串值原样入库，下次 getInt 抛类型异常
+                // （review #61-P6）。
+                "theme_l" to (-50..50),
+                "key_l" to (-50..50),
             ),
         )
 

@@ -120,6 +120,9 @@ class MockSettingsNative {
     setThemeSat(...a) { this._rec('setThemeSat', a); }
     setKeyHue(...a) { this._rec('setKeyHue', a); }
     setKeySat(...a) { this._rec('setKeySat', a); }
+    setKeyL(...a) { this._rec('setKeyL', a); }
+    setThemeL(...a) { this._rec('setThemeL', a); }
+    setKeySat(...a) { this._rec('setKeySat', a); }
     setOneHandMode(...a) { this._rec('setOneHandMode', a); }
     setPreeditBold(...a) { this._rec('setPreeditBold', a); }
     setCustomEnabled(...a) { this._rec('setCustomEnabled', a); }
@@ -552,14 +555,19 @@ test('保存识别设置 sends the checkbox + textarea verbatim', () => {
     assert(world.$('asrNote').textContent.includes('已保存'), 'save note shown');
 });
 
-test('保存定制 sends the JSON + switch; 插入模板 fills valid JSON without calling the bridge', () => {
+test('保存定制 absorbs the box into the unified save chain; 插入模板 fills valid JSON without calling the bridge', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     world.$('customJson').value = '{"version":1,"rows":[[]]}';
     world.$('customEnabled').checked = true;
     world.$('btnSaveCustom').click();
-    equal(world.lastCall('saveCustom').args,
-        ['{"version":1,"rows":[[]]}', true, world.token], 'saveCustom args');
+    // 统一保存链（验收实录：「保存定制」曾直存 textarea 原串、不带
+    // langKeys）：rows 语义保留（空行补齐到 3 行），enabled+token 随行。
+    const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(saved.version, 1, 'version');
+    equal(JSON.stringify(saved.rows), JSON.stringify([[], [], []]),
+        'rows absorbed and normalized');
+    equal(world.lastCall('saveCustom').args[1], true, 'enabled switch');
     world.$('btnCustomTemplate').click();
     const filled = world.$('customJson').value;
     assert(/"version":\s*1/.test(filled) && filled.includes('rows'), 'template JSON');
@@ -1219,13 +1227,15 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
         home: false, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
-        backup: true, about: true, customkeys: true, licenses: true, test: true,
+        backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
+        licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
         home: true, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
-        backup: true, about: true, customkeys: true, licenses: true, test: true,
+        backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
+        licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', 'home', world.token], 'reportPage(page, parent) on sub-page');
 
@@ -2069,7 +2079,7 @@ test('issue-39/50: hold-space virtual custom key (summary + editor) / volume / h
     equal(world.$('ckModalTitle').textContent, '长按空格动作', 'space editor title');
     const modeSel = world.doc.getElementById('ckMode');
     equal(modeSel.tagName, 'SELECT', 'type picker is a dropdown (9 kinds)');
-    equal([...modeSel.querySelectorAll('option')].length, 9, 'voice/none prepended for space');
+    equal([...modeSel.querySelectorAll('option')].length, 10, 'voice/none prepended for space (+动作)');
     equal(modeSel.value, 'text', 'current tap back-fills the type');
     const textInput = world.doc.getElementById('ckText');
     textInput.value = 'me@x.com'; fire(textInput, 'input');
@@ -2199,21 +2209,19 @@ test('keyboard height slider commits setKbHeight; reset writes 0; preview follow
         'dragging alone does not commit');
 });
 
-test('entering the appearance page pops the REAL keyboard; leaving dismisses it', () => {
+test('appearance no longer auto-pops the keyboard; skin page does (2026-10-13 裁定)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
-    world.native.calls.length = 0;
-
-    const previewCalls = () => world.native.of('previewKeyboard').map(c => c.args[0]);
-    equal(world.$('previewEditor') != null, true, 'demo editor exists on the page');
-
-    world.FeelimeSettings().showPage('appearance');
-    equal(previewCalls(), [true], 'entering appearance shows the real keyboard');
-    world.FeelimeSettings().showPage('home');
-    equal(previewCalls(), [true, false], 'leaving appearance dismisses it');
-    // 重复进入/离开（单页路由重复 showPage 不重复发）。
-    world.FeelimeSettings().showPage('home');
-    equal(previewCalls(), [true, false], 'staying off appearance sends nothing');
+    const S = world.FeelimeSettings();
+    S.showPage('appearance');
+    equal(world.native.of('previewKeyboard').length, 0,
+        'entering appearance does NOT auto-pop the real keyboard');
+    S.showPage('skin');
+    equal(world.native.of('previewKeyboard').slice(-1)[0].args, [true, world.token],
+        'entering skin pops it (live color preview)');
+    S.showPage('appearance');
+    equal(world.native.of('previewKeyboard').slice(-1)[0].args, [false, world.token],
+        'leaving skin dismisses it');
 });
 
 test('bridge validation errors surface on the feel note', () => {
@@ -2423,38 +2431,108 @@ test('issue-39 toggles reach the bridge: preedit bold and custom-keyboard enable
 
 // 键面色调同款取色（用户验收五轮）：跟随档 + 六预置；未自定义时跟随
 // 选中，点预置=setKeyHue(预置 hue)，点跟随=setKeyHue(-1) 还原继承。
-test('keycap hue swatches: follow default, presets post hue, follow posts -1', () => {
+test('keycap hue swatches carry presets only; follow is a separate switch (2026-10-13)', () => {
     const world = new SettingsWorld();
-    world.push({ ...BASE_STATE, keyHue: -1 });
+    world.push({ ...BASE_STATE });
     const dots = [...world.doc.querySelectorAll('#keyHueSwatches .preset-swatch')];
-    equal(dots.length, 7, 'follow + six presets');
-    const follow = dots[0];
-    equal(follow.className.includes('active'), true, 'follow active when unset');
-    equal(dots.filter(d => d !== follow && d.className.includes('active')).length, 0,
-        'no preset active when unset');
-    // 自定义=某预置 hue 时该预置选中、跟随让位。
-    world.push({ ...BASE_STATE, keyHue: 212 });
-    const dots2 = [...world.doc.querySelectorAll('#keyHueSwatches .preset-swatch')];
-    equal(dots2[0].className.includes('active'), false, 'follow inactive when custom');
-    const oceanIdx = dots2.findIndex(d => d.getAttribute('aria-label') === '海蓝');
-    equal(dots2[oceanIdx].className.includes('active'), true, 'matching preset active');
-    // 点选与还原：预置档下发预置 hue，跟随档双复位（hue+sat 都回 -1）。
-    dots2[oceanIdx].click();
+    equal(dots.length, 6, 'six presets, no follow chip');
+    dots[1].click();
     equal(world.lastCall('setKeyHue').args[0], 212, 'preset click posts its hue');
-    world.$('keyHueSwatches').querySelectorAll('.preset-swatch')[0].click();
-    equal(world.lastCall('setKeyHue').args[0], -1, 'follow click posts hue -1');
-    equal(world.lastCall('setKeySat').args[0], -1, 'follow click also resets saturation');
+    // 开关：开=继承（-1/-1），关=写显式值。
+    const sw = world.$('keyFollow');
+    equal(sw.checked, true, 'follow on by default (inherit)');
+    sw.checked = false;
+    sw.onchange();
+    equal(world.lastCall('setKeyHue').args[0] >= 0, true, 'turning off posts an explicit hue');
+    equal(world.lastCall('setKeySat').args[0] >= 0, true, 'turning off posts an explicit sat');
+    sw.checked = true;
+    sw.onchange();
+    equal(world.lastCall('setKeyHue').args[0], -1, 'turning on restores inherit');
+    equal(world.lastCall('setKeySat').args[0], -1, 'turning on restores sat inherit');
 });
 
 // 皮肤页行序（用户验收五轮定稿）：色调两组在前、背景图居中、预览收尾。
-test('skin page row order: tints, saturations, opacity, backgrounds, preview last', () => {
+test('skin hex boxes: editing a bright color drives hue/sat/lift + sliders live (#61)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const hex = world.$('themeHex');
+    // 亮黄（本 issue 的动机：比滑条能达到的更亮）→ 反解 (h,s,l) 拆到
+    // 三通道：hue 滑条、sat 倍率（clamp 100）、亮度偏移（clamp +50）。
+    // hex/滑条是 oninput/onchange 属性式绑定（与产线同款），直调。
+    hex.value = '#FFF3B0';
+    hex.oninput();
+    hex.onchange();
+    const last = m => world.native.of(m).pop().args[0];
+    const hsl = g.hexToHsl('#FFF3B0');
+    equal(last('setThemeHue'), hsl.h, 'hue committed from the hex');
+    equal(last('setThemeSat'), 100, 'source saturation lands directly (no base division)');
+    equal(last('setThemeL'), 35, 'source lift = hex lightness - 50 (faithful round-trip)');
+    equal(world.$('themeHue').value, String(hsl.h), 'hue slider mirrors the edit');
+    // 真实打字态（焦点在框上）输入不被合成色回写吃掉；失焦提交后才
+    // 收敛为采用色。焦点守卫是防线（mock 里直设 activeElement）。
+    const box2 = world.$('themeHex');
+    world.doc.activeElement = box2;
+    box2.value = '#FFE9A8';
+    box2.oninput();
+    equal(box2.value, '#FFE9A8', 'typing (focused) is not eaten by the composed echo');
+    world.doc.activeElement = null;
+    // 滑条拖动 → 色号框实时刷新（oninput → updateThemePreview → refresh）。
+    const hueSlider = world.$('themeHue');
+    hueSlider.value = '300';
+    hueSlider.oninput();
+    assert(/^#[0-9A-F]{6}$/.test(hex.value) && hex.value !== '#FFF3B0',
+        'hex box refreshes as the slider moves');
+});
+
+test('skin hex boxes: invalid input rolls back; follow state composes from the theme group (#61)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 非法输入：不提交、回滚为当前合成色。
+    const before = world.native.calls.length;
+    const hex = world.$('themeHex');
+    hex.value = '#GGHHII';
+    hex.onchange();
+    equal(world.native.calls.length, before, 'garbage hex commits nothing');
+    assert(/^#[0-9A-F]{6}$/.test(hex.value), 'garbage rolls back to the composed color');
+    // 跟随态：键面色号显示背景组 hue/sat 与键面基准 l 的合成。
+    const keyHex = world.$('keyHex');
+    const composed = g.feelHexOf('key');
+    equal(keyHex.value, composed, 'follow state composes from the theme group');
+    // 跟随键盘开关（2026-10-13 改独立开关）：开=继承（亮度本就独立，
+    // 开关不动 keyL——与旧色板档位一并清零的行为不同，见新测试）。
+    // state 回显：亮度偏移下发后，框显与合成一致；确认值同步（非法
+    // 回滚的目标）。
+    const state = JSON.parse(JSON.stringify(BASE_STATE));
+    state.themeL = 20; state.keyL = -10;
+    world.push(state);
+    equal(world.$('themeHex').value, g.feelHexOf('theme'),
+        'composed color consistent after push');
+    // 截限后的实际采用色必须回显（review P3：旧实现提交后仍显示用户
+    // 输入的假色）。
+    const box = world.$('themeHex');
+    box.value = '#FFF3B0';
+    box.oninput(); box.onchange();
+    equal(box.value, g.feelHexOf('theme'), 'clamped result is echoed back after commit');
+    assert(box.value !== '#FFF3B0', 'the unattainable input is not echoed');
+});
+
+test('skin page row order: tints, saturations, hex codes, opacity, backgrounds, preview last', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     const ids = [...world.doc.querySelectorAll('[data-page="skin"] .row')]
         .map(r => r.querySelector('select[id], input[id], span[id]')?.id)
         .filter(Boolean);
-    equal(ids, ['themeHue', 'themeSat', 'keyHue', 'keySat', 'keyOpacity',
-        'bgImageLight', 'bgImageDark', 'themePreview'], 'rows follow the agreed order');
+    // #61：每组（色调+饱和度）后跟色号行（swatch span 是行内首个带 id
+    // 的元素，随后是 hex input——白名单按首个 id 记）。
+    // 2026-10-13 分块：键盘（hue/sat/hex/背景图）→ 键面（跟随开关/
+    // hue/sat/hex/不透明度）→ 预览。开关行内首控件是 keyFollow。
+    equal(ids, ['themeHue', 'themeSat', 'themeHexSwatch', 'bgImageLight',
+        'bgImageDark', 'keyFollow', 'keyHue', 'keySat', 'keyHexSwatch',
+        'keyOpacity', 'themePreview'], 'rows follow the agreed order');
 });
 
 // 皮肤入口（用户验收五轮）：与其他入口同款 .entry 行（label+chevron），
@@ -2518,8 +2596,6 @@ test('dictionary operation progress stays in its own card after reopening', () =
 
 // ---------------------------------------------------------------- runner
 
-const failed = RESULTS.filter(([, ok]) => !ok);
-
 test('showPage restores each page scroll offset (issue #51)', () => {
     const world = new SettingsWorld();
     const S = world.FeelimeSettings();
@@ -2568,6 +2644,270 @@ test('custom key setting mode round-trips [setting:id] (issue #51)', () => {
     equal(parsed.mode, 'setting', 'parse recognizes the token');
     equal(parsed.setting, 'candidateFont', 'anchor id kept');
 });
+
+
+// ---- 语言键盘定制（#60 定制按键升级：三级页入口 + 四级页 + 编辑器） ----
+test('lang keys: entry page lists keyboards and counts customized keys', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    try {
+    equal(world.doc.querySelectorAll('[data-cklang]').length, 5, 'five language keyboard entries');
+    world.FeelimeSettings().showPage('cklang');
+    const kb = world.doc.getElementById('cklangKb');
+    const allKeys = kb.querySelectorAll('.ck-lang-key');
+    const locked = kb.querySelectorAll('.ck-lang-key-sp');
+    equal(allKeys.length - locked.length, 27,
+        '26 letters + comma key are customizable');
+    equal(locked.length, 6, 'locked keys: shift/split/bs/123/space/cnEn/enter');
+    } catch (e) { console.error('STACK', e.stack); throw e; }
+});
+
+test('lang keys: editor saves alt + flick slots into langKeys and the pack', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    // 渲染器进入 pinyin（默认）后点 q。
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const qKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'q');
+    qKey.click();
+    const body = world.doc.getElementById('ckEditBody');
+    equal(!!body.querySelector('.ck-lang-lock'), true, 'lock row renders');
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 角标 @（编辑器里唯一的 input）。
+    const alt = body.querySelector('input');
+    alt.value = '@'; fire(alt, 'input');
+    // 下滑=动作·复制：类型下拉在第二小节。
+    const secs = body.querySelectorAll('.ck-lang-sec');
+    equal(secs.length, 2, 'up + down sections');
+    const downType = secs[1].querySelector('select');
+    downType.value = 'op';
+    fire(downType, 'change');
+    const secSel = world.doc.getElementById('ckEditBody').querySelectorAll('.ck-lang-sec')[1]
+        .querySelectorAll('select');
+    const opSel = secSel[secSel.length - 1];
+    // fake DOM 的 select 无 options 集合：直接设值触发（选项集由保存
+    // 结果断言覆盖——[edit:copy] 只有下拉选 copy 才会合成）。
+    opSel.value = 'copy'; fire(opSel, 'change');
+    world.$('ckApply').click();
+    // 计数与「保存全部」的 JSON 带 langKeys。
+    equal(world.doc.getElementById('cklangCount-pinyin').textContent.includes('1'), true,
+        'entry count updates');
+    world.$('ckSave').click();
+    const saved = world.lastCall('saveCustom').args[0];
+    const parsed = JSON.parse(saved);
+    equal(parsed.langKeys.pinyin.q.alt, '@', 'alt saved');
+    equal(parsed.langKeys.pinyin.q.down, '[edit:copy]', 'down slot saved as [edit:x]');
+});
+
+test('lang keys: none slot saves as empty string (gesture off)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const lKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'l');
+    lKey.click();
+    const secs = world.doc.querySelectorAll('#ckEditBody .ck-lang-sec');
+    const fire2 = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const upType = secs[0].querySelector('select');
+    upType.value = 'none';
+    fire2(upType, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.l.up, '', 'off slot persists as empty string');
+});
+
+
+test('lang keys: every slot type renders inputs without undefined values', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const hKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'h');
+    hKey.click();
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 上滑槽遍历全部类型：每个类型重建后所有 input.value 都不得是
+    // "undefined"（缺省字段没建时的典型症状，真机验收实录）。
+    for (const mode of ['text', 'open', 'setting', 'panel', 'single', 'combo', 'op', 'advanced', 'none', 'def']) {
+        const body = world.doc.getElementById('ckEditBody');
+        const typeSel = body.querySelectorAll('.ck-lang-sec')[0].querySelector('select');
+        typeSel.value = mode;
+        fire(typeSel, 'change');
+        const rebuilt = world.doc.getElementById('ckEditBody');
+        rebuilt.querySelectorAll('input').forEach(input => {
+            if (String(input.value) === 'undefined') {
+                throw new Error('slot type ' + mode + ' rendered undefined in input');
+            }
+        });
+    }
+    // 关闭态回填：保存 none 后重开编辑器，类型应显示「关闭」而非「文本」。
+    const body2 = world.doc.getElementById('ckEditBody');
+    const s = body2.querySelectorAll('.ck-lang-sec')[0].querySelector('select');
+    s.value = 'none'; fire(s, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.h.up, '', 'none saved as empty string');
+});
+
+test('lang keys preview: left key and punct alt mirror the real keyboard (排版验收)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const S = world.FeelimeSettings();
+    const leftKeyLabel = () => {
+        const rows = [...world.doc.querySelectorAll('#cklangKb .ck-lang-row')];
+        return rows[2].firstElementChild.textContent;
+    };
+    // 中文键盘第三行左键=分词；英文/法俄=Shift 图标（真机 isChineseMode
+    // 分支，验收实录预览恒画「分词」与真机不符）。
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    equal(leftKeyLabel(), '分词', 'pinyin row-3 left key is the split key');
+    world.doc.querySelector('[data-cklang="english"]').click();
+    equal(leftKeyLabel(), '\u21e7', 'english row-3 left key is the shift icon');
+    // 标点槽默认角标=「。」（真机中文态主「，」+顶角标「。」；预览旧版
+    // 角标为空）。
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const punct = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => {
+            const main = el.querySelector('.ck-lang-main');
+            return main && main.textContent === '，';
+        });
+    equal(punct && punct.querySelector('.ck-lang-sub').textContent, '。',
+        'punct slot default alt is 。');
+});
+
+test('custom keys: symbol-page switch hides the home entry card when off (开关迁移裁定)', () => {
+    const world = new SettingsWorld();
+    const S = world.FeelimeSettings();
+    const card = () => world.doc.getElementById('ckSymCard');
+    // BASE_STATE 的开关默认关：先推 enabled=true 再断言可见。
+    const on = JSON.parse(JSON.stringify(BASE_STATE));
+    on.custom.enabled = true;
+    world.push(on);
+    equal(card().hidden, false, 'entry visible while enabled');
+    // 关闭（state 回推驱动，与开关 change→桥→回推同链）。
+    const state = JSON.parse(JSON.stringify(BASE_STATE));
+    state.custom.enabled = false;
+    world.push(state);
+    equal(card().hidden, true, 'entry hidden when the switch is off');
+    const state2 = JSON.parse(JSON.stringify(BASE_STATE));
+    state2.custom.enabled = true;
+    world.push(state2);
+    equal(card().hidden, false, 'entry back when re-enabled');
+    // 开关本体随符号页（首页不再承载）。
+    S.showPage('cksymbol');
+    const host = world.doc.getElementById('customEnabled').closest('.page');
+    equal(host.dataset.page, 'cksymbol', 'the switch lives on the symbol page');
+});
+
+test('custom keys: save bar lives on the two editor pages only (分页保存裁定)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const S = world.FeelimeSettings();
+    const bar = world.doc.getElementById('ckSaveBar');
+    const pageOf = el => el && el.parentElement && el.parentElement.dataset
+        && el.parentElement.dataset.page;
+    S.showPage('customkeys');
+    equal(pageOf(bar), 'cksymbol', 'home does not host the save bar (initial home entry)');
+    S.showPage('cksymbol');
+    equal(pageOf(bar), 'cksymbol', 'symbol page hosts it');
+    S.showPage('cklang');
+    equal(pageOf(bar), 'cklang', 'lang page hosts it');
+    S.showPage('customkeys');
+    equal(pageOf(bar), 'cklang', 'back on home the bar stays with the last editor page');
+    equal(world.doc.querySelector('[data-i18n="ck.save"]').textContent, '保存',
+        'button label is just 保存 now');
+});
+
+test('custom keys: dirty survives a family round-trip; home no longer resets it (验收反馈)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('customkeys');
+    // 经编辑器真实路径置脏（ckDirty 是 let，不进 vm 全局——脏态以
+    // 保存条 DOM 为载体断言）。
+    const g = world.sandbox;
+    g.ckOpenNew(0);
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const tInput = g.document.getElementById('ckT');
+    tInput.value = '脏键'; fire(tInput, 'input');
+    g.document.getElementById('ckApply').click();
+    equal(g.document.getElementById('ckDirtyHint').hidden, false, 'edit marks dirty');
+    // 子页改完 → 回首页：脏标保留（旧实现回首页即清，未保存改动失去
+    // 「保存全部」引导，退出即丢）。
+    world.FeelimeSettings().showPage('customkeys');
+    equal(g.document.getElementById('ckDirtyHint').hidden, false,
+        'dirty keeps glowing after returning to the home');
+});
+
+test('custom keys: entering the symbol page syncs the advanced box with the live draft (验收主诉)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    world.FeelimeSettings().showPage('customkeys');
+    // 编辑器改动（草稿变、textarea 未刷新——旧实现进页不投影，「高
+    // 级」看到的不是当前实际）。
+    g.ckOpenNew(0);
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const tInput = g.document.getElementById('ckT');
+    tInput.value = '投影键'; fire(tInput, 'input');
+    g.document.getElementById('ckApply').click();
+    world.FeelimeSettings().showPage('cksymbol');
+    assert(world.$('customJson').value.includes('投影键'),
+        'advanced textarea reflects the draft after entering the page');
+    // 进页补一轮渲染（真机语义：首次渲染发生在 hidden 容器里
+    // clientWidth=0、行缩放 fit 全跳过——进页重渲才恢复「行缩放进
+    // 容器」约束；mock 无布局，以 DOM 反映新草稿作载体断言）。
+    assert(g.document.getElementById('ckRowList').textContent.includes('投影键'),
+        'entering the page re-renders the rows (the fit carrier on real devices)');
+});
+
+test('custom keys: hand-edited JSON is absorbed on page entry, not clobbered by the projection', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const g = world.sandbox;
+    world.FeelimeSettings().showPage('customkeys');
+    world.FeelimeSettings().showPage('cksymbol');
+    // 用户在「高级」手改（≠ 当前投影）→ 离开再进：先吸收进草稿，
+    // 不被投影覆盖；吸收结果经「保存全部」的桥参数断言（草稿变量
+    // 是 let 不进 vm 全局）。
+    world.$('customJson').value = JSON.stringify({
+        version: 1,
+        rows: [[{ t: '手改', tap: '手改' }], [], []],
+        langKeys: { pinyin: { h: { up: 'hi' } } },
+    });
+    world.FeelimeSettings().showPage('customkeys');
+    world.FeelimeSettings().showPage('cksymbol');
+    assert(world.$('customJson').value.includes('手改'),
+        'textarea keeps the hand-edited content');
+    world.$('ckSave').click();
+    const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(saved.rows[0][0].t, '手改', 'hand-edited rows absorbed into the draft');
+    equal(saved.langKeys.pinyin.h.up, 'hi', 'hand-edited langKeys absorbed');
+});
+
+test('custom keys: bad JSON in the advanced box is rejected without touching the bridge', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.$('customJson').value = '{broken';
+    world.$('btnSaveCustom').click();
+    equal(world.native.of('saveCustom').length, 0, 'no saveCustom call on bad JSON');
+    assert(world.$('customNote').textContent.length > 0, 'rejection is surfaced in the note');
+    // 修好后再存：同一条统一链落盘。
+    world.$('customJson').value = JSON.stringify({
+        version: 1, rows: [[{ t: '好', tap: '好' }], [], []],
+    });
+    world.$('btnSaveCustom').click();
+    const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(saved.rows[0][0].t, '好', 'fixed JSON saves through the unified chain');
+});
+
+// failed 快照必须在【全部】test() 之后（曾放在文件中部 runner 注释
+// 处：此后追加的测试失败不进统计、exit 0 假绿——2026-10-12 新增尾部
+// 测试时暴露）。
+const failed = RESULTS.filter(([, ok]) => !ok);
 
 console.log(`\n== settings mock-bridge suite: ${RESULTS.length - failed.length}/${RESULTS.length} passed ==`);
 if (failed.length) {

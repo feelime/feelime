@@ -594,8 +594,30 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             w.setBackgroundDrawable(object : android.graphics.drawable.Drawable() {
                 private val paint = android.graphics.Paint()
                 override fun draw(canvas: android.graphics.Canvas) {
-                    val strip = navBottomInset()
-                    if (strip <= 0 || color == Color.TRANSPARENT) return
+                    if (color == Color.TRANSPARENT) return
+                    // #57b（小米平板 A14 横屏底部镂空，codex 定位）：补色
+                    // 带要盖的是「窗口里没被 WebView 盖住」的底边——旧代码
+                    // 用 navBottomInset()（=WebView 已覆盖导航区的 overlap）
+                    // 当补色高度：Decor 给内容根留 bottomMargin 时 WebView
+                    // 底边高于窗口底，overlap=0 → 补 0px → 那段窗口背景
+                    // （导航栏已置透明）镂空透出宿主。两个几何量分开取：
+                    // overlap 管 CSS 避让语义，hole 管「窗口底 - WebView
+                    // 底」的真正缺口，取大者保证都不露底。
+                    var hole = 0
+                    if (android.os.Build.VERSION.SDK_INT >= 30 && isInputViewShown) {
+                        val view = keyboardView
+                        if (view != null && view.isLaidOut && view.height > 0) {
+                            val location = IntArray(2)
+                            view.getLocationOnScreen(location)
+                            val metrics = getSystemService(
+                                android.view.WindowManager::class.java,
+                            ).currentWindowMetrics
+                            hole = (metrics.bounds.bottom -
+                                (location[1] + view.height)).coerceAtLeast(0)
+                        }
+                    }
+                    val strip = maxOf(navBottomInset(), hole)
+                    if (strip <= 0) return
                     paint.color = color
                     canvas.drawRect(
                         0f, (bounds.height() - strip).toFloat(),
@@ -627,6 +649,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private fun assertCutoutMode() {
         val w = window?.window ?: return
         if (Build.VERSION.SDK_INT < 28) return
+        // #57 v3（MIUI 14/A13 复发）：v1.3.9 只换了 cutout 模式，但 IME
+        // 的 Decor 从未关掉默认 fitSystemWindows 避让（#52 修 SetupActivity
+        // 时的同款根因，edge-to-edge 一直没落到 IME 窗口）——A13 的
+        // WindowLayout 先按 insets 收缩内容、cutout 模式只解除「禁画」，
+        // 不撤销收缩。Decor 关闭自动避让后，键盘自己用已下发的 insets
+        // CSS 变量避让挖孔（keyboard.css 键区 padding，背景仍铺满）。
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(w, false)
         val mode = if (Build.VERSION.SDK_INT >= 30)
             android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         else
@@ -1957,8 +1986,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
  // Each orientation keeps its own height.
             keyboardHeightOverride = storedKeyboardHeight()
             (keyboardView?.parent as? View)?.requestLayout()
-            // #39 旋转切换导航条隐藏/恢复。
+            // #39 旋转切换导航条隐藏/恢复。#57：旋转走窗口重建路径，
+            // 铺满策略（decorFits/cutout）一并重放——重建后的新 Window
+            // 不带旧设置（codex #57 定位：重放时机缺旋转一环）。
             applyLandscapeNavBars()
+            assertCutoutMode()
             pushBridgeHello()
             pushState()
         }
@@ -2065,6 +2097,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("englishPos", readEnglishPos(this))
             .put("keyHue", readKeyHue(this))
             .put("keySat", readKeySat(this))
+            .put("themeL", readThemeL(this))
+            .put("keyL", readKeyL(this))
             .put("toolbarLayout", readToolbarLayout(this))
             .put("kbLayout", readKbLayout(this))
             .put("spaceHoldTap", readSpaceHoldTap(this))

@@ -33,7 +33,41 @@ const CK_MODES = [
     ['combo', 'ck.f.mode.combo'], ['open', 'ck.f.mode.open'],
     ['setting', 'ck.f.mode.setting'], ['panel', 'ck.f.mode.panel'],
     ['advanced', 'ck.f.mode.advanced'],
+    ['op', 'ck.f.mode.op'],
 ];
+// 「动作」类型的编辑操作枚举（[edit:x] DSL；执行映射在 keyboard.js
+// runEditStep：原生 editorAction 优先，undo/redo/光标类走组合键）。
+const CK_EDIT_OPS = [
+    ['undo', 'ck.op.undo'], ['redo', 'ck.op.redo'],
+    ['cut', 'ck.op.cut'], ['copy', 'ck.op.copy'],
+    ['paste', 'ck.op.paste'], ['selectAll', 'ck.op.selectAll'],
+    ['clear', 'ck.op.clear'], ['cursorLeft', 'ck.op.cursorLeft'],
+    ['cursorRight', 'ck.op.cursorRight'], ['lineStart', 'ck.op.lineStart'],
+    ['lineEnd', 'ck.op.lineEnd'],
+];
+// 语言键盘四级页的布局数据（rows/角标与 keyboard.js LAYOUTS 同源摘要：
+// 角标取 alts 的首值；底行固定 [123][，][空格][中/英][⏎]，逗号键可
+// 定制（寻址 '.'，与 dataset.key 一致），其余锁定）。
+const LANG_KB = {
+    /* leftKey：第三行左键形态（复刻 keyboard.js isChineseMode 分支）——
+     * 中文键盘（pinyin/dp）是「分词」，非中文键盘（法俄英）是 Shift
+     * 图标；双拼 sogou/ziguang 方案的 ing 特例不在预览层复刻（方案是
+     * 运行时设置，预览画主形态即可）。 */
+    pinyin: { title: 'ck.lang.pinyin', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'sep',
+        alts: { q: '1', w: '2', e: '3', r: '4', t: '5', y: '6', u: '7', i: '8', o: '9', p: '0',
+            a: '-', s: '/', d: ':', f: ';', g: '(', h: ')', j: '~', k: '"', l: "'",
+            z: '@', x: '_', c: '#', v: '&', b: '?', n: '!', m: '…', '.': ',' } },
+    dp: { title: 'ck.lang.dp', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'sep', share: 'pinyin' },
+    english: { title: 'ck.lang.english', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'shift', share: 'pinyin' },
+    french: { title: 'ck.lang.french', rows: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'], leftKey: 'shift',
+        alts: { q: '1', w: '2', e: 'é', r: '4', t: '5', y: 'ÿ', u: 'ù', i: 'î', o: 'ô', p: '0',
+            a: 'à', s: '/', d: ':', f: ';', g: '(', h: ')', j: '«', k: '»', l: '’',
+            z: '@', x: '_', c: 'ç', v: '&', b: '?', n: '!', m: '.', '.': ',' } },
+    russian: { title: 'ck.lang.russian', rows: ['йцукенгшщзхъ', 'фывапролджэ', 'ячсмитьбю'], leftKey: 'shift',
+        alts: { й: '1', ц: '2', у: '3', к: '4', е: '5', н: '6', г: '7', ш: '8', щ: '9', з: '0', х: '-', ъ: '=',
+            ф: '\\', ы: '/', в: ':', а: ';', п: '(', р: ')', о: '~', л: '"', д: "'", ж: '«', э: '»',
+            я: '@', ч: '_', с: '#', м: '&', и: '?', т: '!', ь: '…', б: ',', ю: '.', '.': ',' } },
+};
 
 // #31 键盘色调：与 native THEME_PRESETS / keyboard.css html[data-preset] 同源。
 const THEME_PRESET_LIST = ['classic', 'ocean', 'violet', 'amber', 'sakura', 'teal'];
@@ -214,11 +248,12 @@ const I18N = {
         "input.double.mapCaption": "韵母键位图（键名下方为该键韵母，右下为双声母）",
         "input.custom.title": "定制按键",
         "input.custom.badge": "高级",
-        "input.custom.enabled": "启用定制按键",
+        "input.custom.enabled": "启用符号页定制",
         "input.custom.jsonLabel": "定制 JSON（{\"version\":1,\"rows\":[[{\"t\":\"键面\",\"tap\":\"点击输出\",\"note\":\"备注\"}]]}）",
         "input.custom.jsonPlaceholder": "粘贴定制 JSON",
         "input.custom.note": "保存在本机，键盘下次载入时生效。",
         "input.custom.manage": "管理定制按键",
+        "input.custom.badjson": "JSON 无效，请检查格式（version/rows）",
         "page.customkeys": "定制按键",
         "ck.status.title": "定制按键",
         "ck.openEditor": "打开编辑器",
@@ -230,7 +265,7 @@ const I18N = {
         "ck.quick.title.hint": "点按键改内容，长按调整位置；点「＋」添加新按键。",
         "ck.edit.title": "编辑按键",
         "ck.apply": "确定",
-        "ck.save": "保存全部",
+        "ck.save": "保存",
         "ck.add": "＋",
         "ck.f.t": "键面文案",
         "ck.f.t.hint": "按钮上显示的字",
@@ -244,6 +279,50 @@ const I18N = {
         "ck.f.mode.setting": "设置",
         "ck.f.mode.panel": "面板",
         "ck.f.kind": "类型",
+        "ck.lang.title": "语言键盘",
+        "ck.lang.pinyin": "全拼键盘",
+        "ck.lang.dp": "双拼键盘",
+        "ck.lang.english": "英文键盘",
+        "ck.lang.french": "法语键盘",
+        "ck.lang.russian": "俄语键盘",
+        "ck.lang.count": "已定制 {count} 键",
+        "ck.lang.default": "默认",
+        "ck.lang.hint1": "点字母键 / 逗号句号键定制角标与上滑、下滑；布局、单击与长按不变。",
+        "ck.lang.hint2": "分词 / 退格 / 123 / 中英 / 回车不可定制；空格长按沿用「长按空格动作」（跨键盘统一）。",
+        "ck.lang.reset": "全部恢复",
+        "ck.lang.resetDone": "已恢复默认（记得保存）",
+        "ck.lang.editTitle": "编辑键 {0}",
+        "ck.lang.editKey": "定制键 {0}",
+        "ck.lang.editPunct": "定制逗号键",
+        "ck.lang.lock": "输出字母 {0} · 单击与长按固定",
+        "ck.lang.lockPunct": "输出逗号， · 单击与长按固定",
+        "ck.lang.alt": "角标",
+        "ck.lang.altPlaceholder": "默认：{0}",
+        "ck.lang.slotUp": "↗ 上滑",
+        "ck.lang.slotDown": "↘ 下滑",
+        "ck.lang.defUp": "键盘默认 · 大写 {0}",
+        "ck.lang.defDown": "键盘默认 · 角标字符",
+        "ck.lang.shiftKey": "分词",
+        "ck.lang.cnEn": "中/英",
+        "ck.sym.title": "符号键盘",
+        "ck.sym.entry": "「定制」符号页",
+        "ck.sym.hint": "点按修改，长按移动/删除",
+        "ck.sym.pageTitle": "「定制」符号页",
+        "ck.f.mode.def": "键盘默认",
+        "ck.f.mode.none": "关闭",
+        "ck.f.mode.op": "动作",
+        "ck.f.op": "动作",
+        "ck.op.undo": "撤销",
+        "ck.op.redo": "重做",
+        "ck.op.cut": "剪切",
+        "ck.op.copy": "复制",
+        "ck.op.paste": "粘贴",
+        "ck.op.selectAll": "全选",
+        "ck.op.clear": "清空编辑框",
+        "ck.op.cursorLeft": "光标左移一词",
+        "ck.op.cursorRight": "光标右移一词",
+        "ck.op.lineStart": "到行首",
+        "ck.op.lineEnd": "到行尾",
         "ck.spaceTitle": "长按空格动作",
         "ck.space.edit": "编辑动作",
         "ck.space.hint": "长按空格触发该动作（350ms）；语音输入为按住说话，其余动作触发一次。",
@@ -266,6 +345,8 @@ const I18N = {
         "ck.f.color": "颜色",
         "ck.color.default": "默认",
         "ck.color.custom": "自定义",
+        "ck.color.hex": "色号",
+        "ck.color.hexLabel": "键帽色号",
         "ck.color.hue": "色调",
         "ck.color.sat": "饱和度",
         "ck.f.note": "备注",
@@ -556,7 +637,6 @@ const I18N = {
         "about.inputStats": "输入字数",
         "about.inputStatsValue": "今日 {today} · 累计 {total}",
         "note.saved": "已保存",
-        "note.customSaved": "已保存，键盘下次载入时生效",
         "note.copied": "已复制",
         "custom.none": "未定制",
         "custom.count": "已定制 {count} 个键",
@@ -630,6 +710,15 @@ const I18N = {
         "input.english.pos3": "第 3 位",
         "input.english.pos5": "第 5 位",
         "input.feel.themeSatHint": "拉到最左是黑白灰（明暗模式定黑白基底），往右色彩渐浓。",
+        "input.feel.kbGroup": "键盘",
+        "input.feel.keyGroup": "键面",
+        "input.feel.keyFollow": "跟随键盘",
+        "input.feel.keyFollowHint": "开启时键面的色调/饱和度跟随键盘组；关闭后各自独立。",
+        "input.feel.themeHex": "键盘原色",
+        "input.feel.themeHexHint": "生成背景/面板配色的输入色（不是最终像素色）；键面跟随「键盘」时一起调整。",
+        "input.feel.keyHex": "键面原色",
+        "input.feel.keyHexHint": "生成键帽/强调色的输入色；跟随开启时显示键盘原色，实际效果见下方预览。",
+        "input.feel.hexPlaceholder": "#RRGGBB",
         "preset.classic": "默认绿",
         "preset.ocean": "海蓝",
         "preset.violet": "紫罗兰",
@@ -648,7 +737,7 @@ const I18N = {
         "entry.appearance.subtitle": "色彩模式 · 背景图片 · 透明度",
         "input.appearance.title": "外观",
         "input.appearance.preview": "预览",
-        "input.appearance.previewHint": "进入本页时，真实键盘会在屏幕底部弹出（本页自动让位），上面的设置实时生效，直接在这里打字试。",
+        "input.appearance.previewHint": "键盘不再自动弹出（想实时看配色去「皮肤」页）；点这个输入框可以唤起键盘试打。",
         "input.appearance.previewPlaceholder": "直接在这里打字试试",
         "input.appearance.badge": "主题",
         "input.feel.bgImageHint": "铺满整个键盘区域（工具条到底部留白），压缩到 720px 宽存储，只在本机生效。",
@@ -928,11 +1017,12 @@ const I18N = {
         "input.double.mapCaption": "Final key map (finals under each key, double initials bottom-right)",
         "input.custom.title": "Custom keys",
         "input.custom.badge": "Advanced",
-        "input.custom.enabled": "Enable custom symbols",
+        "input.custom.enabled": "Enable the custom symbols page",
         "input.custom.jsonLabel": "Custom JSON ({\"version\":1,\"rows\":[[{\"t\":\"key label\",\"tap\":\"output\",\"note\":\"note\"}]]})",
         "input.custom.jsonPlaceholder": "Paste custom JSON",
         "input.custom.note": "Saved on this device and applied the next time the keyboard loads.",
         "input.custom.manage": "Manage custom keys",
+        "input.custom.badjson": "Invalid JSON — check the format (version/rows)",
         "page.customkeys": "Custom keys",
         "ck.status.title": "Custom keys",
         "ck.openEditor": "Open editor",
@@ -944,7 +1034,7 @@ const I18N = {
         "ck.quick.title.hint": "Tap a key to edit it, hold to rearrange; tap ＋ to add.",
         "ck.edit.title": "Edit key",
         "ck.apply": "Apply",
-        "ck.save": "Save all",
+        "ck.save": "Save",
         "ck.add": "＋",
         "ck.f.t": "Label",
         "ck.f.t.hint": "Text shown on the key",
@@ -958,6 +1048,50 @@ const I18N = {
         "ck.f.mode.setting": "Settings",
         "ck.f.mode.panel": "Panel",
         "ck.f.kind": "Type",
+        "ck.lang.title": "Language keyboards",
+        "ck.lang.pinyin": "Pinyin (26-key)",
+        "ck.lang.dp": "Double Pinyin",
+        "ck.lang.english": "English",
+        "ck.lang.french": "French",
+        "ck.lang.russian": "Russian",
+        "ck.lang.count": "{count} keys customized",
+        "ck.lang.default": "Default",
+        "ck.lang.hint1": "Tap a letter or the comma key to customize its hint and flick actions; layout, tap and long-press stay unchanged.",
+        "ck.lang.hint2": "Split / backspace / 123 / CN-EN / enter are fixed; space long-press keeps its global action.",
+        "ck.lang.reset": "Reset all",
+        "ck.lang.resetDone": "Reset (remember to save)",
+        "ck.lang.editTitle": "Edit key {0}",
+        "ck.lang.editKey": "Customize key {0}",
+        "ck.lang.editPunct": "Customize comma key",
+        "ck.lang.lock": "Types letter {0} · tap & long-press fixed",
+        "ck.lang.lockPunct": "Types comma · tap & long-press fixed",
+        "ck.lang.alt": "Hint",
+        "ck.lang.altPlaceholder": "Default: {0}",
+        "ck.lang.slotUp": "↗ Flick up",
+        "ck.lang.slotDown": "↘ Flick down",
+        "ck.lang.defUp": "Default · uppercase {0}",
+        "ck.lang.defDown": "Default · hint character",
+        "ck.lang.shiftKey": "split",
+        "ck.lang.cnEn": "中/EN",
+        "ck.sym.title": "Symbol keyboard",
+        "ck.sym.entry": "“Custom” symbol tab",
+        "ck.sym.hint": "Tap to edit, long-press to move/delete",
+        "ck.sym.pageTitle": "“Custom” symbol tab",
+        "ck.f.mode.def": "Keyboard default",
+        "ck.f.mode.none": "Off",
+        "ck.f.mode.op": "Action",
+        "ck.f.op": "Action",
+        "ck.op.undo": "Undo",
+        "ck.op.redo": "Redo",
+        "ck.op.cut": "Cut",
+        "ck.op.copy": "Copy",
+        "ck.op.paste": "Paste",
+        "ck.op.selectAll": "Select all",
+        "ck.op.clear": "Clear editor",
+        "ck.op.cursorLeft": "Cursor left by word",
+        "ck.op.cursorRight": "Cursor right by word",
+        "ck.op.lineStart": "Line start",
+        "ck.op.lineEnd": "Line end",
         "ck.spaceTitle": "Hold-space action",
         "ck.space.edit": "Edit action",
         "ck.space.face": "Space key label",
@@ -980,6 +1114,8 @@ const I18N = {
         "ck.f.color": "Color",
         "ck.color.default": "Default",
         "ck.color.custom": "Custom",
+        "ck.color.hex": "Hex",
+        "ck.color.hexLabel": "Keycap color code",
         "ck.color.hue": "Hue",
         "ck.color.sat": "Saturation",
         "ck.f.note": "Note",
@@ -1266,7 +1402,6 @@ const I18N = {
         "about.inputStats": "Characters typed",
         "about.inputStatsValue": "Today {today} · Total {total}",
         "note.saved": "Saved",
-        "note.customSaved": "Saved; applied the next time the keyboard loads",
         "note.copied": "Copied",
         "custom.none": "No custom keys",
         "custom.count": "{count} custom keys",
@@ -1329,6 +1464,15 @@ const I18N = {
         "input.feel.keyHueHint": "Recolors keycaps/accents only (background stays); tap Follow to inherit again.",
         "input.feel.keySat": "Keycap saturation",
         "input.feel.keySatHint": "Color intensity of the keycap group only; far left makes keycaps grayscale.",
+        "input.feel.kbGroup": "Keyboard",
+        "input.feel.keyGroup": "Keycaps",
+        "input.feel.keyFollow": "Follow keyboard",
+        "input.feel.keyFollowHint": "Keycap hue/saturation follow the keyboard group while on; turn off to tune them independently.",
+        "input.feel.themeHex": "Keyboard source color",
+        "input.feel.themeHexHint": "The input color that generates backgrounds and panels (not the final pixel color); keycaps follow it while Follow is on.",
+        "input.feel.keyHex": "Keycap source color",
+        "input.feel.keyHexHint": "The input color that generates keycaps and accents; shows the keyboard source color while following.",
+        "input.feel.hexPlaceholder": "#RRGGBB",
         "preset.followKey": "Follow keyboard",
         "preset.classic": "Classic green",
         "preset.ocean": "Ocean",
@@ -1353,7 +1497,7 @@ const I18N = {
         "page.skin": "Skin",
         "input.appearance.title": "Appearance",
         "input.appearance.preview": "Preview",
-        "input.appearance.previewHint": "On this page the real keyboard pops up at the bottom of the screen (this page yields). Every setting above applies to it live - type here to try.",
+        "input.appearance.previewHint": "The keyboard no longer pops up automatically here (use the Skin page for live colors); tap this box to summon it and try typing.",
         "input.appearance.previewPlaceholder": "Type here to try it",
         "input.appearance.badge": "Theme",
         "input.feel.bgImageHint": "Covers the whole keyboard (toolbar to bottom padding), compressed to 720px wide and stored locally.",
@@ -1463,7 +1607,7 @@ const I18N = {
 };
 
 // #39-12：customkeys（二级）与 customkeys-editor（三级）。
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -1780,13 +1924,16 @@ function showPage(name) {
     // 知道——用户验收实录；不用 confirm：WebChromeClient 不处理时恒
     // false 会把用户锁死）。收口在本函数里——包装外层函数会漏掉已
     // 导出的旧引用。ckEnter 同理在进页时统一触发。
-    if (typeof ckDirty !== "undefined" && currentPage === "customkeys"
-        && name !== "customkeys" && ckDirty) {
+    const CK_FAMILY = ["customkeys", "cksymbol", "cklang"];
+    if (typeof ckDirty !== "undefined" && CK_FAMILY.includes(currentPage)
+        && !CK_FAMILY.includes(name) && ckDirty) {
         ckLeaveTarget = name;
         document.getElementById("ckLeaveModal").hidden = false;
         return;
     }
-    const wasAppearance = currentPage === "appearance" || currentPage === "skin";
+    // 预览页只有 skin（2026-10-13）：上一页已在皮肤页则不重复弹；
+    // 从外观页（已不自动弹）进皮肤页要弹。
+    const wasPreview = currentPage === "skin";
     // 页内深链会再次 showPage(本页)：customkeys 此时不能 ckMarkDirty(false)
     // ——脏标被清、内存编辑还在，离开不再确认，改动静默丢失（评审 P3-11）。
     const wasCustomkeys = currentPage === "customkeys";
@@ -1815,21 +1962,53 @@ function showPage(name) {
         if (typeof memo === "number" && memo > 0) window.scrollTo(0, memo);
         else window.scrollTo(0, 0);
     }
+    // 定制按键家族三页共享一条脏态草稿，但保存条只随两个四级页走
+    // （分页各自保存，2026-10-12 用户裁定：首页纯导航+开关，无保存
+    // 动作）：DOM 随当前页移动（page = header + 滚动 main + 保存条的
+    // flex 布局见 css）。离开家族（含回首页）时条随上一次所在子页
+    // 隐藏，脏态由离开确认兜底。
+    if (name === "cksymbol" || name === "cklang") {
+        const bar = document.getElementById("ckSaveBar");
+        const pageEl = document.querySelector('[data-page="' + name + '"]');
+        if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
+    }
+    if (name === "cklang") renderLangKb(ckLangCurrent);
+    if (name === "customkeys" && !wasCustomkeys && typeof refreshLangCounts === "function") {
+        refreshLangCounts();
+    }
     // 外观页预览：真实键盘在屏幕底部弹出、本页窗口被压缩；离开时收起。
     // 皮肤页（从外观拆出）同样要真实键盘预览：调色时看得见效果——进出
     // 两个预览页（appearance↔skin）不收键盘（codex P1：隐藏条件要与
     // 显示条件同一个集合，否则外观→皮肤会把预览键盘收掉）。
-    const isPreviewPage = name === "appearance" || name === "skin";
-    if (isPreviewPage && !wasAppearance) call("previewKeyboard", true);
-    if (!isPreviewPage && wasAppearance) call("previewKeyboard", false);
+    // 自动弹键盘只在皮肤页（调色实时预览所在）：外观页曾默认弹，用户
+    // 感知为「默认 focus 预览输入框」（2026-10-13 验收裁定撤）——外观
+    // 页要试打点输入框自然唤起。
+    const isPreviewPage = name === "skin";
+    if (isPreviewPage && !wasPreview) call("previewKeyboard", true);
+    if (!isPreviewPage && wasPreview) call("previewKeyboard", false);
     // 页面父级随页上报：系统 BACK 逐级返回用。层级唯一事实源是本页
     // ‹ 按钮的 data-back（index.html），壳侧不再维护第二份映射——
     // userwords/customkeys 曾因此各自漂移回 home（用户验收实录）。
     const back = document.querySelector(`.page[data-page="${name}"] .page-back`);
     call("reportPage", name, back?.dataset?.back || "home");
     if (name === "customkeys" && !wasCustomkeys && typeof ckEnter === "function") {
+        // 只重置编辑态/弹层，不清脏标：三页共享同一草稿，从子页返回
+        // 首页清脏标会让未保存改动失去保存引导（验收实录：
+        // 改完子页回首页提示消失，退出即丢）。
         ckEnter();
-        ckMarkDirty(false);
+    }
+    // 符号页四级化后 ckRowList 的首次渲染发生在进首页时（cksymbol
+    // 此刻 hidden、clientWidth=0，ckFitStrip 全跳过）——进符号页补一
+    // 轮渲染，恢复「超宽行缩放进容器」约束；「高级」textarea 同步
+    // 投影当前草稿。rAF 等首帧布局把宽度量准。
+    if (name === "cksymbol" && typeof ckEnter === "function") {
+        // 深链直达符号页（未经过首页 ckEnter→ckLoad）时草稿未载：
+        // null 渲染会崩，先补载（ckSyncJsonView 也依赖草稿）。
+        if (!ckRows) ckLoad();
+        if (typeof ckSyncJsonView === "function") ckSyncJsonView();
+        requestAnimationFrame(() => {
+            if (currentPage === "cksymbol") ckRenderRows();
+        });
     }
 }
 
@@ -1841,7 +2020,164 @@ function showPage(name) {
 // 本身要在拖动期间保留本地值）。
 let themeHueShown = 160, themeSatShown = 100;
 let keyHueShown = 160, keySatShown = 100;
-let keyHueFollow = true, keySatFollow = true;
+let keyHueFollow = true, keySatFollow = true, keyLFollow = true;
+// #61 亮度偏移显示值（themeL/keyL：加在各表面色设计 l 上的 offset）。
+let themeLShown = 0, keyLShown = 0;
+/* #61 三轮（codex 方案 e）：色号/色块=「配色原色」——生成这组配色的
+ * 输入色，不对应任何实际表面像素。基准 s=100/l=50：色号显示
+ * hsl(hue, sat%, 50%+lift)；用户拖滑条色块即明显变化（旧「暗色基准
+ * 底色」l=12% 让色块恒近黑——三轮验收实录）。实际表面由 CSS 按
+ * 设计系数派生（s: 设计s×sat/100；l: N+(100-N)·w·t），l=50 时完全
+ * 等于原设计。 */
+const FEEL_BASE = { theme: { s: 100, l: 50 }, key: { s: 100, l: 50 } };
+
+function hslToHex(h, s, l) {
+    s = Math.max(0, Math.min(100, s)) / 100;
+    l = Math.max(0, Math.min(100, l)) / 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const hp = ((h % 360) + 360) % 360 / 60;
+    const x = c * (1 - Math.abs(hp % 2 - 1));
+    let r = 0, g = 0, b = 0;
+    if (hp < 1) [r, g, b] = [c, x, 0];
+    else if (hp < 2) [r, g, b] = [x, c, 0];
+    else if (hp < 3) [r, g, b] = [0, c, x];
+    else if (hp < 4) [r, g, b] = [0, x, c];
+    else if (hp < 5) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    const m = l - c / 2;
+    const ch = v => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+    return ("#" + ch(r) + ch(g) + ch(b)).toUpperCase();
+}
+
+/** #RRGGBB（# 可省、忽略空格）→ {h,s,l}；非法返回 null。 */
+function hexToHsl(str) {
+    const m = /^\s*#?([0-9a-fA-F]{6})\s*$/.exec(String(str || ""));
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > .5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h *= 60;
+    }
+    return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+/** 墨色对比度择优（review #61-P5：固定阈值在纯绿等色上误判，白字
+ * 1.37:1 不可读）——两墨色与底色的 WCAG 对比度取高者。 */
+function feelInkOn(bgHex) {
+    const channel = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+    const lum = hex => {
+        const n = parseInt(hex.slice(1), 16);
+        return .2126 * channel(n >> 16 & 255) + .7152 * channel(n >> 8 & 255) + .0722 * channel(n & 255);
+    };
+    const L = lum(bgHex);
+    const better = ink => (Math.max(L, ink) + .05) / (Math.min(L, ink) + .05);
+    return better(lum("#1a1a1a")) >= better(lum("#ffffff")) ? "#1a1a1a" : "#fff";
+}
+
+/** 整组编辑会话守卫（review #61-P4）：任一色号框聚焦=编辑中，滑条
+ * 显示值/预览不被异步回推拽回（旧守卫只看滑条自身焦点）。 */
+function hexEditing() {
+    const a = document.activeElement;
+    return !!a && (a.id === "themeHex" || a.id === "keyHex");
+}
+
+// 最近一次确认（提交成功/state 合成）的色号：非法输入回滚的目标——
+// 回到「已确认值」而非编辑草稿（review #61-P4：草稿混用会滚错）。
+let themeHexConfirmed = "", keyHexConfirmed = "";
+
+/** 两组当前原色（跟随态键面取背景组 hue/sat、l 用键面组自己的）。 */
+function feelHexOf(group) {
+    if (group === "theme") {
+        return hslToHex(themeHueShown, FEEL_BASE.theme.s * themeSatShown / 100,
+            FEEL_BASE.theme.l + themeLShown);
+    }
+    const kh = keyHueFollow ? themeHueShown : keyHueShown;
+    const ks = keySatFollow ? themeSatShown : keySatShown;
+    return hslToHex(kh, FEEL_BASE.key.s * ks / 100, FEEL_BASE.key.l + keyLShown);
+}
+
+/** 色号框回显（滑条拖动/回推后调用；hex 框正在编辑时不打扰）。 */
+function refreshHexBoxes(force) {
+    [["themeHex", "themeHexSwatch", "theme"], ["keyHex", "keyHexSwatch", "key"]]
+        .forEach(([inputId, swId, group]) => {
+            const input = document.getElementById(inputId);
+            if (!input || (!force && document.activeElement === input)) return;
+            const hex = feelHexOf(group);
+            input.value = hex;
+            if (group === "theme") themeHexConfirmed = hex; else keyHexConfirmed = hex;
+            const sw = document.getElementById(swId);
+            if (sw) sw.style.background = hex;
+        });
+}
+
+/** 色号输入 → 拆 (h,s,l) → 滑条显示值 + 预览（不落盘，change 才提交）。 */
+function feelApplyHex(group, hex) {
+    const hsl = hexToHsl(hex);
+    if (!hsl) return false;
+    // 原色语义（三轮）：s 直接落滑条（0-100=原色饱和度）；l 相对中位
+    // 50 的偏移 = 原色亮度-50，clamp ±50（50=原色 l=100）。表面派生
+    // 由 CSS 系数管（见 FEEL_BASE 注释），不再在此折损用户的输入。
+    const satPct = Math.max(0, Math.min(100, hsl.s));
+    const lOff = Math.max(-50, Math.min(50, hsl.l - 50));
+    if (group === "theme") {
+        themeHueShown = hsl.h; themeSatShown = satPct; themeLShown = lOff;
+        const hueEl = $("themeHue"), satEl = $("themeSat");
+        if (hueEl) { hueEl.value = String(hsl.h); hueEl.style.setProperty("--thumb-hue", String(hsl.h)); }
+        if (satEl) satEl.value = String(satPct);
+    } else {
+        keyHueFollow = false; keySatFollow = false;
+        keyHueShown = hsl.h; keySatShown = satPct; keyLShown = lOff;
+        const hueEl = $("keyHue"), satEl = $("keySat");
+        if (hueEl) { hueEl.value = String(hsl.h); hueEl.style.setProperty("--thumb-hue", String(hsl.h)); }
+        if (satEl) satEl.value = String(satPct);
+    }
+    updateThemePreview();
+    return true;
+}
+
+/** 色号框事件绑定（renderFeel 里 DOM 稳定，绑一次即可——oninput/onchange
+ *  直接赋值同滑条模式，重复 render 覆盖无泄漏）。 */
+function bindHexBox(group) {
+    const input = document.getElementById(group === "theme" ? "themeHex" : "keyHex");
+    if (!input) return;
+    input.oninput = () => {
+        const raw = String(input.value || "");
+        const applied = feelApplyHex(group, raw);
+        // 输入过程即时刷色块：显示用户输入的原色（合法时），不要等提
+        // 交后的合成色（基准暗、被钳制，验收实录「看着永远是黑的」）。
+        const sw = document.getElementById(group === "theme" ? "themeHexSwatch" : "keyHexSwatch");
+        if (sw && applied) sw.style.background = raw.trim().replace(/^#?/, "#");
+    };
+    input.onchange = () => {
+        if (!feelApplyHex(group, input.value)) {
+            // 非法输入：回滚到最近确认值（已提交/state 合成），不是编辑
+            // 草稿（review #61-P4）。
+            feelApplyHex(group, group === "theme" ? themeHexConfirmed : keyHexConfirmed);
+            refreshHexBoxes(true);
+            return;
+        }
+        if (group === "theme") {
+            call("setThemeHue", themeHueShown);
+            call("setThemeSat", themeSatShown);
+            call("setThemeL", themeLShown);
+        } else {
+            call("setKeyHue", keyHueShown);
+            call("setKeySat", keySatShown);
+            call("setKeyL", keyLShown);
+        }
+        // 提交后强制回显实际采用色（截限后不再是用户输入的假色，
+        // review #61-P3）。
+        refreshHexBoxes(true);
+    };
+}
 // 预览素材（用户验收五轮）：按键不透明度 + 亮/暗背景图（state 带
 // base64，source=none 时无图）。
 let pvKeyAlpha = 1;
@@ -1862,6 +2198,12 @@ function updateThemePreview() {
     pv.style.setProperty("--pv-key-alpha", String(pvKeyAlpha));
     pv.style.setProperty("--pv-bg-img-light", pvBgLightImg);
     pv.style.setProperty("--pv-bg-img-dark", pvBgDarkImg);
+    // #61 三轮（原色模型）：预览推派生系数 t=lift/50（CSS 按组系数
+    // 乘法派生）；键面跟随（keyL=-1 语义）时取背景组 lift。
+    pv.style.setProperty("--pv-bg-lt", themeLShown / 50);
+    const kl = keyLFollow ? themeLShown : keyLShown;
+    pv.style.setProperty("--pv-key-lt", kl / 50);
+    refreshHexBoxes();
 }
 
 /* --- render ------------------------------------------------------------ */
@@ -1942,6 +2284,35 @@ function renderFeel(state) {
     // 自定义 hue（0-360）优先于预置：有自定义值时滑条亮「已自定义」态
     // 且预置全不选中；-1（未自定义）时滑条停在各预置对应的 hue。
     const swatches = $("themePresetSwatches");
+    // #61 亮度偏移回显（hex 框编辑中不受回推打扰——refreshHexBoxes 自带
+    // activeElement 守卫；shown 值仍要更新，失焦后能对齐最新状态）。
+    const tl = Number(state.themeL);
+    if (Number.isFinite(tl) && tl >= -50 && tl <= 50) themeLShown = Math.round(tl);
+    const klv = Number(state.keyL);
+    if (Number.isFinite(klv) && (klv === -1 || (klv >= -50 && klv <= 50))) {
+        keyLFollow = klv === -1;
+        keyLShown = keyLFollow ? (Number.isFinite(tl) ? Math.round(tl) : 0) : Math.round(klv);
+    }
+    bindHexBox("theme");
+    bindHexBox("key");
+    // 跟随键盘（组级开关，2026-10-13）：开=hue/sat 都继承（-1）；关=把
+    // 当前显示值写成显式（否则 -1 关掉后没有独立值可用）。亮度偏移
+    // 恒独立（keyL 无继承语义），开关不动它。
+    const keyFollow = $("keyFollow");
+    if (keyFollow) {
+        if (document.activeElement !== keyFollow) keyFollow.checked = keyHueFollow && keySatFollow;
+        keyFollow.onchange = () => {
+            if (keyFollow.checked) {
+                call("setKeyHue", -1);
+                call("setKeySat", -1);
+                call("setKeyL", -1);   // 整原色跟随（三轮）
+            } else {
+                call("setKeyHue", keyHueFollow ? themeHueShown : keyHueShown);
+                call("setKeySat", keySatFollow ? themeSatShown : keySatShown);
+                call("setKeyL", keyLShown);
+            }
+        };
+    }
     const hueInput = $("themeHue");
     const hue = Number(state.themeHue);
     const hasCustomHue = Number.isFinite(hue) && hue >= 0 && hue <= 360;
@@ -1966,7 +2337,7 @@ function renderFeel(state) {
         // 本地值——否则旧回包会把滑条拽回旧 hue，松手提交的就是错值。
         // 显示值存模块级（themeHueShown 等）：renderFeel 每轮重建局部
         // let，跳过赋值也保不住上一轮的拖动值（codex R2 复核）。
-        if (document.activeElement !== hueInput) {
+        if (document.activeElement !== hueInput && !hexEditing()) {
             themeHueShown = hasCustomHue ? Math.round(hue)
                 : PRESET_HUE[THEME_PRESET_LIST.includes(state.themePreset) ? state.themePreset : "classic"] || 160;
             hueInput.value = String(themeHueShown);
@@ -1990,7 +2361,7 @@ function renderFeel(state) {
     const satInput = $("themeSat");
     if (satInput) {
         const sat = Number(state.themeSat);
-        if (document.activeElement !== satInput) {
+        if (document.activeElement !== satInput && !hexEditing()) {
             themeSatShown = Number.isFinite(sat) && sat >= 0 && sat <= 100 ? Math.round(sat) : 100;
             satInput.value = String(themeSatShown);
         }
@@ -2013,7 +2384,7 @@ function renderFeel(state) {
         // 不得把它翻回跟随，否则预览又跳回背景组取值。
         if (document.activeElement !== keyHueInput) keyHueFollow = !hasKeyHue;
         // 焦点守卫覆盖到显示值与预览（模块级变量才有「保留」可言）。
-        if (document.activeElement !== keyHueInput) {
+        if (document.activeElement !== keyHueInput && !hexEditing()) {
             keyHueShown = hasKeyHue ? Math.round(kv) : themeHueShown;
             keyHueInput.value = String(keyHueShown);
             keyHueInput.style.setProperty("--thumb-hue", String(keyHueShown));
@@ -2030,22 +2401,12 @@ function renderFeel(state) {
             const v = Math.round(Number(keyHueInput.value));
             if (Number.isFinite(v) && v >= 0 && v <= 360) call("setKeyHue", v);
         };
-        // 键面色调同款取色（用户验收五轮）：预置色板点选=setKeyHue(预置 hue)，
-        // 「跟键盘」档=键面组整体还原跟随（hue+sat 都回 -1）；自定义值
-        // 恰为某预置 hue 时该档选中。
+        // 键面色调同款取色（用户验收五轮）：预置色板点选=setKeyHue(预置
+        // hue)。跟随不再走色板档位（2026-10-13 验收裁定）：独立开关
+        // keyFollow 承担（见下方），色板只留预置。
         const keySwatches = $("keyHueSwatches");
         if (keySwatches) {
             keySwatches.textContent = "";
-            const follow = document.createElement("button");
-            follow.type = "button";
-            follow.className = "preset-swatch follow" + (hasKeyHue ? "" : " active");
-            follow.setAttribute("aria-label", t("preset.followKey"));
-            follow.setAttribute("aria-pressed", hasKeyHue ? "false" : "true");
-            follow.addEventListener("click", () => {
-                call("setKeyHue", -1);
-                call("setKeySat", -1);
-            });
-            keySwatches.append(follow);
             THEME_PRESET_LIST.forEach(id => {
                 const dot = document.createElement("button");
                 dot.type = "button";
@@ -2065,7 +2426,7 @@ function renderFeel(state) {
         const hasKeySat = Number.isFinite(ks) && ks >= 0 && ks <= 100;
         // 跟随态同受焦点守卫（见 keyHue）。
         if (document.activeElement !== keySatInput) keySatFollow = !hasKeySat;
-        if (document.activeElement !== keySatInput) {
+        if (document.activeElement !== keySatInput && !hexEditing()) {
             keySatShown = hasKeySat ? Math.round(ks) : themeSatShown;
             keySatInput.value = String(keySatShown);
         }
@@ -2482,8 +2843,12 @@ function renderCustom(state) {
     $("customSummary").textContent = customSummary(custom.summary);
     const ckStatus = document.getElementById("ckStatus");
     if (ckStatus) ckStatus.textContent = customSummary(custom.summary);
+    // 开关只管符号页定制（用户裁定 2026-10-12）：关闭时首页入口卡随
+    // 之隐藏（undefined=未下发=默认显示，与 native 恒推 enabled 对齐）。
+    const symCard = document.getElementById("ckSymCard");
+    if (symCard) symCard.hidden = custom.enabled === false;
     if (document.activeElement !== $("customEnabled")) $("customEnabled").checked = !!custom.enabled;
-    if (document.activeElement !== $("customJson") && !$(`customJson`).value) {
+    if (document.activeElement !== $("customJson") && !$(`customJson`).value && !ckDirty) {
         $("customJson").value = custom.json || "";
     }
 }
@@ -3623,8 +3988,13 @@ $("btnSaveAsr").addEventListener("click", () => {
 });
 
 $("btnSaveCustom").addEventListener("click", () => {
-    call("saveCustom", $("customJson").value || "{}", $("customEnabled").checked);
-    setNote("customNote", t("note.customSaved"));
+    // 与保存条「保存」同一条链：先吸收 textarea 进草稿（坏 JSON 就地
+    // 报错不落盘），再统一打包（带 langKeys）。
+    if (!ckAbsorbJson()) {
+        setNote("customNote", t("input.custom.badjson"));
+        return;
+    }
+    ckSaveAll("customNote");
 });
 // 启用开关拨动即生效（#39-2）：此前只随「保存定制」提交，拨了不点
 // 保存=从未落盘，重进被回读洗回「开」。
@@ -3634,7 +4004,11 @@ $("customEnabled").addEventListener("change", event => call("setCustomEnabled", 
 // 默认表 CK_TEMPLATE 同源），「开发者模板」承载全覆盖验收（2026-09-24
 // 模板要覆盖每个特性——含单键/文本+键混排/组合键/功能键/光标/⌫/[open:]）。
 $("btnCustomTemplate").addEventListener("click", () => {
+    // 程序赋值不触发 input 事件：手动置脏+吸收，贴完模板编辑器立即可
+    // 见（保存条「保存」也才带得上）。
     $("customJson").value = CK_TEMPLATE;
+    ckMarkDirty(true);
+    ckAbsorbJson();
 });
 
 $("btnCustomTemplateDev").addEventListener("click", () => {
@@ -3666,6 +4040,8 @@ $("btnCustomTemplateDev").addEventListener("click", () => {
             ],
         ],
     }, null, 2);
+    ckMarkDirty(true);
+    ckAbsorbJson();
 });
 
 $("btnCheckUpdate").addEventListener("click", () => call("checkUpdate", $("updateSource").value));
@@ -4019,7 +4395,7 @@ $("btnCustomDocs").addEventListener("click", () => call("openDocs"));
 
 /* ===== #39-12 定制按键编辑器（三级页，免 JSON）============================
  * 数据：ckRows = [[cell,...],[],[]]（cell {t,tap,note,span?,color?}），进入
- * 页面时从 state.custom.json 载入；「保存全部」校验后走同一条 saveCustom
+ * 页面时从 state.custom.json 载入；保存条「保存」校验后走同一条 saveCustom
  * 桥（JSON 兜底与编辑器共享真相源，textarea 同步刷新）。
  * tap 的可视化构造：文本/单键/组合键/高级 DSL 四型；编辑已有键时按 tap
  * 内容反猜型别（ckTapParse），切型重造。 */
@@ -4078,6 +4454,10 @@ let spaceHoldTextRaw = "";
 let ckSel = null;   // 正在编辑的位置 {r, c, isNew}
 let ckDraft = null; // 表单草稿
 let ckDirty = false;
+// 语言键盘定制段（langKeys：{layout:{key:{alt,up,down}}}）：与 ckRows
+// 同一脏态草稿、保存条随子页各自触发提交（分页保存）。来源是 customJson
+// textarea 的 JSON（state 推送或用户粘贴），编辑器改动写回草稿。
+let ckLangKeys = {};
 let ckLeaveTarget = null;   // 脏态离开确认的目标页
 
 /** 脏态驱动的保存条：变更必须让用户看得见（用户验收实录）。
@@ -4122,8 +4502,12 @@ function ckSettingAnchors() {
             const control = row.querySelector("select[id], input[id]:not([type=hidden]), button[id], [id]");
             const id = (control && control.id) || row.id;
             if (!id) return;
-            const label = (row.querySelector(".row-label span:not(small), .row-label")?.childNodes[0]?.textContent ||
-                row.getAttribute("aria-label") || id).trim().slice(0, 16);
+            // 可选链要贯穿索引访问（x?.childNodes[0] 在 childNodes 缺失
+            // 时仍会炸 reading 0）：文本首子节点统一走安全取值。
+            const labelEl = row.querySelector(".row-label span:not(small), .row-label");
+            const labelText = labelEl && labelEl.childNodes && labelEl.childNodes[0]
+                ? labelEl.childNodes[0].textContent : "";
+            const label = (labelText || row.getAttribute("aria-label") || id).trim().slice(0, 16);
             if (!label) return;
             out.push([id, `${pageTitle} · ${label}`]);
         });
@@ -4142,6 +4526,11 @@ function ckTapParse(tap) {
     // [panel:x]（#50 打开键盘面板，与长按空格动作同域）。
     const panel = /^\[panel:(clipboard|favorites|edit|control)\]$/.exec(String(tap || "").trim().toLowerCase());
     if (panel) return { mode: "panel", panel: panel[1] };
+    // [edit:x]（语言键盘定制/长按空格的「动作」类型：编辑操作枚举）。
+    const edit = /^\[edit:(\w+)\]$/.exec(String(tap || "").trim());
+    if (edit && CK_EDIT_OPS.some(([op]) => op === edit[1])) {
+        return { mode: "op", op: edit[1] };
+    }
     const m = /^\[([a-z0-9+]+)\]$/.exec(String(tap || "").trim().toLowerCase());
     if (m) {
         const parts = m[1].split("+");
@@ -4171,6 +4560,7 @@ function ckTapFromDraft(d) {
         return id ? "[setting:" + id + "]" : "";
     }
     if (d.mode === "panel") return "[panel:" + (d.panel || "clipboard") + "]";
+    if (d.mode === "op") return "[edit:" + (d.op || "copy") + "]";
     if (d.mode === "single") return d.single ? "[" + d.single + "]" : "";
     if (d.mode === "combo") {
         const mods = CK_MODS.filter(([name]) => d.mods.has(name)).map(([name]) => name);
@@ -4184,9 +4574,15 @@ function ckLoad() {
     try {
         const parsed = JSON.parse($("customJson").value || "null");
         if (parsed && parsed.version === 1 && Array.isArray(parsed.rows)) rows = parsed.rows;
+        // 语言键盘定制段同步进草稿（rows 为空模板时 langKeys 仍独立生效）。
+        ckLangKeys = parsed && parsed.langKeys && typeof parsed.langKeys === "object"
+            && !Array.isArray(parsed.langKeys) ? parsed.langKeys : {};
     } catch (_) { /* textarea 空/坏 JSON → 模板 */ }
     if (!rows || !rows.some(row => row && row.length)) rows = JSON.parse(CK_TEMPLATE).rows;
     ckRows = [0, 1, 2].map(i => Array.isArray(rows[i]) ? rows[i].slice() : []);
+    // 草稿来源就是本 textarea：对齐投影基准，进符号页时按草稿重新
+    // 投影（统一为缩进格式）而不是被当成「手上有更新」再吸收一遍。
+    ckJsonProjected = $("customJson").value;
 }
 
 /** 编辑器默认表（用户裁定 2026-10-03 二轮）：三行填满、大多数人打开
@@ -4365,12 +4761,25 @@ function ckRenderRows(skipFit) {
             const held = ckDrag && ckDrag.cell === cell && ckDrag.chip;
             const chip = held || document.createElement("button");
             chip.type = "button";
-            const isHue = /^h\d+$/.test(cell.color || "");
-            chip.className = "ck-chip" + (!isHue && cell.color ? " ck-" + cell.color : "");
+            // #61：自定义色三种编码统一渲染——hN（存量，s 缺省 65）/
+            // hNsN（编辑器现行编码，此前这里不识别、走类名分支=没上色，
+            // codex #61 定位发现的存量不一致）/ #RRGGBB（新）。
+            const hueM = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color || "");
+            const hexM = /^#[0-9a-fA-F]{6}$/.test(cell.color || "");
+            const styled = hueM || hexM;
+            chip.className = "ck-chip" + (!styled && cell.color ? " ck-" + cell.color : "");
             if (cell.span === 2 || cell.span === 3) chip.dataset.span = String(cell.span);
-            if (isHue) {
-                chip.style.background = "hsl(" + cell.color.slice(1) + ", 65%, 45%)";
-                chip.style.borderColor = "hsl(" + cell.color.slice(1) + ", 65%, 35%)";
+            if (styled) {
+                if (hexM) {
+                    chip.style.background = cell.color;
+                    chip.style.borderColor = cell.color;
+                    chip.style.color = feelInkOn(cell.color);
+                }
+                else {
+                    const s = hueM[2] != null ? hueM[2] : 65;
+                    chip.style.background = "hsl(" + hueM[1] + ", " + s + "%, 45%)";
+                    chip.style.borderColor = "hsl(" + hueM[1] + ", " + s + "%, 35%)";
+                }
                 chip.style.color = "#fff";
             }
             chip.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
@@ -4558,11 +4967,20 @@ function ckBindDrag(chip) {
         const ghost = document.createElement("div");
         ghost.className = "ck-ghost";
         ghost.textContent = cell.tap === "[backspace]" || cell.tap === "[bs]" ? "⌫" : cell.t;
-        const isHue = /^h\d+$/.test(cell.color || "");
-        if (!isHue && cell.color) ghost.classList.add("ck-" + cell.color);
-        else if (isHue) {
-            ghost.style.background = "hsl(" + cell.color.slice(1) + ", 65%, 45%)";
-            ghost.style.borderColor = "hsl(" + cell.color.slice(1) + ", 65%, 35%)";
+        const ghHue = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(cell.color || "");
+        const ghHex = /^#[0-9a-fA-F]{6}$/.test(cell.color || "");
+        if (!ghHue && !ghHex && cell.color) ghost.classList.add("ck-" + cell.color);
+        else if (ghHue || ghHex) {
+            if (ghHex) {
+                ghost.style.background = cell.color;
+                ghost.style.borderColor = cell.color;
+                ghost.style.color = feelInkOn(cell.color);
+            }
+            else {
+                const s = ghHue[2] != null ? ghHue[2] : 65;
+                ghost.style.background = "hsl(" + ghHue[1] + ", " + s + "%, 45%)";
+                ghost.style.borderColor = "hsl(" + ghHue[1] + ", " + s + "%, 35%)";
+            }
             ghost.style.color = "#fff";
         }
         if (cell.span === 2 || cell.span === 3) ghost.style.minWidth = rect.width + "px";
@@ -4690,6 +5108,115 @@ function ckOpenNew(r) {
     ckOpenModal(true);
 }
 
+/** 语言键盘键的虚拟按键槽 draft 互转：槽值是 tap DSL 串（含新
+ *  [edit:x]），「键盘默认」= 未设置。 */
+function ckLangSlotParse(tap) {
+    // 三态：undefined/null=未设置（def）；""=显式关闭（none）；其余反猜型别。
+    if (tap === undefined || tap === null) return { mode: "def" };
+    if (tap === "") return { mode: "none" };
+    const parsed = ckTapParse(tap);
+    return { ...parsed, dsl: tap };
+}
+
+/** 语言键盘键编辑器表单（#60 定制按键升级）：固定行（单击/长按不可
+ *  改）+ 角标 + 上滑/下滑两小节。每槽类型集 = 键盘默认/关闭/动作/
+ *  CK_MODES；槽 draft 存 d.up/d.down（各是 ckTapParse 形态）。 */
+function ckBuildLangKeyForm(body, d) {
+    const isPunct = d.langKey === ".";
+    const lock = document.createElement("div");
+    lock.className = "ck-row2 ck-row2-bare";
+    lock.innerHTML = '<div class="ck-lang-lock"><span class="ck-lang-k">'
+        + (isPunct ? "，" : d.langKey.toUpperCase())
+        + '</span><span>' + t(isPunct ? "ck.lang.lockPunct" : "ck.lang.lock")
+            .replace("{0}", d.langKey) + "</span></div>";
+    body.append(lock);
+
+    if (!isPunct) {
+        const alt = document.createElement("input");
+        alt.className = "ck-input";
+        alt.value = d.alt || "";
+        const defAlt = ckLangDefaultAlt(d.langLay, d.langKey);
+        alt.placeholder = t("ck.lang.altPlaceholder").replace("{0}", defAlt);
+        alt.maxLength = 3;
+        alt.addEventListener("input", () => { d.alt = alt.value.trim(); });
+        body.append(ckField(t("ck.lang.alt"), alt));
+    }
+
+    for (const [slot, labelKey] of [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]) {
+        const sec = document.createElement("div");
+        sec.className = "ck-lang-sec";
+        const head = document.createElement("div");
+        head.className = "ck-lang-sec-t";
+        const title = document.createElement("span");
+        title.textContent = t(labelKey);
+        const cur = document.createElement("span");
+        cur.className = "ck-lang-sec-cur";
+        const refreshCur = () => {
+            const tap = ckTapFromDraft(d[slot]);
+            cur.textContent = tap ? tap : t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
+                .replace("{0}", d.langKey.toUpperCase());
+            cur.classList.toggle("set", !!tap);
+        };
+        head.append(title, cur);
+        sec.append(head);
+
+        const modeList = [["def", "ck.f.mode.def"], ["none", "ck.f.mode.none"],
+            ...CK_MODES];
+        const modeSel = document.createElement("select");
+        modeSel.className = "ck-input";
+        modeList.forEach(([value, labelKey2]) => {
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = t(labelKey2);
+            modeSel.append(opt);
+        });
+        modeSel.value = modeList.some(([v]) => v === d[slot].mode) ? d[slot].mode : "def";
+        modeSel.addEventListener("change", () => {
+            const m = modeSel.value;
+            d[slot] = m === "def" ? { mode: "def" }
+                : m === "none" ? { mode: "none" }
+                : { mode: m, ...(m === "op" ? { op: "copy" }
+                    : m === "panel" ? { panel: "clipboard" }
+                    : m === "single" ? { single: "esc" }
+                    : m === "combo" ? { comboKey: "s", mods: new Set(["ctrl"]) }
+                    : m === "text" ? { text: "" }
+                    : m === "open" ? { open: "" }
+                    : m === "setting" ? { setting: "" }
+                    : m === "advanced" ? { dsl: "" }
+                    : {}) };
+            ckBuildForm(); // 整体重建（ckBuildForm 会清空 body 再走 langkey 分支）
+        });
+        sec.append(ckField(t("ck.f.kind"), modeSel));
+
+        if (d[slot].mode !== "def" && d[slot].mode !== "none") {
+            const holder = document.createElement("div");
+            sec.append(holder);
+            // 槽 draft 直通：ckBuildAction 的监听写到 d[slot] 上。
+            ckBuildAction(holder, d[slot]);
+        }
+        body.append(sec);
+    }
+}
+
+/** 打开语言键盘键编辑器（layout id + 键字符）。 */
+function openLangKeyEditor(lay, key) {
+    ckEditorTarget = "langkey";
+    ckSel = null;
+    const table = (ckLangKeys[lay] = ckLangKeys[lay] || {});
+    const cell = table[key] || {};
+    ckDraft = {
+        langLay: lay, langKey: key, alt: cell.alt || "",
+        up: ckLangSlotParse(cell.up), down: ckLangSlotParse(cell.down),
+        t: "", text: "", single: "esc", comboKey: "s",
+        mods: new Set(["ctrl"]), open: "", setting: "", panel: "clipboard",
+        dsl: "", color: "", note: "", span: 0,
+    };
+    ckBuildForm();
+    ckOpenModal(false);
+    document.getElementById("ckModalTitle").textContent =
+        t("ck.lang.editTitle").replace("{0}", key === "." ? "，" : key.toUpperCase());
+}
+
 /** #50 长按空格=虚拟定制键：与定制键同一编辑器（类型+动作，无键面
  *  /颜色/备注），保存走 setSpaceHoldTap 桥。 */
 function openSpaceHoldEditor() {
@@ -4809,6 +5336,12 @@ function ckBuildForm() {
 
     // 顺序：键面文案 -> 类型下拉 -> 类型输入控件 -> 颜色 -> 备注。
     // 长按空格是虚拟键（无键面/颜色/备注），只保留类型与动作。
+    // 语言键盘键（langkey）：固定行 + 角标 + 上滑/下滑两个虚拟按键
+    // 小节（每槽一套类型下拉+参数，类型集含「键盘默认」）。
+    if (ckEditorTarget === "langkey") {
+        ckBuildLangKeyForm(body, d);
+        return;
+    }
     if (ckEditorTarget === "cell") {
         const tInput = document.createElement("input");
         tInput.id = "ckT";
@@ -4871,14 +5404,41 @@ function ckBuildForm() {
         return;
     }
     const HUE_RE = /^h\d{1,3}(?:s\d{1,3})?$/;
+    const HEX_RE = /^#[0-9a-fA-F]{6}$/;
     const isCustomHue = HUE_RE.test(d.color || "");
-    const colorSeg = ckSegment([["", t("ck.color.default")], ["custom", t("ck.color.custom")]],
-        isCustomHue ? "custom" : "", v => {
-            if (v === "custom") { if (!HUE_RE.test(d.color || "")) d.color = "h210s65"; }
-            else d.color = "";
+    // #61：定制键色第三档「色号」——存 #RRGGBB（键盘侧直上 style），
+    // 亮色键帽不再被 hNsN 的固定 l=45 卡住。
+    const isCustomHex = HEX_RE.test(d.color || "");
+    const colorSeg = ckSegment([["", t("ck.color.default")],
+        ["custom", t("ck.color.custom")], ["hex", t("ck.color.hex")]],
+        isCustomHex ? "hex" : (isCustomHue ? "custom" : ""), v => {
+            if (v === "custom") {
+                if (!HUE_RE.test(d.color || "")) d.color = "h210s65";
+            } else if (v === "hex") {
+                if (!HEX_RE.test(d.color || "")) d.color = "#FF8A00";
+            } else d.color = "";
             ckBuildForm();
         });
     body.append(ckField(t("ck.f.color"), colorSeg, "ck-row-color"));
+    if (isCustomHex) {
+        const hexWrap = document.createElement("div");
+        hexWrap.className = "hex-wrap";
+        const hexSwatch = document.createElement("span");
+        hexSwatch.className = "hex-swatch";
+        hexSwatch.style.background = d.color;
+        const hexInput = document.createElement("input");
+        hexInput.type = "text";
+        hexInput.className = "hex-input";
+        hexInput.value = d.color.toUpperCase();
+        hexInput.maxLength = 7;
+        hexInput.spellcheck = false;
+        hexInput.addEventListener("input", () => {
+            const v = hexInput.value.trim();
+            if (HEX_RE.test(v)) { d.color = v.toUpperCase(); hexSwatch.style.background = d.color; }
+        });
+        hexWrap.append(hexSwatch, hexInput);
+        body.append(ckField(t("ck.color.hexLabel"), hexWrap, "ck-row-hexcolor"));
+    }
     if (isCustomHue) {
         // 双滑块：色调（全谱渐变轨道）+ 饱和度（灰->纯色，色相联动）。
         const parts = /^h(\d{1,3})(?:s(\d{1,3}))?$/.exec(d.color) || [null, "210", "65"];
@@ -4925,14 +5485,31 @@ function ckBuildForm() {
     body.append(ckField(t("ck.f.note"), noteInput));
 }
 
-function ckBuildAction(holder) {
+function ckBuildAction(holder, target) {
     holder.textContent = "";
-    const d = ckDraft;
-    if (d.mode === "text") {
+    // target：虚拟按键槽（语言键盘的上滑/下滑各持一份独立 draft）；
+    // 缺省 ckDraft（定制键/长按空格）。
+    const d = target || ckDraft;
+    if (d.mode === "op") {
+        // 「动作」= 编辑操作枚举（[edit:x]）：与文本/组合等类型平级，
+        // 参数是一个语义下拉（撤销/复制/光标移动…），执行映射在
+        // keyboard.js runEditStep。
+        const sel = document.createElement("select");
+        sel.className = "ck-input";
+        CK_EDIT_OPS.forEach(([value, labelKey]) => {
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = t(labelKey);
+            sel.append(opt);
+        });
+        sel.value = CK_EDIT_OPS.some(([v]) => v === d.op) ? d.op : "copy";
+        sel.addEventListener("change", () => { d.op = sel.value; });
+        holder.append(ckField(t("ck.f.op"), sel));
+    } else if (d.mode === "text") {
         const input = document.createElement("input");
         input.id = "ckText";
         input.className = "ck-input";
-        input.value = d.text;
+        input.value = d.text || "";
         input.placeholder = t("ck.f.text");
         input.addEventListener("input", () => { d.text = input.value; });
         holder.append(ckField(t("ck.f.mode.text"), input));
@@ -4993,7 +5570,7 @@ function ckBuildAction(holder) {
         presetSel.addEventListener("change", () => {
             if (!presetSel.value) return;
             d.open = presetSel.value;
-            if (!d.t.trim()) {
+            if (typeof d.t === "string" && !d.t.trim()) {
                 d.t = (CK_OPEN_PRESETS.find(p => p.uri === presetSel.value) || {}).t || "";
             }
             ckBuildForm();
@@ -5022,7 +5599,7 @@ function ckBuildAction(holder) {
         sel.value = anchors.some(([id]) => id === d.setting) ? d.setting : "";
         sel.addEventListener("change", () => {
             d.setting = sel.value;
-            if (!d.t.trim()) {
+            if (typeof d.t === "string" && !d.t.trim()) {
                 const found = anchors.find(([id]) => id === sel.value);
                 if (found) d.t = found[1].slice(0, 6);
             }
@@ -5046,7 +5623,8 @@ function ckBuildAction(holder) {
         sel.value = targets.some(([value]) => value === d.panel) ? d.panel : "clipboard";
         sel.addEventListener("change", () => {
             d.panel = sel.value;
-            if (!d.t.trim()) {
+            // 键面文案联动只属定制键（语言键的槽 draft 无 t 字段）。
+            if (typeof d.t === "string" && !d.t.trim()) {
                 const found = targets.find(([value]) => value === sel.value);
                 if (found) d.t = found[1].slice(0, 6);
             }
@@ -5074,7 +5652,7 @@ function ckBuildAction(holder) {
         const input = document.createElement("input");
         input.id = "ckDsl";
         input.className = "ck-input";
-        input.value = d.dsl;
+        input.value = d.dsl || "";
         input.placeholder = t("ck.f.dsl");
         input.addEventListener("input", () => { d.dsl = input.value; });
         const row = ckField(null, input);
@@ -5111,7 +5689,8 @@ $("ckApply").addEventListener("click", () => {
     if (d.mode === "panel" && !["clipboard", "favorites", "edit", "control"].includes(d.panel)) {
         return setNote("ckEditNote", t("ck.err.panel"));
     }
-    const tap = ckTapFromDraft(d);
+    // 语言键的 tap 在分支内按槽自取（def/none 槽没有 tap 概念）。
+    const tap = ckEditorTarget === "langkey" ? " " : ckTapFromDraft(d);
     if (!tap) return setNote("ckEditNote", t("ck.err.tap"));
     // tap 长度与键盘侧 CUSTOM_LIMITS.tapChars 同限（128）：长链接是 open
     //  型主用途，放行后键盘 hello 采纳时整表静默拒收=全部定制键消失。
@@ -5129,6 +5708,42 @@ $("ckApply").addEventListener("click", () => {
         const el = document.getElementById("spaceHoldSummary");
         if (el) el.textContent = spaceHoldSummary(spaceHoldRaw);
         ckCloseModal();
+        return;
+    }
+    // 语言键盘键：draft 两槽（up/down）+ 角标写进 langKeys 草稿。
+    // 槽「关闭」落空串（键盘侧 tap==="" 吞掉手势），「键盘默认」不落。
+    if (ckEditorTarget === "langkey") {
+        const lay = d.langLay, key = d.langKey;
+        for (const slot of ["up", "down"]) {
+            const s = d[slot] || {};
+            if (s.mode === "open") {
+                const uri = (s.open || "").trim();
+                const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) &&
+                    !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
+                if (!ok) return setNote("ckEditNote", t("ck.err.open"));
+            }
+            if (s.mode === "setting") {
+                const id = (s.setting || "").trim();
+                if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
+                    return setNote("ckEditNote", t("ck.err.setting"));
+                }
+            }
+        }
+        const table = (ckLangKeys[lay] = ckLangKeys[lay] || {});
+        const cell = {};
+        if (d.alt) cell.alt = [...d.alt].slice(0, 3).join("");
+        for (const slot of ["up", "down"]) {
+            const m = d[slot] ? d[slot].mode : "def";
+            if (m === "def") continue;
+            cell[slot] = m === "none" ? "" : ckTapFromDraft(d[slot]);
+        }
+        if (Object.keys(cell).length) table[key] = cell;
+        else delete table[key];
+        if (!Object.keys(table).length) delete ckLangKeys[lay];
+        ckCloseModal();
+        renderLangKb(lay);
+        refreshLangCounts();
+        ckMarkDirty(true);
         return;
     }
     const cell = { t: d.t.trim(), tap, note: d.note || "" };
@@ -5181,13 +5796,165 @@ $("ckDelModalMask").addEventListener("click", () => $("ckDelCancel").click());
 $("ckModalCancel").addEventListener("click", () => ckCloseModal());
 $("ckModalMask").addEventListener("click", () => ckCloseModal());
 
-$("ckSave").addEventListener("click", () => {
-    const json = JSON.stringify({ version: 1, rows: ckRows });
-    call("saveCustom", json, $("customEnabled").checked);
-    $("customJson").value = json;
-    ckMarkDirty(false);
-    setNote("ckSaveNote", t("ck.note.saved"));
+/* --- 语言键盘四级页（cklang）：布局预览 + 点键编辑 ---------------------- */
+
+// 当前打开的语言键盘 layout id（pinyin/dp/english/french/russian）。
+let ckLangCurrent = "pinyin";
+
+/** 角标默认值（LANG_KB 摘要；share 引用同布局的默认表）。 */
+function ckLangDefaultAlt(lay, key) {
+    const conf = LANG_KB[lay] || {};
+    const alts = conf.alts || (LANG_KB[conf.share] && LANG_KB[conf.share].alts) || {};
+    const v = alts[key];
+    return v == null ? "" : String(Array.isArray(v) ? v[0] : v);
+}
+
+/** 渲染语言键盘预览：三行字母 + 底行（锁定键仅展示），可定制键
+ *  （字母 + 逗号）点击进编辑器；已定制键描边 + 圆点标记。 */
+function renderLangKb(lay) {
+    ckLangCurrent = lay;
+    const host = document.getElementById("cklangKb");
+    if (!host) return;
+    const conf = LANG_KB[lay];
+    if (!conf) { host.textContent = ""; return; }
+    const title = document.getElementById("cklangTitle");
+    if (title) title.textContent = t(conf.title);
+    const table = ckLangKeys[lay] || {};
+    host.textContent = "";
+    const rows = conf.rows.map(String);
+    rows.forEach((rowKeys, idx) => {
+        const rowEl = document.createElement("div");
+        rowEl.className = "ck-lang-row" + (idx === 1 ? " ck-lang-indent" : "");
+        if (idx === 2) {
+            // 第三行左键复刻真实键盘（LANG_KB.leftKey）：中文键盘「分词」
+            // / 非中文键盘 Shift 图标（⇧ 近似 ICONS.shift）。
+            const shift = document.createElement("span");
+            shift.className = "ck-lang-key ck-lang-key-sp ck-lang-w15";
+            shift.textContent = conf.leftKey === "shift" ? "\u21e7" : t("ck.lang.shiftKey");
+            rowEl.append(shift);
+        }
+        [...rowKeys].forEach(key => rowEl.append(ckLangKeyEl(lay, key, table[key])));
+        if (idx === 2) {
+            const bs = document.createElement("span");
+            bs.className = "ck-lang-key ck-lang-key-sp ck-lang-w2";
+            bs.textContent = "⌫";
+            rowEl.append(bs);
+        }
+        host.append(rowEl);
+    });
+    // 底行：[123][，][空格+mic][中/英][⏎]——只有逗号键可定制。
+    const bottom = document.createElement("div");
+    bottom.className = "ck-lang-row";
+    const locked = (label, key) => {
+        const el = document.createElement("span");
+        el.className = "ck-lang-key ck-lang-key-sp" + (key || "");
+        el.textContent = label;
+        return el;
+    };
+    bottom.append(locked("123", " ck-lang-w2"));
+    bottom.append(ckLangKeyEl(lay, ".", table["."]));
+    bottom.append(locked("␣", " ck-lang-w3"));
+    bottom.append(locked(t("ck.lang.cnEn")));
+    bottom.append(locked("⏎", " ck-lang-w2"));
+    host.append(bottom);
+}
+
+function ckLangKeyEl(lay, key, cell) {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "ck-lang-key";
+    const isPunct = key === ".";
+    el.innerHTML = '<span class="ck-lang-sub"></span><span class="ck-lang-main"></span>';
+    el.querySelector(".ck-lang-main").textContent = isPunct ? "，" : key;
+    // 标点槽默认角标复刻真机中文态：主字「，」下沉 + 顶部居中角标「。」
+    // （上滑值）；字母键取布局 alts 默认表。定制值恒优先。
+    const sub = cell && cell.alt != null ? cell.alt
+        : (isPunct ? "。" : ckLangDefaultAlt(lay, key));
+    el.querySelector(".ck-lang-sub").textContent = sub;
+    if (cell && Object.keys(cell).length) el.classList.add("ck-lang-custom");
+    el.setAttribute("aria-label", t(isPunct ? "ck.lang.editPunct" : "ck.lang.editKey")
+        .replace("{0}", isPunct ? "，" : key.toUpperCase()));
+    el.addEventListener("click", () => openLangKeyEditor(lay, key));
+    return el;
+}
+
+/** 三级页入口行的已定制计数。 */
+function refreshLangCounts() {
+    for (const lay of Object.keys(LANG_KB)) {
+        const el = document.getElementById("cklangCount-" + lay);
+        if (!el) continue;
+        const n = ckLangKeys[lay] ? Object.keys(ckLangKeys[lay]).length : 0;
+        el.textContent = n ? t("ck.lang.count", { count: n }) : t("ck.lang.default");
+    }
+}
+
+/* 入口导航：语言键盘列表 / 符号页 / 整键盘恢复。 */
+document.querySelectorAll("[data-cklang]").forEach(row => {
+    row.addEventListener("click", () => {
+        ckLangCurrent = row.dataset.cklang;
+        showPage("cklang");
+        renderLangKb(ckLangCurrent);
+    });
 });
+document.getElementById("ckSymbolEntry").addEventListener("click", () => showPage("cksymbol"));
+document.getElementById("cklangReset").addEventListener("click", () => {
+    delete ckLangKeys[ckLangCurrent];
+    renderLangKb(ckLangCurrent);
+    refreshLangCounts();
+    ckMarkDirty(true);
+    setNote("ckSaveNote", t("ck.lang.resetDone"));
+});
+
+/* ===== 草稿的单一真相源与三条同源路径 ====================================
+ * 草稿（ckRows + ckLangKeys）是唯一真相：保存条「保存」「保存定制」、
+ * 「高级」textarea 的投影/吸收都走同一打包口径。此前「保存定制」直存
+ * textarea 内容不带 langKeys，会把语言键盘定制静默清掉；textarea 也不
+ * 随编辑器改动刷新，「高级」看到的不是当前实际（验收实录）。 */
+function ckPackJson() {
+    const pack = { version: 1, rows: ckRows };
+    if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
+    return pack;
+}
+/** 最近一次投影/保存写进 textarea 的串：区分「textarea 手上有更新」
+ *  （≠投影值 → 吸收进草稿）与「编辑器改了、textarea 是旧的」（==投影
+ *  值 → 投影新草稿）。 */
+let ckJsonProjected = "";
+function ckSyncJsonView() {
+    const ta = $("customJson");
+    if (document.activeElement === ta) return;
+    if (ta.value !== ckJsonProjected) { ckAbsorbJson(); return; }
+    ta.value = ckJsonProjected = JSON.stringify(ckPackJson(), null, 2);
+}
+/** textarea → 草稿吸收（input 防抖/进页/保存前调用）：能解析即更新
+ *  ckRows/ckLangKeys；坏 JSON 返回 false（保存时就地报错）。与 ckLoad
+ *  不同：rows 全空不回落模板——手改清空是显式意图。 */
+function ckAbsorbJson() {
+    try {
+        const parsed = JSON.parse($("customJson").value || "null");
+        if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.rows)) return false;
+        ckRows = [0, 1, 2].map(i => Array.isArray(parsed.rows[i]) ? parsed.rows[i].slice() : []);
+        ckLangKeys = parsed.langKeys && typeof parsed.langKeys === "object"
+            && !Array.isArray(parsed.langKeys) ? parsed.langKeys : {};
+        if (currentPage === "cksymbol") ckRenderRows();
+        return true;
+    } catch (_) { return false; }
+}
+let ckJsonAbsorbTimer = null;
+$("customJson").addEventListener("input", () => {
+    ckMarkDirty(true);
+    clearTimeout(ckJsonAbsorbTimer);
+    ckJsonAbsorbTimer = setTimeout(ckAbsorbJson, 250);
+});
+/** 统一保存链：序列化草稿 → saveCustom 桥 → 投影回 textarea（缩进
+ *  格式便于「高级」里阅读；桥参数同串，格式对 native 透明）。 */
+function ckSaveAll(noteId) {
+    const json = JSON.stringify(ckPackJson(), null, 2);
+    call("saveCustom", json, $("customEnabled").checked);
+    $("customJson").value = ckJsonProjected = json;
+    ckMarkDirty(false);
+    setNote(noteId, t("ck.note.saved"));
+}
+$("ckSave").addEventListener("click", () => ckSaveAll("ckSaveNote"));
 
 $("btnOpenCustomKeys").addEventListener("click", () => showPage("customkeys"));
 // 2026-09-30 验收拆分：模糊音/键盘选择收进三级页，input 页只留入口。

@@ -833,33 +833,33 @@ details summary {
 .tp-tag { font-size: 11px; color: var(--card-sub); }
 .tp-board { display: flex; flex-direction: column; gap: 5px; padding: 8px; border-radius: 8px;
     background-size: cover; background-position: center; }
-.tp-board-dark { background-color: hsl(var(--pv-hue, 160) calc(22% * var(--pv-sat, 1)) 12%);
+.tp-board-dark { background-color: hsl(var(--pv-hue, 160) calc(22% * var(--pv-sat, 1)) calc(12% + (100% - 12%) * 0.35 * var(--pv-bg-lt, 0)));
     background-image: var(--pv-bg-img-dark, none); }
-.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(32% * var(--pv-sat, 1)) 88%);
+.tp-board-light { background-color: hsl(var(--pv-hue, 160) calc(32% * var(--pv-sat, 1)) calc(88% + (100% - 88%) * 0.35 * var(--pv-bg-lt, 0)));
     background-image: var(--pv-bg-img-light, none); }
 .tp-row { display: flex; gap: 5px; }
 .tp-key { display: inline-flex; align-items: center; justify-content: center;
     width: 34px; height: 30px; border-radius: 5px; font-size: 14px; font-weight: 500; }
 /* 暗组键帽（/ 不透明度过底图）。 */
 .tp-board-dark .tp-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(16% * var(--pv-key-sat, var(--pv-sat, 1))) 37% / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(16% * var(--pv-key-sat, var(--pv-sat, 1))) calc(37% + (100% - 37%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #e8e8e8; }
 .tp-board-dark .tp-accent-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) 48% / var(--pv-key-alpha, 1));
-    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) 95%); }
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc(48% + (100% - 48%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(95% + (100% - 95%) * 0.75 * var(--pv-key-lt, 0))); }
 .tp-board-dark .tp-special-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) 26% / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc(26% + (100% - 26%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #e8e8e8; }
 /* 亮组键帽：对齐 keyboard.css html.theme-light 公式（键 38%/97%、
  * accent 62%/42%、special 42%/72%）。 */
 .tp-board-light .tp-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(38% * var(--pv-key-sat, var(--pv-sat, 1))) 97% / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(38% * var(--pv-key-sat, var(--pv-sat, 1))) calc(97% + (100% - 97%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #181818; }
 .tp-board-light .tp-accent-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) 42% / var(--pv-key-alpha, 1));
-    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) 95%); }
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(62% * var(--pv-key-sat, var(--pv-sat, 1))) calc(42% + (100% - 42%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
+    color: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(45% * var(--pv-key-sat, var(--pv-sat, 1))) calc(95% + (100% - 95%) * 0.75 * var(--pv-key-lt, 0))); }
 .tp-board-light .tp-special-key {
-    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) 72% / var(--pv-key-alpha, 1));
+    background: hsl(var(--pv-key-hue, var(--pv-hue, 160)) calc(42% * var(--pv-key-sat, var(--pv-sat, 1))) calc(72% + (100% - 72%) * 0.75 * var(--pv-key-lt, 0)) / var(--pv-key-alpha, 1));
     color: #181818; }
 .preset-swatches { display: flex; gap: 10px; align-items: center; flex: none; }
 .preset-swatch {
@@ -1002,14 +1002,70 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
 /* ===== #39-12 定制按键页布局：header + 滚动 main + 流内保存条 =====
  * 保存条占用的空间从滚动区扣除（不 fixed 不遮挡——fixed+垫层会挡住
  * 页底内容，用户两轮实录）。body 底 padding 兜 safe area。 */
-.page[data-page="customkeys"] {
+.page[data-page="customkeys"],
+.page[data-page="cksymbol"],
+.page[data-page="cklang"] {
     display: flex; flex-direction: column;
     height: calc(100dvh - 16px - max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)));
 }
+
+/* ===== 语言键盘定制页（cklang）：布局预览 ===== */
+.ck-lang-kb { display: flex; flex-direction: column; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px 8px; }
+.ck-lang-row { display: flex; gap: 5px; justify-content: center; }
+/* 第二行 a–l 缩进对齐（复刻键盘 kb-indent）。 */
+.ck-lang-indent { padding-left: 4.9%; }
+/* 键面布局复刻真实键盘（keyboard.css #39-3）：角标钉键顶 3px 水平
+ * 居中（left:0/right:0 + text-align）、主字沉键底（flex-end + 4px
+ * padding）——两者分离到键的两端不重叠；验收实录预览角标靠右、主字
+ * 垂直居中与真机形态不符。 */
+.ck-lang-key { position: relative; flex: 1; min-width: 0; height: 46px;
+    border: 1px solid transparent; border-radius: 8px;
+    background: var(--pill); color: var(--card-text);
+    font: 500 18px/1 system-ui, sans-serif; cursor: pointer;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    align-items: center; padding-bottom: 4px; }
+.ck-lang-key:active { filter: brightness(.95); }
+.ck-lang-key-sp { background: transparent; color: var(--card-sub);
+    font-size: 13px; font-weight: 600; cursor: default; }
+.ck-lang-w15 { flex: 1.5; } .ck-lang-w2 { flex: 2.05; } .ck-lang-w3 { flex: 3.2; }
+/* #61 色号行：色块 + 等宽输入框（与滑条同一行式风格）。 */
+.hex-wrap { display: flex; align-items: center; gap: 10px; }
+.hex-swatch { width: 46px; height: 30px; border-radius: 8px;
+    border: 1px solid var(--line, #8884); flex: none; }
+.hex-wrap .hex-input { width: 84px; font: 600 14px/1 ui-monospace, SFMono-Regular,
+    Menlo, Consolas, monospace; letter-spacing: .5px;
+    padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line, #8884);
+    background: var(--pill, #8882); color: inherit; text-transform: uppercase; }
+.ck-lang-sub { position: absolute; left: 0; right: 0; top: 3px;
+    text-align: center;
+    font-size: 9.5px; color: var(--card-sub); font-weight: 400; }
+.ck-lang-custom { border-color: var(--accent); }
+.ck-lang-custom::after { content: ""; position: absolute; left: 4px; top: 4px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+/* 编辑弹层：语言键固定行 + 上滑/下滑小节 */
+.ck-lang-lock { display: flex; align-items: center; gap: 10px;
+    background: var(--panel); border-radius: 10px; padding: 9px 12px;
+    font-size: 13.5px; color: var(--card-sub); }
+.ck-lang-lock .ck-lang-k { background: var(--pill); color: var(--card-text);
+    border-radius: 6px; min-width: 30px; height: 30px;
+    display: grid; place-items: center; font-weight: 600; font-size: 14px; }
+.ck-lang-sec { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.ck-lang-sec-t { display: flex; align-items: center; gap: 8px;
+    font-size: 13.5px; font-weight: 650; margin: 2px 0 4px; }
+.ck-lang-sec-cur { margin-left: auto; font-weight: 400; font-size: 12px;
+    color: var(--card-sub); max-width: 60%; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+.ck-lang-sec-cur.set { color: var(--accent-text); font-weight: 600; }
 /* flex 列容器会吞掉 page-head 的块级宽度（shrink-to-fit 后整体右移，
  * 与其他页左对齐不一致——用户实录）：显式拉满。 */
-.page[data-page="customkeys"] > .page-head { width: 100%; }
-.page[data-page="customkeys"] > main {
+.page[data-page="customkeys"] > .page-head,
+.page[data-page="cksymbol"] > .page-head,
+.page[data-page="cklang"] > .page-head { width: 100%; }
+.page[data-page="customkeys"] > main,
+.page[data-page="cksymbol"] > main,
+.page[data-page="cklang"] > main {
     flex: 1; min-height: 0; overflow-y: auto;
     width: 100%; max-width: 680px; margin: 0 auto;
     padding-bottom: 4px;
@@ -1162,12 +1218,18 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
 
 /* 长按 chips 不触发文字选择/呼出菜单（用户实录）：交互元素禁选，
  * JSON textarea/input 保持可选可输。 */
-.page[data-page="customkeys"] {
+.page[data-page="customkeys"],
+.page[data-page="cksymbol"],
+.page[data-page="cklang"] {
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
 }
 .page[data-page="customkeys"] input,
-.page[data-page="customkeys"] textarea {
+.page[data-page="customkeys"] textarea,
+.page[data-page="cksymbol"] input,
+.page[data-page="cksymbol"] textarea,
+.page[data-page="cklang"] input,
+.page[data-page="cklang"] textarea {
     -webkit-user-select: text; user-select: text;
 }
 
