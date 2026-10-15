@@ -180,6 +180,41 @@ test('long-press 350ms locks caps', () => {
     equal(world.native.of('key').slice(-1)[0].args[0], 'a', 'unlock gives lowercase');
 });
 
+test('double-tap shift within 300ms locks caps (#63)', {since: '3.73.44'}, () => {
+    const world = fresh();
+    const shift = world.document.querySelector('.shift');
+    world.tap(shift);
+    world.clock.advance(250);
+    world.tap(shift);
+    assert(shift.classList.contains('locked'), 'second tap upgrades to locked');
+    world.tap(world.key('o'));
+    world.tap(world.key('k'));
+    equal(world.native.of('key').map(c => c.args[0]).join(''), 'OK', 'caps uppercase');
+    world.tap(shift);
+    world.tap(world.key('a'));
+    equal(world.native.of('key').slice(-1)[0].args[0], 'a', 'tap unlocks after double-tap lock');
+});
+
+test('two taps beyond the 300ms window toggle shift instead of locking (#63)', {since: '3.73.44'}, () => {
+    const world = fresh();
+    const shift = world.document.querySelector('.shift');
+    world.tap(shift);
+    world.clock.advance(400);
+    world.tap(shift);
+    assert(shift.classList.contains('locked') === false, 'no lock past the window');
+    assert(shift.classList.contains('active') === false, 'second tap cancels shift');
+});
+
+test('double-tap lock disabled falls back to plain toggling (#63)', {since: '3.73.44'}, () => {
+    const world = fresh({ doubleShiftLock: false });
+    const shift = world.document.querySelector('.shift');
+    world.tap(shift);
+    world.clock.advance(100);
+    world.tap(shift);
+    assert(shift.classList.contains('locked') === false, 'no lock when disabled');
+    assert(shift.classList.contains('active') === false, 'second tap cancels shift');
+});
+
 test('backspace repeats while held (390ms then 75ms cadence)', () => {
     const world = fresh();
     const backspace = [...world.document.querySelectorAll('.kb-special')].find(
@@ -6373,6 +6408,9 @@ test('armed qwerty shift joins control keys and sticky modifiers', {since: '3.27
     equal(ev[0].args[1], 1, 'META_SHIFT');
     assert(!shift.classList.contains('active'), 'combo consumed the armed shift');
     // Order independent: Ctrl sticky armed first, shift second.
+    // #63（3.73.44）起 shift 有 300ms 双击锁定：与前段 shift 操作之间
+    // 推进时钟，否则两段被误判为一次双击。
+    world.clock.advance(400);
     world.tap(world.document.querySelector('[data-ctrl="sticky-ctrl"]'));
     world.tap(shift);
     world.tap(world.key('c'));

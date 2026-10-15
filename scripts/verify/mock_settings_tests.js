@@ -131,6 +131,7 @@ class MockSettingsNative {
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
+    setDoubleShiftLock(...a) { this._rec('setDoubleShiftLock', a); }
     setKbHeight(...a) { this._rec('setKbHeight', a); }
     previewKeyboard(...a) { this._rec('previewKeyboard', a); }
     setBgImage(...a) { this._rec('setBgImage', a); }
@@ -230,6 +231,7 @@ const BASE_STATE = {
     notices: 'NOTICES',
     uiLanguage: 'auto',
     uiLocale: 'zh',
+    doubleShiftLock: true,
 };
 
 // ------------------------------------------------------------------- tests
@@ -1805,6 +1807,18 @@ test('flick swap toggle reflects state and commits setFlickSwap with the token',
     box.checked = true;
     box.listeners.find(l => l.type === 'change').handler({ target: box });
     equal(world.lastCall('setFlickSwap').args, [true, world.token], 'commit + token');
+});
+
+test('double shift lock toggle reflects state and commits setDoubleShiftLock (#63)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    equal(world.$('doubleShiftLock').checked, true, 'default on (#63)');
+    world.push({ ...BASE_STATE, doubleShiftLock: false });
+    equal(world.$('doubleShiftLock').checked, false, 'follows state');
+    const box = world.$('doubleShiftLock');
+    box.checked = false;
+    box.listeners.find(l => l.type === 'change').handler({ target: box });
+    equal(world.lastCall('setDoubleShiftLock').args, [false, world.token], 'commit + token');
 });
 
 test('feel card renders state values and commits each control with the token', () => {

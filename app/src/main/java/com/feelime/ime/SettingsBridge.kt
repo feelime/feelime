@@ -84,11 +84,17 @@ val FEEL_HOLD_STEPS = intArrayOf(200, 300, 350, 450, 600)
 const val PREF_FEEL_POPUP_SNAP = "feel_popup_snap"
 /** 上下滑方向互换（issue #29-2，默认关）：开=上滑大写/下滑小字符。 */
 const val PREF_FLICK_SWAP = "flick_swap"
+/** 双击 Shift 锁定大写（issue #63，默认开）：300ms 内两击升级为锁定。 */
+const val PREF_DOUBLE_SHIFT_LOCK = "double_shift_lock"
 const val PREF_CANDIDATE_FONT = "candidate_font"
 
 fun readFlickSwap(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_FLICK_SWAP, false)
+
+fun readDoubleShiftLock(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_DOUBLE_SHIFT_LOCK, true)
 
 /** 拼音字号档位：0=标准 1=大 2=特大（issue #8）。 */
 const val PREF_PREEDIT_FONT = "preedit_font"
@@ -848,6 +854,7 @@ class SettingsBridge(
             // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
             // 点开开关后 pushState 一到就弹回——「开了看不出开」。
             .put("flickSwap", readFlickSwap(context))
+            .put("doubleShiftLock", readDoubleShiftLock(context))
             .put("themeMode", readThemeMode(context))
             .put("themePreset", readThemePreset(context))
             .put("themeHue", readThemeHue(context))
@@ -1546,6 +1553,17 @@ class SettingsBridge(
     fun setFlickSwap(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_FLICK_SWAP, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 双击 Shift 锁定大写（issue #63，默认开）。 */
+    @JavascriptInterface
+    fun setDoubleShiftLock(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_DOUBLE_SHIFT_LOCK, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
