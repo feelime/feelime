@@ -6070,13 +6070,11 @@ document.addEventListener("focusin", (event) => {
     const el = event.target;
     if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return;
     if (typeof el.scrollIntoView !== "function") return;
-    // 延后一拍等 --app-ime-bottom 落到 body padding（insets 注入在
-    // 键盘动画起点，同帧滚动会少滚一截）。behavior 必须 instant：
-// smooth 依赖 rAF，键盘弹起窗口被挤压时 rAF 停摆——滚动静默不动
-// （AVD 实录，键盘页 rAF 停摆同类）。
-    // 同步先滚一次：键盘弹起的窗口冻结会整批丢 timer（AVD 实录），
-    // 只靠 setTimeout 兜底的话滚动静默失效。同步滚到位后 timer 重滚
-    // 幂等（insets padding 已落也只会微调）。
+    // 同步滚一次即可：insets 落定后的补滚由 native 注入脚本尾部承担
+    // （SetupActivity 的 ime 去抖注入里带 activeElement 重滚）。这里
+    // 再挂 setTimeout 二次滚曾是「注入重滚」存在前的兜底，现在冗余，
+    // 且延迟滚动会跟自动化/用户的后续点按竞态——落点滚动后 tap 落空
+    // 会把焦点点丢（1.3.11 门禁 9l 定罪）。behavior 必须 instant：
+// smooth 依赖 rAF，键盘弹起窗口被挤压时 rAF 停摆——滚动静默不动。
     el.scrollIntoView({ block: "center", behavior: "instant" });
-    setTimeout(() => el.scrollIntoView({ block: "center", behavior: "instant" }), 120);
 });

@@ -299,7 +299,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.42';
+    const KEYBOARD_VERSION = '3.73.43';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -4864,8 +4864,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             popupEl.style.width = '';
             this.showPopupCancelTip(false);
             if (cancel || popup?.cancelled) return;
-            // T9 弹层：literal 格（字母大小写 + 中行符号）直上屏，大小写
-            // 原样落；数字格 = 通配进引擎（与点按同义）。拼音里确认字母
+            // T9 弹层：literal 格（字母大小写 + 中行符号 + 数字格）直上屏，
+            // 原样落（数字格也字面落 editor——issue #62）。拼音里确认字母
             // 由滑动手势承担，不经弹层。
             if (popup?.enginePath) {
                 if (!popup.selected) return;

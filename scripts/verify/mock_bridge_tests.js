@@ -1038,7 +1038,7 @@ function touchWorld(overrides) {
     world.hello(overrides);
     return world;
 }
-test('missing key end is reconciled before its pending hold can open a ghost popup', () => {
+test('missing key end is reconciled before its pending hold can open a ghost popup', {since: '3.73.40'}, () => {
     for (const boundary of ['touchstart', 'touchmove', 'touchend']) {
         const world = touchWorld();
         const kb = world.context.testKeyboard;
@@ -1071,7 +1071,7 @@ test('missing key end is reconciled before its pending hold can open a ghost pop
     }
 });
 
-test('touch trace records ownership and faults without key or editor contents', () => {
+test('touch trace records ownership and faults without key or editor contents', {since: '3.73.40'}, () => {
     const world = touchWorld({ touchDiagnostics: true }), kb = world.context.testKeyboard;
     const q = world.key('q'), e = world.key('e');
     const a = touchPoint(1, 20, 20), b = touchPoint(2, 100, 20);
@@ -1091,7 +1091,7 @@ test('touch trace records ownership and faults without key or editor contents', 
     equal(off.native.of('diagEvent').length, 0, 'detailed trace is off by default');
 });
 
-test('heartbeat actually crosses the native diagnostic length gate', () => {
+test('heartbeat actually crosses the native diagnostic length gate', {since: '3.73.40'}, () => {
     const world = touchWorld();
     world.context.__diagErr = 'TypeError: popup state finalization failed';
     world.clock.advance(2500);
@@ -1100,7 +1100,7 @@ test('heartbeat actually crosses the native diagnostic length gate', () => {
     assert(line.length <= 1024 && line.includes('pop=0') && line.includes('popup state'), 'complete diagnostic fits new budget');
 });
 
-test('normal crossed touches leave no residue or false incident across 240 sequences', () => {
+test('normal crossed touches leave no residue or false incident across 240 sequences', {since: '3.73.40'}, () => {
     const world = touchWorld({ touchDiagnostics: true }), kb = world.context.testKeyboard;
     const q = world.key('q'), e = world.key('e');
     for (let n = 0; n < 240; n++) {
@@ -1124,7 +1124,7 @@ test('normal crossed touches leave no residue or false incident across 240 seque
         'complete normal event streams never report a fault');
 });
 
-test('cancelled stale same-key contact preserves the remaining legitimate hold', () => {
+test('cancelled stale same-key contact preserves the remaining legitimate hold', {since: '3.73.40'}, () => {
     const world = touchWorld(), kb = world.context.testKeyboard;
     const q = world.key('q');
     const a = touchPoint(1, 20, 20), b = touchPoint(2, 24, 20);
@@ -1138,7 +1138,7 @@ test('cancelled stale same-key contact preserves the remaining legitimate hold',
     assert(!kb.popup, 'B ends normally');
 });
 
-test('reused contact id cannot attach an old key timer to a new key', () => {
+test('reused contact id cannot attach an old key timer to a new key', {since: '3.73.40'}, () => {
     const world = touchWorld(), kb = world.context.testKeyboard;
     const q = world.key('q'), e = world.key('e'), h = world.key('h');
     const a = touchPoint(1, 20, 20), b = touchPoint(2, 100, 20);

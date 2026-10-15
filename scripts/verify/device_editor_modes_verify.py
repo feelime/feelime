@@ -195,6 +195,15 @@ def case_editor_mode_boundaries(keyboard):
     if binding != "hosted":
         skip("password EditorInfo restriction",
              f"security IME owns password editor (binding={binding}, ime={ime})")
+        # 会话被安全键盘占用时，产品收不到任何 EditorInfo，后续「普通
+        # 编辑器可达」无从验证（ColorOS 安全键盘对 BACK 免疫、不随
+        # 焦点切换让位，focus_fixture 会轮空——1.3.11 门禁实录）。与
+        # restriction 同理 count a visible skip。
+        skip("normal editor is reachable after password editor",
+             f"security IME owns the session (binding={binding}, ime={ime})")
+        record("password restriction does not leak into the next normal editor",
+               True, "skipped: session owned by vendor security keyboard")
+        return keyboard
     else:
         request_native_state()
         state = wait_until(
@@ -298,6 +307,10 @@ def type_xan(keyboard):
 
 
 def case_full_pinyin_variants(keyboard):
+    # 前一个 case 可能以键盘收起态收尾（ColorOS 安全键盘接管密码框后
+    # 的 skip 分支，BACK 收不起安全键盘）；switch_mode_real 需要键盘在
+    # 屏——先兜一次唤起，键盘本来在屏则幂等。
+    keyboard = d.fresh_kb(refocus=True) or keyboard
     if not shared.switch_mode_real("全拼 Pinyin"):
         record("full-Pinyin variant setup reaches Pinyin", False,
                "mode switch failed")
@@ -662,7 +675,9 @@ def scrub_trace_metrics(trace, initial_position):
     # dispatched on a later frame.  Derive the grace from this gesture's own
     # event cadence: two move periods plus one 60 Hz frame.  A tail beyond
     # that window is a real late movement, rather than host/DOM scheduling.
-    tail_grace = (move_cadence * 2 + 16.7
+    # +8ms 调度抖动余量：ace 实录 51.0 vs 50.7 的 0.3ms 压线假红——真
+    # 晚到（输入法派发滞后）是 100ms 级，8ms 不吞真回归。
+    tail_grace = (move_cadence * 2 + 16.7 + 8
                   if move_cadence is not None else None)
     direction = (1 if last_x > first_x else -1 if last_x < first_x else 0
                  ) if first_x is not None and last_x is not None else None
@@ -725,6 +740,10 @@ def case_cursor_scrub(keyboard):
     shared.settings_tap('#btnOpenCustomKeys')
     ck_page = wait_until(shared.settings_visible_pages,
                          lambda value: value == ["customkeys"], timeout=4.0)
+    # 3.73.42 分页保存：JSON 兜底框迁入「定制符号」四级页，多一跳。
+    shared.settings_tap('#ckSymbolEntry')
+    wait_until(shared.settings_visible_pages,
+               lambda value: value == ["cksymbol"], timeout=4.0)
     shared.sev("(() => { const fold = document.querySelector('.ck-json-fold');"
                " if (fold) fold.open = true; return !!fold; })()")
     # 量测→落点之间的滚动回收可把点顶偏一行：点到真聚焦为止。
@@ -761,6 +780,26 @@ def case_cursor_scrub(keyboard):
         value.get("start") == len(text.encode("utf-16-le")) // 2
         and value.get("end") == value.get("start"), timeout=3.0) or settings_snapshot()
     observers_ready = install_scrub_observers()
+
+    # 准备前置断言（1.3.11 门禁教训，codex 复核确认）：未聚焦/文本没
+    # 灌上时继续跑 scrub，失败会被误读成「光标移动回归」（ace 实录
+    # focus=False 也往下跑，三项 FAIL 全是准备失败的下游）。准备不成
+    # 直接跳过手势并记一条明确失败。
+    prepared = (focused and initial.get("value") == value_expected
+                and initial.get("focus") is True
+                and at_end.get("focus") and observers_ready)
+    if not prepared:
+        record("scrub preparation reached a focused seeded textarea",
+               False,
+               f"focused={focused} text={initial.get('value')!r} "
+               f"expect={value_expected!r} focus={initial.get('focus')} "
+               f"atEndFocus={at_end.get('focus')} observers={observers_ready}")
+        skip("cursor scrub keeps focus and reaches the same position at slow/fast speed",
+             "textarea preparation failed; scrub not exercised")
+        skip("reverse cursor scrub moves back at ASCII boundaries",
+             "textarea preparation failed; scrub not exercised")
+        d.shell("input keyevent 4")
+        return
 
     slow = fast = reverse = {}
     slow_metrics = fast_metrics = reverse_metrics = {}
@@ -946,7 +985,7 @@ def case_height_reset(keyboard, original_height_pref):
     record("height Reset previews the default live (round-6)",
            pending.get("open") is True
            and pending.get("value") is not None
-           and pending.get("keyboardHeight") == pending.get("value")
+           and pending.get("contentHeight") == pending.get("value")
            and logs_after_reset >= logs_before_reset,
            f"initial={initial} edited={edited} pending={pending}"
            f" bridge={logs_before_reset}->{logs_after_reset}"

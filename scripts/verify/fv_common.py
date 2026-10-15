@@ -245,6 +245,10 @@ def wait_mode(label):
 
 
 def height_state():
+    """contentHeight 与产品口径一致（keyboard.js currentContentHeight =
+    total - safeBottom - bottomPad）。高度卡读数（value）是内容高度口径，
+    直接比 keyboardHeight（整体 clientHeight）会差一个安全区（Oplus 手势
+    导航下限 24dp×density，1.3.11 门禁 9l 曾据此误判 Reset 回归）。"""
     return ev(
         "(() => { const card = document.getElementById('heightCard');"
         " const view = document.getElementById('softKeyboard');"
@@ -255,6 +259,10 @@ def height_state():
         " return {open:card.classList.contains('open') && !card.hidden,"
         " value:value ? Number(value[0]) : null,"
         " keyboardHeight:Math.round(view?.clientHeight || 0),"
+        " contentHeight:(() => { const px = v => { const m ="
+        "  (getComputedStyle(document.documentElement).getPropertyValue(v) || '0').match(/\\d+/);"
+        "  return m ? Number(m[0]) : 0; };"
+        "  return Math.round((view?.clientHeight || 0) - px('--safe-bottom') - px('--kb-bottom-pad')); })(),"
         " cardBottom:cr.bottom, keyboardTop:vr.top,"
         " plusDisabled:!!document.getElementById('heightPlus')?.disabled,"
         " minusDisabled:!!document.getElementById('heightMinus')?.disabled,"
@@ -508,15 +516,20 @@ def settings_tap(selector, wait=0.7, scroll=True):
         # 轮，隔秒回吐），任何「滚动→另起一轮慢速量测→再点」的路径都
         # 在跟回滚赛跑；JS 回合内拿坐标 + 立即 tap 把时间窗压到 ~100ms，
         # 竞态从构造上消除（2026-09-23 9k customJson）。
+        # f-string 拼接坑（1.3.11 门禁定罪，codex 复核确认）：只有首段
+        # 带 f 前缀，后续普通字符串里的 {{ 从不转义——拼出的 JS 恒为
+        # SyntaxError，「同一 JS 回合精确滚动」从未生效，全靠下面的物理
+        # swipe 兜底活着；#60 的 body padding 变化后连兜底也滚不到位，
+        # settings_tap 开始大面失败。非插值段一律用单花括号。
         moved = sev(f"(() => {{ try {{ const el = document.querySelector(" + _quoted(selector) + ");"
             " if (!el) return null;"
             " const se = document.scrollingElement || document.documentElement;"
             " se.scrollTop = el.getBoundingClientRect().top + se.scrollTop - 80;"
-            " if (el.scrollIntoView) el.scrollIntoView({{block: 'center'}});"
+            " if (el.scrollIntoView) el.scrollIntoView({block: 'center'});"
             " const r = el.getBoundingClientRect();"
             " return [r.left + r.width / 2, r.top + r.height / 2,"
-            " window.innerWidth, window.innerHeight]; }}"
-            " catch (_) {{ return null; }} }})()")
+            " window.innerWidth, window.innerHeight]; }"
+            " catch (_) { return null; } })()")
         if isinstance(moved, list) and len(moved) == 4 and moved[2] and moved[3]:
             cx, cy, iw, ih = moved
             sx = round(left + cx / iw * (right - left))

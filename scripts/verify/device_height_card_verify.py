@@ -461,6 +461,10 @@ def case_settings_and_json(keyboard):
     # 再展开折叠，textarea 才有几何可点（收起态无 rect，tap 永远够不着）。
     settings_tap('#btnOpenCustomKeys')
     wait_until(settings_visible_pages, lambda value: value == ["customkeys"], timeout=4.0)
+    # 3.73.42 分页保存：JSON 兜底框随「定制符号」四级页迁出 customkeys
+    # 首页（fold 展开也找不到 #customJson），导航多一跳。
+    settings_tap('#ckSymbolEntry')
+    wait_until(settings_visible_pages, lambda value: value == ["cksymbol"], timeout=4.0)
     sev("(() => { const fold = document.querySelector('.ck-json-fold');"
         " if (fold) fold.open = true; return !!fold; })()")
     seeded = sev(

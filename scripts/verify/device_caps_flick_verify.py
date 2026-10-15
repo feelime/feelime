@@ -43,26 +43,36 @@ def clear(kb):
 
 
 def ink_center_offset(kb, key):
-    """Horizontal offset (physical px) of the MAIN glyph ink centre vs the
-    key centre. Rows are limited to the below-centre band so the top-left
-    alt preview cannot pollute the measurement."""
-    path = f"{OUT}/b10-ink.png"
-    d.screenshot(path)
-    im = Image.open(path).convert('RGB')
-    cx, cy = kb[key]
-    r = 60
-    px = im.load()
-    y0 = int(cy + 0.04 * r)
-    y1 = int(cy + 0.55 * r)
-    xs = []
-    for y in range(y0, y1):
-        for x in range(int(cx - r), int(cx + r)):
-            c = px[x, y]
-            if sum(c) < 330:  # theme-text ink on light key surface
-                xs.append(x)
-    if not xs:
+    """Horizontal offset (CSS px) of the MAIN glyph ink centre vs the key
+    centre, from the live DOM. The zh-punct main glyph is a masked ::after
+    box centred inside .kb-main, so the main-rect centre IS the ink centre —
+    no pixel scan needed, and the top-left alt preview cannot pollute it.
+
+    Replaces the physical-pixel scan (≤3.73.42): it keyed key positions off
+    the DevTools page description's screenY, which went ~95px stale once the
+    IME window spans the full height below the nav bar (#57b). Synthetic
+    taps never noticed (they dispatch in DOM coordinates); only physical
+    screenshot comparisons broke. Threshold below keeps the old rigour
+    (12 physical px ≈ 4.6 CSS at dpr 2.625)."""
+    payload = d.devtools_eval(
+        "(() => {"
+        " const k = document.querySelector('.kb-key.zh-punct');"
+        " if (!k) return null;"
+        " const m = k.querySelector('.kb-main');"
+        " if (!m) return null;"
+        " const kr = k.getBoundingClientRect(), mr = m.getBoundingClientRect();"
+        " return JSON.stringify({keyCx: kr.x + kr.width / 2,"
+        "  inkCx: mr.x + mr.width / 2});"
+        " })()"
+    )
+    if not payload:
         return None
-    return (min(xs) + max(xs)) / 2 - cx
+    import json as _json
+    try:
+        data = _json.loads(payload)
+        return data["inkCx"] - data["keyCx"]
+    except (ValueError, KeyError, TypeError):
+        return None
 
 
 def main():
@@ -148,9 +158,10 @@ def main():
     kb = d.fresh_kb(refocus=False) or kb
     off = ink_center_offset(kb, '.')
     # The slot's main glyph swapped to ，(alt is 。) - the
-    # ink-centering measurement is glyph-agnostic.
+    # ink-centering measurement is glyph-agnostic. 4.6 CSS px ≈ the old
+    # 12-physical-px tolerance at dpr 2.625.
     record("fullwidth ， ink visually centered",
-           off is not None and abs(off) <= 12, f"ink offset {off} px")
+           off is not None and abs(off) <= 4.6, f"ink offset {off} px")
 
     # ---- #8 toggle sub label present in every mode ----
     labels = {}

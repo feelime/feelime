@@ -55,8 +55,19 @@ class SetupActivity : AppCompatActivity() {
      * finishing or has been destroyed. */
     @Volatile private var destroyed = false
 
-    /** #60：最近一次注入页面的 insets CSS 变量脚本（去重 + 页面重载重放）。 */
-    @Volatile private var lastInsetScript: String? = null
+    /** #60：最近一次注入页面的 insets CSS 变量脚本（去重 + 页面重载重放）。
+     *  bars（systemBars/cutout）与 ime 分开记：bars 只在旋转/显示形态变化
+     *  时变，可即时注入；ime 走 [imeInsetHandler] 去抖。 */
+    @Volatile private var lastBarsScript: String? = null
+    @Volatile private var lastImeScript: String? = null
+
+    /** #60 的 ime insets 去抖：键盘弹起动画期间 ime 值逐帧不同，若每帧
+     *  evaluateJavascript，UI 线程被 JS 桥往返反复阻塞——设置页输入字段
+     *  焦点无法维持（1.3.11 门禁 9l 定罪：textarea 被 JS focus() 都夺不回
+     *  焦点；v1.3.10 无此 listener 时正常）。动画中间值没有避让意义，
+     *  等稳定 150ms 再注入一次。 */
+    private val imeInsetHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var imeInsetRunnable: Runnable? = null
 
     /** K1 gate oracle: the launch nonce rides this dedicated 1px view - a
      * populated WebView a11y tree shadows the WebView's own
@@ -274,11 +285,17 @@ class SetupActivity : AppCompatActivity() {
             // 再注入（否则 density≠1 的机器避让量随密度成倍放大）。
             val density = resources.displayMetrics.density
             fun css(px: Int) = (px / density).toInt().toString() + "px"
-            val script = buildString {
+            val barsScript = buildString {
                 append("document.documentElement.style.setProperty('--app-inset-top','").append(css(bars.top)).append("');")
                 append("document.documentElement.style.setProperty('--app-inset-bottom','").append(css(bars.bottom)).append("');")
                 append("document.documentElement.style.setProperty('--app-inset-left','").append(css(bars.left)).append("');")
                 append("document.documentElement.style.setProperty('--app-inset-right','").append(css(bars.right)).append("');")
+            }
+            if (barsScript != lastBarsScript) {
+                lastBarsScript = barsScript
+                pushScript(barsScript)
+            }
+            val imeScript = buildString {
                 append("document.documentElement.style.setProperty('--app-ime-bottom','").append(css(ime.bottom)).append("');")
                 // 键盘弹起注入完成后重滚获焦元素：focusin 时刻的同步滚动
                 // 会被 clamp（此刻 --app-ime-bottom 还没落到 body padding，
@@ -290,10 +307,15 @@ class SetupActivity : AppCompatActivity() {
                 append("if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')")
                 append("&&a.scrollIntoView)a.scrollIntoView({block:'center',behavior:'instant'});")
             }
-            if (script != lastInsetScript) {
-                lastInsetScript = script
-                pushInsetScript()
-            }
+            // ime 动画帧只重排去抖窗口，不注入（见 imeInsetHandler 注释）。
+            imeInsetRunnable?.let { imeInsetHandler.removeCallbacks(it) }
+            imeInsetRunnable = Runnable {
+                if (destroyed) return@Runnable
+                if (imeScript != lastImeScript) {
+                    lastImeScript = imeScript
+                    pushScript(imeScript)
+                }
+            }.also { imeInsetHandler.postDelayed(it, 150) }
             insets
         }
         contentResolver.registerContentObserver(
@@ -478,13 +500,14 @@ class SetupActivity : AppCompatActivity() {
             .put("appIcon", com.feelime.ime.appIconDataUri(this))
         bridge.evaluate("window.FeelimeSettings && window.FeelimeSettings.onBridgeHello($payload)")
         // 页面（重）加载后 documentElement 上的 CSS 变量随 DOM 重置——
-        // ready 时机重放一次最近 insets（#60）。
-        pushInsetScript()
+        // ready 时机重放一次最近 insets（#60，bars 与 ime 各自重放）。
+        pushScript(lastBarsScript)
+        pushScript(lastImeScript)
     }
 
-    /** #60 的 insets 注入（值变化时由 listener 记录在 lastInsetScript）。 */
-    private fun pushInsetScript() {
-        val script = lastInsetScript ?: return
+    /** #60 的 insets 注入（空脚本直接跳过）。 */
+    private fun pushScript(script: String?) {
+        if (script == null) return
         val view = webView ?: return
         runCatching { view.evaluateJavascript(script, null) }
             .onFailure { Log.w(TAG, "inset css push failed", it) }
@@ -512,6 +535,7 @@ class SetupActivity : AppCompatActivity() {
         // Set this before releasing the bridge so a queued host callback sees
         // the destroyed state even if it runs between the two operations.
         destroyed = true
+        imeInsetRunnable?.let { imeInsetHandler.removeCallbacks(it) }
         contentResolver.unregisterContentObserver(defaultImeObserver)
         UiLanguage.preferences(this)
             .unregisterOnSharedPreferenceChangeListener(uiLanguageListener)

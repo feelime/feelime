@@ -174,6 +174,15 @@ def prepare_readonly():
     d.tap((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2, wait=1.2)
     # A preceding language suite may leave Russian keys without Latin 'n'.
     # Establish the initial mode through the visible menu before reading keys.
+    # 键盘可能随焦点时序收着（ColorOS 安全键盘接管密码框后尤其——
+    # input_shown 被安全键盘满足，ensure_keyboard_up 会误判「我们的
+    # 键盘在屏」；1.3.11 门禁实录 prepare_readonly 轮空崩溃）。以真实
+    # 键盘页几何为准：拿不到就重点一次字段再验。
+    for _ in range(3):
+        if d.key_geometry():
+            break
+        d.ensure_keyboard_up()
+        time.sleep(1.0)
     if not shared.switch_mode_real("英文 Direct"):
         raise SystemExit("initial Direct mode unavailable")
     keyboard = keyboard_qwerty()
@@ -826,6 +835,10 @@ def case_settings_json_focus(keyboard):
     shared.settings_tap('#btnOpenCustomKeys')
     ck_page = wait_until(shared.settings_visible_pages,
                          lambda value: value == ["customkeys"], timeout=4.0)
+    # 3.73.42 分页保存：JSON 兜底框迁入「定制符号」四级页，多一跳。
+    shared.settings_tap('#ckSymbolEntry')
+    wait_until(shared.settings_visible_pages,
+               lambda value: value == ["cksymbol"], timeout=4.0)
     sev("(() => { const fold = document.querySelector('.ck-json-fold');"
         " if (fold) fold.open = true; return !!fold; })()")
     # 折叠卡里 textarea 高 6 行，但设置 WebView 在键盘弹出态的滚动回收

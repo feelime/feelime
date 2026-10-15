@@ -383,8 +383,17 @@ def safe_area_geometry(bar):
                     "controlBottom": controls_bottom, "safePx": safe_px,
                     "scale": scale, "scaleSource": scale_source,
                     "nativeWidth": native_width, "cssWidth": css_width}
+    # #57b IME 窗口铺满加固（1.3.11）后，视图底贴屏幕底、伸进导航条的
+    # 深度=导航条高（底部补色盖住该区，视觉正常）。旧断言要求
+    # overlap==safe_px 在 AOSP 成立（safe-bottom=导航条高），但 Oplus 的
+    # safe-bottom 下限 24dp（63px@2.625）大于实际导航条高（48px）——
+    # 按铺满语义判定：不超屏底、铺入深度≤导航条高、safe 报告不小于
+    # 导航条（保守避让方向）、控制行仍在导航条上方。
     overlap = max(0.0, view_bottom - float(nav["top"]))
-    ok = (abs(safe_px - overlap) <= tolerance
+    nav_height = float(nav["bottom"]) - float(nav["top"])
+    ok = (view_bottom <= size[1] + tolerance
+          and overlap <= nav_height + tolerance
+          and safe_px + tolerance >= nav_height
           and controls_bottom <= float(nav["top"]) + tolerance)
     return ok, {"nav": nav, "viewBottom": view_bottom,
                 "controlBottom": controls_bottom, "safePx": safe_px,
