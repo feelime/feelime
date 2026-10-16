@@ -540,6 +540,63 @@ test('space face text clears when the action turns voice', {since: '3.73.40'}, (
         'empty label renders nothing');
 });
 
+// #65：[panel:emoji] 直达数字键盘表情子视图；[panel:custom] 直达符号
+// 面板定制 tab（空表引导去设置）。两条都从长按空格触发——与定制键
+// [panel:x] 同一 runPanelStep 分发。
+test('space hold panel steps reach emoji view and custom tab (#65)', {since: '3.73.44'}, () => {
+    const world = fresh();
+    world.hello({ spaceHoldTap: 'dsl:[panel:emoji]' });
+    const space = world.$('spaceKey');
+    world.touchDown(space);
+    world.clock.advance(400);
+    assert(!world.$('numPadLayer').hidden, 'emoji hold lands on the numpad layer');
+    equal(!!world.document.querySelector('.emoji-area'), true,
+        'emoji sub-view rendered in place of the digits');
+    world.touchUp(space);
+    equal(world.native.of('space').length, 0, 'hold consumed, no space emitted');
+
+    // 定制 tab 直达：先经 settings 表收编一张定制键表。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1,
+        rows: [[{ t: '✓', tap: '好的', note: '' }], [], []],
+    });
+    world.hello({ spaceHoldTap: 'dsl:[panel:custom]' });
+    world.touchDown(space);
+    world.clock.advance(400);
+    assert(!world.$('symbolLayer').hidden, 'custom hold lands on the symbol layer');
+    const cats = [...world.document.querySelectorAll('[data-sym-cat]')];
+    equal(cats.find(c => c.dataset.symCat === 'custom').classList.contains('active'),
+        true, 'custom tab is the active category');
+    world.touchUp(space);
+
+    // 空表（行全空但结构合法——parseCustomKeys 只要有语言键定制就放行）
+    // 不得打开零按键的定制页：引导去设置。样本必须带 langKeys，否则整表
+    // 被「至少要定义一个键」拒收，测的是 null 路径而非空行路径（codex
+    // 评审 P2：旧真值判断回滚后本组测试仍全绿=没守住修复）。rows:[] 与
+    // [[],[],[]] 两种空形态都过一遍。
+    for (const rows of [[], [[], [], []]]) {
+        const empty = fresh();
+        empty.native.customKeysPayload = JSON.stringify({
+            version: 1, rows,
+            langKeys: { pinyin: { h: { up: '[ctrl+s]' } } },
+        });
+        empty.hello({ spaceHoldTap: 'dsl:[panel:custom]' });
+        // 先证采纳：空行表进了存储（而不是被拒收后仍为 null）。
+        const adopted = empty.storage.get('feelime_custom_keys_v2');
+        assert(adopted && JSON.parse(adopted).langKeys.pinyin,
+            'empty-rows table with langKeys adopted (not rejected)');
+        const emptySpace = empty.$('spaceKey');
+        empty.touchDown(emptySpace);
+        empty.clock.advance(400);
+        equal(empty.$('symbolLayer').hidden, true,
+            'empty rows (' + JSON.stringify(rows) + ') does not open the custom tab');
+        const setup = empty.native.of('openSetupPage').slice(-1)[0];
+        equal(setup && setup.args[0], 'customTitle',
+            'empty rows (' + JSON.stringify(rows) + ') routes to the setup page');
+        empty.touchUp(emptySpace);
+    }
+});
+
 test('space hold 350ms starts voice once, release stops', () => {
     const world = fresh();
     const space = world.$('spaceKey');
@@ -2216,17 +2273,28 @@ test('symbol category strip lists all batches with stable keys', {since: '3.28.0
     const cats = [...world.document.querySelectorAll('[data-sym-cat]')];
     equal(
         cats.map(c => c.dataset.symCat).join(','),
-        'common,recent,quote,money,math,arrows,num,pinyin,hira,kata,greek',
+        'common,recent,quote,money,math,special,arrows,num,pinyin,hira,kata,greek',
         'category keys frozen',
     );
     equal(
         cats.map(c => c.textContent).join(','),
-        '常用En,最近,引号En,货币,数学,方向,序号,拼音,平假名,片假名,希腊',
+        '常用En,最近,引号En,货币,数学,特殊,方向,序号,拼音,平假名,片假名,希腊',
         'labels aligned with the category list (paired tables carry 中/En badges)',
     );
     // Japanese kana and Greek are newer symbol-layer additions.
     const keyText = () => [...world.$('symGrid').querySelectorAll('.kb-key')]
         .map(b => b.textContent).join('');
+    // 特殊（#64）：29 格满编（行三末位 ⌫ 占位由通用断言覆盖），
+    // 星形/象棋/扑克/音符逐字在场。
+    world.tap(cats.find(c => c.dataset.symCat === 'special'));
+    equal(keyText(), '★☆✦✧✩✓✔✗✘☑♔♕♖♗♘♙♚♛♜♝♞♟♤♥♦♧♩♪♫',
+        'special category carries its 29 glyphs verbatim');
+    // 点按直上屏（与方向 tab 的 glyph 直发同语义；进「最近」走通用
+    // remember 通道，不在此重复断言）。
+    world.tap([...world.$('symGrid').querySelectorAll('.kb-key')]
+        .find(b => b.textContent === '★'));
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '★',
+        'star commits as text');
     world.tap(cats.find(c => c.dataset.symCat === 'hira'));
     assert(keyText().includes('あ'), 'hiragana row present');
     world.tap(cats.find(c => c.dataset.symCat === 'kata'));

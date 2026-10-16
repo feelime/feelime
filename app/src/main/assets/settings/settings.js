@@ -430,9 +430,13 @@ const I18N = {
         "voice.holdSpaceHint": "长按空格键触发的动作；「语音输入」显示麦克风，「关闭」则长按无响应。",
         "voice.hold.voice": "语音输入",
         "voice.hold.clipboard": "剪贴板面板",
-        "voice.hold.favorites": "表情/常用面板",
+        // #65：旧文案「表情/常用面板」承诺了表情，但该面板只有常用语
+        // ——表情改由独立的「表情面板」目标直达（[panel:emoji]）。
+        "voice.hold.favorites": "常用语面板",
+        "voice.hold.emoji": "表情面板",
         "voice.hold.edit": "快捷编辑面板",
         "voice.hold.control": "控制键层",
+        "voice.hold.custom": "定制键面板",
         "voice.hold.none": "关闭",
         "voice.mic.permission": "麦克风权限",
         "voice.mic.hint": "语音输入必需，全程本地处理",
@@ -1195,9 +1199,11 @@ const I18N = {
         "voice.holdSpaceHint": "What a long-press on the space bar does; Voice shows the mic glyph, Off disables the hold.",
         "voice.hold.voice": "Voice input",
         "voice.hold.clipboard": "Clipboard panel",
-        "voice.hold.favorites": "Emoji / favorites panel",
+        "voice.hold.favorites": "Phrases panel",
+        "voice.hold.emoji": "Emoji panel",
         "voice.hold.edit": "Quick edit panel",
         "voice.hold.control": "Control-key layer",
+        "voice.hold.custom": "Custom keys panel",
         "voice.hold.none": "Off",
         "voice.mic.permission": "Microphone permission",
         "voice.mic.hint": "Required for voice input; processing stays on this device",
@@ -4410,6 +4416,20 @@ const CK_KEYS = [
     .concat(Array.from({ length: 10 }, (_, i) => [String(i), String(i)]));
 const CK_KEY_NAME = Object.fromEntries(CK_KEYS);
 const CK_MODS = [["ctrl", "Ctrl"], ["alt", "Alt"], ["shift", "Shift"], ["win", "Win"]];
+/** #65 面板目标单一事实源：ckTapParse 反猜、编辑器下拉、保存校验、
+ *  长按空格摘要四处共用（此前各持一份枚举，扩 emoji/custom 时漏改过
+ *  保存白名单——新目标存不下提示「面板目标无效」）。与 keyboard.js
+ *  的 PANEL_STEPS 同源，两侧同步改。 */
+const CK_PANEL_TARGETS = [
+    ["clipboard", "voice.hold.clipboard"],
+    ["favorites", "voice.hold.favorites"],
+    ["emoji", "voice.hold.emoji"],
+    ["edit", "voice.hold.edit"],
+    ["control", "voice.hold.control"],
+    ["custom", "voice.hold.custom"],
+];
+const CK_PANEL_RE = new RegExp("^\\[panel:(" +
+    CK_PANEL_TARGETS.map(([value]) => value).join("|") + ")\\]$");
 const CK_COLORS = ["blue", "green", "orange", "red", "purple"];
 const CK_QUICK = [
     { t: "Esc", tap: "[esc]" },
@@ -4523,8 +4543,9 @@ function ckTapParse(tap) {
     // [setting:id]（#51 定制按键绑定设置项）在 lowercase 之前识别。
     const setting = /^\[setting:([\w-]{1,64})\]$/.exec(String(tap || "").trim());
     if (setting) return { mode: "setting", setting: setting[1] };
-    // [panel:x]（#50 打开键盘面板，与长按空格动作同域）。
-    const panel = /^\[panel:(clipboard|favorites|edit|control)\]$/.exec(String(tap || "").trim().toLowerCase());
+    // [panel:x]（#50 打开键盘面板，与长按空格动作同域；目标集=
+    // CK_PANEL_TARGETS，#65 扩 emoji/custom）。
+    const panel = CK_PANEL_RE.exec(String(tap || "").trim().toLowerCase());
     if (panel) return { mode: "panel", panel: panel[1] };
     // [edit:x]（语言键盘定制/长按空格的「动作」类型：编辑操作枚举）。
     const edit = /^\[edit:(\w+)\]$/.exec(String(tap || "").trim());
@@ -5250,8 +5271,8 @@ function spaceHoldSummary(raw) {
     if (raw === "none") return t("voice.hold.none");
     const parsed = ckTapParse(raw);
     if (parsed.mode === "panel") {
-        const labels = { clipboard: "voice.hold.clipboard", favorites: "voice.hold.favorites",
-            edit: "voice.hold.edit", control: "voice.hold.control" };
+        // 目标集与文案走 CK_PANEL_TARGETS（#65 单一事实源）。
+        const labels = Object.fromEntries(CK_PANEL_TARGETS);
         return t(labels[parsed.panel] || "ck.f.mode.panel");
     }
     const keys = { text: "ck.f.mode.text", single: "ck.f.mode.single", combo: "ck.f.mode.combo",
@@ -5525,7 +5546,9 @@ function ckBuildAction(holder, target) {
                 chip.textContent = label;
                 chip.addEventListener("click", () => {
                     d.mods.has(name) ? d.mods.delete(name) : d.mods.add(name);
-                    ckBuildAction(holder);
+                    // 语言键盘槽位草稿必须传下去（#66）：漏传会回落到外层
+                    // 无 mode 的 langkey 外壳，参数区误渲染成「高级」。
+                    ckBuildAction(holder, d);
                 });
                 row.append(chip);
             });
@@ -5606,11 +5629,9 @@ function ckBuildAction(holder, target) {
         });
         holder.append(ckField(t("ck.f.setting.pick"), sel));
     } else if (d.mode === "panel") {
-        // #50 打开键盘面板：四目标下拉（与长按空格动作同域）。
-        const targets = [["clipboard", t("voice.hold.clipboard")],
-            ["favorites", t("voice.hold.favorites")],
-            ["edit", t("voice.hold.edit")],
-            ["control", t("voice.hold.control")]];
+        // #50 打开键盘面板：目标下拉与长按空格动作同域（#65 起走
+        // CK_PANEL_TARGETS 单一事实源，六目标含表情/定制键）。
+        const targets = CK_PANEL_TARGETS.map(([value, labelKey]) => [value, t(labelKey)]);
         const sel = document.createElement("select");
         sel.id = "ckPanelTarget";
         sel.className = "ck-input";
@@ -5686,7 +5707,7 @@ $("ckApply").addEventListener("click", () => {
             return setNote("ckEditNote", t("ck.err.setting"));
         }
     }
-    if (d.mode === "panel" && !["clipboard", "favorites", "edit", "control"].includes(d.panel)) {
+    if (d.mode === "panel" && !CK_PANEL_TARGETS.some(([value]) => value === d.panel)) {
         return setNote("ckEditNote", t("ck.err.panel"));
     }
     // 语言键的 tap 在分支内按槽自取（def/none 槽没有 tap 概念）。

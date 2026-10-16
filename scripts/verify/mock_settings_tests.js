@@ -2096,6 +2096,32 @@ test('issue-39/50: hold-space virtual custom key (summary + editor) / volume / h
     equal(world.native.of('setKeySoundVolume').length, 0, 'volume debounced (not posted yet)');
 });
 
+// #65：面板目标扩到六项（+表情/定制键）。下拉/摘要/保存校验共用
+// CK_PANEL_TARGETS——此前保存白名单独持一份枚举，新目标会存不下。
+test('issue-65: panel targets offer emoji/custom end to end', () => {
+    const world = new SettingsWorld();
+    const fire = (el, type, target) =>
+        el.listeners.find(l => l.type === type).handler({ target });
+    // 摘要：emoji/custom 直译；favorites 旧文案「表情/常用面板」改准。
+    world.push({ ...BASE_STATE, spaceHoldTap: 'dsl:[panel:emoji]' });
+    equal(world.$('spaceHoldSummary').textContent, '表情面板', 'emoji target summary');
+    world.push({ ...BASE_STATE, spaceHoldTap: 'dsl:[panel:custom]' });
+    equal(world.$('spaceHoldSummary').textContent, '定制键面板', 'custom target summary');
+    world.push({ ...BASE_STATE, spaceHoldTap: 'dsl:[panel:favorites]' });
+    equal(world.$('spaceHoldSummary').textContent, '常用语面板', 'favorites renamed to phrases');
+    // 编辑器：面板型目标下拉六项，选 emoji 保存走 setSpaceHoldTap。
+    world.$('spaceHoldEdit').click();
+    const modeSel = world.doc.getElementById('ckMode');
+    modeSel.value = 'panel'; fire(modeSel, 'change');
+    const targetSel = world.doc.getElementById('ckPanelTarget');
+    equal([...targetSel.querySelectorAll('option')].map(o => o.value).join(','),
+        'clipboard,favorites,emoji,edit,control,custom', 'six panel targets offered');
+    targetSel.value = 'emoji'; fire(targetSel, 'change');
+    world.$('ckApply').click();
+    equal(world.lastCall('setSpaceHoldTap').args, ['dsl:[panel:emoji]', world.token],
+        'save whitelist accepts the emoji target');
+});
+
 test('key feedback toggles reflect state and commit with the token (default off)', () => {
     const world = new SettingsWorld();
     // Both default off: empty state renders unchecked.
@@ -2751,6 +2777,46 @@ test('lang keys: every slot type renders inputs without undefined values', () =>
     world.$('ckSave').click();
     const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
     equal(parsed.langKeys.pinyin.h.up, '', 'none saved as empty string');
+});
+
+// #66：语言键盘槽位选「组合」后点修饰键，参数区必须仍是组合控件。
+// 回归对象是重绘漏传槽位草稿——错误版本会渲染成「高级」DSL 框，
+// 用户在 DSL 框里的输入写进外层草稿、保存时被静默丢弃。
+test('lang keys: mod-chip tap keeps combo controls in the slot (#66)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const hKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'h');
+    hKey.click();
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const upSec = () => world.doc.querySelectorAll('.ck-lang-sec')[0];
+    const upSel = upSec().querySelector('select');
+    upSel.value = 'combo'; fire(upSel, 'change');
+    // 上下滑各有一套控件：断言全部限定在槽位 section 内。
+    const comboChips = () => [...upSec().querySelectorAll('.ck-seg .ck-seg-btn')];
+    equal(comboChips().length, 4, 'four modifier chips before any tap');
+    // 多次增删修饰键：每次重绘都不得退化成高级 DSL 框。
+    fire(comboChips().find(b => b.textContent === 'Alt'), 'click');
+    equal(comboChips().length, 4, 'mod chips survive the first re-render');
+    equal(upSec().querySelectorAll('select').length, 2, 'type select + key select present');
+    equal(upSec().querySelector('input'), null, 'no DSL input rendered');
+    fire(comboChips().find(b => b.textContent === 'Shift'), 'click');
+    equal(comboChips().length, 4, 'mod chips survive the second re-render');
+    // 键位下拉仍可选且写进槽位草稿（不是外层）。
+    const keySel = upSec().querySelectorAll('select')[1];
+    keySel.value = 'z';
+    fire(keySel, 'change');
+    // 选中态跟随：Alt/Shift 高亮、Ctrl 保持默认选中。
+    const selected = comboChips().filter(b => b.classList.contains('selected'))
+        .map(b => b.textContent).sort().join(',');
+    equal(selected, 'Alt,Ctrl,Shift', 'modifier selection state tracked');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.h.up, '[ctrl+alt+shift+z]', 'combo saved with all mods');
+    equal(parsed.langKeys.pinyin.h.down, undefined, 'down slot untouched');
 });
 
 test('lang keys preview: left key and punct alt mirror the real keyboard (排版验收)', () => {

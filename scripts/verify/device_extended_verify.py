@@ -656,7 +656,7 @@ def main():
     record(
         "I5 symbol category strip with kana content",
         # The 定制 (custom) category joins the strip after common.
-        ",".join(cats) == "common,custom,recent,quote,money,math,arrows,num,pinyin,hira,kata,greek"
+        ",".join(cats) == "common,custom,recent,quote,money,math,special,arrows,num,pinyin,hira,kata,greek"
         and "あ" in hira_keys and backspace_role == "backspace",
         f"cats={cats} hira_has_a={'あ' in hira_keys} bs={backspace_role}",
     )
