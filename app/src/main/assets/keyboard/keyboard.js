@@ -58,6 +58,7 @@
         "引号": "Quotes",
         "货币": "Currency",
         "数学": "Math",
+        "特殊": "Special",
         "序号": "Numbers",
         "拼音": "Pinyin",
         "平假名": "Hiragana",
@@ -299,7 +300,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.43';
+    const KEYBOARD_VERSION = '3.73.44';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -320,8 +321,11 @@
     const MERGEABLE_14 = new Set(['pinyin', 'double-pinyin', 'direct']);
 
     /** [panel:x] DSL 的面板白名单（#50）：runPanelStep 是唯一分发点，
-     *  长按空格的虚拟定制键同样经此打开面板。 */
-    const PANEL_STEPS = new Set(['clipboard', 'favorites', 'edit', 'control']);
+     *  长按空格的虚拟定制键同样经此打开面板。#65 增补：emoji=数字键盘
+     *  的表情子视图（工具栏 Emoji 按钮同款入口）、custom=符号面板定制
+     *  tab（工具栏定制按钮的直达逻辑，空表引导去设置）。设置页的
+     *  CK_PANEL_TARGETS 与此表同源，两侧同步改。 */
+    const PANEL_STEPS = new Set(['clipboard', 'favorites', 'edit', 'control', 'emoji', 'custom']);
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -795,6 +799,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['±', '×', '÷', '≠', '≈', '≤', '≥', '∞', '√', '°'],
                 ['∑', '∫', '∏', '∈', '∉', '⊂', '⊃', '∪', '∩', '∅'],
                 ['′', '″', '‰', '⊕', '⊗', '⊙', '∵', '∴', '⊥'],
+            ],
+        },
+        // 特殊（#64，微信输入法「图形」tab 同类）：星形/勾叉/国际象棋/
+        // 扑克/音符的单色文本符号。3×10 网格行三末位是 ⌫，满打 29 格。
+        // 与 emoji 面板的「表情」分类（彩色 emoji）互不冲突：这里走
+        // sendSymbol 文本直上屏，含 VS16 的彩色形态仍在 emoji 侧。
+        {
+            id: 'special', label: '特殊',
+            rows: [
+                ['★', '☆', '✦', '✧', '✩', '✓', '✔', '✗', '✘', '☑'],
+                ['♔', '♕', '♖', '♗', '♘', '♙', '♚', '♛', '♜', '♝'],
+                ['♞', '♟', '♤', '♥', '♦', '♧', '♩', '♪', '♫'],
             ],
         },
         // The 方向 category fires HOST key events, not text - it has no
@@ -5353,8 +5369,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const strip = document.getElementById('symCats');
             strip.replaceChildren();
             SYMBOL_CATEGORIES.forEach(category => {
-                // The custom tab only exists once the user saved a table.
-                if (category.id === 'custom' && !this.customKeys()) return;
+                // The custom tab only exists once the user saved a table
+                // with at least one key (#65: `[]`/`[[],[],[]]` are legal
+                // but empty — see hasCustomRows).
+                if (category.id === 'custom' && !this.hasCustomRows()) return;
                 const button = document.createElement('button');
                 button.className = 'sym-cat' + (category.id === this.symbolCat ? ' active' : '');
                 button.textContent = t(category.label);
@@ -5858,6 +5876,48 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             else if (target === 'favorites') this.openPanel('favorites');
             else if (target === 'edit') this.toggleEditPanel();
             else if (target === 'control') this.setControlView(true);
+            // #65 表情直达：数字键盘的表情子视图，与工具栏 Emoji 按钮
+            // 同一入口。showKeyLayer 的互斥收口（EXCLUSIVE_VIEWS）会先把
+            // 开着的面板归还返回层再关闭——不能在这里手动 closeOtherViews
+            // （它会经过回字母层把 emojiView 洗掉），也不用
+            // toggleEmojiView（只重绘数字子视图，不负责切层）。
+            else if (target === 'emoji') {
+                this.emojiView = true;
+                this.showNumpad();
+            }
+            else if (target === 'custom') this.showCustomTab();
+        }
+
+        /** 直达符号面板的「定制」tab（#39-12 工具栏按钮的直达逻辑，
+         *  #65 抽出供 [panel:custom] 复用）。空表引导去设置页；打开
+         *  语义：重复调用停在定制 tab（工具栏按钮的 toggle 不在此）。 */
+        showCustomTab() {
+            if (!this.hasCustomRows()) {
+                this.showToast(t("还没有定制按键，去设置的定制按键里保存"));
+                this.call(() => Native.openSetupPage('customTitle', this.token));
+                return;
+            }
+            this.showSymbols();
+            this.symbolCat = 'custom';
+            document.querySelectorAll('[data-sym-cat]').forEach(el => (
+                el.classList.toggle('active', el.dataset.symCat === 'custom')));
+            this.renderSymbols();
+            // 分类条横滚：把定制 tab 滚进视口，否则用户看不到选中态
+            // （tab 点击 handler 同款）。
+            const customTab = document.querySelector('[data-sym-cat="custom"]');
+            if (customTab && customTab.scrollIntoView) {
+                customTab.scrollIntoView({ behavior: 'smooth',
+                    inline: 'center', block: 'nearest' });
+            }
+        }
+
+        /** 定制表里有没有实际按键（#65）：`[]`/`[[],[],[]]` 是合法但
+         *  空的表，customKeys() 对它们返回真值——判空按「任一行有键」
+         *  口径。分类条过滤、工具栏按钮、[panel:custom] 三处共用，
+         *  避免「只有语言键定制、符号行为空」时打开零按键的定制页。 */
+        hasCustomRows() {
+            return (this.customKeys() || [])
+                .some(row => Array.isArray(row) && row.length > 0);
         }
 
         /** [edit:x] 的组合键形态（无则 null：cut/copy/paste/selectAll/clear
@@ -6929,30 +6989,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     }
                     // #39-12 定稿：不做独立面板——按钮直达符号面板的
                     // 定制 tab，与数字/表情一个行为模式（用户裁定）。
+                    // 直达/空表引导收敛进 showCustomTab（#65 起与
+                    // [panel:custom] 共用），此处只保留 toggle 语义。
                     if (key === 'custom') {
-                        if (!this.customKeys()) {
-                            this.showToast(t("还没有定制按键，去设置的定制按键里保存"));
-                            this.call(() => Native.openSetupPage('customTitle', this.token));
-                            return;
-                        }
                         // toggle 语义（与 123/编辑工具一致）：已在定制 tab
                         // 再点 = 回主键盘；符号面板的其他 tab 则正常切入。
                         if (this.keyLayer === 'symbols' && this.symbolCat === 'custom') {
                             this.showLetters();
                             return;
                         }
-                        this.showSymbols();
-                        this.symbolCat = 'custom';
-                        document.querySelectorAll('[data-sym-cat]').forEach(el => (
-                            el.classList.toggle('active', el.dataset.symCat === 'custom')));
-                        this.renderSymbols();
-                        // 分类条横滚：把定制 tab 滚进视口，否则用户
-                        // 看不到选中态（tab 点击 handler 同款）。
-                        const customTab = document.querySelector('[data-sym-cat="custom"]');
-                        if (customTab && customTab.scrollIntoView) {
-                            customTab.scrollIntoView({ behavior: 'smooth',
-                                inline: 'center', block: 'nearest' });
-                        }
+                        this.showCustomTab();
                         return;
                     }
                     this.toggleExtraTool(key);
