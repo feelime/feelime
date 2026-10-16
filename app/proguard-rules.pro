@@ -18,6 +18,14 @@
 # 取值），保守全保。
 -keep class com.k2fsa.sherpa.onnx.** { *; }
 
+# onnxruntime4j（onnxruntime-android AAR）：native 返回路径按名字反射
+# 构造数据类——getInputInfo 在 C++ 侧 GetMethodID(NodeInfo.<init>) 后
+# NewObject，Java 侧零调用点，R8 会把只被 native 反射用的构造器删掉，
+# 类 shrink 成空壳 → release 手写初始化必崩 NoSuchMethodError（1.3.9~
+# 1.3.11 release 用户，PJC110 三连 tombstone 定罪；debug 无 R8 故
+# ace/AVD 验证不暴露）。保守全保。
+-keep class ai.onnxruntime.** { *; }
+
 # commons-compress 的 zstd 分支是可选依赖（R8 生成的 missing_rules），
 # 模型 zip 走 deflate，不用 zstd。
 -dontwarn com.github.luben.zstd.ZstdInputStream
