@@ -4023,6 +4023,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private inner class DiagWebView(context: android.content.Context) : WebView(context) {
         private var touchTraceSeq = 0L
         private var touchTraceMoveAt = 0L
+        // 每个 dispatchTouchEvent 递增（不设录制门控）：allUp 治理的
+        // stale 检查用。touchTraceSeq 只在诊断录制时递增，做不了产品级
+        // 防线的依据——普通用户（不开诊断）的浮层残留同样要治理。
+        private var touchEventEpoch = 0L
 
         private fun traceTouchInput(event: android.view.MotionEvent): Long {
             if (!Diagnostics.isRecording()) return 0L
@@ -4077,6 +4081,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             visDiag("vis=${if (visibility == android.view.View.VISIBLE) "V" else "G"}")
         }
         override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+            touchEventEpoch++
             val traceSeq = traceTouchInput(event)
             // 收起取证：down/up 聚合计数 + cancel 即时带坐标（见各 note
             //  的注释）。多指也即时落行——平板（PJC110 一类）手写手掌
@@ -4108,29 +4113,48 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             if (traceSeq != 0L && event.actionMasked != android.view.MotionEvent.ACTION_MOVE) {
                 Diagnostics.log("touchN", "out s=$traceSeq handled=$handled")
             }
-            if (traceSeq != 0L && (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
-                    event.actionMasked == android.view.MotionEvent.ACTION_CANCEL)) {
+            if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
+                    event.actionMasked == android.view.MotionEvent.ACTION_CANCEL) {
+                // allUp 治理（产品级，不设录制门控）+ 诊断（录制时）：
+                // ACTION_UP 是系统确认的「最后一指抬起」，此后 JS 侧任何
+                // 存活按压/浮层都是失联残影——双手交替输入时 pointerup
+                // 会在 native→JS 边界整颗丢失（PLK110/Android 16 真机
+                // 录像：幽灵手指占着 ledger，长按计时器照跑弹浮层，同键
+                // 后续 tap 的共享计时器保留逻辑还给残影续命）。200ms 后
+                // 查 JS 状态，有残留就注入键盘收起链同款的全量清理。
+                // epoch 双检防误伤：up 之后又来了任何触摸事件（快打连击
+                // 常见 <200ms），「全抬」前提失效，本轮作废——绝不能清
+                // 正在进行的按压。
+                val epoch = touchEventEpoch
                 postDelayed({
-                    if (traceSeq != touchTraceSeq || !Diagnostics.isRecording()) return@postDelayed
-                    Diagnostics.log("touchN", "allUp audit-request s=$traceSeq")
+                    if (epoch != touchEventEpoch) return@postDelayed
+                    val recording = traceSeq != 0L && Diagnostics.isRecording()
+                    if (recording) Diagnostics.log("touchN", "allUp audit-request s=$traceSeq")
                     var replied = false
-                    postDelayed({
-                        if (!replied && traceSeq == touchTraceSeq && Diagnostics.isRecording()) {
+                    if (recording) postDelayed({
+                        if (!replied && epoch == touchEventEpoch && Diagnostics.isRecording()) {
                             Diagnostics.captureTouchIncident("native-all-up-no-js-reply")
                         }
                     }, 1500L)
                     evaluateJavascript("window.Feelime && window.Feelime.touchState && " +
                         "JSON.stringify(window.Feelime.touchState())") { raw ->
                         replied = true
-                        if (traceSeq != touchTraceSeq || !Diagnostics.isRecording()) return@evaluateJavascript
+                        if (epoch != touchEventEpoch) return@evaluateJavascript
                         val state = runCatching {
                             val text = org.json.JSONTokener(raw).nextValue() as? String
                             if (text == null) null else JSONObject(text)
                         }.getOrNull()
-                        Diagnostics.log("touchN", "allUp audit-result s=$traceSeq state=${state ?: "unavailable"}")
-                        if (state != null && (state.optBoolean("popup") || state.optBoolean("dom") ||
-                                state.optInt("press") > 0 || (state.optJSONArray("ids")?.length() ?: 0) > 0)) {
-                            Diagnostics.captureTouchIncident("native-all-up-residue")
+                        val residue = state != null && (state.optBoolean("popup") ||
+                                state.optBoolean("dom") || state.optInt("press") > 0 ||
+                                (state.optJSONArray("ids")?.length() ?: 0) > 0)
+                        if (recording) {
+                            Diagnostics.log("touchN", "allUp audit-result s=$traceSeq state=${state ?: "unavailable"}")
+                            if (residue) Diagnostics.captureTouchIncident("native-all-up-residue")
+                        }
+                        if (residue && epoch == touchEventEpoch) {
+                            if (recording) Diagnostics.log("touchN", "allUp audit-remediate s=$traceSeq")
+                            evaluateJavascript("window.Feelime && window.Feelime.cancelTouches && " +
+                                "window.Feelime.cancelTouches()", null)
                         }
                     }
                 }, 200L)

@@ -11187,7 +11187,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             keyboard.applyHeight();
         },
         onHeightSaved: ok => keyboard.onHeightSaved(ok),
-        // Read-only native all-up audit: never commits or cancels a gesture.
+        // Native all-up audit probe: read-only per call, but a reported
+        // residue now triggers native-side remediation (cancelTouches
+        // injection) — see FeelimeService dispatchTouchEvent allUp comment.
         touchState: () => ({
             popup: !!keyboard.popup,
             dom: !!document.getElementById('keyPopup')?.classList.contains('open'),
