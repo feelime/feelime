@@ -1460,6 +1460,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // mock 环境没有 FeelimeNative/rAF，构造即跳过）；token 未握手
             // 前心跳同样跳过。
             this._diagTouch = 0;
+            // 触摸代际（每次 pointerdown 递增，真实/合成同计数）：native
+            // allUp 治理注入的清理脚本在 renderer 执行时用它自检——从
+            // audit 查询到注入落地的窗口里若有新按下（快打连击），代际
+            // 已变，清理必须放弃（codex review P1：注入执行时防线）。
+            this.touchEpoch = 0;
             this._diagRafAt = 0;
             this._diagCallBlocked = 0;
             this._diagNoClick = { swipe: 0, pop: 0, long: 0 };
@@ -3801,6 +3806,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 press = { x: touch.clientX, y: touch.clientY,
                     id: touch.identifier, button };
                 this.pressById.set(press.id, press);
+                // 新按压代际（allUp 治理注入的执行时守卫用）：audit
+                // 查询到 cancelTouchesEpochGuard 落地之间若有新按下，
+                // 代际前进，清理放弃（codex review P1：renderer 异步
+                // 落地窗口）。
+                this.touchEpoch += 1;
                 this.traceTouch('press-start/' + press.id, event);
                 // 同 id 的新按下是新会话：撤销标记不跨会话。
                 this.popupRetiredIds.delete(press.id);
@@ -11196,7 +11206,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             owner: keyboard.popup?.fingerId ?? null,
             ids: Array.from(keyboard.pressById.keys()).slice(0, 12),
             press: keyboard.pressedKeys.size,
+            epoch: keyboard.touchEpoch,
         }),
+        // allUp 治理的注入入口（带代际守卫）：audit 查询时的 epoch 与
+        // 实际执行时不等 = 查询后又有新按下（evaluateJavascript 异步
+        // 落地窗口）——放弃清理，绝不清正在进行的按压。
+        cancelTouchesEpochGuard: epoch => {
+            if (keyboard.touchEpoch !== epoch) return 'skipped';
+            keyboard.cancelTouches();
+            return 'cleared';
+        },
         // Read-only automation probe (device gates): the keyboard instance is
         // a closure, so gates cannot reach runtime fields without this.
         debugState: () => ({

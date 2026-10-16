@@ -1071,6 +1071,24 @@ test('missing key end is reconciled before its pending hold can open a ghost pop
     }
 });
 
+test('allUp remediation guard: epoch mismatch skips, match clears (#residue remediate)', {since: '3.73.43'}, () => {
+    const world = touchWorld(), kb = world.context.testKeyboard;
+    const q = world.key('q');
+    const a = touchPoint(77, 20, 20);
+    // 幽灵按压（touchstart 后永不 touchend）+ 记下当时的代际。
+    world.dispatch(q, 'touchstart', 20, 20, { changedTouches: [a], touches: [a] });
+    equal(kb.pressById.size, 1, 'ghost press in ledger');
+    const F = world.context.window.Feelime;
+    const staleEpoch = F.touchState().epoch - 1;
+    // 旧代际守卫：清理放弃，幽灵保留。
+    equal(F.cancelTouchesEpochGuard(staleEpoch), 'skipped', 'stale epoch skips');
+    equal(kb.pressById.size, 1, 'ghost survives stale guard');
+    // 当前代际守卫：全清。
+    equal(F.cancelTouchesEpochGuard(F.touchState().epoch), 'cleared', 'current epoch clears');
+    equal(kb.pressById.size, 0, 'ghost cleared by matching guard');
+    equal(F.cancelTouchesEpochGuard(999999), 'skipped', 'future epoch also skips');
+});
+
 test('touch trace records ownership and faults without key or editor contents', {since: '3.73.40'}, () => {
     const world = touchWorld({ touchDiagnostics: true }), kb = world.context.testKeyboard;
     const q = world.key('q'), e = world.key('e');

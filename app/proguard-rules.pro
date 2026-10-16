@@ -21,9 +21,12 @@
 # onnxruntime4j（onnxruntime-android AAR）：native 返回路径按名字反射
 # 构造数据类——getInputInfo 在 C++ 侧 GetMethodID(NodeInfo.<init>) 后
 # NewObject，Java 侧零调用点，R8 会把只被 native 反射用的构造器删掉，
-# 类 shrink 成空壳 → release 手写初始化必崩 NoSuchMethodError（1.3.9~
-# 1.3.11 release 用户，PJC110 三连 tombstone 定罪；debug 无 R8 故
-# ace/AVD 验证不暴露）。保守全保。
+# 类 shrink 成空壳（dexdump 实证）→ 部分 release 设备手写初始化
+# SIGABRT（PJC110/ColorOS 15 三连 tombstone：NoSuchMethodError on
+# NodeInfo.<init> → pending exception 下 JNI 调用 abort）。ace 与
+# x86 翻译层装同款 release 不崩且识别正常，其 ART 分叉机制未定罪，
+# 不推翻「构造器被删=确定性缺陷」本身（getInputInfo 在所有 release
+# 上都是坏的）。保守全保。
 -keep class ai.onnxruntime.** { *; }
 
 # commons-compress 的 zstd 分支是可选依赖（R8 生成的 missing_rules），

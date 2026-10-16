@@ -4027,6 +4027,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // stale 检查用。touchTraceSeq 只在诊断录制时递增，做不了产品级
         // 防线的依据——普通用户（不开诊断）的浮层残留同样要治理。
         private var touchEventEpoch = 0L
+        // 最新触摸序列的 downTime（DOWN/POINTER_DOWN 更新）：allUp 治理
+        // 的序列归属检查用。系统在第二指按下时会合成「旧序列 CANCEL+
+        // DOWN+UP」终结流（PLK110 实录 s=8563~8565）——旧序列的 UP 到
+        // 达时新指可能已按下且静止，200ms 窗口内若无更多事件，仅凭
+        // epoch 检查会放行并误清新指的合法按压；UP 的 downTime 落后于
+        // 最新序列即作废。
+        private var touchNewestDownTime = 0L
 
         private fun traceTouchInput(event: android.view.MotionEvent): Long {
             if (!Diagnostics.isRecording()) return 0L
@@ -4088,6 +4095,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             //  误触第二指是收起的另一候选路径，聚合计数看不到指头数。
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
+                    touchNewestDownTime = event.downTime
                     diagLastDownAt = android.os.SystemClock.elapsedRealtime()
                     noteTouchDown()
                 }
@@ -4099,7 +4107,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     diagLastCancelAt = android.os.SystemClock.elapsedRealtime()
                     noteTouchCancel(event)
                 }
-                android.view.MotionEvent.ACTION_POINTER_DOWN ->
+                android.view.MotionEvent.ACTION_POINTER_DOWN -> {
+                    touchNewestDownTime = event.downTime
                     if (event.pointerCount == 2) {
                         // rawX/rawY 只报 pointer 0：借 view 原点偏移换算成屏幕坐标
                         val offX = event.rawX - event.x
@@ -4108,6 +4117,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                             "touchMulti pc=2 rawX=${(event.getX(1) + offX).toInt()} " +
                                 "rawY=${(event.getY(1) + offY).toInt()}")
                     }
+                }
             }
             val handled = super.dispatchTouchEvent(event)
             if (traceSeq != 0L && event.actionMasked != android.view.MotionEvent.ACTION_MOVE) {
@@ -4120,26 +4130,34 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 // 存活按压/浮层都是失联残影——双手交替输入时 pointerup
                 // 会在 native→JS 边界整颗丢失（PLK110/Android 16 真机
                 // 录像：幽灵手指占着 ledger，长按计时器照跑弹浮层，同键
-                // 后续 tap 的共享计时器保留逻辑还给残影续命）。200ms 后
-                // 查 JS 状态，有残留就注入键盘收起链同款的全量清理。
-                // epoch 双检防误伤：up 之后又来了任何触摸事件（快打连击
-                // 常见 <200ms），「全抬」前提失效，本轮作废——绝不能清
-                // 正在进行的按压。
+                // 后续 tap 的共享计时器保留逻辑还给残影续命；WebView 的
+                // touches 快照里幽灵仍是「活触点」，JS 内部对账全被骗过
+                // ——只有 native 视角能看穿）。200ms 后查 JS 状态，有残留
+                // 就注入键盘收起链同款的全量清理。误伤三重防线（codex
+                // review P1×2）：① epoch 检查——up 之后又来任何触摸事件
+                // （快打连击 <200ms 常见）本轮作废；② downTime 序列归属
+                // ——系统对被接管的旧序列会合成 CANCEL+DOWN+UP 终结流，
+                // 旧序列的 UP 不授权清理新指（其 downTime 落后即作废）；
+                // ③ 注入脚本带 JS 触摸代际自检——evaluateJavascript 异步
+                // 落地窗口里的新按下会让代际变化，清理在 renderer 执行
+                // 时放弃。绝不清正在进行的按压。
                 val epoch = touchEventEpoch
+                val downTime = event.downTime
+                val stale = { epoch != touchEventEpoch || downTime < touchNewestDownTime }
                 postDelayed({
-                    if (epoch != touchEventEpoch) return@postDelayed
+                    if (stale()) return@postDelayed
                     val recording = traceSeq != 0L && Diagnostics.isRecording()
                     if (recording) Diagnostics.log("touchN", "allUp audit-request s=$traceSeq")
                     var replied = false
                     if (recording) postDelayed({
-                        if (!replied && epoch == touchEventEpoch && Diagnostics.isRecording()) {
+                        if (!replied && !stale() && Diagnostics.isRecording()) {
                             Diagnostics.captureTouchIncident("native-all-up-no-js-reply")
                         }
                     }, 1500L)
                     evaluateJavascript("window.Feelime && window.Feelime.touchState && " +
                         "JSON.stringify(window.Feelime.touchState())") { raw ->
                         replied = true
-                        if (epoch != touchEventEpoch) return@evaluateJavascript
+                        if (stale()) return@evaluateJavascript
                         val state = runCatching {
                             val text = org.json.JSONTokener(raw).nextValue() as? String
                             if (text == null) null else JSONObject(text)
@@ -4151,10 +4169,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                             Diagnostics.log("touchN", "allUp audit-result s=$traceSeq state=${state ?: "unavailable"}")
                             if (residue) Diagnostics.captureTouchIncident("native-all-up-residue")
                         }
-                        if (residue && epoch == touchEventEpoch) {
+                        // JS 代际来自查询结果：注入落地时新按下已让代际
+                        // 前进的话，cancelTouchesEpochGuard 自行放弃。
+                        val jsEpoch = state?.optLong("epoch") ?: -1L
+                        if (residue && !stale()) {
                             if (recording) Diagnostics.log("touchN", "allUp audit-remediate s=$traceSeq")
-                            evaluateJavascript("window.Feelime && window.Feelime.cancelTouches && " +
-                                "window.Feelime.cancelTouches()", null)
+                            evaluateJavascript("window.Feelime && window.Feelime.cancelTouchesEpochGuard && " +
+                                "window.Feelime.cancelTouchesEpochGuard($jsEpoch)", null)
                         }
                     }
                 }, 200L)
