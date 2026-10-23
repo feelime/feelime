@@ -234,10 +234,11 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 ### 3.1 结构与入口
 
 - **面板动作分发（#50/#65）**：长按空格动作与定制键 `[panel:x]` 步骤共用
-  `runPanelStep` 唯一分发点，六目标：`clipboard`/`favorites`（本面板双
+  `runPanelStep` 唯一分发点，七目标：`clipboard`/`favorites`（本面板双
   tab）、`edit`（快捷编辑面板）、`control`（控制键层）、`emoji`（数字
   键盘表情子视图，工具栏 Emoji 按钮同款入口）、`custom`（符号面板定制
-  tab，打开语义——重复触发停在定制 tab；工具栏按钮另持 toggle 语义）。
+  tab，打开语义——重复触发停在定制 tab；工具栏按钮另持 toggle 语义）、
+  `kaomoji`（颜文字 tab，#67）。
   `custom` 空表（含「只有语言键定制、符号行全空」）时 toast 引导去设置
   页（`hasCustomRows` 判空，三处入口共用）。设置页的
   `CK_PANEL_TARGETS` 与键盘侧 `PANEL_STEPS` 同源，两侧同步改。
@@ -255,6 +256,11 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   `showKeyLayer` 的 `panelOpen` 让位保留作防御位。
 - 每次打开都重新拉取 `getClipboard` / `getFavorites`（设置页改过数据后
   再打开即新鲜）；native 侧变化经 `onClipboard` / `onFavorites` 推送。
+- **颜文字 tab（#67）**：`kaomoji` 面板头 tab + 工具栏可编辑入栏的
+  `toolKaomoji` 工具（toggle 语义，与剪贴板圆钮同款）。数据是键盘内建
+  常量 `KAOMOJI_TABS`（十分类 × 20 条，不拉 native、不落存储）；顶部
+  分类 chips 切换，`kaomojiTab` 记住最后所选分类（重开面板延续）。点格
+  上屏走 `commitText`（编辑卡开着时同剪贴板条目语义——取材进卡不上屏）。
 
 ### 3.2 列表行为
 

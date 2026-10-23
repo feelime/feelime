@@ -75,6 +75,17 @@
         "笑脸": "Smileys",
         "手势": "Gestures",
         "动物": "Animals",
+        // #67 颜文字面板（分类名；颜文字本体不译）
+        "颜文字": "Kaomoji",
+        "开心": "Happy",
+        "卖萌": "Cute",
+        "难过": "Sad",
+        "生气": "Angry",
+        "惊讶": "Surprised",
+        "无奈": "Whatever",
+        "爱心": "Love",
+        "加油": "Cheer",
+        "动作": "Actions",
         "食物": "Food",
         "活动": "Activity",
         "物品": "Objects",
@@ -300,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.45';
+    const KEYBOARD_VERSION = '3.73.46';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -325,7 +336,7 @@
      *  的表情子视图（工具栏 Emoji 按钮同款入口）、custom=符号面板定制
      *  tab（工具栏定制按钮的直达逻辑，空表引导去设置）。设置页的
      *  CK_PANEL_TARGETS 与此表同源，两侧同步改。 */
-    const PANEL_STEPS = new Set(['clipboard', 'favorites', 'edit', 'control', 'emoji', 'custom']);
+    const PANEL_STEPS = new Set(['clipboard', 'favorites', 'kaomoji', 'edit', 'control', 'emoji', 'custom']);
 
     /** 纯符号词条判定（issue #17）：每个字符既不是字母（含汉字）也不是
      *  数字——↑✓★🐱♂ 这类 custom_phrase 符号词。用于渲染层把它们重排
@@ -395,6 +406,71 @@
  *  logo（左）与收起（右）固定不可编辑；组合态工具（清除/展开）不参与
  *  编辑。完整设置齿轮（#33-1）不再随快开面板自动插栏（会把用户摆好的
  *  图标顶右移一格），改为目录里的一颗可选工具，用户自选常驻。 */
+/** 颜文字面板素材（#67）：主流输入法通用度高的经典颜文字，分十类。
+ *  分类名经 t() 渲染（UI_EN 译分类名），颜文字本体原样上屏。 */
+const KAOMOJI_TABS = [
+    { id: 'happy', name: '开心', items: [
+        '(｡･ω･｡)ﾉ♡', '(๑•̀ㅂ•́)و✧', '(≧▽≦)', 'ヾ(≧∇≦*)ゝ', '(＾▽＾)',
+        '\(^▽^)/', '(≧∀≦)', '(^o^)／', '(☆▽☆)', '(✧∀✧)',
+        '(✿◡‿◡)', '｡ﾟ+..｡ﾟ+', '(^▽^)/~', '( ˘ ³˘)♥', '(*≧▽≦)',
+        '(∩˃o˂∩)♡', '(*^▽^*)', '(≡^∇^≡)', 'o((>ω< ))o', '(✿▽✿)',
+    ]},
+    { id: 'cute', name: '卖萌', items: [
+        '(๑´ㅂ`๑)', '(｡>﹏<｡)', '(๑•́ ₃ •̀๑)', '(ฅ´ω`ฅ)', '(◍•ᴗ•◍)♡',
+        '(っ˘ω˘ς)', '(๑˙ー˙๑)', '(｡•̀ᴗ-)✧', '(´,,•ω•,,)♡', '(灬ºωº灬)',
+        '♡(ŐωŐ人)', '(=^･ω･^=)', 'つ♡', '(๑＞◡＜๑)', '(☆ω☆)',
+        '(⊃•̀ω•́)⊃', '(=①ω①=)', '(๑ᵔ⌔ᵔ๑)', '(´,,•ω•,,)', '(ᗒᗨᗕ)',
+    ]},
+    { id: 'sad', name: '难过', items: [
+        '(╥﹏╥)', '(；′⌒`)', 'ヽ(´□`。)ﾉ', '(T_T)', '(｡•́︿•̀｡)',
+        '(个_个)', '(´;ω;`)', '(っ- ‸ - ς)', '(﹏˘﹏˘)', '。・ﾟ・(＞д＜)・ﾟ・。',
+        '(┳_┳…)', '(;д;)', '(TдT)', '(;′︿`)', '(☍﹏⁰)',
+        '･ﾟ･(⁄⁄•⁄ω⁄•⁄⁄)･ﾟ･', '(TT)', '。゜(゜´ω`゜)゜。', '(个ˊ͈ᗜˋ͈个)', '(;﹏;)',
+    ]},
+    { id: 'angry', name: '生气', items: [
+        '(╬ ﾟдﾟ)', '(｀Δ´)！', '(╯°□°）╯︵ ┻━┻', '(ﾉ｀⊿´)ﾉ ┻━┻', '(▼へ▼メ)',
+        '(－‸ლ)', 'ヽ(ｏ`皿′ｏ)ﾉ', '(╬￣皿￣)＝○', '┌∩┐(◣_◢)┌∩┐', '(♯▼皿▼)',
+        '(눈_눈)', '(｀へ´)', '(＃`д´)ノ', '٩(╬ʘ益ʘ╬)۶', '(¬_¬',
+        '凸(⊙▂⊙✖ )', '(>\_<)', '(҂ `з´ )', '(｀м´)', '( ゜д゜)',
+    ]},
+    { id: 'surprise', name: '惊讶', items: [
+        '(⊙_⊙)', 'Σ(ﾟДﾟ)', 'w(ﾟДﾟ)w', 'Σ(°△°|||)', '(＃°Д°)', '(◎_◎;)',
+        '(・o・)', '( ﾟдﾟ)', 'Σ(゜Д゜)', '(O_O;)', '(⊙﹏⊙)',
+        'Σ(๑°д°ノ)ノ', '(ㆆ_ㆆ)', 'w(･д･)w', '(・□・；)', '(⊙⊙)',
+        '( ﾟдﾟ)!', '( ﾟ∀ﾟ)', 'Σ(ﾟ∀ﾟ)', '(°ロ°) !', '(・_・;',
+    ]},
+    { id: 'meh', name: '无奈', items: [
+        '╮(╯▽╰)╭', '╮(╯_╰)╭', '(´-ω-`)', '(￣^￣)', '(¬_¬)', '(ーー;)',
+        '(´∀`)', '(･･;)ﾊｯ', '┐(´д`)┌', '┐(´～`)┌', '(￣_￣|||)',
+        '(=_=)"', '¦3▓▓', '(￣o￣) . z Z', '(´-﹏-`)', '(ー_ー)!!',
+        '┐(･_･)┌', '(；一_一)', '(￣ヘ￣)', '(＝。＝)',
+    ]},
+    { id: 'love', name: '爱心', items: [
+        '♡', "(●'◡'●)ﾉ♥", '♪(´▽｀)', '❤(। ᐛ 。)❤', '(◍•ᴗ•◍)✧',
+        '♡✧( ु•ᴗ•ू )', "(っ´ω`c)♡", '(˘︶˘)♡', '❥(ゝ◡・)', '(๑♡⌓♡๑)',
+        '♥(ˆ⌣ˆԅ)', '♪(^∇^*)', '(⊃｡•́‿•̀｡)⊃♡', '(♡°▽°♡)', '(づ￣ ³￣)づ',
+        "(っ´∀`)っ", "(っ•̀ω•́)っ♡", '❤(。•́ᴗ•̀。)♡', '✧*。٩(ˊωˋ*)و✧*。', '⊂(´・ω・｀⊂)',
+    ]},
+    { id: 'cheer', name: '加油', items: [
+        '(ง •̀_•́)ง', '(๑•̀ㅂ•́)و✧', '(っ•̀ω•́)っ✧⁾⁾', '✧(≖ ◡ ≖✿)', "(ง'̀-'́)ง",
+        'ᕦᕤ', '(•̀ᴗ•́)و ̑̑', 'ヾ(◍°∇°◍)ﾉﾞ', '(ง •̅_•̅)ง', 'ง(̀-̀ง)',
+        '(๑•̀ㅂ•́)✧', '٩(๑•̀ω•́๑)۶', 'ᕦ(ò_óˇ)ᕤ', '(ง •_•)ง', 'ᕙ(•̀‸•́‶)ᕗ',
+        'ヾ(＾∇＾)', 'o(>ω<)o', 'ᕕ( ᐛ )ᕗ', 'd(^^*)', '(•̀ᴗ•́)و',
+    ]},
+    { id: 'action', name: '动作', items: [
+        'orz', 'OTL', 'Orz', '_(:з」∠)_', '(=_=)', '(zzz)', '(˘ω˘)',
+        'm(_ _)m', '(TεT)', 'Σ(っ°Д°;)っ', '(¦3[▓▓]', '_(┐「ε:)_',
+        'ヾ(´︶`♡)ﾉ', 'щ(ʘ╻ʘ)щ', '( ˘•ω•˘ )', '( ˘ ³˘)o°', '⊂(・﹏・⊂)',
+        '(/ω＼)', '⊂(´・ω・｀⊂)', '(→_→)', '(←_←)',
+    ]},
+    { id: 'animal', name: '动物', items: [
+        '(=^･ω･^=)', '(ฅ^ω^ฅ)', 'ヾ(=･ω･=)o', '(⁎˃ᆺ˂⁎)', '(^・ω・^ )',
+        'ฅ(＾・ω・＾ฅ)', '∪・ω・∪', '∪ºωº∪', 'ʕ•ᴥ•ʔ', 'ʕʘ‿ʘʔ',
+        '(=´ェ`=)', '∪･ω･∪', '(=①ω①=)', '(=✪ ω ✪=)', 'ʕ ᵔᴥᵔ ʔ',
+        '(=①ω①=)', '(=ｘωx=)', '(=⌒‿‿⌒=)', 'ˁ˚ᴗ˚ˀ', '(=фωф=)',
+    ]},
+];
+
 const TOOL_CATALOG = {
     ctrl: 'ctrlTool',
     ime: 'imeSwitchButton',
@@ -418,6 +494,8 @@ const TOOL_CATALOG = {
     // buildToggleTools 照样建按钮，但 setupToolbarEditor 的接线循环
     // 遍历的是本目录——池里那颗点不动也拖不了（真机实录）。
     custom: 'toolCustom',
+    // #67 颜文字面板：默认不上栏，用户从工具编辑仓库自选。
+    kaomoji: 'toolKaomoji',
 };
 const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'mic'] };
     const MIN_NATIVE_API = 1;
@@ -613,7 +691,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 少数 icon 用文字字形而非几何 path：数字键盘的九宫格点阵被反馈
     // 「含义不明（像二维码）」，「123」数字本身一眼可读（iOS 数字键
     // 同款语义）。文字走 <text>，其余 icon 保持单 path 实心填充。
-    const ICON_TEXTS = { numpad: '123' };
+    const ICON_TEXTS = { numpad: '123', kaomoji: '^_^' };
     const ICONS = {};
     // 文字 icon 不在 ICON_PATHS 里，构建源要并上它们（否则 ICONS.numpad
     // 缺席，cloneNode 时才炸）。
@@ -1242,6 +1320,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // borrowed it for letters - openPanel must re-capture THIS.
             this.panelEditorKeyLayer = null;
             this.panelTab = 'clipboard';
+            // #67 颜文字面板：当前分类（跨开合记住）。
+            this.kaomojiTab = KAOMOJI_TABS[0].id;
             this.panelOpen = false;
             // Control-key layer state - the toolbar swap, the
             // sticky Ctrl/Alt/Meta modifiers and the open combo grid.
@@ -5922,6 +6002,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.showNumpad();
             }
             else if (target === 'custom') this.showCustomTab();
+            // #67：颜文字面板 tab（工具栏按钮/长按空格动作同入口）。
+            else if (target === 'kaomoji') this.openPanel('kaomoji');
         }
 
         /** 直达符号面板的「定制」tab（#39-12 工具栏按钮的直达逻辑，
@@ -6986,6 +7068,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 { key: 'emoji', id: 'toolEmoji', icon: 'smiley', label: 'Emoji' },
                 { key: 'edit', id: 'editTool', icon: 'edit', label: '编辑工具' },
                 { key: 'custom', id: 'toolCustom', icon: 'custom', label: '定制按键' },
+                { key: 'kaomoji', id: 'toolKaomoji', icon: 'kaomoji', label: '颜文字' },
             ];
             const pool = document.getElementById('toolbarEditorGrid');
             defs.forEach(({ key, id, icon, label }) => {
@@ -7035,6 +7118,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             return;
                         }
                         this.showCustomTab();
+                        return;
+                    }
+                    // #67 颜文字：面板 tab 直达 + toggle（开着再点回键盘）。
+                    if (key === 'kaomoji') {
+                        if (this.panelOpen && this.panelTab === 'kaomoji') this.closePanel();
+                        else this.openPanel('kaomoji');
                         return;
                     }
                     this.toggleExtraTool(key);
@@ -9577,7 +9666,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         openPanel(tab) {
             if (!this.ready) return;
-            const want = tab === 'favorites' ? 'favorites' : 'clipboard';
+            const want = ['favorites', 'kaomoji'].includes(tab) ? tab : 'clipboard';
             this.panelTab = want;
             this.panelOpen = true;
             // 打开/切换面板时撤掉「清空」可能残留的确认态。
@@ -9625,7 +9714,48 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.getElementById('panelManage').hidden = this.panelTab !== 'favorites';
             this.renderPanel();
             if (this.panelTab === 'clipboard') Native.getClipboard(this.token);
-            else Native.getFavorites(this.token);
+            else if (this.panelTab === 'favorites') Native.getFavorites(this.token);
+        }
+
+        renderKaomoji() {
+            const list = document.getElementById('panelList');
+            const empty = document.getElementById('panelEmpty');
+            list.replaceChildren();
+            empty.hidden = true;
+            delete document.getElementById('panelLayer').dataset.empty;
+            const chips = document.createElement('div');
+            chips.className = 'kaomoji-chips';
+            KAOMOJI_TABS.forEach(cat => {
+                const chip = document.createElement('button');
+                chip.className = 'kaomoji-chip';
+                chip.classList.toggle('active', cat.id === this.kaomojiTab);
+                chip.textContent = t(cat.name);
+                chip.setAttribute('data-i18n', cat.name);
+                chip.addEventListener('click', () => {
+                    this.kaomojiTab = cat.id;
+                    this.renderKaomoji();
+                });
+                chips.append(chip);
+            });
+            const grid = document.createElement('div');
+            grid.className = 'kaomoji-grid';
+            (KAOMOJI_TABS.find(c => c.id === this.kaomojiTab) || KAOMOJI_TABS[0])
+                .items.forEach(text => {
+                    const cell = document.createElement('button');
+                    cell.className = 'kaomoji-cell';
+                    cell.textContent = text;
+                    cell.addEventListener('click', () => {
+                        // 编辑卡开着时面板是取材区（与剪贴板条目同语义）。
+                        if (this.phraseCardOpen()) {
+                            this.fillPhraseCardFromPanel(text);
+                            return;
+                        }
+                        this.call(() => Native.commitText(text, this.token));
+                        this.closePanel();
+                    });
+                    grid.append(cell);
+                });
+            list.append(chips, grid);
         }
 
         closePanel() {
@@ -9665,6 +9795,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         renderPanel() {            const list = document.getElementById('panelList');
+            // #67 颜文字 tab：分类 chips + 网格（静态数据，不走剪贴板/
+            // 常用语的条目模型——上屏走 commitText（是输入，进统计）。
+            if (this.panelTab === 'kaomoji') { this.renderKaomoji(); return; }
             const empty = document.getElementById('panelEmpty');
             list.replaceChildren();
             const layer = document.getElementById('panelLayer');

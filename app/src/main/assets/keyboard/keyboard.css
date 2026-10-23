@@ -1655,6 +1655,33 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
  * 剩余空间透出键盘背景。 */
 #panelLayer[data-empty] #panelList { display: none; }
 #panelLayer[data-empty] #panelEmpty { flex: none; padding: 14px 0 18px; }
+/* #67 颜文字面板：分类 chips + 网格。格子按内容自适应宽（颜文字
+ *  长度差极大：orz 三个字符到 (╯°□°）╯︵ ┻━┻ 十几个），等宽网格
+ *  会浪费或溢出。 */
+.kaomoji-chips {
+    display: flex; gap: 6px; overflow-x: auto; padding: 8px 10px 4px;
+    scrollbar-width: none;
+}
+.kaomoji-chips::-webkit-scrollbar { display: none; }
+.kaomoji-chip {
+    flex: none; border: 1px solid var(--kb-border, rgba(128,128,128,.35));
+    background: transparent; color: inherit; border-radius: 999px;
+    padding: 3px 12px; font-size: 12px; cursor: pointer;
+}
+.kaomoji-chip.active { background: var(--kb-accent, #147345); color: #fff; border-color: transparent; }
+.kaomoji-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 4px; padding: 4px 10px 12px; overflow-y: auto;
+    align-content: start;
+}
+.kaomoji-cell {
+    border: none; background: rgba(128,128,128,.10); color: inherit;
+    border-radius: 8px; min-height: 40px; padding: 6px 4px;
+    font-size: 13px; line-height: 1.25; word-break: break-all;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.kaomoji-cell:active { background: rgba(128,128,128,.25); }
+
 .panel-item {
     display: flex;
     align-items: center;
