@@ -206,8 +206,12 @@ def main():
     record("T1 long-press mic enters edit mode", ok, state())
     shot("t1-edit-mode.png")
     pool_ids = ev("[...document.getElementById('toolbarEditorGrid').children].map(c => c.id)")
-    record("T2 pool holds the 5 toggle tools",
-           pool_ids == ["toolTheme", "toolVibrate", "toolSound", "toolAssoc", "toolOneHand"],
+    # 池构成随工具扩容增长（#38 numpad/emoji、#39-10 edit、#39-12 custom、
+    # #67 kaomoji、完整设置入口）：断言改成「5 个 toggle 打头 + kaomoji 在池」
+    # 的包含性检查，新增工具不再迫使本段逐版改数字。
+    record("T2 pool leads with the 5 toggle tools + holds kaomoji (#67)",
+           pool_ids[:5] == ["toolTheme", "toolVibrate", "toolSound", "toolAssoc", "toolOneHand"]
+           and "toolKaomoji" in pool_ids,
            str(pool_ids))
 
     # T3 × 移除 favorites → 仓库。
