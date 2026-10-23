@@ -755,6 +755,8 @@ const I18N = {
         "input.feel.holdHint": "长按弹出选字、锁定大写、打开模式菜单的等待时间。",
 "input.feel.flickSwap": "上下滑方向互换",
         "input.feel.flickSwapHint": "默认上滑出数字/符号、下滑出大写；开启后对调（键面小字提示随之下移）。",
+        "input.feel.doubleShiftLock": "双击 Shift 锁定大写",
+        "input.feel.doubleShiftLockHint": "300 毫秒内连点两下 Shift 锁定大写（与长按锁定等效）；关闭后退回点按切换。",
         "input.feel.scrub": "光标移动速度",
         "input.feel.scrubHint": "光标拖拽时每个刻度移动的距离。",
         "input.feel.snap": "滑动选字范围",
@@ -1519,6 +1521,8 @@ const I18N = {
         "input.feel.holdHint": "How long a press waits before popup selection, caps lock, or the mode menu opens.",
 "input.feel.flickSwap": "Swap flick directions",
         "input.feel.flickSwapHint": "By default flick up gives the digit/symbol and flick down uppercases; enabling swaps them (the keycap hint moves below).",
+        "input.feel.doubleShiftLock": "Double-tap Shift to enable Caps Lock",
+        "input.feel.doubleShiftLockHint": "Two Shift taps within 300 ms lock caps (same as long-press lock); turn off to fall back to single taps.",
         "input.feel.scrub": "Cursor speed",
         "input.feel.scrubHint": "Distance the caret moves per drag step.",
         "input.feel.snap": "Swipe selection range",
@@ -2497,6 +2501,8 @@ function renderFeel(state) {
     setSelect("scrubSpeed", state.scrubSpeed ?? 3, ["1", "2", "3", "4", "5"]);
     const flickSwap = $("flickSwap");
     if (flickSwap) flickSwap.checked = state.flickSwap === true;
+    const doubleShiftLock = $("doubleShiftLock");
+    if (doubleShiftLock) doubleShiftLock.checked = state.doubleShiftLock === true;
     setSelect("popupSnap", state.popupSnap ?? 1, ["0", "1", "2"]);
     const setToggle = (id, value) => {
         const node = $(id);
@@ -3956,6 +3962,7 @@ function pickBgImage(variant) {
 $("holdMs").addEventListener("change", submitFeelOptions);
 $("scrubSpeed").addEventListener("change", submitFeelOptions);
 $("flickSwap").addEventListener("change", event => call("setFlickSwap", event.target.checked));
+$("doubleShiftLock").addEventListener("change", event => call("setDoubleShiftLock", event.target.checked));
 $("popupSnap").addEventListener("change", submitFeelOptions);
 $("modelBackend").addEventListener("change", event => call("setModelBackend", event.target.value));
 $("spaceHoldEdit").addEventListener("click", openSpaceHoldEditor);

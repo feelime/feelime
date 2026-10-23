@@ -300,7 +300,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.44';
+    const KEYBOARD_VERSION = '3.73.45';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1206,6 +1206,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.engineReady = {};
             this.shift = false;
             this.caps = false;
+            // #63 双击 Shift 锁定：上次确认 tap 的墙钟（Date.now——测试
+            // 沙箱不提供 performance，FakeDate 才可推进）。初始 -Infinity：
+            // 沙箱假时钟从 0 起步，初始 0 会让第一击被误判成双击
+            // （真实墙钟是大纪元值不会踩，但语义上也要「从未 tap 过」）。
+            this.lastShiftTapAt = -Infinity;
             this.voiceState = 'idle';
             this.editorSensitive = false;
             this.composing = false;
@@ -1367,6 +1372,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 符号/重音）、下滑=大写；互换后对调。真相源是 native pref
             // flick_swap，hello 下发。
             this.flickSwap = false;
+            // #63 双击 Shift 锁定大写（与长按锁定共存；默认开，native
+            // pref double_shift_lock 经 hello 下发）。
+            this.doubleShiftLock = true;
             // Popup swipe selection range: 0=loose 1.4x, 1=standard 1.0x,
             // 2=tight 0.7x — scales the relative-tracking jitter dead zone
             // and the card-boundary cancel slop (selection itself stays
@@ -4975,8 +4983,26 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.renderCandidates(this.lastEngineState || {});
                 return;
             }
-            if (this.caps) this.caps = false;
-            else this.shift = !this.shift;
+            // #63 双击锁定（升级式，单击不等待）：第一击已即时生效为
+            // 单次大写，300ms 内第二击仍落 Shift 则升级为锁定——语义
+            // 兼容（单击本就预期大写后回落，锁定只是替换该预期）。
+            // 长按 gate（holdMs≥200ms）与滑动各自抑制 click，不会误触。
+            const tappedAt = Date.now();
+            if (this.doubleShiftLock
+                && tappedAt - this.lastShiftTapAt <= 300) {
+                this.lastShiftTapAt = -Infinity;
+                this.lockShift();
+                return;
+            }
+            this.lastShiftTapAt = tappedAt;
+            if (this.caps) {
+                this.caps = false;
+                // 解锁击断双击链：连点四下是「锁定-解锁-再切」，不该
+                // 在解锁后的 300ms 内又立刻锁回去。
+                this.lastShiftTapAt = -Infinity;
+            } else {
+                this.shift = !this.shift;
+            }
             this.updateLabels();
         }
 
@@ -10561,6 +10587,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof payload.flickSwap === 'boolean') {
                 this.flickSwap = payload.flickSwap;
                 document.body.classList.toggle('flick-swap', this.flickSwap);
+            }
+            // #63 双击 Shift 锁定大写开关（默认开，无键面视觉，无需 class）。
+            if (typeof payload.doubleShiftLock === 'boolean') {
+                this.doubleShiftLock = payload.doubleShiftLock;
             }
             if (Number(payload.popupSnap) in { 0: 1, 1: 1, 2: 1 }) {
                 this.popupSnap = Number(payload.popupSnap);

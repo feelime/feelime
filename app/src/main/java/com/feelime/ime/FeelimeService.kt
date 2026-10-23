@@ -2063,6 +2063,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("bottomPad", bottomPadDp())
             .put("scrubSpeed", feelScrubSpeed())
             .put("flickSwap", readFlickSwap(this))
+            .put("doubleShiftLock", readDoubleShiftLock(this))
             .put("holdMs", feelHoldMs())
             .put("popupSnap", feelPopupSnap())
             .put("candidateFont", candidateFont())
