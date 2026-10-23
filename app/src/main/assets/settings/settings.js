@@ -674,6 +674,18 @@ const I18N = {
         "input.feel.padLandscapeHint": "横屏单独保存，互不影响。",
         "input.feel.candFont": "候选字号",
         "input.feel.candFontHint": "候选词文字的大小（80%-150%），不改变键盘行高。",
+        "input.feel.keycapFont": "键帽字号",
+        "input.feel.keycapFontHint": "键帽主文字的大小（80-150%），不改变键盘行高；过大时自动收在角标下方。",
+        "input.feel.userFont": "键盘字体",
+        "input.feel.userFontHint": "用导入的字体渲染键盘文字（TTF/OTF）；不随数据备份，换机后需重新导入。",
+        "input.feel.userFontImport": "导入字体…",
+        "input.feel.userFontClear": "恢复系统字体",
+        "input.feel.userFontActive": "当前：{name}",
+        "input.feel.userFontImported": "已导入：{name}",
+        "error.font.IO_ERROR": "字体导入失败：文件读取失败，请重试。",
+        "error.font.TOO_LARGE": "字体导入失败：文件超过 20MB 上限。",
+        "error.font.BAD_MAGIC": "字体导入失败：不是有效的 TTF/OTF 字体文件。",
+        "error.font.BAD_FONT": "字体导入失败：文件无法被系统解析为可用字体。",
         "input.feel.preeditFont": "拼音字号",
         "input.feel.preeditFontHint": "打字时拼音字母的大小；特大档会占一行更多高度。",
         "input.feel.preeditBold": "拼音加粗",
@@ -1443,6 +1455,18 @@ const I18N = {
         "input.feel.padLandscapeHint": "Saved separately from portrait.",
         "input.feel.candFont": "Candidate text size",
         "input.feel.candFontHint": "Size of the candidate words (80%-150%); keyboard row height is unchanged.",
+        "input.feel.keycapFont": "Keycap text size",
+        "input.feel.keycapFontHint": "Size of the keycap labels (80%-150%); row height is unchanged. Oversized labels are clamped under the superscripts.",
+        "input.feel.userFont": "Keyboard font",
+        "input.feel.userFontHint": "Render keyboard text with an imported font (TTF/OTF). Not included in backups; re-import after switching devices.",
+        "input.feel.userFontImport": "Import font…",
+        "input.feel.userFontClear": "Use system font",
+        "input.feel.userFontActive": "Current: {name}",
+        "input.feel.userFontImported": "Imported: {name}",
+        "error.font.IO_ERROR": "Font import failed: could not read the file, please retry.",
+        "error.font.TOO_LARGE": "Font import failed: file exceeds the 20MB limit.",
+        "error.font.BAD_MAGIC": "Font import failed: not a valid TTF/OTF font file.",
+        "error.font.BAD_FONT": "Font import failed: the file could not be parsed as a usable font.",
         "input.feel.preeditFont": "Pinyin text size",
         "input.feel.preeditFontHint": "Size of the pinyin letters while typing; the largest level takes extra band height.",
         "input.feel.preeditBold": "Bold pinyin",
@@ -1880,10 +1904,22 @@ window.FeelimeSettings = {
                 break;
             case "bottomPadError":
             case "candidateFontError":
+            case "keycapFontError":
             case "preeditFontError":
             case "feelOptionsError":
             case "fuzzyPinyinError":
                 setNote("feelNote", eventText(event, "error.INVALID_FEEL_OPTION"));
+                break;
+            case "fontImportStatus":
+                // #70 导入结果：成功回显文件名，失败给可读原因（码表见
+                // KeyboardFontStore）。结果挂在 userFontNoteHold 上——
+                // 紧随其后的 pushState 会走渲染分支，不接管就直接被
+                // 「当前：xxx」冲掉（review P2 实测）。
+                userFontNoteHold = event.ok
+                    ? t("input.feel.userFontImported", { name: event.name || "?" })
+                    : t(["IO_ERROR", "TOO_LARGE", "BAD_MAGIC", "BAD_FONT"].includes(event.code)
+                        ? `error.font.${event.code}` : "error.font.IO_ERROR");
+                $("userFontNote").textContent = userFontNoteHold;
                 break;
             case "asrNote":
                 setNote("asrNote", eventText(event, "note.saved", {
@@ -2279,6 +2315,28 @@ function renderFeel(state) {
         const shown = parseInt(cand.value, 10);
         $("candidateFontOut").textContent =
             `${Number.isFinite(shown) ? shown : 100}%`;
+    }
+    // #70 键帽字号滑杆（80-150）：交互口径同候选字号。
+    {
+        const kc = $("keycapFont");
+        const kcVal = Number(state.keycapFont ?? 100);
+        if (Number.isFinite(kcVal) && kcVal >= 80 && kcVal <= 150 &&
+            document.activeElement !== kc) {
+            kc.value = String(kcVal);
+        }
+        const shown = parseInt(kc.value, 10);
+        $("keycapFontOut").textContent =
+            `${Number.isFinite(shown) ? shown : 100}%`;
+    }
+    // #70 用户字体：状态行 + 「恢复系统字体」显隐。digest 空说明未导入
+    // 或文件丢失（含恢复备份后的换机场景），提示重新导入。导入结果
+    // （userFontNoteHold）优先于 state 渲染，直到用户发起下一次操作。
+    {
+        const font = state.userFont || {};
+        $("btnClearFont").hidden = !font.digest;
+        $("userFontNote").textContent = userFontNoteHold !== null
+            ? userFontNoteHold
+            : (font.digest ? t("input.feel.userFontActive", { name: font.name || "?" }) : "");
     }
     setSelect("preeditFont", state.preeditFont ?? 0, ["0", "1", "2"]);
     setSelect("oneHand", state.oneHand ?? 0, ["0", "1", "2"]);
@@ -3868,6 +3926,22 @@ $("candidateFont").addEventListener("input", event => {
     $("candidateFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
 });
 $("candidateFont").addEventListener("change", event => call("setCandidateFont", parseInt(event.target.value, 10)));
+// #70 键帽字号：交互口径同候选字号（拖动实时读数，松手落盘）。
+$("keycapFont").addEventListener("input", event => {
+    $("keycapFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
+});
+$("keycapFont").addEventListener("change", event => call("setKeycapFont", parseInt(event.target.value, 10)));
+// #70 用户字体：导入走 SAF（结果在 fontImportStatus 事件里回显）。
+// 新操作开始时清上一条结果提示，渲染分支接管状态行。
+let userFontNoteHold = null;
+$("btnImportFont").addEventListener("click", () => {
+    userFontNoteHold = null;
+    call("requestUserFontImport");
+});
+$("btnClearFont").addEventListener("click", () => {
+    userFontNoteHold = null;
+    call("clearUserFont");
+});
 $("preeditFont").addEventListener("change", event => call("setPreeditFont", parseInt(event.target.value, 10)));
 $("preeditBold").addEventListener("change", event => call("setPreeditBold", event.target.checked));
 $("oneHand").addEventListener("change", event => call("setOneHandMode", parseInt(event.target.value, 10)));

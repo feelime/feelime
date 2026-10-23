@@ -2,6 +2,8 @@ package com.feelime.ime.backup
 
 import com.feelime.ime.BOTTOM_PAD_STEPS
 import com.feelime.ime.FEEL_HOLD_STEPS
+import com.feelime.ime.KEYCAP_FONT_RANGE
+import com.feelime.ime.PREF_KEYCAP_FONT
 import com.feelime.ime.PREF_ASSOCIATION
 import com.feelime.ime.PREF_BOTTOM_PAD_DP
 import com.feelime.ime.PREF_BOTTOM_PAD_DP_LANDSCAPE
@@ -39,6 +41,13 @@ class UserdataBackup(
     private val filesDir: File,
     /** 信息性字段：记录从哪版 App 导出，恢复逻辑不依赖它。 */
     private val appVersion: String = "",
+    /** input_stats 段的提交回调（issue #71）：缺省 null 时该段照常走
+     *  prefs.put（JVM 单测路径）。宿主传回调时，统计段的写入委托给
+     *  InputStats 的受控恢复方法——统计的进程内缓存必须与这次覆盖写
+     *  在同一把统计锁内 flush+失效，否则恢复窗口内任意一次 persist
+     *  都会用陈旧缓存把备份值冲掉。回调只拿该段的原始 JSON 串，
+     *  校验（类型契约）已在此前完成。 */
+    private val onStatsRestore: ((String) -> Unit)? = null,
 ) {
 
     sealed class RestoreResult {
@@ -108,6 +117,12 @@ class UserdataBackup(
                 if (name == UPDATE_PREFS && key !in UPDATE_KEEP) continue
                 val value = section.opt(key) ?: continue
                 val checked = try {
+                    // input_stats.stats 是唯一 String 契约键（#71 review P1）：
+                    // 通用分支放行 Int/Boolean 会让非串值直写 prefs（绕过恢复
+                    // 回调的缓存换装），读侧 getString 当场抛类型异常——整包拒绝。
+                    if (name == STATS_PREFS && key == STATS_KEY && value !is String) {
+                        throw RestoreException("SCHEMA", "$name/$key")
+                    }
                     checkValue(name, key, value) ?: continue
                 } catch (exception: RestoreException) {
                     return RestoreResult.Fail(exception.code, exception.detail)
@@ -158,6 +173,15 @@ class UserdataBackup(
 
         // ---- 阶段二：一次性提交 ----
         for ((name, section) in settings.toMap()) {
+            if (name == STATS_PREFS && onStatsRestore != null) {
+                // 统计段委托回调（#71）；段内其余键照常直写，不静默丢弃。
+                for (key in section.keys()) {
+                    val value = section.opt(key)
+                    if (key == STATS_KEY && value is String) onStatsRestore(value)
+                    else prefs.put(name, key, value)
+                }
+                continue
+            }
             for (key in section.keys()) {
                 prefs.put(name, key, section.opt(key))
             }
@@ -367,6 +391,10 @@ class UserdataBackup(
 
         private const val FAVORITES_PREFS = "feelime_favorites"
         private const val UPDATE_PREFS = "keyboard_update"
+        /** 输入统计 prefs 文件名与唯一键（InputStats.PREFS/KEY_JSON 同源，
+         *  那边是 private，这里用字面量保持同源，与 FAVORITES_PREFS 同款）。 */
+        private const val STATS_PREFS = "input_stats"
+        private const val STATS_KEY = "stats"
         private const val RIME_USER_DIR = "rime-user"
         private const val MOZC_USER_DIR = "mozc-user"
         private const val RIME_IMPORT_DIR = "rime-user.import"
@@ -386,6 +414,10 @@ class UserdataBackup(
                 // （review #61-P6）。
                 "theme_l" to (-50..50),
                 "key_l" to (-50..50),
+                // #70 键帽字号：连续区间（与 SettingsBridge.KEYCAP_FONT_RANGE
+                // 同源）。登记的意义：范围钳制 + 拒绝错误类型——通用分支对
+                // 未登记键连字符串 "120" 都放行，读侧 getInt 才会崩（#61 P6）。
+                PREF_KEYCAP_FONT to KEYCAP_FONT_RANGE,
             ),
         )
 
@@ -423,8 +455,9 @@ class UserdataBackup(
             "feelime_favorites",
             // 输入统计（#41）：整段 JSON（total/keystrokes/daily/since）
             // 随备份走——换机/重装不丢「相伴天数」与累计字数。恢复为
-            // 覆盖语义（整键替换），跨设备导入不会双计。
-            "input_stats",
+            // 覆盖语义（整键替换），跨设备导入不会双计；#71 起恢复提交
+            // 委托 onStatsRestore（统计缓存与覆盖写同锁换装）。
+            STATS_PREFS,
             UPDATE_PREFS,
         )
 

@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.46';
+    const KEYBOARD_VERSION = '3.73.47';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1465,6 +1465,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.bottomPad = 0;
             // Candidate text scale: 80-150 continuous % (issue #42).
             this.candidateFont = 100;
+            // 键帽字号（issue #70）：80-150 连续百分比，同候选字号口径。
+            this.keycapFont = 100;
+            // 用户字体（issue #70）：当前生效的 digest；空 = 系统字体栈。
+            this.userFontDigest = "";
             // 拼音字号（issue #8）：0/1/2 三档，hello 回读（旧 APK 的 hello
             // 没有该字段时保持默认档 = 原始 13px 悬浮带）。加粗开关默认关。
             this.preeditFont = 0;
@@ -6765,6 +6769,48 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.body.style.setProperty('--cand-font-scale', String(clamped / 100));
         }
 
+        // 键帽字号（issue #70）：80-150 连续百分比直写 --keycap-font-scale，
+        // 口径同候选字号——只缩放键面文字，行高/触摸区预算不动；与角标
+        // 的碰撞由 CSS min() 静态钳制（见 .kb-main/.t9-group）。
+        applyKeycapFont() {
+            const pct = Number(this.keycapFont);
+            const clamped = Number.isFinite(pct) ? Math.min(150, Math.max(80, pct)) : 100;
+            document.body.dataset.keycapFont = clamped === 100 ? 'normal' : 'scaled';
+            document.body.style.setProperty('--keycap-font-scale', String(clamped / 100));
+        }
+
+        // 用户字体（issue #70）：digest 非空时挂同源 face.css（@font-face
+        // 定义在里面，CSP style-src 'self' 不允许内联）并切 --kb-font；
+        // digest 空 = 移除。digest 不变不重挂（重导字体换 digest，URL 随
+        // 之换，绕开 WebView 缓存钉死）。
+        applyUserFont(digest) {
+            digest = String(digest || '');
+            if (digest === this.userFontDigest && this.userFontLink_) return;
+            this.userFontDigest = digest;
+            if (this.userFontLink_ && this.userFontLink_.parentNode) {
+                this.userFontLink_.remove();
+            }
+            this.userFontLink_ = null;
+            if (!digest) {
+                document.body.style.setProperty('--kb-font', 'system-ui');
+                return;
+            }
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = '/keyboard/fonts/' + encodeURIComponent(digest) + '/face.css';
+            // face.css 404（字体被清/换机未导入）：@font-face 没生效就先别
+            // 切栈，免得键盘闪一帧回退字。坏字体平台 Typeface 终验已挡。
+            link.onerror = () => {
+                if (this.userFontLink_ === link) {
+                    document.body.style.setProperty('--kb-font', 'system-ui');
+                }
+            };
+            this.userFontLink_ = link;
+            // head 缺失时退到 documentElement（测试 harness 的最小 DOM 没有 head）。
+            (document.head || document.documentElement).appendChild(link);
+            document.body.style.setProperty('--kb-font', '"FeelimeUser"');
+        }
+
         // 拼音字号（issue #8）：悬浮带回 1.0.13 的顶部形态，档位驱动
         // --preedit-font-scale（字号）与 --preedit-band-scale（带高 +
         // 顶部 padding/横屏 bar margin，随档位让位）。带高变化改写行高
@@ -10506,6 +10552,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 else if (cf === 2) this.candidateFont = 135;
             }
             this.applyCandidateFont();
+            // 键帽字号（issue #70）：80-150；旧 APK 不带字段不覆盖。
+            {
+                const kf = Number(payload.keycapFont);
+                if (kf >= 80 && kf <= 150) this.keycapFont = kf;
+            }
+            this.applyKeycapFont();
+            // 用户字体（issue #70）：digest 非空 = 导入过；路由 404/损坏时
+            // @font-face 无效，CSS 字体栈逐字回落，功能不受影响。旧 APK 不带
+            // 字段不覆盖。
+            if (typeof payload.userFontDigest === 'string') {
+                this.applyUserFont(payload.userFontDigest);
+            }
             // 拼音字号（issue #8）：0=标准 1=大 2=特大；旧 APK 不带字段不覆盖。
             if (Number(payload.preeditFont) in { 0: 1, 1: 1, 2: 1 }) {
                 this.preeditFont = Number(payload.preeditFont);

@@ -24,7 +24,8 @@ class KeyboardAssetStore(private val root: File) {
         if (relative == "index.html") {
             headers["Content-Security-Policy"] =
                 "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-                    "connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'"
+                    // font-src（issue #70）：用户字体经 /keyboard/fonts/<digest>/ 同源路由。
+                    "font-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'"
             // 注入当前版本号：index.html 自身 no-store 不被缓存，它引用
             // 的 js/css 的 URL 随 VERSION 变化。
             val version = File(root, "VERSION").takeIf { it.isFile }

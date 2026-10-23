@@ -194,3 +194,16 @@ startVoice 无权限分支改为拉起它；Activity 调 requestPermissions(RECO
     确认重装时重放（验签先于钉扎检查，否则确认通道会绕过钉扎）。
   - inbox 推送（scripts/push-keyboard.sh）：installFromInbox 遇
     SIGNATURE_BAD 弹 AlertDialog，确认后重装。
+
+## 统计与键帽字号（#70/#71，2026-10-24）
+
+- `input_stats` 恢复走 `onStatsRestore` 回调委托 `InputStats.restoreFromBackup`：
+  统计锁内「flush 恢复前 pending → 覆盖写备份值 → 失效进程内缓存」。此前只写
+  prefs 不动缓存，恢复窗口内任意一次 persist（上屏/满 64 击键/服务销毁 flush）
+  都会用陈旧缓存把备份值冲掉（AVD 复现实录：恢复成功 3 秒内一次上屏即归零）。
+  覆盖语义不变；缺段/空段/类型不符不触发回调。
+- `feelime_keyboard.keycap_font`（#70 键帽字号，80–150 连续百分比）进
+  `INT_KEYS` 类型契约——未登记的 int 键会把数值写成字符串，读侧 getInt 崩。
+- 用户键盘字体（TTF/OTF 单槽位，存 `filesDir/fonts/keyboard/`）**不进备份**：
+  备份只带偏好不带走字体文件，换机后键盘页按 hello 的空 digest 回落系统字体栈，
+  设置页提示重新导入。存储即真相源（meta.json），没有可备份的字体偏好键。

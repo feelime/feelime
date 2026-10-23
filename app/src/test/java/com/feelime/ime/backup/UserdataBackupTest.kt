@@ -44,6 +44,8 @@ class UserdataBackupTest {
         prefs.put("keyboard_update", "update_auto_check_enabled", true)
         prefs.put("keyboard_update", "update_state", "ACTIVE")
         prefs.put("keyboard_update", "content_hash", "abc123")
+        // #70 键帽字号：int 类型契约随备份往返（登记 INT_KEYS 后串型被拒）。
+        prefs.put("feelime_keyboard", "keycap_font", 130)
         // 输入统计整段 JSON 随备份走（#41：换机不丢相伴天数与累计字数）。
         prefs.put("input_stats", "stats",
             """{"since":"2026-08-12","total":1234,"keystrokes":5000,"daily":{"2026-10-08":108}}""")
@@ -75,6 +77,7 @@ class UserdataBackupTest {
         assertEquals(false, target.all("feelime_keyboard")["key_haptic_on"])
         assertEquals(true, target.all("feelime_custom_keys")["enabled"])
         assertEquals(true, target.all("keyboard_update")["update_auto_check_enabled"])
+        assertEquals(130, target.all("feelime_keyboard")["keycap_font"])
         assertEquals("dark", target.all("feelime_ui")["theme"])
         // 统计段整体还原（String 保真，覆盖语义）。
         assertEquals(
@@ -382,5 +385,68 @@ class UserdataBackupTest {
             .put("settings", JSONObject().put("feelime_ui", JSONObject().put("x", 1.5)))
         assertTrue(target.restore(bad.toString().toByteArray()) is UserdataBackup.RestoreResult.Fail)
         assertFalse(target.hasPendingUserdb())
+    }
+
+    @Test
+    fun statsSectionDelegatesToCallbackAndSkipsDirectPut() {
+        // #71：带回调时统计段委托（InputStats 在统计锁内 flush→覆盖写→
+        // 失效缓存），UserdataBackup 不再直接落该键——否则进程内旧缓存
+        // 的下一次 persist 会把恢复值冲掉。
+        val target = FakePrefs()
+        target.put("input_stats", "stats", """{"since":"2026-01-01","total":1}""")
+        val seen = ArrayList<String>()
+        val backup = UserdataBackup(target, newDir(), onStatsRestore = { seen.add(it) })
+        val json = JSONObject()
+            .put("kind", UserdataBackup.KIND)
+            .put("version", 1)
+            .put("settings", JSONObject().put(
+                "input_stats",
+                JSONObject().put("stats", """{"since":"2026-09-01","total":5000}"""),
+            ))
+        assertTrue(backup.restore(json.toString().toByteArray()) is UserdataBackup.RestoreResult.Ok)
+        assertEquals(1, seen.size)
+        assertEquals("""{"since":"2026-09-01","total":5000}""", seen[0])
+        // 统计段没走 prefs.put：宿主不落盘的话盘面保持原值（写盘归回调）。
+        assertEquals("""{"since":"2026-01-01","total":1}""", target.all("input_stats")["stats"])
+    }
+
+    @Test
+    fun statsCallbackUntouchedWhenSectionAbsentOrInvalid() {
+        val seen = ArrayList<String>()
+        val backup = UserdataBackup(FakePrefs(), newDir(), onStatsRestore = { seen.add(it) })
+        fun settings(vararg pairs: Pair<String, JSONObject>) = JSONObject()
+            .put("kind", UserdataBackup.KIND)
+            .put("version", 1)
+            .put("settings", JSONObject().apply { pairs.forEach { (n, s) -> put(n, s) } })
+
+        // 缺统计段：回调不触发，其余段落照常恢复。
+        val noStats = settings("feelime_ui" to JSONObject().put("theme", "dark"))
+        assertTrue(backup.restore(noStats.toString().toByteArray()) is UserdataBackup.RestoreResult.Ok)
+        assertTrue(seen.isEmpty())
+        // stats 键非字符串（契约外类型）：整包拒绝，回调不触发。
+        val badType = settings("input_stats" to JSONObject().put("stats", 12345))
+        assertTrue(backup.restore(badType.toString().toByteArray())
+            is UserdataBackup.RestoreResult.Fail)
+        assertTrue(seen.isEmpty())
+        // 布尔同罪（#71 review P1：通用分支放行 Boolean，读侧 getString 崩）。
+        val badBool = settings("input_stats" to JSONObject().put("stats", true))
+        assertTrue(backup.restore(badBool.toString().toByteArray())
+            is UserdataBackup.RestoreResult.Fail)
+        assertTrue(seen.isEmpty())
+        // 校验失败不落任何键：prefs 不被写。
+        val plainTarget = FakePrefs()
+        plainTarget.put("input_stats", "stats", """{"since":"2026-01-01","total":1}""")
+        UserdataBackup(plainTarget, newDir(), onStatsRestore = { seen.add(it) })
+            .restore(badType.toString().toByteArray())
+        assertEquals(
+            """{"since":"2026-01-01","total":1}""",
+            plainTarget.all("input_stats")["stats"],
+        )
+        assertEquals(0, seen.size)
+        // 空段落：校验通过但没有可提交的键，回调同样不触发。
+        val emptySection = settings("input_stats" to JSONObject())
+        assertTrue(backup.restore(emptySection.toString().toByteArray())
+            is UserdataBackup.RestoreResult.Ok)
+        assertTrue(seen.isEmpty())
     }
 }

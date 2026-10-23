@@ -139,6 +139,19 @@
         <option value="dark" data-i18n="themeMode.dark">深色</option>
       </select>
     </div>
+    <!-- #70 用户键盘字体：单槽位导入（TTF/OTF）；二进制不进备份，
+         换机后需重新导入——hint 与状态行都要交代这点。 -->
+    <div class="row language-row">
+      <span class="row-label">
+        <span data-i18n="input.feel.userFont">键盘字体</span>
+        <small data-i18n="input.feel.userFontHint">用导入的字体渲染键盘文字（TTF/OTF）；不随数据备份，换机后需重新导入。</small>
+      </span>
+      <span class="slider-with-action">
+        <button type="button" id="btnImportFont" class="ghost-btn" data-keywords="字体 导入 ttf otf font 键盘字体" data-i18n="input.feel.userFontImport">导入字体…</button>
+        <button type="button" id="btnClearFont" class="ghost-btn" hidden data-i18n="input.feel.userFontClear">恢复系统字体</button>
+      </span>
+    </div>
+    <p class="save-note" id="userFontNote" role="status" aria-live="polite"></p>
     <!-- 皮肤（用户验收五轮）：标准 entry 行进三级页（背景/键面独立色调+饱和度）。 -->
     <button class="entry" type="button" data-target="skin" data-keywords="皮肤 主题 配色 色调 饱和度 skin theme">
       <span class="entry-label"><span data-i18n="entry.skin.title">皮肤</span>
@@ -492,6 +505,16 @@
         <span class="range-group">
           <output id="candidateFontOut" for="candidateFont" class="range-out">100%</output>
           <input type="range" id="candidateFont" class="slider" min="80" max="150" step="5" value="100" aria-label="候选字号" data-i18n-aria="input.feel.candFont" data-keywords="候选 大小 字号 百分比">
+        </span>
+      </div>
+      <div class="row language-row">
+        <span class="row-label">
+          <span data-i18n="input.feel.keycapFont">键帽字号</span>
+          <small data-i18n="input.feel.keycapFontHint">键帽主文字的大小（80-150%），不改变键盘行高；过大时自动收在角标下方。</small>
+        </span>
+        <span class="range-group">
+          <output id="keycapFontOut" for="keycapFont" class="range-out">100%</output>
+          <input type="range" id="keycapFont" class="slider" min="80" max="150" step="5" value="100" aria-label="键帽字号" data-i18n-aria="input.feel.keycapFont" data-keywords="键帽 大小 字号 按键 按键文字 keycap">
         </span>
       </div>
       <div class="row language-row">

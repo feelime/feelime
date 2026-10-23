@@ -151,6 +151,25 @@ class SetupActivity : AppCompatActivity() {
         if (uri != null) bridge.importKeySoundFromUri(uri)
     }
 
+    /** ACTION_OPEN_DOCUMENT for the user keyboard font (#70): magic+size
+     *  validated, atomically swapped into filesDir/fonts/keyboard/. */
+    private val fontOpenLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            // SAF 的 lastPathSegment 在部分提供者上是 document id
+            // （真机实测「msf:491」），显示名走 DISPLAY_NAME 查询，
+            // 与 baseDict 导入同款语义。
+            val name = runCatching {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+                }
+            }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')
+            bridge.importUserFontFromUri(uri, name)
+        }
+    }
+
     /** ACTION_OPEN_DOCUMENT for the base dictionary (issue #23: device-side
      *  rebuild via librime maintenance). Display name via DISPLAY_NAME query
      *  —— SAF 的 lastPathSegment 是 document id（真机实测「msf:491」），
@@ -607,6 +626,22 @@ class SetupActivity : AppCompatActivity() {
                 runCatching {
                     keySoundOpenLauncher.launch(arrayOf("audio/*", "application/ogg"))
                 }.onFailure { Log.w(TAG, "key sound picker launch dropped", it) }
+            }
+        }
+
+        override fun openFontDocument() {
+            if (!canTouchWebView()) return
+            runOnUiThread {
+                if (!canTouchWebView()) return@runOnUiThread
+                runCatching {
+                    // SAF 对字体 MIME 上报不一（octet-stream 常见）：
+                    // 放宽选择，真校验在 KeyboardFontStore 的魔数。
+                    fontOpenLauncher.launch(arrayOf(
+                        "application/octet-stream",
+                        "font/ttf", "font/otf",
+                        "application/x-font-ttf", "application/x-font-otf",
+                    ))
+                }.onFailure { Log.w(TAG, "font picker launch dropped", it) }
             }
         }
 
