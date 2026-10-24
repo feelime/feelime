@@ -1260,15 +1260,19 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         val landscape =
             resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val base = when {
-            // #H 硬键盘候选条形态：高度换成固定候选条预算（design §5，
-            // 与用户保存的完整高度分离）；keyboardHeightOverride（高度
-            // 卡片实时预览）优先级更高——预览时按预览值走。
-            hwCandidatesFormActive() && keyboardHeightOverride <= 0 -> when (hwPanelHeightState) {
-                // codex 评审 P1-9：面板开=完整键盘高度（预算走用户保存
-                // 值）；控制层=候选条预算+控制行差值（槽位 band+49 vs
-                // band+40）。
-                "full" -> desiredHeightPx
-                "ctrl" -> hwCandidatesHeightPx() + dp(12)
+            // #H 硬键盘候选条形态（codex 复审 P1-9 收口）：形态分支
+            // 先于 keyboardHeightOverride——后者在启动/旋转即加载用户
+            // 保存高度（非仅高度卡预览），「override>0 才走形态」会让
+            // 调过高度的用户永远得不到候选条形态（键区又被 CSS 藏掉
+            // =整窗空白）。形态内部：面板开=完整高度（有保存值用保存
+            // 值；高度卡拖动时 override 每帧回推，预览照常生效）；
+            // 控制层=band+行槽位（CSS 槽位：竖 3+43+3+顶底≈band+54、
+            // 横 band+52——固定 +12 在大字号/横屏都不够，复审实测差额）。
+            hwCandidatesFormActive() -> when (hwPanelHeightState) {
+                "full" -> if (keyboardHeightOverride > 0) keyboardHeightOverride else desiredHeightPx
+                "ctrl" -> hwBandPx() + dp(
+                    if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 52 else 54,
+                )
                 else -> hwCandidatesHeightPx()
             }
             keyboardHeightOverride > 0 -> keyboardHeightOverride
@@ -1358,6 +1362,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         if (!restarting) {
             evaluate("window.Feelime && window.Feelime.cancelCustomChain && window.Feelime.cancelCustomChain()")
         }
+        // #H 会话换代通知（codex 复审 P1-1 残余）：JS 侧 hwGen 只能靠
+        // 下一次 hwKey/hello 才知道换代——间隔期内 A 编辑器的两步标点
+        // 续步仍按旧 gen 比较成功，把标点补进 B。换代即通知：JS 清空
+        // hw 队列、作废 hw 来源续步、对齐 gen。旧壳无该导出自动跳过。
+        evaluate("window.Feelime && window.Feelime.hwSessionReset && window.Feelime.hwSessionReset($hwInputGeneration)")
         invalidatePendingVoiceStartOnEditorChange()
         cursorQueryGeneration += 1
         pendingCursorDeltas.clear()
@@ -2140,16 +2149,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
      *  + 安全区/底部留白，与用户保存的完整键盘高度分离（不进持久化，
      *  互不污染）。CSS 值按 density 换算（band 18/22/25 取 22 中值——
      *  形态高度只需一行候选的空间，band 残差一帧内）。 */
-    private fun hwCandidatesHeightPx(): Int {
-        val landscape =
-            resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val band = dp(if (landscape) 18 else 22)
-        val bar = dp(40)
-        // codex 评审 P2-12：safeBottom/bottomPad 只在 contentHeightPx 的
-        // 统一出口计一次——hwkb 分支与其它三条路共用该出口，这里再叠=
-        // 候选条窗口双倍避让。
-        return band + bar
-    }
+    private fun hwCandidatesHeightPx(): Int = hwBandPx() + dp(40)
+
+    /** #H 预编辑 band（CSS --preedit-band 三档 18/22/25 取中值 22，
+     *  横屏 18——形态预算只需一行候选空间，band 残差一帧内）。 */
+    private fun hwBandPx(): Int =
+        dp(
+            if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 18 else 22,
+        )
 
     private fun hwCharMode(): Boolean = coordinator.currentMode in hwCharModes
     private fun hwCtrlMode(): Boolean = coordinator.currentMode in hwCtrlModes
@@ -2262,10 +2269,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         hwMain.postDelayed({ hwSettleSwitch(epoch, timedOut = true) }, 200)
     }
 
-    /** 按既有类别执行认领动作（首次 DOWN 与 repeat 共用）。 */
-    private fun hwDispatchOwned(kind: String?, event: KeyEvent): Boolean {
+    /** 按既有类别执行认领动作（首次 DOWN 与 repeat 共用）。null=首次
+     *  已决定放行——repeat 延续放行（codex 复审 P1-2 残余：放行记录与
+     *  未记录必须区分，否则 repeat 重新走决策表，ready/mode 变化会
+     *  把放行按压中途改判成认领）。 */
+    private fun hwDispatchOwned(kind: String?, keyCode: Int, event: KeyEvent): Boolean {
         when (kind) {
-            null -> return false
+            null -> return super.onKeyDown(keyCode, event)
             "consumed", "toggle" -> return true // 快捷键 repeat 只消费
             "char" -> {
                 hwEvaluateChar(event.unicodeChar)
@@ -2299,9 +2309,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         }
         val ownershipKey = hwOwnershipKey(event)
         // 归属延续（codex P1-2）：同次按压的 repeat 按首次类别执行——
-        // meta/ready/mode 中途变化不换语义。
-        hwKeyOwnership[ownershipKey]?.let { kind ->
-            return hwDispatchOwned(kind, event)
+        // meta/ready/mode 中途变化不换语义。containsKey 区分「未记录」
+        // 与「已决定放行」（null 值）——放行记录同样延续放行。
+        if (hwKeyOwnership.containsKey(ownershipKey)) {
+            return hwDispatchOwned(hwKeyOwnership[ownershipKey], keyCode, event)
         }
         val pending = hwPendingSwitch != null
         // 行 1：精确 Ctrl+空格（未 ready 也吞键——R3 统一行为；repeat 已被
@@ -2375,14 +2386,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             ) {
                 if (hwPendingSwitch != null) hwCache("toggle", 0) else hwFireQuickPairToggle()
                 // Shift UP 本身不消费（codex P2-13：宿主收完整 DOWN/UP 对；
-                // 切换动作已由 native 侧 evaluate 执行，无需消费 UP）。
+                // 切换动作已由 native 侧 evaluate 执行，无需消费 UP）。仍要
+                // 清归属表（null 表项按 downTime 键积累=泄漏，复审 P2-13）。
+                hwKeyOwnership.remove(hwOwnershipKey(event))
                 return super.onKeyUp(keyCode, event)
             }
         }
         if (event.isCanceled) {
-            // 取消 UP 清归属（design §5.2）。
-            hwKeyOwnership.remove(hwOwnershipKey(event))
-            return super.onKeyUp(keyCode, event)
+            // 取消 UP 清归属（design §5.2）；已认领的按压仍消费 UP——
+            // 取消只禁止动作，不把归属改放行（codex 复审 P2-13 残余：
+            // 宿主只收 UP 没有 DOWN 违背整次按压归属）。
+            val owned = hwKeyOwnership.remove(hwOwnershipKey(event))
+            return if (owned != null) true else super.onKeyUp(keyCode, event)
         }
         // 归属表：DOWN 已认领的按压，UP 同归属消费。
         val owned = hwKeyOwnership.remove(hwOwnershipKey(event))
@@ -2475,10 +2490,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // #H 会话代数（P1-1）：JS 队列/桥调用携带的 gen 基准——
             // 重载/换页后 JS 以此初始化，旧 gen 的在途请求一律终检丢弃。
             .put("hwGen", hwInputGeneration)
-            // #H 水位起点（P1-7）：新页 seq 计数器以此起步——native 的
-            // hwDoneSeq 跨页只增不减，起点不抬高=新页前 N 条命令被旧
-            // 水位伪解除（屏障失效）。
-            .put("hwSeqBase", coordinator.hwDoneSeq)
+            // #H 水位起点（P1-7 复审收口）：取 native 已见过的最大 hw
+            // seq（含在途未完成的）——只给完成水位会撞「旧页 seq=101
+            // 在途、新页首条又分到 101」的复用，旧回声伪解除新页屏障。
+            .put("hwSeqBase", coordinator.hwSeqCeiling)
             .put("mode", coordinator.currentMode.wireName)
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(this))
             // Degraded-engine state survives WebView rebuilds via hello
@@ -3006,6 +3021,25 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             Diagnostics.log("hwkey", "panelHeight state=$state")
             // 候选条↔完整高度切换=窗口重测量（onMeasure 读 contentHeightPx）。
             (keyboardView?.parent as? View)?.requestLayout()
+        }
+
+        /** #H 硬键字面提交（codex 复审 P1-1 残余）：两步标点第二步的
+         *  全角补发走带 gen 终检的专用通道——普通 commitText 无会话
+         *  身份，JS 侧检查与主线程执行之间跨编辑器会漏（复查在原生
+         *  执行处才作数）。软键盘路径不受影响（仍走 commitText）。 */
+        @JavascriptInterface
+        fun hwCommit(text: String, gen: Long, token: String) = guarded(token, limited = false) {
+            if (text.isEmpty() || text.length > MAX_JSON_CHARS) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            if (gen != hwInputGeneration) {
+                Diagnostics.log("hwkey", "staleGen bridge=hwCommit gen=$gen")
+                return@guarded
+            }
+            // 与 JS 桥 commitText 同执行体（pasteExternal；#41 计数点在
+            // port，这里不另记——双计）。
+            coordinator.pasteExternal(text)
         }
 
         /** #H 能力上报（design §6）：新 JS 页握手+状态到达后调用；旧壳

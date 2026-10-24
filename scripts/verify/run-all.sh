@@ -309,6 +309,10 @@ reset_device() {
     adb -s "$FEELIME_ADB_SERIAL" shell pm clear "$PKG" >/dev/null \
         || { echo "reset: pm clear failed - is $FEELIME_ADB_SERIAL alive?" >&2; exit 2; }
     adb -s "$FEELIME_ADB_SERIAL" shell pm grant "$PKG" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
+    # #H 形态钉 full 必须在 ime set 之前（codex 复审 P2：ime set 会拉起
+    # IME 进程，SharedPreferences 启动加载后写盘会把夹具盖回去——pm
+    # clear 刚杀完进程，此刻写最稳）。
+    pin_hwkb_form
     # pm clear 后 IME 需要重新 enable/set；disabled 列表先查（记忆：直接
     # ime enable 可能 unrecognized）。
     adb -s "$FEELIME_ADB_SERIAL" shell ime enable "$IME_SVC" >/dev/null 2>&1 || true
@@ -318,7 +322,6 @@ reset_device() {
     adb -s "$FEELIME_ADB_SERIAL" shell settings put system accelerometer_rotation 0 >/dev/null
     adb -s "$FEELIME_ADB_SERIAL" shell settings put system user_rotation 0 >/dev/null
     adb -s "$FEELIME_ADB_SERIAL" shell svc power stayon true >/dev/null 2>&1 || true
-    pin_hwkb_form
 }
 
 # #H 硬键盘形态钉 full（套件夹具）：AVD 配置自带硬键盘，feelime_hwkb_form
@@ -333,6 +336,13 @@ pin_hwkb_form() {
     adb -s "$FEELIME_ADB_SERIAL" shell \
         "run-as "$PKG" sh -c 'mkdir -p shared_prefs && cp /data/local/tmp/hwkb_pin.xml shared_prefs/feelime_keyboard.xml'" \
         >/dev/null 2>&1 || true
+    # 读回校验（codex 复审 P2：夹具静默失败=依赖完整键面的段整段假失败，
+    # 必须响亮报错而非 || true 吞掉）。
+    if ! adb -s "$FEELIME_ADB_SERIAL" shell "run-as "$PKG" cat shared_prefs/feelime_keyboard.xml" \
+        2>/dev/null | grep -q 'feelime_hwkb_form">full'; then
+        echo "reset: hwkb form pin failed - full-keyboard segments will fail" >&2
+        exit 2
+    fi
 }
 
 # 套件间轻量清扫：杀进程 + 清全部 prefs（app 实际有 9 个 prefs 文件：

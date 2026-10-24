@@ -1,9 +1,10 @@
 # 硬件键盘支持（物理键盘拼音输入）
 
-状态：实现中（代码评审 9 P1 + 4 P2 全修——归属表延续/pending 行序/
-DIRECT 缓存交付/toggle 余队转新门闩/标点水位/seq 起点同步/上报时序/
-面板高度态/Enter tag 快照/Shift UP 放行。评审档 ~/tmp/codex/ 下七份：
-六轮设计 + 20261025-0043 代码 review）。
+状态：实现中（代码评审 9 P1 + 4 P2 全修 + 修复轮复审 5 项部分闭合
+收口——会话换代通知/两步标点与空闲标点的 gen 终检通道/归属表
+containsKey/取消 UP 归属/seq ceiling 起点/高度 override 生命周期/
+ctrl 预算/数字-符号-编辑条高度态/夹具时序。评审档 ~/tmp/codex/ 下
+八份：六轮设计 + 20261025-0043 代码 review + 0430 修复轮复审）。
 
 ## 0. 目标
 
@@ -129,9 +130,10 @@ downTime+600ms）。任何键 down / CANCEL / 超窗解除。up 命中 → 同�
   作废。残余：hw 路径撞上 dyn:/fav: 候选时走 clearComposing+
   commitText（软键盘同通道，无 gen）——跨编辑器窗口为一帧内的
   drain 检查与桥执行间隙，接受。
-- **页面代数**（代码评审 P1-7）：hello 载荷带 hwGen + hwSeqBase
-  （native 当前 hwDoneSeq）——新页 gen 基准与 seq 起点同步，旧水位
-  不伪解除。
+- **页面代数**（代码评审 P1-7 + 复审收口）：hello 载荷带 hwGen +
+  hwSeqBase（native 的 hwSeqCeiling=已见过的最大 hw seq，**含在途
+  未完成的**——只给完成水位会撞「旧页在途 seq 被新页首条复用」，
+  旧回声伪解除新页屏障）——新页 gen 基准与 seq 起点同步。
 - 两步标点：`pendingPunct` 非空期间**所有**动作（含字母、含超时路径）
   挂起；清除=补发 commitText 已按序进入 coordinator。
 - 120ms 超时：仅用于水位等待与 pendingPunct 之外的异常兜底，按当时
@@ -180,6 +182,16 @@ ready/token 门闸走 `call()`；requestId 附在后续一切桥调用上。
 - `onFinishInput`/`onUnbindInput` 令 hwInputGeneration 失效（无新
   onStartInput 也作废旧请求）。JS 本地延迟续步（pendingPunct 等）
   同样按 requestId 丢弃旧上下文。
+- **会话换代通知**（复审收口）：onStartInput 递增 gen 后 evaluate
+  `hwSessionReset(gen)`——JS 即刻对齐 gen、清空 hw 队列、作废 hw
+  来源的 pendingPunct。不等下一次 hwKey/hello（间隔期内旧编辑器的
+  续步会按旧 gen 比较成功，把标点补进新编辑器）。旧壳无导出跳过。
+- **字面补发的原生终检**（复审收口）：两步标点第二步走专用桥
+  `hwCommit(text, gen, token)`（执行体与 commitText 同：pasteExternal、
+  #41 计数在 port 不双计）；空闲中文标点走 `hwKeyChar`（gen 终检 +
+  consumed=false 原子补交，与「引擎 punctuator 转全角」同语义）。
+  quickPairToggle 不带 gen——模式是会话级用户意图，跨编辑器应用为
+  正确语义（设计决策，非缺陷）。
 
 ### 5.2 按压归属表
 
@@ -246,11 +258,18 @@ candidates && mode∈charModes（onEngineState 路径重评估）；原生候选
 高度（preedit band + 40px bar，safeBottom/bottomPad 只在
 contentHeightPx 统一出口叠一次——代码评审 P2-12；hwkb CSS 清零 bar
 margin 2+10px）与用户保存高度分离不持久化；面板临时高度走新薄桥
-`hwPanelHeight(state, token)`（代码评审 P1-9 落地）——**candidates/
-ctrl/full 三态**（面板/展开/语音遮罩=full，控制层=ctrl=候选条预算+
-行高差，其余回落 candidates），JS 在面板开合/控制层/语音/展开/hello
-重算点上报，native 仅在 hwkb 形态分支消费；候选条形态下
-ctrlLayer/voiceOverlay 不进 CSS 隐藏列（自管 [hidden]/.open），
+`hwPanelHeight(state, token)`（代码评审 P1-9 + 复审收口）——
+**candidates/ctrl/full 三态**：面板/展开/语音遮罩/统计/编辑面板/
+数字/符号/Emoji 层/编辑条=full，控制层=ctrl（预算 band+52（横）/54
+（竖）——CSS 槽位实测差额，固定 +12 在大字号/横屏不够），其余回落
+candidates；JS 在全部开合挂点上报（含 toggleStatsPanel/
+toggleEditPanel），native 仅在 hwkb 形态分支消费。**高度优先级**
+（复审收口）：hwkb 形态分支先于 keyboardHeightOverride——后者在
+启动/旋转即加载保存高度（非仅高度卡预览），「override>0 才走形态」
+=调过高度的用户永远得不到候选条（键区又被 CSS 藏掉=整窗空白）；
+形态内 full 档有保存值用保存值（高度卡拖动的每帧回推照常生效）。
+CSS 只藏字母键区（qwertyLayer/.kb-rows）——symbolLayer/ninePad/
+ctrlLayer/voiceOverlay 自管显隐（[hidden]/.open，工具栏可达入口），
 candidateBar 不写 display:flex（会盖 [hidden] 让位）。设置三档
 `feelime_hwkb_form`（candidates 默认/full/follow），SettingsBridge
 逐方法校验，变更补 `updateInputViewShown()`；

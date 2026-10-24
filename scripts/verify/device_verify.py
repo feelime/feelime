@@ -82,6 +82,10 @@ def pin_hwkb_form(form="full"):
     shell(f"run-as {PKG} sh -c "
           "'mkdir -p shared_prefs && "
           "cp /data/local/tmp/hwkb_pin.xml shared_prefs/feelime_keyboard.xml'")
+    # 读回校验：夹具失败要响亮报错（codex 复审 P2）。
+    back = shell(f"run-as {PKG} cat shared_prefs/feelime_keyboard.xml") or ""
+    if "full" not in back:
+        raise SystemExit("pin_hwkb_form: readback failed - full-keyboard assertions will fail")
 
 
 def shell(cmd, timeout=30):

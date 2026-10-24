@@ -2064,6 +2064,48 @@ test('emoji sub-view commits and remembers; 123 tab returns', {since: '3.27.0'},
 
 // ---- #H 硬件键盘（design hardware-keyboard.md）：hwKey 注入走软键盘
 // 同一批 action；native 侧决策表（onKeyDown）在设备段验证。 ----
+test('hwKey: idle punctuation rides hwKeyChar with the session gen (#H)', {since: '3.73.53'}, () => {
+    const world = fresh({ mode: 'pinyin', hwGen: 3 });
+    // 空闲态逗号：hw 路径走 hwKeyChar（gen 终检 + consumed=false 原子
+    // 补交），不再是无身份的 sendText→Native.key（codex 复审 P1-1）。
+    world.context.window.Feelime.hwKey('char', ','.codePointAt(0), 3);
+    const calls = world.native.of('hwKeyChar');
+    equal(calls.length, 1, 'idle comma goes through the hw bridge');
+    equal(calls[0].args[0], ',', 'ASCII comma to the engine punctuator');
+    equal(calls[0].args[2], 3, 'bridge carries the session gen');
+});
+
+test('hwKey: the two-step punct second step commits via hwCommit with gen (#H)', {since: '3.73.53'}, () => {
+    const world = fresh({ mode: 'pinyin', hwGen: 4 });
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    world.context.window.Feelime.hwKey('char', '.'.codePointAt(0), 4);
+    equal(world.native.of('hwChoose').length, 1, 'composing dot confirms the pool head');
+    world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    const commits = world.native.of('hwCommit');
+    equal(commits.length, 1, 'the full-width commit rides hwCommit');
+    equal(commits[0].args[0], '。', 'full-width dot');
+    equal(commits[0].args[1], 4, 'hwCommit carries the session gen (native terminal check)');
+});
+
+test('hwSessionReset drops queued actions and hw-origin punctuation (#H)', {since: '3.73.53'}, () => {
+    const world = fresh({ mode: 'pinyin', hwGen: 5 });
+    // 排队中的空格 + 挂起的两步标点：换代通知一到全部作废。
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    world.context.window.Feelime.hwKey('char', ','.codePointAt(0), 5);
+    world.context.window.Feelime.hwKey('space', 0, 5);
+    world.context.window.Feelime.hwSessionReset(6);
+    equal(world.context.testKeyboard ? 0 : 0, 0, 'reset applied');
+    world.engineState({ mode: 'pinyin', revision: 2, hwDoneSeq: 2, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    equal(world.native.of('hwSpace').length + world.native.of('space').length, 0,
+        'queued space dropped by the session reset');
+    equal(world.native.of('hwCommit').length, 0,
+        'hw-origin pending punctuation cancelled (no commit into the next editor)');
+});
+
 test('hwKey: physical comma rides the same two-step flow as the soft keycap (#H)', {since: '3.73.49'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
@@ -2071,11 +2113,15 @@ test('hwKey: physical comma rides the same two-step flow as the soft keycap (#H)
     world.context.window.Feelime.hwKey('char', ','.codePointAt(0));
     equal(world.native.of('hwChoose').length + world.native.of('chooseCandidate').length, 1,
         'composing comma confirms the pool head (hwChoose carries the seq watermark)');
+    equal(world.native.of('hwChoose').length ? world.native.of('hwChoose')[0].args[1] : -1, 0,
+        'hwChoose carries the session gen (0 = no native gen injected, legacy hello)');
     equal(world.native.of('key').filter(c => c.args[0] === ',').length, 0,
         'no ASCII comma enters the engine mid-composition');
     world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
         candidates: [], hasNextPage: false });
-    const commits = world.native.of('commitText').map(c => c.args[0]);
+    // 3.73.53 起 hw 来源的第二步走 hwCommit（gen 终检通道）。
+    const commits = world.native.of('hwCommit').map(c => c.args[0])
+        .concat(world.native.of('commitText').map(c => c.args[0]));
     equal(commits[commits.length - 1], '，',
         'the full-width comma lands once the echo ends the composition');
 });
@@ -2114,8 +2160,9 @@ test('hwKey: letters queue behind a pending two-step punctuation (#H)', {since: 
         candidates: [], hasNextPage: false });
     equal(world.native.of('hwKeyChar').filter(c => c.args[0] === 'h').length, 1,
         'the letter proceeds after the pending punctuation settles');
-    // 顺序：全角逗号的 commitText 先于字母进引擎（calls 全序索引比较）。
-    const commaAt = world.native.calls.findIndex(c => c.method === 'commitText' && c.args[0] === '，');
+    // 顺序：全角逗号补发（hwCommit 通道）先于字母进引擎（calls 全序）。
+    const commaAt = world.native.calls.findIndex(c =>
+        (c.method === 'hwCommit' || c.method === 'commitText') && c.args[0] === '，');
     const hAt = world.native.calls.findIndex(c => c.method === 'hwKeyChar' && c.args[0] === 'h');
     assert(commaAt >= 0 && hAt > commaAt, 'the full-width comma landed before the letter');
 });

@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.52';
+    const KEYBOARD_VERSION = '3.73.53';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -2610,6 +2610,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * ASCII 走引擎 punctuator 转全角。 */
         enginePunct(ascii, hwSeq, hwGen) {
             const fullwidth = ascii === ',' ? '，' : '。';
+            // #H 空闲标点（codex 复审 P1-1 残余）：不走 sendText→
+            // Native.key（无会话身份）——hw 路径直发 hwKeyChar（带
+            // gen 终检 + consumed=false 时 coordinator 原子补交 ASCII
+            // 字面，与软键盘「引擎 punctuator 转全角」同语义）。旧壳
+            // 无此桥回退 sendText。
+            if (hwSeq !== undefined && hwSeq !== null && !this.composing) {
+                this.call(() => typeof Native.hwKeyChar === 'function'
+                    ? Native.hwKeyChar(ascii, hwSeq, hwGen, this.token)
+                    : this.sendText(ascii));
+                return;
+            }
             if (this.composing) {
                 // 标点确认走重排后的池头：与空格/点击同一排序（codex P1：
                 // 候选条看英文、逗号却确认中文）。hw 路径带 seq/gen（codex
@@ -3637,6 +3648,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // ---- #H 硬件键盘：hwKey 串行队列 + revision 屏障（design
         // hardware-keyboard.md §4.1）。物理键由 native 全认领后 evaluate
         // 注入（window.Feelime.hwKey），全部走软键盘同一批 action。----
+        /** #H 会话换代通知（native onStartInput 驱动，codex 复审 P1-1）：
+         *  编辑器切换的瞬间对齐 gen 并作废在途 hw 动作——不等下一次
+         *  hwKey/hello（间隔期内旧编辑器的两步标点续步会按旧 gen 比较
+         *  成功，把标点补进新编辑器）。 */
+        hwSessionReset(gen) {
+            if (gen !== undefined && gen !== null) this.hwGen = Number(gen) || 0;
+            this.hwQueue.length = 0;
+            this.hwWaitSeq = 0;
+            if (this.pendingPunct && this.pendingPunct.gen !== undefined) {
+                this.pendingPunct = null;
+            }
+        }
+
         hwEnqueue(kind, value, gen) {
             // #H 会话代数（codex 评审 P1-1）：native 注入携带 gen——
             // 新 gen 即新会话，旧队列里的动作在 drain 时按 gen 丢弃。
@@ -3710,10 +3734,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 两步流（enginePunct），空闲 sendText。法/俄/日等非
             // chineseSymMode 走 Native.key 由各引擎处理。
             if ((ch === ',' || ch === '.') && this.chineseSymMode()) {
-                // seq 只在两步流真正走 hwChoose 时才成为等待目标（见
-                // choosePoolCandidate）——空闲 sendText 无回声，预设
-                // hwWaitSeq 会让下一键白等 120ms 超时降级。
-                this.enginePunct(ch, ++this.hwSeqCounter, this.hwGen);
+                // 空闲/两步两分支都发 hw 桥（hwKeyChar/hwChoose），seq
+                // 恒为等待目标；两步流的 choosePoolCandidate 内取 max。
+                const pseq = ++this.hwSeqCounter;
+                this.hwWaitSeq = pseq;
+                this.enginePunct(ch, pseq, this.hwGen);
                 return;
             }
             // 其余全部进引擎：物理 case 原样（不走 applyCase/软
@@ -6858,7 +6883,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 分支消费该值，其余形态自然忽略。 */
         hwPanelHeightState() {
             if (['listening', 'loading', 'stopping'].includes(this.voiceState)) return 'full';
-            if (this.panelOpen || this.expanded ||
+            // 数字/符号/Emoji 层（工具栏可达入口，codex 复审 P1-9：不
+            // 纳入 full 会落到被 CSS 藏掉的短视图）与编辑条同判。
+            if (this.panelOpen || this.expanded || this.keyLayer === 'numpad' ||
+                this.keyLayer === 'symbols' ||
+                document.body.classList.contains('editing') ||
                 this.keyLayer === 'settings' || this.keyLayer === 'stats' ||
                 this.keyLayer === 'edit') return 'full';
             if (this.ctrlView) return 'ctrl';
@@ -8153,6 +8182,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 工具栏换成标题+✕（body.stats-page 互斥：常规工具/候选条
             // 全让位，面板之外不可能再叠别的界面——用户验收实录）。
             document.body.classList.add('stats-page');
+            this.hwNotifyPanelHeight(); // #H 统计面板=完整高度
         }
 
         closeStatsPanel() {
@@ -8327,6 +8357,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.keyLayer = 'edit';
             this.hideKeyLayers();
             layer.hidden = false;
+            this.hwNotifyPanelHeight(); // #H 编辑面板=完整高度
         }
 
         closeEditPanel() {
@@ -9756,7 +9787,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const stale = Date.now() - pending.at > 3000;
                 if (!this.composing && !staleGen) {
                     this.pendingPunct = null;
-                    this.sendSymbol(pending.text);
+                    // #H 第二步补发（codex 复审 P1-1 残余）：hw 来源走
+                    // hwCommit（gen 原生终检——JS 检查与主线程执行之间
+                    // 的编辑器切换由原生执行处兜住）；软键盘路径照旧
+                    // sendSymbol。
+                    if (pending.gen !== undefined && typeof Native.hwCommit === 'function') {
+                        this.call(() => Native.hwCommit(pending.text, pending.gen, this.token));
+                    } else {
+                        this.sendSymbol(pending.text);
+                    }
                 } else if (rawChanged || stale || staleGen) {
                     this.pendingPunct = null;
                 }
@@ -11679,6 +11718,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         cancelTouches: () => keyboard.cancelTouches(),
         // #H 硬件键盘：native 全认领后的注入入口（design §1/§4.1）。
         hwKey: (kind, value, gen) => keyboard.hwEnqueue(kind, value, gen),
+        // #H 会话换代（native onStartInput 驱动，codex 复审 P1-1）。
+        hwSessionReset: gen => keyboard.hwSessionReset(gen),
         quickPairToggle: () => keyboard.toggleChineseEnglish(),
         // #48 编辑器换代作废在途定制宏链（native onStartInput 驱动）。
         cancelCustomChain: () => keyboard.cancelCustomChain(),

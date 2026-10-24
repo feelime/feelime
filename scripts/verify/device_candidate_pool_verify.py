@@ -40,8 +40,10 @@ def main():
             "'rm -f shared_prefs/feelime_keyboard.xml'")
     # #H：清基线后补钉 full 档（AVD 硬键盘 + 默认 candidates 档会把
     # 双拼键面收掉，flick-up/字号断言整段假失败——device_verify 帮手）。
-    d.pin_hwkb_form()
     d.shell(f"am force-stop {d.PKG}")
+    # #H：钉在进程已停之后（codex 复审 P2：活进程的 SharedPreferences
+    # 写盘会覆盖刚写的夹具）。
+    d.pin_hwkb_form()
     time.sleep(1.2)
     d.prepare()
     kb = d.fresh_kb(refocus=True)

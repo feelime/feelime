@@ -129,6 +129,10 @@ class TextInputCoordinator(
     // hwDoneSeq。软键盘/自动分页无 tag——不推进水位，JS 屏障不受伪解除。
     private var pendingHwTag = 0L
     @Volatile var hwDoneSeq = 0L
+    /** #H 已见过的最大 hw seq（含在途未完成的——codex 复审 P1-7：hello
+     *  只带完成水位会撞「旧页在途 seq 被新页首条复用」，旧回声伪解除
+     *  新页屏障；新页计数器必须从 ceiling 起步）。 */
+    @Volatile var hwSeqCeiling = 0L
         private set
 
     /** hw 桥的命令包装：tag 在 dispatchLive 的 emit 闭包构造前捕获，
@@ -136,6 +140,7 @@ class TextInputCoordinator(
      *  的 tag 丢失——LOADING 过渡态屏障靠 120ms 超时降级（design 边界）。 */
     fun <T> hwTag(tag: Long, block: () -> T): T {
         val prev = pendingHwTag
+        if (tag > hwSeqCeiling) hwSeqCeiling = tag
         pendingHwTag = tag
         try { return block() } finally { pendingHwTag = prev }
     }
