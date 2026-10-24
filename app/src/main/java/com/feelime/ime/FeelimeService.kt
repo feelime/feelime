@@ -107,9 +107,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
      *  inputConnectionGeneration，后者在 onFinishInputView 也递增且被
      *  退格手势/语音等既有使用方依赖，不能改语义）。hw 桥终检用。 */
     private var hwInputGeneration = 0L
-    /** 按压归属表：deviceId:keyCode:downTime → owned（首次 DOWN 定整次
-     *  按压归属，repeat/UP 同归属执行——Ctrl 松开后 Space 继续按住不吐字）。 */
-    private val hwKeyOwnership = HashMap<String, Boolean>()
+    /** 按压归属表：deviceId:keyCode:downTime → 首次 DOWN 的决策类别
+     *  （null=放行；'char'/'space'/'enter'/'backspace'=认领转发；
+     *  'toggle'=快捷键；'consumed'=纯消费（快捷键 repeat/缓存））。
+     *  repeat 与 UP 延续首次类别——Ctrl 松开后 Space 继续按住不吐字、
+     *  ready 翻转不中途换语义（codex 代码评审 P1-2）。 */
+    private val hwKeyOwnership = HashMap<String, String?>()
     /** 按设备 pressed 键集合（Shift 单按检测：武装时集合必须为空）。 */
     private val hwPressedKeys = HashMap<Int, MutableSet<Int>>()
     /** Shift 单按武装（deviceId+downTime 绑定，600ms 窗）。 */
@@ -293,6 +296,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     // 旧热更页/热更回退无上报——onKeyDown 决策表的 hwJsReady 恒 false，
     // 全部文本键放行 = 无硬键功能、软键盘不受影响。
     @Volatile private var jsHwKeys = false
+
+    /** #H 面板高度态（design §7，codex 评审 P1-9）：JS 侧面板/控制层/
+     *  语音遮罩开关时上报——candidates=候选条预算、ctrl=控制行预算、
+     *  full=完整键盘高度（面板需要）。只在 hwCandidatesFormActive 分支
+     *  参与高度，其余形态自然忽略。 */
+    @Volatile private var hwPanelHeightState = "candidates"
+
+    /** #H 状态快照缓存（design §5.4，codex 评审 P1-8）：keyboardReady
+     *  重推最后一次引擎状态——新页（热更重载）接管时池/组合非空，
+     *  JS 首个有效 state 驱动能力上报。 */
+    @Volatile private var lastStatePayloadJson: String? = null
     private var rejectedCalls = 0L
     private var servedRevision = ""
     private val callTimes = ArrayDeque<Long>()
@@ -948,6 +962,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 // WebView 实例，view id 对账 hello/pageLoad 可见分叉）。
                 Diagnostics.log("engine",
                     "pushState rev=${event.revision} composing=${event.state.composing} view=${System.identityHashCode(keyboardView)}")
+                lastStatePayloadJson = payload.toString()
                 evaluate("window.Feelime && window.Feelime.onEngineState && window.Feelime.onEngineState($payload)")
                 // 中文联想（docs/design/association.md §3）：只在 commit 事件
                 // 上计算并推送，键盘保留现有联想直到组合开始。
@@ -1008,8 +1023,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         pageToken = newToken()
         pageReady = false
         // #H：页面换代（冷启动/热更重载）——硬键能力声明复位，新页
-        // 重新握手+上报后才接管（design §6）。
+        // 重新握手+上报后才接管（design §6）；面板高度态一并回落
+        // （design §7：换页由 hello 重推触发 JS 重算）。
         jsHwKeys = false
+        hwPanelHeightState = "candidates"
         val active = KeyboardUpdateCenter.activeKeyboard(this)
         servedRevision = active.revision
         assetStore = KeyboardAssetStore(active.dir)
@@ -1246,7 +1263,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // #H 硬键盘候选条形态：高度换成固定候选条预算（design §5，
             // 与用户保存的完整高度分离）；keyboardHeightOverride（高度
             // 卡片实时预览）优先级更高——预览时按预览值走。
-            hwCandidatesFormActive() && keyboardHeightOverride <= 0 -> hwCandidatesHeightPx()
+            hwCandidatesFormActive() && keyboardHeightOverride <= 0 -> when (hwPanelHeightState) {
+                // codex 评审 P1-9：面板开=完整键盘高度（预算走用户保存
+                // 值）；控制层=候选条预算+控制行差值（槽位 band+49 vs
+                // band+40）。
+                "full" -> desiredHeightPx
+                "ctrl" -> hwCandidatesHeightPx() + dp(12)
+                else -> hwCandidatesHeightPx()
+            }
             keyboardHeightOverride > 0 -> keyboardHeightOverride
             else -> desiredHeightPx
         }
@@ -1303,6 +1327,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             android.content.res.Configuration.ORIENTATION_LANDSCAPE
         ) return 100
         return com.feelime.ime.readLandscapeOpacity(this)
+    }
+
+    override fun onFinishInput() {
+        super.onFinishInput()
+        // #H（design §5.1，codex 评审 P1-1）：输入会话结束即作废在途 hw
+        // 请求——无新 onStartInput 也拦住迟到桥调用（gen 终检对照当前值）。
+        hwInputGeneration += 1
+    }
+
+    override fun onUnbindInput() {
+        super.onUnbindInput()
+        hwInputGeneration += 1
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
@@ -1543,8 +1579,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         pageToken = newToken()
         pageReady = false
         // #H：页面换代（冷启动/热更重载）——硬键能力声明复位，新页
-        // 重新握手+上报后才接管（design §6）。
+        // 重新握手+上报后才接管（design §6）；面板高度态一并回落
+        // （design §7：换页由 hello 重推触发 JS 重算）。
         jsHwKeys = false
+        hwPanelHeightState = "candidates"
         Diagnostics.log("bridge", "pageLoad at=reload view=${System.identityHashCode(keyboardView)}")
         keyboardView?.loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
     }
@@ -2107,8 +2145,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val band = dp(if (landscape) 18 else 22)
         val bar = dp(40)
-        val height = band + bar + safeBottomSnapshot() + bottomPadPx()
-        return minOf(height, realHeightPixels() - dp(32))
+        // codex 评审 P2-12：safeBottom/bottomPad 只在 contentHeightPx 的
+        // 统一出口计一次——hwkb 分支与其它三条路共用该出口，这里再叠=
+        // 候选条窗口双倍避让。
+        return band + bar
     }
 
     private fun hwCharMode(): Boolean = coordinator.currentMode in hwCharModes
@@ -2163,22 +2203,54 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         if (timedOut) Diagnostics.log("hwkey", "switchTimeout epoch=$epoch cached=${ps.cached.size}")
         // 缓存里的 toggle 重触发（行 1 语义）；文本/控制键按当前 mode
         // 重路由（决策表此刻的 hwJsReady/mode 判定）。
-        for ((kind, value) in ps.cached) {
-            if (kind == "toggle") { hwFireQuickPairToggle(); continue }
+        for (index in ps.cached.indices) {
+            val (kind, value) = ps.cached[index]
+            if (kind == "toggle") {
+                // codex 评审 P1-5：toggle 开启新切换后，余下队列不得按旧
+                // mode 立即执行——转入新一轮 pending 缓存，由新门闩的
+                // settle/超时再交付（缓存保序；连续 toggle 不折叠）。
+                val rest = ps.cached.subList(index + 1, ps.cached.size).toList()
+                if (hwJsReady()) {
+                    hwFireQuickPairToggle()
+                    hwPendingSwitch?.let { next ->
+                        next.cached.addAll(rest)
+                        while (next.cached.size > 8) {
+                            next.cached.removeAt(0)
+                            Diagnostics.log("hwkey", "cacheOverflow dropped=oldest size=8")
+                        }
+                    }
+                } else {
+                    Diagnostics.log("hwkey", "cachedDropped afterToggle notReady count=${rest.size}")
+                }
+                return
+            }
             if (!hwJsReady()) continue
             when {
-                kind == "char" && hwCharMode() ->
-                    evaluate("window.Feelime && window.Feelime.hwKey && window.Feelime.hwKey('char', $value)")
-                kind == "space" && hwCtrlMode() -> hwEvaluateKey("space")
-                kind == "enter" && hwCtrlMode() -> hwEvaluateKey("enter")
-                kind == "backspace" && hwCtrlMode() -> hwEvaluateKey("backspace")
+                // codex 评审 P1-4：DIRECT 目标的缓存字符走 evaluate hwKey
+                // → JS hwChar → DirectTextEngine（design §3 统一交付入口，
+                // 不做 native 第二执行端）；DIRECT 下的控制键同理由 JS
+                // action 落地（空格=直发、退格=删键），不再丢弃已认领键。
+                kind == "char" && (hwCharMode() ||
+                    coordinator.currentMode == com.feelime.ime.engine.InputMode.DIRECT) -> hwEvaluateChar(value)
+                kind == "space" && (hwCtrlMode() ||
+                    coordinator.currentMode == com.feelime.ime.engine.InputMode.DIRECT) -> hwEvaluateKey("space")
+                kind == "enter" && (hwCtrlMode() ||
+                    coordinator.currentMode == com.feelime.ime.engine.InputMode.DIRECT) -> hwEvaluateKey("enter")
+                kind == "backspace" && (hwCtrlMode() ||
+                    coordinator.currentMode == com.feelime.ime.engine.InputMode.DIRECT) -> hwEvaluateKey("backspace")
                 else -> Diagnostics.log("hwkey", "cachedDropped kind=$kind (mode=${coordinator.currentMode})")
             }
         }
     }
 
+    /** hw 注入统一入口（codex 评审 P1-1）：携带输入会话 gen——JS 侧
+     *  队列/桥调用全程携带，native 桥执行处终检（design §5.1）。 */
     private fun hwEvaluateKey(kind: String) {
-        evaluate("window.Feelime && window.Feelime.hwKey && window.Feelime.hwKey('$kind', 0)")
+        evaluate("window.Feelime && window.Feelime.hwKey && window.Feelime.hwKey('$kind', 0, $hwInputGeneration)")
+    }
+
+    private fun hwEvaluateChar(cp: Int) {
+        evaluate("window.Feelime && window.Feelime.hwKey && window.Feelime.hwKey('char', $cp, $hwInputGeneration)")
     }
 
     private fun hwFireQuickPairToggle() {
@@ -2190,6 +2262,23 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         hwMain.postDelayed({ hwSettleSwitch(epoch, timedOut = true) }, 200)
     }
 
+    /** 按既有类别执行认领动作（首次 DOWN 与 repeat 共用）。 */
+    private fun hwDispatchOwned(kind: String?, event: KeyEvent): Boolean {
+        when (kind) {
+            null -> return false
+            "consumed", "toggle" -> return true // 快捷键 repeat 只消费
+            "char" -> {
+                hwEvaluateChar(event.unicodeChar)
+                return true
+            }
+            "space", "enter", "backspace" -> {
+                hwEvaluateKey(kind)
+                return true
+            }
+            else -> return true
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // #H 验收打点：决策表入口的全貌（每键一条，正常输入零风险——
         // 只在 diag 开启时落盘，Diagnostics.log 自带开关）。
@@ -2199,7 +2288,6 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         // Shift 单按检测维护 pressed 集合（武装在 DOWN，触发在 UP）。
         hwPressedKeys.getOrPut(event.deviceId) { HashSet() }.let { set ->
             if (event.repeatCount == 0) set.add(keyCode)
-            // 任何其他键的 DOWN 解除武装（双 Shift 防重武装由 downTime 绑定）。
             if (keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT) {
                 if (event.repeatCount == 0 && set.size == 1 &&
                     hwShiftArmed == null && !hwKeyCombo(event)) {
@@ -2209,18 +2297,35 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 hwShiftArmed = null
             }
         }
+        val ownershipKey = hwOwnershipKey(event)
+        // 归属延续（codex P1-2）：同次按压的 repeat 按首次类别执行——
+        // meta/ready/mode 中途变化不换语义。
+        hwKeyOwnership[ownershipKey]?.let { kind ->
+            return hwDispatchOwned(kind, event)
+        }
         val pending = hwPendingSwitch != null
-        // 行 1 / 行 1.5：精确 Ctrl+空格（pending 时缓存为 toggle 动作）。
-        if (hwIsCtrlSpace(event) && event.repeatCount == 0 && hwJsReady()) {
-            hwKeyOwnership[hwOwnershipKey(event)] = true
-            if (pending) hwCache("toggle", 0) else hwFireQuickPairToggle()
+        // 行 1：精确 Ctrl+空格（未 ready 也吞键——R3 统一行为；repeat 已被
+        // 归属表的 'toggle'/'consumed' 类别消化，不会重复触发）。
+        if (hwIsCtrlSpace(event) && event.repeatCount == 0) {
+            hwKeyOwnership[ownershipKey] = "consumed" // repeat 只消费
+            if (hwJsReady()) {
+                if (pending) hwCache("toggle", 0) else hwFireQuickPairToggle()
+            } else {
+                Diagnostics.log("hwkey", "toggleSkip notReady")
+            }
             return true
+        }
+        // 行 2（codex P1-3：其余修饰组合先于 pending 缓存旁路——切换在途
+        // 时 Ctrl+Backspace/Ctrl+Enter 等宿主快捷键不被吞）。
+        if (hwKeyCombo(event)) {
+            hwKeyOwnership[ownershipKey] = null
+            return super.onKeyDown(keyCode, event)
         }
         // 行 3：切换在途——仅文本/控制键缓存（方向键/F/TAB/系统键落原表）。
         val textOrCtrl = keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_SPACE ||
             keyCode == KeyEvent.KEYCODE_ENTER || hwIsPrintable(event)
         if (pending && textOrCtrl) {
-            hwKeyOwnership[hwOwnershipKey(event)] = true
+            hwKeyOwnership[ownershipKey] = "consumed"
             hwCache(
                 when {
                     keyCode == KeyEvent.KEYCODE_DEL -> "backspace"
@@ -2232,54 +2337,56 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             )
             return true
         }
-        // 行 2：其余一切修饰组合（含 AltGr、带修饰控制键）放行。
-        if (hwKeyCombo(event)) return super.onKeyDown(keyCode, event)
-        // 行 4：控制键（DEL/SPACE/ENTER；SHIFT 允许——Shift+空格仍属文本键）。
+        // 行 4：控制键（SHIFT 允许——Shift+空格仍属文本键）。
         if ((keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_SPACE ||
                 keyCode == KeyEvent.KEYCODE_ENTER) && hwCtrlMode() && hwJsReady()
         ) {
-            hwKeyOwnership[hwOwnershipKey(event)] = true
-            hwEvaluateKey(
-                when (keyCode) {
-                    KeyEvent.KEYCODE_DEL -> "backspace"
-                    KeyEvent.KEYCODE_SPACE -> "space"
-                    else -> "enter"
-                },
-            )
+            val kind = when (keyCode) {
+                KeyEvent.KEYCODE_DEL -> "backspace"
+                KeyEvent.KEYCODE_SPACE -> "space"
+                else -> "enter"
+            }
+            hwKeyOwnership[ownershipKey] = kind
+            hwEvaluateKey(kind)
             return true
         }
-        // 行 5：可打印字符（charModes 含 LOADING——JS→key→warmup 排队不拆词）。
+        // 行 5：可打印字符（LOADING 排队不拆词）。
         if (hwIsPrintable(event) && hwCharMode() && hwJsReady()) {
-            hwKeyOwnership[hwOwnershipKey(event)] = true
-            evaluate(
-                "window.Feelime && window.Feelime.hwKey && window.Feelime.hwKey('char', ${event.unicodeChar})",
-            )
+            hwKeyOwnership[ownershipKey] = "char"
+            hwEvaluateChar(event.unicodeChar)
             return true
         }
-        // 行 6：其余（方向键/F/TAB/系统键/未 ready/不支持模式）→ 父类
-        //（保留 Back 收起等系统行为；DIRECT/HANDWRITING 文本键在此旁路）。
+        // 行 6：其余（放行记录 null，repeat 同放行）。
+        hwKeyOwnership[ownershipKey] = null
         return super.onKeyDown(keyCode, event)
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         val set = hwPressedKeys[event.deviceId]
         set?.remove(keyCode)
-        // Shift 单按触发：武装命中（同设备+同 downTime+600ms 窗+集合已空）。
+        // Shift 单按触发：武装命中（同设备+同 downTime+600ms 窗+集合空+
+        // 非 CANCEL——取消事件解除武装不触发，codex P2-13）。
         val armed = hwShiftArmed
         if ((keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT) && armed != null) {
             hwShiftArmed = null
             val inWindow = android.os.SystemClock.elapsedRealtime() - armed.third < 600
-            if (armed.first == event.deviceId && armed.second == event.downTime &&
+            if (!event.isCanceled && armed.first == event.deviceId && armed.second == event.downTime &&
                 (set?.isEmpty() == true) && inWindow && hwJsReady()
             ) {
                 if (hwPendingSwitch != null) hwCache("toggle", 0) else hwFireQuickPairToggle()
-                return true // 触发即消费；普通 Shift UP 本身放行（见下）
+                // Shift UP 本身不消费（codex P2-13：宿主收完整 DOWN/UP 对；
+                // 切换动作已由 native 侧 evaluate 执行，无需消费 UP）。
+                return super.onKeyUp(keyCode, event)
             }
         }
+        if (event.isCanceled) {
+            // 取消 UP 清归属（design §5.2）。
+            hwKeyOwnership.remove(hwOwnershipKey(event))
+            return super.onKeyUp(keyCode, event)
+        }
         // 归属表：DOWN 已认领的按压，UP 同归属消费。
-        val key = hwOwnershipKey(event)
-        val owned = hwKeyOwnership.remove(key)
-        return if (owned == true) true else super.onKeyUp(keyCode, event)
+        val owned = hwKeyOwnership.remove(hwOwnershipKey(event))
+        return if (owned != null) true else super.onKeyUp(keyCode, event)
     }
 
     /** #H 生命周期清理（design §5.2）：输入会话边界/销毁清全部硬键状态。
@@ -2365,6 +2472,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // #H 硬键盘展开状态与形态档位（design §5/§7）。
             .put("hardwareKeyboard", hwKeyboardAttached())
             .put("hwkbForm", com.feelime.ime.readHwkbForm(this))
+            // #H 会话代数（P1-1）：JS 队列/桥调用携带的 gen 基准——
+            // 重载/换页后 JS 以此初始化，旧 gen 的在途请求一律终检丢弃。
+            .put("hwGen", hwInputGeneration)
+            // #H 水位起点（P1-7）：新页 seq 计数器以此起步——native 的
+            // hwDoneSeq 跨页只增不减，起点不抬高=新页前 N 条命令被旧
+            // 水位伪解除（屏障失效）。
+            .put("hwSeqBase", coordinator.hwDoneSeq)
             .put("mode", coordinator.currentMode.wireName)
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(this))
             // Degraded-engine state survives WebView rebuilds via hello
@@ -2799,6 +2913,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                         runCatching { KeyboardUpdateCenter.store(this@FeelimeService).onHandshakeComplete() }
                     }
                     pushEditorInfo()
+                    // #H（design §5.4，codex 评审 P1-8）：重推缓存的最后
+                    // 一次引擎状态——无副作用的快照，不重放 commit；JS
+                    // 收到后驱动 reportHwKeys（首个有效 state 后才接管）。
+                    lastStatePayloadJson?.let { cached ->
+                        evaluate("window.Feelime && window.Feelime.onEngineState && window.Feelime.onEngineState($cached)")
+                    }
                 } else {
                     rejectedCalls += 1
                 }
@@ -2823,9 +2943,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
          *  guarded 是 onMain 异步，桥无法同步回执——绑定靠 coordinator
          *  的 hwTag 机制（pendingHwTag 捕获进事件闭包）。 */
         @JavascriptInterface
-        fun hwKeyChar(char: String, seq: Long, token: String) = guarded(token, limited = false) {
+        fun hwKeyChar(char: String, seq: Long, gen: Long, token: String) = guarded(token, limited = false) {
             if (char.length > MAX_JSON_CHARS || char.codePointCount(0, char.length) != 1) {
                 rejectedCalls += 1
+                return@guarded
+            }
+            // #H 会话终检（design §5.1，codex 评审 P1-1）：gen 失配=跨
+            // 编辑器的迟到请求，丢弃（coordinator stamp 挡不住未 dispatch
+            // 的在途桥调用——后者会拿到新 stamp）。
+            if (gen != hwInputGeneration) {
+                Diagnostics.log("hwkey", "staleGen bridge=hwKeyChar gen=$gen")
                 return@guarded
             }
             InputStats.recordKeystroke(applicationContext)
@@ -2836,21 +2963,49 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
          *  backspace() 同构（软硬 action 同一 JS 函数，仅桥通道分野），
          *  各带 seq 水位号。 */
         @JavascriptInterface
-        fun hwSpace(seq: Long, token: String) = guarded(token, limited = false) {
+        fun hwSpace(seq: Long, gen: Long, token: String) = guarded(token, limited = false) {
+            if (gen != hwInputGeneration) {
+                Diagnostics.log("hwkey", "staleGen bridge=hwSpace gen=$gen")
+                return@guarded
+            }
             InputStats.recordKeystroke(applicationContext)
             coordinator.hwTag(seq) { coordinator.space() }
         }
 
         @JavascriptInterface
-        fun hwEnter(seq: Long, token: String) = guarded(token, limited = false) {
+        fun hwEnter(seq: Long, gen: Long, token: String) = guarded(token, limited = false) {
+            if (gen != hwInputGeneration) {
+                Diagnostics.log("hwkey", "staleGen bridge=hwEnter gen=$gen")
+                return@guarded
+            }
             InputStats.recordKeystroke(applicationContext)
             coordinator.hwTag(seq) { coordinator.enterRaw() }
         }
 
         @JavascriptInterface
-        fun hwBackspace(seq: Long, token: String) = guarded(token, limited = true) {
+        fun hwBackspace(seq: Long, gen: Long, token: String) = guarded(token, limited = true) {
+            if (gen != hwInputGeneration) {
+                Diagnostics.log("hwkey", "staleGen bridge=hwBackspace gen=$gen")
+                return@guarded
+            }
             InputStats.recordKeystroke(applicationContext)
             coordinator.hwTag(seq) { coordinator.backspace() }
+        }
+
+        /** #H 面板高度态（design §7，codex 评审 P1-9）：候选条形态下
+         *  面板/控制层/语音遮罩开关时 JS 上报——candidates/ctrl/full。
+         *  旧壳无此桥（存在性检查跳过），高度维持候选条预算。 */
+        @JavascriptInterface
+        fun hwPanelHeight(state: String, token: String) = guarded(token, limited = false) {
+            if (state != "candidates" && state != "ctrl" && state != "full") {
+                rejectedCalls += 1
+                return@guarded
+            }
+            if (state == hwPanelHeightState) return@guarded
+            hwPanelHeightState = state
+            Diagnostics.log("hwkey", "panelHeight state=$state")
+            // 候选条↔完整高度切换=窗口重测量（onMeasure 读 contentHeightPx）。
+            (keyboardView?.parent as? View)?.requestLayout()
         }
 
         /** #H 能力上报（design §6）：新 JS 页握手+状态到达后调用；旧壳
@@ -3466,11 +3621,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         /** #H 硬键盘选词通道（choosePoolCandidate 的 hw 分支）：同构
          *  chooseCandidate，带 seq 水位号（design §4.1）。 */
         @JavascriptInterface
-        fun hwChoose(seq: Long, revision: Long, candidateId: String, token: String) = guarded(token, limited = false) {
+        fun hwChoose(seq: Long, gen: Long, revision: Long, candidateId: String, token: String) = guarded(token, limited = false) {
             if (candidateId.length > MAX_CANDIDATE_ID_CHARS ||
                 !candidateId.all { it in '0'..'9' || it in 'a'..'f' || it == ':' }
             ) {
                 rejectedCalls += 1
+                return@guarded
+            }
+            if (gen != hwInputGeneration) {
+                Diagnostics.log("hwkey", "staleGen bridge=hwChoose gen=$gen")
                 return@guarded
             }
             coordinator.hwTag(seq) { coordinator.choose(revision, candidateId) }

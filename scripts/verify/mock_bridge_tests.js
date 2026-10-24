@@ -2144,11 +2144,88 @@ test('quickPairToggle export rides toggleChineseEnglish (#H)', {since: '3.73.49'
     equal(modes[modes.length - 1], 'direct', 'the export flips the quick pair to direct');
 });
 
-test('hw capability report rides the handshake (#H)', {since: '3.73.49'}, () => {
+test('hw capability report rides the first engine state (#H)', {since: '3.73.51'}, () => {
     const world = fresh({ mode: 'pinyin' });
+    // codex 评审 P1-8：ready 后、首条 state 前——不报。接管时池/组合
+    // 必须非空（native 的 keyboardReady 状态快照重推走同一条通道）。
+    equal(world.native.of('reportHwKeys').length, 0,
+        'no report before the page has seen an engine state');
+    world.engineState({ mode: 'pinyin', revision: 1, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
     const reports = world.native.of('reportHwKeys');
-    equal(reports.length, 1, 'one report after the page became ready');
+    equal(reports.length, 1, 'the first state drives the report');
     equal(reports[0].args[0], 1, 'protocol version 1');
+    // 后续 state 不重复报（幂等，native 侧无谓噪音）。
+    world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    equal(world.native.of('reportHwKeys').length, 1, 'later states do not re-report');
+    // 重握手（mode 切换触发的 hello 重推会复位 native 的 jsHwKeys）：
+    // 本页 state 一直活着——立即补报（a733426 语义不回退）。
+    world.hello({ mode: 'pinyin' });
+    equal(world.native.of('reportHwKeys').length, 2, 're-handshake re-reports immediately');
+});
+
+test('hwKey: Chinese comma waits for the watermark like a state action (#H)', {since: '3.73.51'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.context.window.Feelime.hwKey('char', 'i'.codePointAt(0));
+    // codex 评审 P1-6：中文 `,`/`.` 读组合与候选池——字母回声未到不得
+    // 执行（旧池确认/误走空闲通道都是实锤形态）。
+    world.context.window.Feelime.hwKey('char', ','.codePointAt(0));
+    equal(world.native.of('hwChoose').length + world.native.of('chooseCandidate').length +
+        world.native.of('key').filter(c => c.args[0] === ',').length, 0,
+        'comma holds while the preceding letter echo is in flight');
+    world.engineState({ mode: 'pinyin', revision: 1, hwDoneSeq: 1, composing: 'i', rawInput: 'i',
+        candidates: [{ id: 'c1', text: '一' }], hasNextPage: false });
+    equal(world.native.of('hwChoose').length, 1,
+        'comma proceeds on fresh state (two-step flow via hwChoose)');
+});
+
+test('hwKey: session gen rides the queue and every hw bridge call (#H)', {since: '3.73.51'}, () => {
+    const world = fresh({ mode: 'pinyin', hwGen: 5 });
+    world.context.window.Feelime.hwKey('char', 'a'.codePointAt(0), 5);
+    const calls = world.native.of('hwKeyChar');
+    equal(calls.length, 1, 'letter dispatched');
+    equal(calls[0].args[2], 5, 'bridge carries the session gen (terminal check input)');
+    // codex 评审 P1-1：排队中的状态依赖动作（等水位回声的空格）遇到
+    // 编辑器换代（hello 带 hwGen 推进）——旧 gen 丢弃，不落新编辑器。
+    world.context.window.Feelime.hwKey('space', 0, 5);
+    world.hello({ mode: 'pinyin', hwGen: 6 });
+    world.engineState({ mode: 'pinyin', revision: 1, hwDoneSeq: 1, composing: 'a', rawInput: 'a',
+        candidates: [], hasNextPage: false });
+    equal(world.native.of('hwSpace').length + world.native.of('space').length, 0,
+        'a stale-gen queued action is dropped at drain');
+    world.context.window.Feelime.hwKey('char', 'c'.codePointAt(0), 6);
+    equal(world.native.of('hwKeyChar').filter(c => c.args[0] === 'c').length, 1,
+        'the new-session job proceeds');
+    equal(world.native.of('hwKeyChar').filter(c => c.args[0] === 'c')[0].args[2], 6,
+        'the new job carries the new gen');
+});
+
+test('hwKey: hello hwSeqBase lifts the seq counter across page reloads (#H)', {since: '3.73.51'}, () => {
+    // codex 评审 P1-7：native hwDoneSeq 跨页只增不减——新页计数器必须
+    // 从快照起点续跑，否则旧水位伪解除屏障（前 N 条命令白放行）。
+    const world = fresh({ mode: 'pinyin', hwGen: 2, hwSeqBase: 100 });
+    world.context.window.Feelime.hwKey('char', 'a'.codePointAt(0), 2);
+    const seq = world.native.of('hwKeyChar')[0].args[1];
+    assert(seq > 100, `seq starts above the native watermark base (got ${seq})`);
+});
+
+test('hwkb form: panel openings drive the hwPanelHeight states (#H)', {since: '3.73.51'}, () => {
+    const world = touchWorld({ mode: 'pinyin', hardwareKeyboard: true, hwkbForm: 'candidates' });
+    const kb = world.context.testKeyboard;
+    const states = () => world.native.of('hwPanelHeight').map(c => c.args[0]);
+    // 面板开=full（codex 评审 P1-9：候选条预算装不下工具面板）。首个
+    // 上报即 full（hello 期 applyHwForm 的基线 candidates 撞 call() 的
+    // ready 门闸被丢——native 默认值即 candidates，无功能差）。
+    kb.openPanel('clipboard');
+    equal(states()[states().length - 1], 'full', 'panel open lifts to full height');
+    kb.closePanel();
+    equal(states()[states().length - 1], 'candidates', 'panel close falls back');
+    // 控制层=ctrl（行视图，候选条预算+行高差）。
+    kb.setControlView(true);
+    equal(states()[states().length - 1], 'ctrl', 'control view reports the ctrl budget');
+    kb.setControlView(false);
+    equal(states()[states().length - 1], 'candidates', 'control view off falls back');
 });
 
 test('kaomoji renders as its own form: head chips row + full grid (#67)', {since: '3.73.47'}, () => {

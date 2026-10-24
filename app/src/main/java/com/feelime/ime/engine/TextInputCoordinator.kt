@@ -879,9 +879,14 @@ class TextInputCoordinator(
             }
             onComplete?.invoke()
         }
+        // #H 水位快照（codex 代码评审 P2-10）：与 dispatchLive 相同的
+        // 捕获时点——mainPoster 回调执行时 hwTag 的 finally 已把
+        // pendingHwTag 恢复 0，回调内再读=Enter 永远丢自己的完成水位。
+        val seq = ++dispatchSeq
+        val hwTag = pendingHwTag
         val ack = engine.dispatch(EngineRequest(stamp, EngineCommand.EnterRaw)) { event ->
             mainPoster {
-                onEngineEvent(event, EngineCommand.EnterRaw, ++dispatchSeq, pendingHwTag)
+                onEngineEvent(event, EngineCommand.EnterRaw, seq, hwTag)
                 complete()
             }
         }

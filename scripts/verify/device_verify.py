@@ -68,6 +68,22 @@ def adb(*args, timeout=30):
     return out.stdout
 
 
+def pin_hwkb_form(form="full"):
+    """#H 硬键盘形态夹具：AVD 配置自带硬键盘，feelime_hwkb_form 默认档
+    candidates 会把引擎文本模式的软键盘收成候选条——断言绝对几何/完整
+    键面的套件会整段假失败。写回单个键的 pref 文件（base64 规避 adb
+    shell 转义），须在进程已停时调用（SharedPreferences 启动时加载）。
+    """
+    import base64 as _b64
+    xml = ("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>"
+           "<map><string name=\"feelime_hwkb_form\">%s</string></map>" % form)
+    b64 = _b64.b64encode(xml.encode()).decode()
+    shell(f"echo {b64} | base64 -d > /data/local/tmp/hwkb_pin.xml")
+    shell(f"run-as {PKG} sh -c "
+          "'mkdir -p shared_prefs && "
+          "cp /data/local/tmp/hwkb_pin.xml shared_prefs/feelime_keyboard.xml'")
+
+
 def shell(cmd, timeout=30):
     return adb("shell", cmd, timeout=timeout).decode("utf-8", "replace")
 

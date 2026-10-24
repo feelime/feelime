@@ -225,10 +225,13 @@ button { font: inherit; }
 body.hwkb #qwertyLayer,
 body.hwkb #symbolLayer,
 body.hwkb #ninePad,
-body.hwkb .kb-rows,
-body.hwkb #voiceOverlay,
-body.hwkb #ctrlLayer { display: none; }
-body.hwkb #candidateBar { display: flex; }
+body.hwkb .kb-rows { display: none; }
+/* ctrlLayer/voiceOverlay 不进隐藏列（codex 代码评审 P1-9）：控制层是
+ * 候选条行视图（[hidden] 自管，工具栏 ctrlTool 在 hwkb 态可达），
+ * 语音遮罩有自己的 .open 开关——无条件藏死=候选条形态下控制键入口
+ * 失灵、录音遮罩不可见。同理不写 body.hwkb #candidateBar{display:flex}
+ * ——那条会盖掉 [hidden] 的 UA 隐藏（engineStatus 顶替、控制层借条
+ * 都靠 hidden 让位）。 */
 /* 候选条在 hwkb 态独占键区：margin 归零（原生高度预算已按 40px bar
  * 计算，2/10px margin 会让 bar 沉底）。 */
 body.hwkb #candidateBar { margin: 0; }

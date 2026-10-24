@@ -698,14 +698,17 @@ class MockNative {
     keyboardReady(version, minApi, caps, token) {
         this._record('keyboardReady', [version, minApi, caps, token]);
     }
-    // #H 硬件键盘桥（design §4/§6）：hwKeyChar/hwSpace/hwEnter/hwBackspace/
-    // hwChoose 带 JS 自产水位 seq；reportHwKeys 能力上报。
-    hwKeyChar(char, seq, token) { this._record('hwKeyChar', [char, seq, token]); }
-    hwSpace(seq, token) { this._record('hwSpace', [seq, token]); }
-    hwEnter(seq, token) { this._record('hwEnter', [seq, token]); }
-    hwBackspace(seq, token) { this._record('hwBackspace', [seq, token]); }
-    hwChoose(seq, revision, id, token) { this._record('hwChoose', [seq, revision, id, token]); }
+    // #H 硬件键盘桥（design §4/§5.1/§6/§7）：hwKeyChar/hwSpace/hwEnter/
+    // hwBackspace/hwChoose 带 JS 自产水位 seq + 会话代数 gen（codex 评审
+    // P1-1：桥执行处终检）；reportHwKeys 能力上报；hwPanelHeight 面板
+    // 高度态（P1-9）。
+    hwKeyChar(char, seq, gen, token) { this._record('hwKeyChar', [char, seq, gen, token]); }
+    hwSpace(seq, gen, token) { this._record('hwSpace', [seq, gen, token]); }
+    hwEnter(seq, gen, token) { this._record('hwEnter', [seq, gen, token]); }
+    hwBackspace(seq, gen, token) { this._record('hwBackspace', [seq, gen, token]); }
+    hwChoose(seq, gen, revision, id, token) { this._record('hwChoose', [seq, gen, revision, id, token]); }
     reportHwKeys(version, token) { this._record('reportHwKeys', [version, token]); }
+    hwPanelHeight(state, token) { this._record('hwPanelHeight', [state, token]); }
     commitAssoc(text, token) {
         this._record('commitAssoc', [text, token]);
     }

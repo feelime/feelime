@@ -531,6 +531,8 @@ def main():
     d.shell("settings put system accelerometer_rotation 0")
     d.shell("settings put system user_rotation 0")
     d.shell(f"run-as {d.PKG} sh -c 'rm -f shared_prefs/feelime_keyboard.xml'")
+    # #H：清基线后补钉 full 档（同 candidate-pool 套件的 AVD 硬键盘夹具）。
+    d.pin_hwkb_form()
     d.shell(f"am force-stop {d.PKG}")
     time.sleep(1.0)
     d.prepare()

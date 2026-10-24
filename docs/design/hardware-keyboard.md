@@ -1,8 +1,9 @@
 # 硬件键盘支持（物理键盘拼音输入）
 
-状态：实现中（六审「需小修」已修——B2 改 JS 自产 seq 随桥传入 + hwTag、B1 超时降级收窄。评审档 ~/tmp/codex/ 下六份。四轮 codex 评审档 ~/tmp/codex/20261024-*-hwkb-design*/，
-逐轮修订记录见 §9）。v4 对三审的裁决：可吸收项全部吸收；三处明确
-拒绝过度工程并记录理由（§8）。
+状态：实现中（代码评审 9 P1 + 4 P2 全修——归属表延续/pending 行序/
+DIRECT 缓存交付/toggle 余队转新门闩/标点水位/seq 起点同步/上报时序/
+面板高度态/Enter tag 快照/Shift UP 放行。评审档 ~/tmp/codex/ 下七份：
+六轮设计 + 20261025-0043 代码 review）。
 
 ## 0. 目标
 
@@ -86,8 +87,14 @@ downTime+600ms）。任何键 down / CANCEL / 超窗解除。up 命中 → 同�
   DirectTextEngine→commitText（软键盘 DIRECT 字母同通道），native
   不做第二执行端（coordinator.key 直调删除），缓存内顺序 =
   evaluate 注入序 ✓。重路由按「键类别×目标模式」：文本键交付
-  charModes + DIRECT 目标（T9/STROKE/HANDWRITING 目标下文本键无
-  落点，忽略+诊断——quickPair 目标极少为这些模式的字符输入场景）。
+  charModes + DIRECT 目标（代码评审 P1-4 落地：DIRECT 下的
+  space/enter/backspace 同样经 JS action 交付——直发空格/换行/删键，
+  不丢已认领键）；T9/STROKE/HANDWRITING 目标下文本键无落点，
+  忽略+诊断——quickPair 目标极少为这些模式的字符输入场景）。
+- **缓存内 toggle 的余队**（代码评审 P1-5）：settle 遇 toggle 开启新
+  切换后**停止本轮交付**，余下队列整体转入新 pending 的缓存（超限
+  丢最旧），由新门闩的 settle/超时再交付——连续 toggle 不折叠、后续
+  键不按旧 mode 执行。
 - 缓存上限 8 键（超限丢最旧+诊断）。
 
 ## 4. JS 侧
@@ -110,7 +117,21 @@ downTime+600ms）。任何键 down / CANCEL / 超窗解除。up 命中 → 同�
   的 dispatch 不在 hwTag 块内）——LOADING 过渡态屏障靠 120ms 超时
   降级（诊断打点），记为已知边界。
 - 字母：只等 `pendingPunct == null`（跨步屏障）；字母间不等
-  （coordinator 队列保序）。
+  （coordinator 队列保序）。中文 `,`/`.`（chineseSymMode）虽是 char，
+  但 enginePunct 读组合/池——**同样等水位**（代码评审 P1-6：不等会
+  拿旧池确认、或在前一字母回声前误走空闲通道）；其 seq 只在两步流
+  真正走 hwChoose 时成为等待目标（空闲 sendText 无回声，预设会让
+  下一键白等 120ms）。
+- **会话代数 gen**（代码评审 P1-1 落地 §5.1）：hwKey 注入携带
+  hwInputGeneration，队列 job 与全部 hw 桥调用（hwKeyChar/hwSpace/
+  hwEnter/hwBackspace/hwChoose）贯穿；drain 时旧 gen 丢弃、native
+  桥执行处终检丢弃；两步标点的第二步 pendingPunct 记 gen，跨会话
+  作废。残余：hw 路径撞上 dyn:/fav: 候选时走 clearComposing+
+  commitText（软键盘同通道，无 gen）——跨编辑器窗口为一帧内的
+  drain 检查与桥执行间隙，接受。
+- **页面代数**（代码评审 P1-7）：hello 载荷带 hwGen + hwSeqBase
+  （native 当前 hwDoneSeq）——新页 gen 基准与 seq 起点同步，旧水位
+  不伪解除。
 - 两步标点：`pendingPunct` 非空期间**所有**动作（含字母、含超时路径）
   挂起；清除=补发 commitText 已按序进入 coordinator。
 - 120ms 超时：仅用于水位等待与 pendingPunct 之外的异常兜底，按当时
@@ -162,7 +183,9 @@ ready/token 门闸走 `call()`；requestId 附在后续一切桥调用上。
 
 ### 5.2 按压归属表
 
-首次 down 定归属（认领/放行），记 (deviceId, keyCode, downTime)；
+首次 down 定归属并记**决策类别**（放行/char/space/enter/backspace/
+toggle/consumed——代码评审 P1-2：值类别化，repeat 按首次类别执行，
+meta/ready/mode 中途变化不换语义），记 (deviceId, keyCode, downTime)；
 repeat down 与 up 同归属；up 清表；未匹配 up → super.onKeyUp（父类
 Back 收起保留）。清理点：onStartInput / onFinishInput / onDestroy /
 ACTION_CANCEL。`InputDevice` 移除（ACTION_CANCEL 之外的强制清理：
@@ -196,8 +219,12 @@ coordinator 方案——JS 补发有乱序窗口：`1→a` 场景 a 先组合、
 ### 5.4 状态对齐
 
 `keyboardReady`（pageReady 置位）重推缓存的最后一次 onEngineState
-载荷（无副作用，不重放 commit）。JS 收到首个 state 推送后上报
-`reportHwKeys`（§6），保证接管时池非空。
+载荷（无副作用，不重放 commit；代码评审 P1-8 落地：lastStatePayload
+缓存 + 握手重推）。JS 收到首个 state 推送后上报 `reportHwKeys`
+（§6），保证接管时池非空；重握手（同页 hello 重推）时本页 state
+活着，立即补报。冷启动宽限（AVD 实测定罪补丁）：direct 模式冷启动
+零引擎事件——首 state 永不到达会死锁上报（Ctrl+空格恒 notReady），
+ready 后 300ms 无 state 则补报（从未有过状态=无旧池可 stale）。
 
 ## 6. 能力上报协议（双向可选，不动现有 capabilities）
 
@@ -216,12 +243,15 @@ coordinator 方案——JS 补发有乱序窗口：`1→a` 场景 a 先组合、
 （v3 §5 保留）hello 增 `hardwareKeyboard`（hardKeyboardHidden==NO
 且 keyboard!=NOKEYS）；`body.hwkb` = hardwareKeyboard && 档位==
 candidates && mode∈charModes（onEngineState 路径重评估）；原生候选
-高度（preedit band + 40px bar + 安全区，hwkb CSS 清零 bar margin
-2+10px 与底 padding，px×density，float band 维持不叠加）与用户保存
-高度分离不持久化；面板临时高度走新薄桥 `hwPanelHeight(open, token)`
-——布尔换「面板高度态」枚举（none/candidates/full），面板互相替换
-取后者，关闭回落 candidates；换页/插拔/模式切换时由既有
-pushBridgeHello/onEngineState 触发重算复位。设置三档
+高度（preedit band + 40px bar，safeBottom/bottomPad 只在
+contentHeightPx 统一出口叠一次——代码评审 P2-12；hwkb CSS 清零 bar
+margin 2+10px）与用户保存高度分离不持久化；面板临时高度走新薄桥
+`hwPanelHeight(state, token)`（代码评审 P1-9 落地）——**candidates/
+ctrl/full 三态**（面板/展开/语音遮罩=full，控制层=ctrl=候选条预算+
+行高差，其余回落 candidates），JS 在面板开合/控制层/语音/展开/hello
+重算点上报，native 仅在 hwkb 形态分支消费；候选条形态下
+ctrlLayer/voiceOverlay 不进 CSS 隐藏列（自管 [hidden]/.open），
+candidateBar 不写 display:flex（会盖 [hidden] 让位）。设置三档
 `feelime_hwkb_form`（candidates 默认/full/follow），SettingsBridge
 逐方法校验，变更补 `updateInputViewShown()`；
 onEvaluateInputViewShown：candidates/full→true，follow→super。
@@ -281,3 +311,8 @@ RDP。ace：input keyevent+蓝牙键盘（若有）。
 - Ctrl+空格被 IME 消费（Emacs set-mark 受影响，有反馈再评估）。
 - 物理 repeat >25/s 退格受既有桥限流（典型系统 repeat 20/s 内）。
 - RDP 文本注入 vs 扫描码差异（DIRECT 旁路保留原生物理语义）。
+- hw 路径 dyn:/fav: 候选的 clearComposing+commitText 无 gen（软键盘
+  同通道，一帧内窗口）；hello 期 applyHwForm 的面板高度基线上报撞
+  call() ready 门闸被丢（native 默认值即 candidates，无功能差）。
+- modeMenu/stats/edit 视图在候选条形态下不可达（触发器在隐藏键区），
+  面板高度态按不可达处理；插拔瞬间高度态由 hello 重推收敛（一帧）。

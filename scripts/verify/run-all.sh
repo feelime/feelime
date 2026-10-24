@@ -318,6 +318,21 @@ reset_device() {
     adb -s "$FEELIME_ADB_SERIAL" shell settings put system accelerometer_rotation 0 >/dev/null
     adb -s "$FEELIME_ADB_SERIAL" shell settings put system user_rotation 0 >/dev/null
     adb -s "$FEELIME_ADB_SERIAL" shell svc power stayon true >/dev/null 2>&1 || true
+    pin_hwkb_form
+}
+
+# #H 硬键盘形态钉 full（套件夹具）：AVD 配置自带硬键盘，feelime_hwkb_form
+# 的默认档 candidates 会把引擎文本模式的软键盘收成候选条——依赖完整键面
+# 的段（法语弹层/键位图/候选池…）会整段假失败。#H 形态行为有专用 AVD
+# 验证（design hardware-keyboard.md §9），gate 在此固定 full 保持既有
+# 回归面。base64 落盘规避 adb shell 多参数转义（run-as 整串单参数）。
+pin_hwkb_form() {
+    local b64
+    b64=$(printf "%s" "<?xml version='1.0' encoding='utf-8' standalone='yes' ?><map><string name=\"feelime_hwkb_form\">full</string></map>" | base64 -w0)
+    adb -s "$FEELIME_ADB_SERIAL" shell "echo $b64 | base64 -d > /data/local/tmp/hwkb_pin.xml" >/dev/null 2>&1 || true
+    adb -s "$FEELIME_ADB_SERIAL" shell \
+        "run-as "$PKG" sh -c 'mkdir -p shared_prefs && cp /data/local/tmp/hwkb_pin.xml shared_prefs/feelime_keyboard.xml'" \
+        >/dev/null 2>&1 || true
 }
 
 # 套件间轻量清扫：杀进程 + 清全部 prefs（app 实际有 9 个 prefs 文件：
@@ -338,6 +353,7 @@ sweep_device() {
     adb -s "$FEELIME_ADB_SERIAL" shell \
         "run-as "$PKG" sh -c 'rm -f shared_prefs/*.xml'" \
         >/dev/null 2>&1 || true
+    pin_hwkb_form
     adb -s "$FEELIME_ADB_SERIAL" shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
 }
 
