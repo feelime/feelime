@@ -1615,6 +1615,11 @@ body[data-one-hand] .panel-head { gap: 5px; }
     border-radius: 16px;
     padding: 2px;
 }
+/* hidden 属性必须压过上面的显式 display：UA 样式 [hidden]{display:none}
+ * 会被类选择器盖掉——#67 首版颜文字态 tabs 行（display:flex）设置了
+ * hidden 属性却视觉残留「剪贴板|常用语」，DOM 断言读属性全绿、真机
+ * 全露馅。head 内所有子元素统一收口。 */
+.panel-head [hidden] { display: none; }
 .panel-tab, .panel-action {
     height: 26px;
     padding: 0 14px;
