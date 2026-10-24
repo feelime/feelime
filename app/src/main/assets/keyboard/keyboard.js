@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.46';
+    const KEYBOARD_VERSION = '3.73.47';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -9707,6 +9707,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 会把语音输入等无关图标一并带进面板头，否决。
             this.hideKeyLayers();
             document.getElementById('panelLayer').hidden = false;
+            // #67 定稿：颜文字独立形态——面板头 tabs 让位给横向分类条
+            //（右侧固定 ×），列表区整幅给网格；与剪贴板/常用语 tab 界面解耦。
+            const kaomojiForm = this.panelTab === 'kaomoji';
+            document.querySelector('.panel-tabs').hidden = kaomojiForm;
+            document.getElementById('kaomojiTabs').hidden = !kaomojiForm;
+            document.getElementById('panelLayer').dataset.kaomoji = kaomojiForm ? '' : null;
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
                 button.classList.toggle('active', button.dataset.panelTab === this.panelTab);
             });
@@ -9723,8 +9729,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             list.replaceChildren();
             empty.hidden = true;
             delete document.getElementById('panelLayer').dataset.empty;
-            const chips = document.createElement('div');
-            chips.className = 'kaomoji-chips';
+            // 分类条渲染在面板头（#kaomojiTabs，横向滑动），右侧 × 是
+            // panelClose 固定件；列表区只放网格，整幅可用。
+            const chips = document.getElementById('kaomojiTabs');
+            chips.replaceChildren();
             KAOMOJI_TABS.forEach(cat => {
                 const chip = document.createElement('button');
                 chip.className = 'kaomoji-chip';
@@ -9755,7 +9763,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     });
                     grid.append(cell);
                 });
-            list.append(chips, grid);
+            list.append(grid);
         }
 
         closePanel() {

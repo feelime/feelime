@@ -1655,24 +1655,27 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
  * 剩余空间透出键盘背景。 */
 #panelLayer[data-empty] #panelList { display: none; }
 #panelLayer[data-empty] #panelEmpty { flex: none; padding: 14px 0 18px; }
-/* #67 颜文字面板：分类 chips + 网格。格子按内容自适应宽（颜文字
- *  长度差极大：orz 三个字符到 (╯°□°）╯︵ ┻━┻ 十几个），等宽网格
- *  会浪费或溢出。 */
-.kaomoji-chips {
-    display: flex; gap: 6px; overflow-x: auto; padding: 8px 10px 4px;
-    scrollbar-width: none;
+/* #67 颜文字定稿形态：面板头 tabs 让位给横向滑动分类条（.kaomoji-tabs
+ *  就是面板头里那行 chips，右侧 × 为 panelClose 固定件），列表区整幅
+ *  给网格纵向滚动。与剪贴板/常用语 tab 界面解耦。 */
+.kaomoji-tabs {
+    display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0;
+    padding: 0; margin: 0; border: none; scrollbar-width: none;
 }
-.kaomoji-chips::-webkit-scrollbar { display: none; }
+.kaomoji-tabs::-webkit-scrollbar { display: none; }
 .kaomoji-chip {
     flex: none; border: 1px solid var(--kb-border, rgba(128,128,128,.35));
     background: transparent; color: inherit; border-radius: 999px;
     padding: 3px 12px; font-size: 12px; cursor: pointer;
 }
 .kaomoji-chip.active { background: var(--kb-accent, #147345); color: #fff; border-color: transparent; }
+#panelLayer[data-kaomoji] #panelList {
+    display: flex; flex: 1; min-height: 0;
+}
 .kaomoji-grid {
     display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 4px; padding: 4px 10px 12px; overflow-y: auto;
-    align-content: start;
+    gap: 4px; padding: 6px 10px 12px; overflow-y: auto;
+    align-content: start; flex: 1;
 }
 .kaomoji-cell {
     border: none; background: rgba(128,128,128,.10); color: inherit;

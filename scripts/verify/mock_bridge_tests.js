@@ -2062,11 +2062,14 @@ test('emoji sub-view commits and remembers; 123 tab returns', {since: '3.27.0'},
         'emoji view reset after leaving the pad');
 });
 
-test('kaomoji panel tab renders categories and commits on tap (#67)', {since: '3.73.46'}, () => {
-    const world = fresh();
-    world.tap(world.document.querySelector('[data-panel-tab="kaomoji"]'));
-    assert(!world.$('panelLayer').hidden, 'panel opens from the kaomoji tab');
-    const chips = world.$('panelList').querySelectorAll('.kaomoji-chip');
+test('kaomoji renders as its own form: head chips row + full grid (#67)', {since: '3.73.47'}, () => {
+    const world = touchWorld();
+    world.context.testKeyboard.runPanelStep('kaomoji');
+    assert(!world.$('panelLayer').hidden, 'deep link opens the panel');
+    // 定稿形态：剪贴板/常用语 tabs 整块隐藏，分类条上位（右侧 × 固定件）。
+    assert(world.document.querySelector('.panel-tabs').hidden, 'tab row hidden in kaomoji form');
+    assert(!world.$('kaomojiTabs').hidden, 'category chips row shown in the head');
+    const chips = world.$('kaomojiTabs').querySelectorAll('.kaomoji-chip');
     assert(chips.length === 10, `ten category chips, got ${chips.length}`);
     assert(chips[0].classList.contains('active'), 'first category active by default');
     const cells = world.$('panelList').querySelectorAll('.kaomoji-cell');
@@ -2074,19 +2077,24 @@ test('kaomoji panel tab renders categories and commits on tap (#67)', {since: '3
     // 点格上屏：commitText 通道（是输入，进统计——不走粘贴）。
     world.tap(cells[0]);
     const commits = world.native.of('commitText').map(c => c.args[0]);
-    assert(commits.includes(cells[0] === null ? '' : [...world.$('panelList').querySelectorAll('.kaomoji-cell')][0] && commits[commits.length - 1]) || commits.length >= 1, 'commit fired');
+    assert(commits.length >= 1 && commits[commits.length - 1] === cells[0].textContent,
+        `commit carries the tapped cell (${commits[commits.length - 1]})`);
     assert(world.$('panelLayer').hidden, 'panel closes after commit');
+    // 收起后再以剪贴板打开：tabs 行必须回归（形态互不留残）。
+    world.context.testKeyboard.runPanelStep('clipboard');
+    assert(!world.document.querySelector('.panel-tabs').hidden, 'tab row returns for clipboard');
+    assert(world.$('kaomojiTabs').hidden, 'chips row hides for clipboard');
 });
 
-test('kaomoji category switch persists across reopen (#67)', {since: '3.73.46'}, () => {
-    const world = fresh();
-    world.tap(world.document.querySelector('[data-panel-tab="kaomoji"]'));
-    const chips = world.$('panelList').querySelectorAll('.kaomoji-chip');
+test('kaomoji category switch persists across reopen (#67)', {since: '3.73.47'}, () => {
+    const world = touchWorld();
+    world.context.testKeyboard.runPanelStep('kaomoji');
+    const chips = world.$('kaomojiTabs').querySelectorAll('.kaomoji-chip');
     const want = chips[2].textContent;
     world.tap(chips[2]);
     world.tap(world.$('panelClose'));
-    world.tap(world.document.querySelector('[data-panel-tab="kaomoji"]'));
-    const active = [...world.$('panelList').querySelectorAll('.kaomoji-chip')]
+    world.context.testKeyboard.runPanelStep('kaomoji');
+    const active = [...world.$('kaomojiTabs').querySelectorAll('.kaomoji-chip')]
         .filter(c => c.classList.contains('active'))[0];
     assert(active && active.textContent === want, 'category remembered across reopen');
 });
@@ -2145,7 +2153,11 @@ test('panel head carries no toolbar icons; a single X closes (#39-4)', {since: '
     world.tap(world.$('clipboardButton'));
     assert(!world.$('panelLayer').hidden, 'panel open');
     const head = () => world.document.querySelector('.panel-head');
-    const ids = [...head().children].map(el => el.id).filter(Boolean);
+    // #67 起面板头常驻一个隐藏的 kaomojiTabs 容器（颜文字形态才显示，
+    // 分类条不是工具栏图标），从清点里排除；panelManage 在剪贴板态照旧
+    // hidden 但仍属 head 固定件。
+    const ids = [...head().children].map(el => el.id)
+        .filter(id => id && id !== 'kaomojiTabs');
     equal(ids.join(','), 'panelClear,panelManage,panelClose',
         `head = clear/manage + X only (no toolbar icons, no hide): ${ids}`);
     // 工具栏整条隐藏：右组（含语音输入）一颗都进不了面板头。
