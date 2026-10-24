@@ -1533,6 +1533,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.seenDegradeSeq = 0;
             // Quick keyboard pair for the space-adjacent toggle.
             this.quickPair = ['pinyin', 'direct'];
+            // #H 硬件键盘队列状态（design §4.1）。
+            this.hwQueue = [];
+            this.hwDraining = false;
+            this.hwDrainTimer = null;
+            this.hwWaitSeq = 0;
+            this.hwSeqCounter = 0;
+            this.hwDoneSeq = 0;
+            this.hwReported = false;
             try {
                 const speed = parseInt(localStorage.getItem('feelime_scrub_speed') || '3', 10);
                 if (speed >= 1 && speed <= 5) this.scrubSpeed = speed;
@@ -2096,13 +2104,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** 退格键帽统一出口（issue #46）：开关开启且处于联想让位态
          *  （无组合）时，退格等效 × ——清联想恢复工具栏、不动编辑框；
          *  其余情况照旧走原生删除（回执透传给 #34 回滑恢复）。 */
-        backspaceAction() {
+        backspaceAction(hwSeq) {
             if (this.backspaceAssocOn && this.assocWords.length && !this.composing) {
                 this.assocWords = [];
                 this.renderCandidates(this.lastEngineState || {});
                 return true;
             }
-            return this.call(() => Native.backspace(this.token));
+            return this.call(() => hwSeq && typeof Native.hwBackspace === 'function'
+                ? Native.hwBackspace(hwSeq, this.token)
+                : Native.backspace(this.token));
         }
 
         isChineseMode() {
@@ -3475,6 +3485,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return button;
         }
 
+        /** 回车键业务动作（软键面 click 与硬件键盘 hwKey 同一入口，#H）：
+         * T9/笔画组合中=选池头候选，其余走 Native.enter。提取自原
+         * click 回调，行为零变化。 */
+        enterAction(hwSeq) {
+            // T9/笔画组合中的确认键=提交高亮候选（用户定稿）。EnterRaw
+            // 会 ESCAPE+把原始输入串原样上屏（RimeTextEngine）——笔画
+            // 的组合串是 schema xlit 后的部件字形（一丨丿…），落进
+            // 编辑器就是乱码，同样必须拦截。repeat 长按在 T9 关闭：
+            // 确认后残留的 interval 点击会落进非组合分支连发换行。
+            if ((this.mode === 't9' || this.mode === 'stroke') && this.composing) {
+                const candidate = (this.expandCandidates || []).find(item =>
+                    !String(item.id).startsWith('alt:'));
+                if (candidate) {
+                    this.choosePoolCandidate(candidate, hwSeq);
+                    return;
+                }
+            }
+            this.call(() => hwSeq && typeof Native.hwEnter === 'function'
+                ? Native.hwEnter(hwSeq, this.token)
+                : Native.enter(this.token));
+        }
+
         enterKey(longPress = 'repeat') {
             const button = document.createElement('button');
             button.className = 'kb-key kb-special kb-wide-2_25';
@@ -3483,22 +3515,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (longPress) button.dataset.lp = longPress;
             button.setAttribute('aria-label', this.composing ? t("确定") : t("换行"));
             button.textContent = this.composing ? t("确定") : t("换行");
-            button.addEventListener('click', () => {
-                // T9/笔画组合中的确认键=提交高亮候选（用户定稿）。EnterRaw
-                // 会 ESCAPE+把原始输入串原样上屏（RimeTextEngine）——笔画
-                // 的组合串是 schema xlit 后的部件字形（一丨丿…），落进
-                // 编辑器就是乱码，同样必须拦截。repeat 长按在 T9 关闭：
-                // 确认后残留的 interval 点击会落进非组合分支连发换行。
-                if ((this.mode === 't9' || this.mode === 'stroke') && this.composing) {
-                    const candidate = (this.expandCandidates || []).find(item =>
-                        !String(item.id).startsWith('alt:'));
-                    if (candidate) {
-                        this.choosePoolCandidate(candidate);
-                        return;
-                    }
-                }
-                this.call(() => Native.enter(this.token));
-            });
+            button.addEventListener('click', () => this.enterAction());
             this.bindTouch(button);
             return button;
         }
@@ -3600,6 +3617,114 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return button;
         }
 
+        // ---- #H 硬件键盘：hwKey 串行队列 + revision 屏障（design
+        // hardware-keyboard.md §4.1）。物理键由 native 全认领后 evaluate
+        // 注入（window.Feelime.hwKey），全部走软键盘同一批 action。----
+        hwEnqueue(kind, value) {
+            const needsState = kind !== 'char';
+            this.hwQueue.push({
+                kind, value, needsState, at: Date.now(),
+            });
+            this.hwDrain();
+        }
+
+        hwDrain() {
+            if (this.hwDraining) return;
+            const job = this.hwQueue[0];
+            if (!job) return;
+            // 两步标点跨步屏障：补发 commitText 完成前，任何后续动作
+            // （含字母——否则字母越过补发落进下一个组合）不发。
+            // 两步标点跨步屏障同样约束超时路径（120ms 不得绕过）。
+            if (this.pendingPunct) { this.hwArmDrainTimer(job); return; }
+            // 状态依赖动作（space/enter/backspace/标点/数字）等命令完成
+            // 水位（design §4.1 五审 B2 终案）：native 每条 onEngineState
+            // 捎带生成时的 dispatch 水位 hwSeq；最后一个已发起命令的
+            // 结果送达（payload.hwSeq >= hwIssued）才执行。旧分页回声
+            // 带旧水位，不伪解除；无在途命令立即放行。
+            if (job.needsState && (this.hwDoneSeq || 0) < (this.hwWaitSeq || 0)) {
+                if (Date.now() - job.at > 120) {
+                    // 超时降级：按当时状态执行 + 诊断（不是完成证明）。
+                    if (window.__diagHwTimeouts != null) window.__diagHwTimeouts++;
+                } else { this.hwArmDrainTimer(job); return; }
+            }
+            this.hwQueue.shift();
+            this.hwDraining = true;
+            try { this.hwRun(job); } finally {
+                this.hwDraining = false;
+            }
+            // 字母等无后续屏障的动作，下一项立即可评估；状态依赖动作
+            // 的回声驱动在 onEngineState 尾部再 hwDrain。
+            this.hwDrain();
+        }
+
+        hwArmDrainTimer(job) {
+            if (this.hwDrainTimer) return;
+            this.hwDrainTimer = setTimeout(() => {
+                this.hwDrainTimer = null;
+                this.hwDrain();
+            }, Math.max(10, 120 - (Date.now() - job.at)));
+        }
+
+        hwRun(job) {
+            if (job.kind === 'space' || job.kind === 'enter' || job.kind === 'backspace') {
+                const seq = ++this.hwSeqCounter;
+                if (job.kind === 'space') this.spaceAction(seq);
+                else if (job.kind === 'enter') this.enterAction(seq);
+                else this.backspaceAction(seq);
+                this.hwWaitSeq = seq;
+                return;
+            }
+            if (job.kind !== 'char') return; // 未知 kind 忽略（防御）
+            const ch = String.fromCodePoint(job.value);
+            // 物理标点（中文模式）：与软键面「，」「。」同路径——组合中
+            // 两步流（enginePunct），空闲 sendText。法/俄/日等非
+            // chineseSymMode 走 Native.key 由各引擎处理。
+            if ((ch === ',' || ch === '.') && this.chineseSymMode()) {
+                this.enginePunct(ch);
+                return;
+            }
+            // 其余全部进引擎：物理 case 原样（不走 applyCase/软
+            // Shift/Caps/sticky），`;`'` 编码/分隔键、数字、符号、非
+            // ASCII 同道。走 hwKeyChar 桥（Key 命令带 hw 来源标记，
+            // consumed=false 时 coordinator 原子补交——design §5.3
+            // 五审 B3 终案；旧壳无此桥，存在性回退 Native.key——旧壳
+            // 本就不注入 hwKey，回退只是防御）。
+            const seq = ++this.hwSeqCounter;
+            this.hwWaitSeq = seq;
+            this.call(() => typeof Native.hwKeyChar === 'function'
+                ? Native.hwKeyChar(ch, seq, this.token)
+                : Native.key(ch, this.token));
+        }
+
+        /** 空格键业务动作（软键面 click 与硬件键盘 hwKey 同一入口，
+         * #H 硬件键盘支持）：手写候选确认 → 组合中按 id 选池头 →
+         * 无组合直发 space。提取自原 click 回调，行为零变化
+         * （软键盘既有 mock 全量回归即证明）。 */
+        spaceAction(hwSeq) {
+            // 手写候选在条上时，空格=确认 top1 上屏（issue #28
+            // round-3）：走点选同一通道 commitInkCandidate，联想联动
+            // 与清笔迹行为完全一致；无候选时空格照旧。
+            if (this.mode === 'handwriting' && (this.inkCandidates || []).length) {
+                this.commitInkCandidate(this.inkCandidates[0]);
+                return;
+            }
+            // While composing, space must confirm the TOP
+            // candidate. Native space confirms the highlight, which sits
+            // on whatever page the bar/grid preloading dragged the cursor
+            // to (nihao + preload -> space committed a page-3 word).
+            // Choosing the pool head by id decouples it from paging.
+            const ordered = this.englishOrderedPool(this.expandCandidates || []);
+            const candidate = ordered.find(item =>
+                !String(item.id).startsWith('alt:'));
+            if (this.composing && candidate) {
+                this.choosePoolCandidate(candidate, hwSeq);
+                return;
+            }
+            this.call(() => hwSeq && typeof Native.hwSpace === 'function'
+                ? Native.hwSpace(hwSeq, this.token)
+                : Native.space(this.token));
+        }
+
         spaceKey() {
             // The space key shows only a mic
             // glyph - the active mode's shorthand lives on the toggle key.
@@ -3629,28 +3754,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 label.textContent = this.spaceHoldText;
                 button.append(label);
             }
-            button.addEventListener('click', () => {
-                // 手写候选在条上时，空格=确认 top1 上屏（issue #28
-                // round-3）：走点选同一通道 commitInkCandidate，联想联动
-                // 与清笔迹行为完全一致；无候选时空格照旧。
-                if (this.mode === 'handwriting' && (this.inkCandidates || []).length) {
-                    this.commitInkCandidate(this.inkCandidates[0]);
-                    return;
-                }
-                // While composing, space must confirm the TOP
-                // candidate. Native space confirms the highlight, which sits
-                // on whatever page the bar/grid preloading dragged the cursor
-                // to (nihao + preload -> space committed a page-3 word).
-                // Choosing the pool head by id decouples it from paging.
-                const ordered = this.englishOrderedPool(this.expandCandidates || []);
-                const candidate = ordered.find(item =>
-                    !String(item.id).startsWith('alt:'));
-                if (this.composing && candidate) {
-                    this.choosePoolCandidate(candidate);
-                    return;
-                }
-                this.call(() => Native.space(this.token));
-            });
+            button.addEventListener('click', () => this.spaceAction());
             this.bindSpaceHold(button);
             this.bindTouch(button, { skipClick: true });
             return button;
@@ -9070,7 +9174,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * accent variants swap the first character and KEEP the
          * composition alive - pick é on "ete" and it becomes "éte",
          * still composing (iOS-style, via the atomic setComposition). */
-        choosePoolCandidate(candidate) {
+        choosePoolCandidate(candidate, hwSeq) {
             // 法语大小写循环：变形提交绕过引擎 Choose（引擎提交原词+空格，
             // 替换不了文本）；clearComposing + commitText 同 dyn:/fav: 通道，
             // 尾空格与引擎 Choose 的提交形态一致。
@@ -9098,7 +9202,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.switchToVariant(candidate.text + raw.slice(1));
                 return;
             }
-            this.call(revision => Native.chooseCandidate(revision, candidate.id, this.token));
+            this.call(revision => (hwSeq && typeof Native.hwChoose === 'function')
+                ? Native.hwChoose(hwSeq, revision, candidate.id, this.token)
+                : Native.chooseCandidate(revision, candidate.id, this.token));
         }
 
         /** Fresh composition: the filter tab returns to 词频 (word freq). */
@@ -10883,6 +10989,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 迁移后的对。
             this.adoptQuickPairForHandwriting(nextMode);
             this.ready = true;
+            // #H：基础握手成功后上报硬键能力（design §6）。native 的
+            // keyboardReady 处理器会重推最后一次引擎状态，首个 state
+            // 的到达由该机制保证，无需在此额外等待。
+            if (!this.hwReported && typeof Native.reportHwKeys === 'function') {
+                this.hwReported = true;
+                this.call(() => Native.reportHwKeys(1, this.token));
+            }
             // 模式切换=组合语境整体作废：挂起的两步逗号不跨模式补发。
             if (modeChanged) this.pendingPunct = null;
             // Scheme switch re-renders the letter layer: the wide sep key
@@ -11427,7 +11540,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onEngineState: payload => {
             window.__diagStates = (window.__diagStates || 0) + 1;
             window.__diagRev = payload && payload.revision;
-            try { return keyboard.onEngineState(payload); }
+            // #H 硬件键盘：包装层驱动（onEngineState 方法体有 variant
+            // 早退等多个出口，queue 驱动必须看到每一条回声——包括
+            // 早退的。pendingPunct 的补发清理在方法体内完成后，这里
+            // 的 drain 才能评估跨步屏障。
+            keyboard.hwDoneSeq = Math.max(keyboard.hwDoneSeq || 0, (payload && payload.hwDoneSeq) || 0);
+            try { const r = keyboard.onEngineState(payload); keyboard.hwDrain(); return r; }
             catch (e) { window.__diagErr = String(e && e.message || e).slice(0, 60); throw e; }
         },
         onAssoc: payload => keyboard.onAssoc(payload),
@@ -11435,6 +11553,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onInkCandidates: payload => keyboard.onInkCandidates(payload),
         onEditorInfo: payload => keyboard.onEditorInfo(payload),
         cancelTouches: () => keyboard.cancelTouches(),
+        // #H 硬件键盘：native 全认领后的注入入口（design §1/§4.1）。
+        hwKey: (kind, value) => keyboard.hwEnqueue(kind, value),
+        quickPairToggle: () => keyboard.toggleChineseEnglish(),
         // #48 编辑器换代作废在途定制宏链（native onStartInput 驱动）。
         cancelCustomChain: () => keyboard.cancelCustomChain(),
         cancelToolbarEdit: () => keyboard.cancelToolbarEdit(),

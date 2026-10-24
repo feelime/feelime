@@ -264,6 +264,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     // 真机复测：非 volatile 首调用可能读到 stale false，整条手势静默拒绝）。
     @Volatile private var pageToken = ""
     @Volatile private var pageReady = false
+    // #H 硬件键盘：当前 JS 页是否声明硬键协议（reportHwKeys 上报）。
+    // 旧热更页/热更回退无上报——onKeyDown 决策表的 hwJsReady 恒 false，
+    // 全部文本键放行 = 无硬键功能、软键盘不受影响。
+    @Volatile private var jsHwKeys = false
     private var rejectedCalls = 0L
     private var servedRevision = ""
     private val callTimes = ArrayDeque<Long>()
@@ -857,6 +861,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     .put("phase", event.phase.name)
                     .put("revision", event.revision)
                     .put("consumed", event.consumed)
+                    // #H 命令完成水位（design §4.1 六审 B2）：hw 桥带
+                    // JS 自产 seq，coordinator 的事件应用点推进 hwDoneSeq
+                    // （tag 随事件闭包走，非推送时读最新已发出值）。JS
+                    // 硬键屏障比较它与自己的等待目标。
+                    .put("hwDoneSeq", coordinator.hwDoneSeq)
                     .put("code", event.code.name)
                     .put("mode", event.stamp.mode.wireName)
                     .put("composing", event.state.composing)
@@ -2508,6 +2517,54 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             coordinator.key(char.codePointAt(0))
         }
 
+        /** #H 硬件键盘字符通道（design §5.3）：与 key() 同构但 Key 命令
+         *  带 hw 来源标记——rime 未接的硬字符（consumed=false）由
+         *  coordinator 原子补交编辑器。seq=JS 自产的命令完成水位号
+         *  （design §4.1 六审 B2：JS 分配、随桥传入、事件回声带
+         *  hwDoneSeq 返还——两端同一计数域）。
+         *  guarded 是 onMain 异步，桥无法同步回执——绑定靠 coordinator
+         *  的 hwTag 机制（pendingHwTag 捕获进事件闭包）。 */
+        @JavascriptInterface
+        fun hwKeyChar(char: String, seq: Long, token: String) = guarded(token, limited = false) {
+            if (char.length > MAX_JSON_CHARS || char.codePointCount(0, char.length) != 1) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            InputStats.recordKeystroke(applicationContext)
+            coordinator.hwTag(seq) { coordinator.key(char.codePointAt(0), hw = true) }
+        }
+
+        /** #H 硬键盘控制键通道（design §4.2）：与 space()/enter()/
+         *  backspace() 同构（软硬 action 同一 JS 函数，仅桥通道分野），
+         *  各带 seq 水位号。 */
+        @JavascriptInterface
+        fun hwSpace(seq: Long, token: String) = guarded(token, limited = false) {
+            InputStats.recordKeystroke(applicationContext)
+            coordinator.hwTag(seq) { coordinator.space() }
+        }
+
+        @JavascriptInterface
+        fun hwEnter(seq: Long, token: String) = guarded(token, limited = false) {
+            InputStats.recordKeystroke(applicationContext)
+            coordinator.hwTag(seq) { coordinator.enterRaw() }
+        }
+
+        @JavascriptInterface
+        fun hwBackspace(seq: Long, token: String) = guarded(token, limited = true) {
+            InputStats.recordKeystroke(applicationContext)
+            coordinator.hwTag(seq) { coordinator.backspace() }
+        }
+
+        /** #H 能力上报（design §6）：新 JS 页握手+状态到达后调用；旧壳
+         *  无此桥（JS 存在性检查跳过），旧页从不上报——native 永不接管。
+         *  注意 write/pull 型桥走 guardedStore（settings 同款），这里是
+         *  无返回的信号上报。 */
+        @JavascriptInterface
+        fun reportHwKeys(version: Int, token: String) = guarded(token, limited = false) {
+            jsHwKeys = version >= 1
+            Diagnostics.log("hwkey", "reportHwKeys v=$version")
+        }
+
         /** 单手模式侧边条的光标键（issue #15）：直接发 DPAD 键事件，
          *  跟物理方向键同一通道（终端的 cursor 语义天然兼容）。 */
         @JavascriptInterface
@@ -3106,6 +3163,19 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 return@guarded
             }
             coordinator.choose(revision, candidateId)
+        }
+
+        /** #H 硬键盘选词通道（choosePoolCandidate 的 hw 分支）：同构
+         *  chooseCandidate，带 seq 水位号（design §4.1）。 */
+        @JavascriptInterface
+        fun hwChoose(seq: Long, revision: Long, candidateId: String, token: String) = guarded(token, limited = false) {
+            if (candidateId.length > MAX_CANDIDATE_ID_CHARS ||
+                !candidateId.all { it in '0'..'9' || it in 'a'..'f' || it == ':' }
+            ) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            coordinator.hwTag(seq) { coordinator.choose(revision, candidateId) }
         }
 
         @JavascriptInterface

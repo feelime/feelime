@@ -59,9 +59,13 @@ class RimeTextEngine(
                         "rimeKeyOnDeadSession schema=$schemaId cmd=Key",
                     )
                 }
-                NativeSmoke.rimeProcessKey(session, command.unicodeScalar, command.modifiers)
+                // consumed 透传（硬件键盘 #H）：librime 的 process_key 返回值
+                // 之前被丢弃、stateEvent 恒报 consumed=true——调用方无从
+                // 判断「引擎没接这个键」（空组合下的部分符号等）。透传真值，
+                // JS/Native 侧可据「未处理且无状态变化」做防御分流。
+                val handled = NativeSmoke.rimeProcessKey(session, command.unicodeScalar, command.modifiers)
                 page = 0
-                emit(stateEvent())
+                emit(stateEvent(consumed = handled))
                 val ms = android.os.SystemClock.elapsedRealtime() - t0
                 if (ms > 60) com.feelime.ime.Diagnostics.log(
                     "engine", "rimeSlow op=Key ms=$ms raw=${lastState.composing.replace(" ", "").length}")
@@ -279,11 +283,11 @@ class RimeTextEngine(
     private var shownCandidates: Map<String, Pair<Int, Int>> = emptyMap()
     private var shownPreedit: String? = null
 
-    private fun stateEvent(): EngineEvent {
+    private fun stateEvent(consumed: Boolean = true): EngineEvent {
         val committed = commitHarvest()
         val state = parseState()
         lastState = state
-        return event(Phase.READY, if (committed != null) state.copy(commit = committed) else state)
+        return event(Phase.READY, if (committed != null) state.copy(commit = committed) else state, consumed = consumed)
     }
 
     private fun commitHarvest(): String? {

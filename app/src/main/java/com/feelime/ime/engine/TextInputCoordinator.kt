@@ -117,6 +117,28 @@ class TextInputCoordinator(
      *  (mode-fallback §2.5) instead. */
     private var overflowPending = false
     private var composingActive = false
+    // #H 命令完成水位（design §4.1）：dispatch 分配单调序号，事件回声
+    // 携带；service 推 onEngineState 时捎带给 JS 硬键屏障。跨引擎会话
+    // 单调（coordinator 生命周期内），与引擎内 revision 互不替代。
+    private var dispatchSeq = 0L
+    @Volatile var lastEventSeq = 0L
+        private set
+    // #H 命令完成水位（design §4.1 六审 B2 终案）：hw 桥（hwKeyChar/
+    // hwSpace/hwEnter/hwBackspace）在 JS 侧自产单调 seq 并随调用传入；
+    // hwTag 把 seq 绑定到该次 dispatch 的事件闭包，事件应用点推进
+    // hwDoneSeq。软键盘/自动分页无 tag——不推进水位，JS 屏障不受伪解除。
+    private var pendingHwTag = 0L
+    @Volatile var hwDoneSeq = 0L
+        private set
+
+    /** hw 桥的命令包装：tag 在 dispatchLive 的 emit 闭包构造前捕获，
+     *  随事件走到 onEngineEvent。排队路径（pendingEngine/replaying 入队）
+     *  的 tag 丢失——LOADING 过渡态屏障靠 120ms 超时降级（design 边界）。 */
+    fun <T> hwTag(tag: Long, block: () -> T): T {
+        val prev = pendingHwTag
+        pendingHwTag = tag
+        try { return block() } finally { pendingHwTag = prev }
+    }
     /** The raw pinyin no longer enters the editor, so the
      * coordinator keeps the buffer here - it must be landable when a literal
      * (flick/symbol/popup pick) arrives mid-composition. */
@@ -556,9 +578,9 @@ class TextInputCoordinator(
         startEngine(if (inPasswordField) InputMode.DIRECT else degraded?.failedMode ?: mode)
     }
 
-    fun key(unicodeScalar: Int): DispatchAck {
+    fun key(unicodeScalar: Int, hw: Boolean = false): DispatchAck {
         if (!isWordPunctuation(unicodeScalar)) invalidateWordUndo()
-        return dispatch(EngineCommand.Key(unicodeScalar, 0))
+        return dispatch(EngineCommand.Key(unicodeScalar, 0, hw))
     }
 
     /**
@@ -773,6 +795,8 @@ class TextInputCoordinator(
             return DispatchAck.Rejected(EngineCode.STALE_STAMP)
         }
         if (pendingEngine != null || replaying) {
+            // #H 排队命令也占序（回放时各自 dispatch 再取新序——水位
+            // 语义是「事件生成序」，回放事件到达时 JS 屏障按最新序放行）。
             return enqueueQueued(QueuedInput.Command(command))
         }
         // Live events are posted too. Keep subsequent keys and mode/session
@@ -811,6 +835,12 @@ class TextInputCoordinator(
         // 主线程排队）。超 120ms 打点；正常打字零噪音。计时用
         // System.nanoTime（JVM 单测无 SystemClock stub，codex 终审 P0）。
         val sentAt = System.nanoTime()
+        // #H 命令完成水位（design §4.1 五审 B2 终案）：每条 dispatch 分配
+        // 单调序号，事件回声携带（生成时快照）——JS 硬键屏障靠它判断
+        // 「最后一个已发起命令的结果已送达」，与引擎内 revision 是两个
+        // 字段（revision 服务 Choose/Page 的 STALE 校验）。
+        val seq = ++dispatchSeq
+        val hwTag = pendingHwTag
         fun complete() {
             if (completed || requestStamp != stamp) return
             completed = true
@@ -820,7 +850,7 @@ class TextInputCoordinator(
             mainPoster {
                 val lag = (System.nanoTime() - sentAt) / 1_000_000
                 if (lag > 120) diag("dispatchLag cmd=${command::class.simpleName} ms=$lag")
-                onEngineEvent(event, command)
+                onEngineEvent(event, command, seq, hwTag)
                 complete()
             }
         }
@@ -851,7 +881,7 @@ class TextInputCoordinator(
         }
         val ack = engine.dispatch(EngineRequest(stamp, EngineCommand.EnterRaw)) { event ->
             mainPoster {
-                onEngineEvent(event, EngineCommand.EnterRaw)
+                onEngineEvent(event, EngineCommand.EnterRaw, ++dispatchSeq, pendingHwTag)
                 complete()
             }
         }
@@ -1153,7 +1183,7 @@ class TextInputCoordinator(
         beginClose(engine, pending, background)
     }
 
-    fun onEngineEvent(event: EngineEvent, command: EngineCommand? = null) {
+    fun onEngineEvent(event: EngineEvent, command: EngineCommand? = null, seq: Long = 0L, hwTag: Long = 0L) {
         // The stamp check is what makes late async callbacks harmless: after
         // any generation or mode change their stamp no longer matches.
         if (pendingStamp != null && event.stamp == pendingStamp) {
@@ -1274,8 +1304,22 @@ class TextInputCoordinator(
                 if (!event.consumed && event.code == EngineCode.EMPTY_COMPOSING) {
                     deleteOneEditorUnit()
                 }
+                // #H 硬键原子补交（design §5.3 五审 B3 终案）：rime 未接的
+                // 硬字符（空组合数字等被 express_editor DirectCommit 后
+                // kRejected）在事件循环内同步追加编辑器——不走
+                // pasteExternal（会先提交 composingRaw，把后续已组字的
+                // 内容以 raw 提前落地）。前组合若已被 DirectCommit 提交，
+                // 其 commit 在本事件已落地，追加字符天然排其后。
+                if (!event.consumed && event.code == EngineCode.OK &&
+                    command is EngineCommand.Key && command.hw) {
+                    editor.commitText(String(Character.toChars(command.unicodeScalar)))
+                }
                 composingActive = event.state.commit == null && event.state.composing.isNotEmpty()
                 composingRaw = if (composingActive) event.state.composing else ""
+                lastEventSeq = if (seq != 0L) seq else lastEventSeq
+                // #H：本事件的 hw tag 在应用点结算——补交（上分支）已完成，
+                // 状态一致，listener 推送载荷的 hwDoneSeq 即刻生效。
+                if (hwTag > hwDoneSeq) hwDoneSeq = hwTag
                 listener(event)
             }
         }

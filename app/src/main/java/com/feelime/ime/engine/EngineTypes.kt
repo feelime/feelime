@@ -44,7 +44,10 @@ data class EngineRequest(
 
 sealed interface EngineCommand {
     data object Start : EngineCommand
-    data class Key(val unicodeScalar: Int, val modifiers: Int) : EngineCommand
+    /** hw=true：物理键盘来源（#H design §5.3）——rime 未接的硬字符
+     * （consumed=false）由 coordinator 原子补交编辑器；软键盘 hw=false
+     * 路径行为零变化。 */
+    data class Key(val unicodeScalar: Int, val modifiers: Int, val hw: Boolean = false) : EngineCommand
     data object Backspace : EngineCommand
     data object Space : EngineCommand
     data object EnterRaw : EngineCommand
