@@ -4636,6 +4636,48 @@ test('candidate font scale rides hello into the CSS variable (issue #42)', {sinc
     equal(world.document.body.style['--cand-font-scale'], '1.35', 'off-range ignored (keeps last)');
 });
 
+test('keycap font scale rides hello into the CSS variable (issue #70)', {since: '3.73.47'}, () => {
+    const world = fresh();
+    world.hello({});
+    equal(world.document.body.dataset.keycapFont, 'normal', 'default normal');
+    equal(world.document.body.style['--keycap-font-scale'], '1', 'scale 1 at 100%');
+    world.hello({keycapFont: 150});
+    equal(world.document.body.style['--keycap-font-scale'], '1.5', 'continuous 150% scales');
+    equal(world.document.body.dataset.keycapFont, 'scaled', 'scaled anchor set');
+    // 50% 下限（用户验收裁定）：纯缩小无碰撞风险。
+    world.hello({keycapFont: 50});
+    equal(world.document.body.style['--keycap-font-scale'], '0.5', 'lower bound 50% accepted');
+    // 旧 APK 的 hello 不带该字段：保持现值不覆盖。
+    world.hello({});
+    equal(world.document.body.style['--keycap-font-scale'], '0.5', 'missing field keeps last');
+    world.hello({keycapFont: 49});
+    equal(world.document.body.style['--keycap-font-scale'], '0.5', 'off-range ignored (keeps last)');
+});
+
+test('user font rides hello into a same-origin stylesheet link (issue #70)', {since: '3.73.47'}, () => {
+    const world = fresh();
+    // fake DOM 的属性选择器只认 dataset，用标签选择器 + href 过滤断言。
+    const faceLinks = () => [...world.document.querySelectorAll('link')]
+        .filter(l => (l.href || '').includes('/keyboard/fonts/'));
+    // 旧 APK 的 hello 不带 userFontDigest：不触碰字体状态（未设 = CSS 缺省回落）。
+    world.hello({});
+    equal(world.document.body.style['--kb-font'], undefined, 'missing field untouched');
+    // 显式空 digest = 已导入后清除/恢复到无字体的机器：回落系统栈。
+    world.hello({userFontDigest: ''});
+    equal(world.document.body.style['--kb-font'], 'system-ui', 'empty digest → system stack');
+    world.hello({userFontDigest: 'abc123'});
+    equal(faceLinks().length, 1, 'face.css link injected');
+    equal(faceLinks()[0].href, '/keyboard/fonts/abc123/face.css', 'digest-routed same-origin css');
+    equal(faceLinks()[0].rel, 'stylesheet', 'stylesheet link');
+    equal(world.document.body.style['--kb-font'], '"FeelimeUser"', 'font switched');
+    // 同 digest 重推不重挂（换字体必然换 digest，URL 随之换绕开缓存钉死）。
+    world.hello({userFontDigest: 'abc123'});
+    equal(faceLinks().length, 1, 'same digest keeps single link');
+    world.hello({userFontDigest: ''});
+    equal(faceLinks().length, 0, 'link removed');
+    equal(world.document.body.style['--kb-font'], 'system-ui', 'back to system stack');
+});
+
 test('one-handed mode rides hello into the side pad (issue #15)', {since: '3.43.0'}, () => {
     const world = fresh();
     world.hello({});

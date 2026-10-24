@@ -87,6 +87,9 @@ const val PREF_FLICK_SWAP = "flick_swap"
 /** 双击 Shift 锁定大写（issue #63，默认开）：300ms 内两击升级为锁定。 */
 const val PREF_DOUBLE_SHIFT_LOCK = "double_shift_lock"
 const val PREF_CANDIDATE_FONT = "candidate_font"
+/** 键帽字号：80-150 连续百分比（issue #70），口径同候选字号——只缩放
+ *  键面文字，不动行高/触摸区预算。 */
+const val PREF_KEYCAP_FONT = "keycap_font"
 
 fun readFlickSwap(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
@@ -473,6 +476,15 @@ fun readCandidateFont(context: Context): Int =
             }
         }
 
+/** 键帽字号（issue #70）：无旧档位迁移，越界值一律回默认 100。
+ *  下限 50（用户验收裁定）：50% 仍可读，且远低于角标让位线，纯缩小无碰撞。 */
+val KEYCAP_FONT_RANGE = 50..150
+
+fun readKeycapFont(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_KEYCAP_FONT, 100)
+        .takeIf { it in KEYCAP_FONT_RANGE } ?: 100
+
 /** 中文联想开关（docs/design/association.md）：默认关。 */
 const val PREF_ASSOCIATION = "association_on"
 
@@ -581,6 +593,8 @@ class SettingsBridge(
         fun openDictDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a custom key sound file (#30-2). */
         fun openKeySoundDocument() = Unit
+        /** Launch ACTION_OPEN_DOCUMENT for the user keyboard font (#70). */
+        fun openFontDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a base dictionary (.dict.yaml). */
         fun openBaseDictDocument() = Unit
         /** Launch ACTION_OPEN_DOCUMENT for a shape-code table (#20). */
@@ -835,6 +849,14 @@ class SettingsBridge(
             .put("holdMs", readFeelHoldMs(context))
             .put("popupSnap", readFeelPopupSnap(context))
             .put("candidateFont", readCandidateFont(context))
+            .put("keycapFont", readKeycapFont(context))
+            // 用户键盘字体（issue #70）：digest 空串 = 未导入/丢失（键盘
+            // 页回落系统字体栈）；name 只用于设置页展示。
+            .put("userFont", JSONObject().apply {
+                val font = KeyboardFontStore.current(context)
+                put("digest", font?.digest ?: "")
+                put("name", font?.name ?: "")
+            })
             .put("preeditFont", readPreeditFont(context))
             .put("preeditBold", readPreeditBold(context))
             .put("oneHand", readOneHand(context))
@@ -1385,6 +1407,27 @@ class SettingsBridge(
         }
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_CANDIDATE_FONT, size).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 键帽字号（issue #70）：80-150 连续百分比，口径同候选字号。 */
+    @JavascriptInterface
+    fun setKeycapFont(size: Int, token: String) = guarded(token) {
+        if (size !in KEYCAP_FONT_RANGE) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "keycapFontError")
+                    .put("code", "BAD_KEYCAP_FONT")
+                    .put("message", t(context, "键帽字号选项无效", "Invalid keycap font option")),
+            )
+            pushState()
+            return@guarded
+        }
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_KEYCAP_FONT, size).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
@@ -2573,7 +2616,15 @@ class SettingsBridge(
     /** 恢复到本机（本地导入与 WebDAV 恢复共用）。返回真实结果——
      *  下载成功但校验失败时云端区块不能跟着报成功（发版 review P2）。 */
     private fun restoreUserdataBytes(bytes: ByteArray): Boolean {
-        val result = UserdataBackup(AndroidPrefs(context), context.filesDir).restore(bytes)
+        // #71：统计段提交委托 InputStats——进程内缓存与覆盖写同锁换装，
+        // 恢复窗口内的 persist 不再能把备份值冲回旧缓存（本地导入与
+        // WebDAV 恢复都汇入本入口，一处接管两条路）。统计落盘失败时
+        // 整包按失败上报（review P2：不能误报成功让重启后丢账）。
+        var statsOk = true
+        val result = UserdataBackup(
+            AndroidPrefs(context), context.filesDir,
+            onStatsRestore = { json -> statsOk = InputStats.restoreFromBackup(context, json) },
+        ).restore(bytes)
         if (result is UserdataBackup.RestoreResult.Fail) {
             pushEvent(
                 JSONObject().put("type", "backupStatus").put("direction", "import")
@@ -2588,11 +2639,58 @@ class SettingsBridge(
                 Intent(ACTION_USERDATA_RESTORED).setPackage(context.packageName),
             )
             pushEvent(
-                JSONObject().put("type", "backupStatus").put("direction", "import").put("ok", true),
+                JSONObject().put("type", "backupStatus").put("direction", "import")
+                    .put("ok", statsOk)
+                    .put("code", if (statsOk) "OK" else "IO_ERROR"),
             )
         }
         pushState()
-        return result !is UserdataBackup.RestoreResult.Fail
+        return result !is UserdataBackup.RestoreResult.Fail && statsOk
+    }
+
+    // ---- 用户键盘字体（issue #70）：单槽位导入；二进制不进备份 ----
+
+    /** 设置页点「导入字体」：弹 SAF 选择器，回调接 importUserFontFromUri。 */
+    @JavascriptInterface
+    fun requestUserFontImport(token: String) = guarded(token) {
+        host.openFontDocument()
+    }
+
+    /** 设置页的 OpenDocument 回调：魔数+大小+平台解析校验后原子换入。
+     *  结果走 fontImportStatus 事件；成功即广播键盘 prefs 变更（重推
+     *  hello 带新 digest，键盘页即时换装）。 */
+    fun importUserFontFromUri(uri: Uri, displayName: String?) {
+        if (closed) return
+        runCatching {
+            worker.execute {
+                if (closed) return@execute
+                when (val outcome = KeyboardFontStore.importFromUri(context, uri, displayName)) {
+                    is KeyboardFontStore.ImportOutcome.Ok -> {
+                        context.sendBroadcast(
+                            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+                        )
+                        pushEvent(
+                            JSONObject().put("type", "fontImportStatus")
+                                .put("ok", true).put("name", outcome.font.name),
+                        )
+                    }
+                    is KeyboardFontStore.ImportOutcome.Fail -> pushEvent(
+                        JSONObject().put("type", "fontImportStatus")
+                            .put("ok", false).put("code", outcome.code),
+                    )
+                }
+                pushState()
+            }
+        }
+    }
+
+    @JavascriptInterface
+    fun clearUserFont(token: String) = guarded(token) {
+        KeyboardFontStore.clear(context)
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
     }
 
     // ---- WebDAV 云端备份（issue #43；凭据存 webdav_backup prefs，不进备份包） ----

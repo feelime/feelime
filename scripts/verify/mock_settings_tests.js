@@ -91,6 +91,9 @@ class MockSettingsNative {
     setBottomPadLandscape(...a) { this._rec('setBottomPadLandscape', a); }
     setFeelOptions(...a) { this._rec('setFeelOptions', a); }
     setCandidateFont(...a) { this._rec('setCandidateFont', a); }
+    setKeycapFont(...a) { this._rec('setKeycapFont', a); }
+    requestUserFontImport(...a) { this._rec('requestUserFontImport', a); }
+    clearUserFont(...a) { this._rec('clearUserFont', a); }
     setInkDelay(...a) { this._rec('setInkDelay', a); }
     setFuzzyPinyinMask(...a) { this._rec('setFuzzyPinyinMask', a); }
     setAssociation(...a) { this._rec('setAssociation', a); }
@@ -1849,6 +1852,31 @@ test('feel card renders state values and commits each control with the token', (
     equal(world.lastCall('setBottomPadLandscape').args, [12, world.token], 'landscape pad + token');
     fire('candidateFont');
     equal(world.lastCall('setCandidateFont').args, [135, world.token], 'candidate font + token');
+});
+
+test('keycap font and user font render from state and commit (#70)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, keycapFont: 145, userFont: { digest: 'd1', name: 'x.ttf' } });
+    equal(world.$('keycapFont').value, '145', 'keycap font from state');
+    equal(world.$('keycapFontOut').textContent, '145%', 'keycap readout follows state');
+    equal(world.$('btnClearFont').hidden, false, 'clear button visible with font');
+    assert(world.$('userFontNote').textContent.includes('x.ttf'), 'active font name shown');
+
+    const slider = world.$('keycapFont');
+    const change = slider.listeners.find(listener => listener.type === 'change');
+    assert(change, '#keycapFont has a change listener');
+    change.handler({ target: slider });
+    equal(world.lastCall('setKeycapFont').args, [145, world.token], 'keycap font + token');
+
+    world.$('btnImportFont').click();
+    equal(world.lastCall('requestUserFontImport').args, [world.token], 'import asks SAF picker');
+    world.$('btnClearFont').click();
+    equal(world.lastCall('clearUserFont').args, [world.token], 'clear commits');
+
+    // digest 空 = 未导入/丢失：隐藏恢复按钮，不显示当前名。
+    world.push({ ...BASE_STATE, userFont: { digest: '', name: '' } });
+    equal(world.$('btnClearFont').hidden, true, 'clear button hidden without font');
+    equal(world.$('userFontNote').textContent, '', 'no active-font note without font');
 });
 
 

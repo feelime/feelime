@@ -144,12 +144,22 @@ html.theme-dark {
 }
 
 * { box-sizing: border-box; }
+/* button/输入类控件不吃 body 的 font-family 继承（UA 样式默认另起）；
+ * 键帽都是 button，用户字体（issue #70）必须显式继承才生效。 */
+button, input, select, textarea { font-family: inherit; }
 /* The IME window is TALLER than the keyboard (the native float
  * band above it); html/body stay transparent so the app shows through the
  * band - only #softKeyboard paints the keyboard background. */
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
 body {
-    font-family: system-ui, "Noto Sans CJK SC", sans-serif;
+    /* 用户字体（issue #70）：导入后 JS 把 --kb-font 置为 "FeelimeUser"，
+     * @font-face 由 /keyboard/fonts/<digest>/face.css 提供；缺省/加载失败
+     * 逐字回落系统栈。button 等表单元素不吃 body 继承，得显式带回来。 */
+    font-family: var(--kb-font, system-ui), "Noto Sans CJK SC", sans-serif;
+    /* 键帽字号（issue #70）的缩放基准：--keycap-font-scale 只乘在基准上，
+     * 上限受角标让位约束（见 .kb-main/.t9-group 的 min/max 钳制）。 */
+    --kb-main-base: min(22px, calc(var(--kb-row-h, 44px) * 0.5));
+    --kb-t9-base: min(20px, calc(var(--kb-row-h, 44px) * 0.46));
     user-select: none;
     -webkit-user-select: none;
     /* 长按浮层不收起（#7）：系统长按 ~500ms 触发 WebView 文本选择/
@@ -722,7 +732,8 @@ body.landscape { --kb-gap: 4px; }
     background: var(--key);
     /* #61 review P1：键面亮度偏移过大时白字对比崩，JS 设 --key-ink 翻深墨；缺省回落 --text。 */
     color: var(--key-ink, var(--text));
-    font-size: 13px;
+    /* 功能键文字（issue #70）：跟随键帽字号缩放；无角标碰撞，不设上限。 */
+    font-size: calc(13px * var(--keycap-font-scale, 1));
     font-weight: 550;
     display: flex;
     align-items: center;
@@ -733,7 +744,10 @@ body.landscape { --kb-gap: 4px; }
 .kb-key.kb-letter { flex-direction: column; gap: 2px; }
 /* Glyphs scale with the row height (dragging the keyboard
  * shorter shrinks the font too - nothing overflows the key face). */
-.kb-main { font-size: min(22px, calc(var(--kb-row-h, 44px) * 0.5)); line-height: 1; font-weight: 400; }
+/* 键帽字号（issue #70）：基准 × --keycap-font-scale，再被「行高-16px」
+ * 钳制（顶部角标区 12px + 底部留白 4px，#39-3 让位布局不能被大字号
+ * 侵占）；max(base, …) 保证过矮行高下缩放退化为不缩放而非缩到基准以下。 */
+.kb-main { font-size: min(calc(var(--kb-main-base) * var(--keycap-font-scale, 1)), max(var(--kb-main-base), calc(var(--kb-row-h, 44px) - 16px))); line-height: 1; font-weight: 400; }
 .kb-alt { color: var(--muted); font-size: 9px; line-height: 1; font-weight: 400; }
 /* 上下滑互换（issue #29-2）：小字提示跟着翻到主字下方（提示的是下滑值）；
  * 标点槽是墨形绝对定位，主字（inset 42%/12%）与 alt 要一起上下镜像，
@@ -757,7 +771,8 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
  * the key's normal centring; F10 is the widest label at the narrowest key. */
 .kb-key.fn-label .kb-alt { display: none; }
 .kb-key.fn-label .kb-main {
-    font-size: min(16px, calc(var(--kb-row-h, 44px) * 0.38));
+    /* 功能键文字（issue #70）：跟随键帽字号缩放（无角标，钳制同口径）。 */
+    font-size: min(calc(16px * var(--keycap-font-scale, 1)), max(16px, calc(var(--kb-row-h, 44px) - 16px)));
     white-space: nowrap;
 }
 /* alt 隐藏后回中：flick-swap 起字母键是 alt 上/main 下的底锚
@@ -769,7 +784,7 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
     padding-top: 0;
     padding-bottom: 0;
 }
-.kb-special { background: var(--special); font-size: min(15px, calc(var(--kb-row-h, 44px) * 0.34)); font-weight: 500; }
+.kb-special { background: var(--special); font-size: min(calc(15px * var(--keycap-font-scale, 1)), max(15px, calc(var(--kb-row-h, 44px) - 16px))); font-weight: 500; }
 .kb-mod.active, .kb-mod.locked { color: var(--accent-text); background: var(--mod-active-bg, #103a24); box-shadow: inset 0 0 0 1px var(--accent); }
 .kb-wide-1_4 { flex: 1.4; }
 .kb-wide-2_1 { flex: 2.1; }
@@ -1125,7 +1140,7 @@ body.landscape .edit-grid { gap: 4px 5px; }
     color: var(--key-ink, var(--key-subtext));
 }
 /* 字母组主字形不加重——kb-key 的 550 在大号字母组上显得过粗（用户反馈） */
-.t9-group { font-size: min(20px, calc(var(--kb-row-h, 44px) * 0.46)); font-weight: 400; }
+.t9-group { font-size: min(calc(var(--kb-t9-base) * var(--keycap-font-scale, 1)), max(var(--kb-t9-base), calc(var(--kb-row-h, 44px) - 16px))); font-weight: 400; }
 /* 长按符号角标：左上角小字（issue #9；右上角留给数字角标）。 */
 .t9-hint {
     position: absolute;

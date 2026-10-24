@@ -103,9 +103,11 @@ object InputStats {
         if (text.isEmpty()) return
         val count = text.codePointCount(0, text.length)
         if (count <= 0) return
-        val c = load(context)
         val today = LocalDate.now()
         synchronized(this) {
+            // load 必须在锁内：#71 恢复管线会在锁里换装缓存（flush→覆盖写
+            // →失效），锁外拿到的是悬挂旧引用，persist 会把恢复值冲掉。
+            val c = load(context)
             c.total += count
             c.daily[today.toString()] = (c.daily[today.toString()] ?: 0L) + count
             trimDaily(c, today)
@@ -117,8 +119,8 @@ object InputStats {
     /** 击键计数：内存累加，落盘搭 record/快照/onDestroy 的便车（统计允许
      *  崩溃窗口丢一点，不值得每键写盘）。 */
     fun recordKeystroke(context: Context, n: Int = 1) {
-        val c = load(context)
         synchronized(this) {
+            val c = load(context)
             c.keystrokes += n
             pendingKeystrokes += n
             if (pendingKeystrokes >= 64) {
@@ -158,14 +160,38 @@ object InputStats {
 
     /** [today, total] code point counts（设置页关于行，一轮协议保持）。 */
     fun snapshot(context: Context): Pair<Long, Long> {
-        val c = load(context)
-        return Pair(c.daily[LocalDate.now().toString()] ?: 0L, c.total)
+        synchronized(this) {
+            val c = load(context)
+            return Pair(c.daily[LocalDate.now().toString()] ?: 0L, c.total)
+        }
     }
 
     /** 键盘浮层全量快照（JSON 字符串，同步返回给桥）。 */
     fun snapshotJson(context: Context): String {
-        flushIfPending(context)
-        return coreSnapshot(load(context), LocalDate.now())
+        synchronized(this) {
+            flushIfPending(context)
+            return coreSnapshot(load(context), LocalDate.now())
+        }
+    }
+
+    /** 恢复管线委托的统计换装（issue #71）：在统计锁内串行化
+     *  「flush 恢复前旧账 → 覆盖写备份值 → 失效缓存」。此前恢复只写盘、
+     *  对进程内缓存无失效手段（AVD 复现实录：恢复成功 3 秒内一次上屏
+     *  即把备份值冲成旧缓存），计数线程与恢复线程都以本锁为界：先进入
+     *  的旧账落进旧值（覆盖语义，不与备份相加），后进入的从备份值续算。
+     *  返回覆盖写是否落盘；无论成败缓存都在 finally 失效——写失败时
+     *  下次 load 按实际存储重读，绝不让陈旧缓存再覆盖盘面。 */
+    fun restoreFromBackup(context: Context, json: String): Boolean {
+        synchronized(this) {
+            try {
+                runCatching { persist(context) }
+                return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(KEY_JSON, json).commit()
+            } finally {
+                cache = null
+                pendingKeystrokes = 0L
+            }
+        }
     }
 
     /** streak/近 7 天/日均推导（JVM 可测：纯函数，不碰 prefs）。 */

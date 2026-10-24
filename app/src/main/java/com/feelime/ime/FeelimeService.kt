@@ -993,9 +993,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     request: WebResourceRequest,
                 ): WebResourceResponse? {
                     val url = request.url
-                    return if (url.scheme == "https" && url.host == LOCAL_HOST &&
-                        url.path.orEmpty().startsWith("/keyboard/")
-                    ) assetStore?.response(url.path.orEmpty()) ?: blocked() else blocked()
+                    if (url.scheme != "https" || url.host != LOCAL_HOST ||
+                        !url.path.orEmpty().startsWith("/keyboard/")
+                    ) return blocked()
+                    // 用户字体（issue #70）：/keyboard/fonts/<digest>/face.css
+                    // 与字体二进制。digest 不匹配当前导入（未导入/换过/丢失）
+                    // 一律 404——WebView 对 @font-face 404 的行为就是逐字回退
+                    // 字体栈，键盘功能不受影响。
+                    val path = url.path.orEmpty()
+                    if (path.startsWith("/keyboard/fonts/")) {
+                        return KeyboardFontStore.response(this@FeelimeService, path) ?: blocked()
+                    }
+                    return assetStore?.response(path) ?: blocked()
                 }
 
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -2067,6 +2076,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             .put("holdMs", feelHoldMs())
             .put("popupSnap", feelPopupSnap())
             .put("candidateFont", candidateFont())
+            .put("keycapFont", keycapFont())
+            // 用户字体（issue #70）：digest 为空 = 未导入/文件丢失（键盘页
+            // 回落系统字体栈）。二进制经 /keyboard/fonts/<digest>/ 路由按需
+            // 加载，不进 hello（payload 体积与 CSP 两侧都不允许）。
+            .put("userFontDigest", KeyboardFontStore.current(this)?.digest ?: "")
             .put("preeditFont", preeditFont())
             .put("preeditBold", readPreeditBold(this))
             .put("oneHand", readOneHand(this))
@@ -2706,6 +2720,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     val size = value.toIntOrNull()
                     if (size == null || size !in CANDIDATE_FONT_RANGE) return@guarded
                     keyboardPrefs.edit().putInt(PREF_CANDIDATE_FONT, size).commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "keycapFont" -> {
+                    // #70 键帽字号（80-150），口径同候选字号。
+                    val size = value.toIntOrNull()
+                    if (size == null || size !in KEYCAP_FONT_RANGE) return@guarded
+                    keyboardPrefs.edit().putInt(PREF_KEYCAP_FONT, size).commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "preeditFont" -> {
@@ -3787,6 +3808,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     /** 候选字号档位（issue #2）：0=正常 1=大 2=更大。 */
     private fun candidateFont(): Int = readCandidateFont(this)
+
+    private fun keycapFont(): Int = readKeycapFont(this)
 
     /** 拼音字号档位（issue #8）：0=标准 1=大 2=特大。 */
     private fun preeditFont(): Int = readPreeditFont(this)
