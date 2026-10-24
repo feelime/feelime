@@ -2257,6 +2257,31 @@ test('hwKey: hello hwSeqBase lifts the seq counter across page reloads (#H)', {s
     assert(seq > 100, `seq starts above the native watermark base (got ${seq})`);
 });
 
+test('hwkb form: editor-strip and toolbar-edit entries reach full height (#H)', {since: '3.73.54'}, () => {
+    const world = touchWorld({ mode: 'pinyin', hardwareKeyboard: true, hwkbForm: 'candidates' });
+    const kb = world.context.testKeyboard;
+    const states = () => world.native.of('hwPanelHeight').map(c => c.args[0]);
+    // 工具栏编辑（图标仓库需要完整高度——codex 三审：enterToolbarEdit 的
+    // body.toolbar-edit 与 body.editing 是两个状态，都必须进 full 判定）。
+    kb.enterToolbarEdit();
+    equal(states()[states().length - 1], 'full', 'toolbar edit reports full');
+    kb.closeToolbarEdit(false);
+    equal(states()[states().length - 1], 'candidates', 'toolbar edit close falls back');
+    // 编辑条入口的顺序验收（codex 三审）：openCustomJsonEditor/
+    // openPanelEditor 先 showKeyLayer('letters')（报过 candidates）再挂
+    // editing——挂上后必须重算为 full，不能停在 candidates 短窗口。
+    kb.showKeyLayer('letters');
+    equal(states()[states().length - 1], 'candidates', 'letters first reports candidates');
+    world.document.body.classList.add('editing');
+    kb.hwNotifyPanelHeight();
+    equal(states()[states().length - 1], 'full', 'editing class recomputes to full');
+    // 拆场（真实流由 clearEditorStrip/closePanelEditor 的分支摘 class——
+    // 入口各自挂了通知，这里直接走摘除+重算的等价序列）。
+    world.document.body.classList.remove('editing');
+    kb.hwNotifyPanelHeight();
+    equal(states()[states().length - 1], 'candidates', 'editing teardown falls back');
+});
+
 test('hwkb form: panel openings drive the hwPanelHeight states (#H)', {since: '3.73.51'}, () => {
     const world = touchWorld({ mode: 'pinyin', hardwareKeyboard: true, hwkbForm: 'candidates' });
     const kb = world.context.testKeyboard;

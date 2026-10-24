@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.53';
+    const KEYBOARD_VERSION = '3.73.54';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -6887,7 +6887,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 纳入 full 会落到被 CSS 藏掉的短视图）与编辑条同判。
             if (this.panelOpen || this.expanded || this.keyLayer === 'numpad' ||
                 this.keyLayer === 'symbols' ||
-                document.body.classList.contains('editing') ||
+                document.body.classList.contains('editing') || this.toolbarEdit ||
                 this.keyLayer === 'settings' || this.keyLayer === 'stats' ||
                 this.keyLayer === 'edit') return 'full';
             if (this.ctrlView) return 'ctrl';
@@ -7227,6 +7227,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             };
             this.toolbarEdit = true;
             document.body.classList.add('toolbar-edit');
+            this.hwNotifyPanelHeight(); // #H 工具栏编辑=完整高度（图标仓库）
             editor.hidden = false;
             this.renderToolbarEditor();
             this.showToast(t("工具栏编辑：点下方图标添加，拖动排序，× 移除"));
@@ -7250,6 +7251,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!this.toolbarEdit) return;
             this.toolbarEdit = false;
             document.body.classList.remove('toolbar-edit');
+            this.hwNotifyPanelHeight(); // #H 退出回落
             const editor = document.getElementById('toolbarEditor');
             if (editor) editor.hidden = true;
             this._toolbarSnapshot = null;
@@ -8949,6 +8951,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.closeSettingsPanel();
             this.showKeyLayer('letters');
             document.body.classList.add('editing');
+            this.hwNotifyPanelHeight(); // #H 编辑条接管后重算（前面的 letters 报过 candidates）
             editor.hidden = false;
             area.focus();
             this.setPanelInput(true);
@@ -9935,6 +9938,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.customEditRow = null;
             this.editorReturn = null;
             this.editorMode = null;
+            this.hwNotifyPanelHeight(); // #H 编辑条拆解后重算高度态
         }
 
         openPanel(tab) {
@@ -10395,6 +10399,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // body.editing keeps the native redirect armed across blurs
             // (review finding) - the card flow keeps that semantics.
             document.body.classList.add('editing');
+            this.hwNotifyPanelHeight(); // #H 常用语编辑卡=完整高度
             card.hidden = false;
             card.classList.add('open');
             this.placePhraseCard();
@@ -10434,6 +10439,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.editorMode = null;
             editor.hidden = true;
             document.body.classList.remove('editing');
+            this.hwNotifyPanelHeight(); // #H 编辑收起回落
             if (this.settingsInputFocus) this.setPanelInput(false);
             // Custom-row edits return to their settings page
             // instead of the favorites panel.

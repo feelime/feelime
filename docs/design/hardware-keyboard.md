@@ -270,7 +270,11 @@ toggleEditPanel），native 仅在 hwkb 形态分支消费。**高度优先级**
 形态内 full 档有保存值用保存值（高度卡拖动的每帧回推照常生效）。
 CSS 只藏字母键区（qwertyLayer/.kb-rows）——symbolLayer/ninePad/
 ctrlLayer/voiceOverlay 自管显隐（[hidden]/.open，工具栏可达入口），
-candidateBar 不写 display:flex（会盖 [hidden] 让位）。设置三档
+candidateBar 不写 display:flex（会盖 [hidden] 让位）。编辑视图通知链
+（三审收口）：openCustomJsonEditor/openPanelEditor 在挂 body.editing
+**之后**重算（showKeyLayer('letters') 刚报过 candidates，不补一次会停
+在短窗口）；enterToolbarEdit/closeToolbarEdit（body.toolbar-edit，
+独立于 editing）、closePanelEditor/clearEditorStrip 同挂通知。设置三档
 `feelime_hwkb_form`（candidates 默认/full/follow），SettingsBridge
 逐方法校验，变更补 `updateInputViewShown()`；
 onEvaluateInputViewShown：candidates/full→true，follow→super。
