@@ -2143,6 +2143,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // #H 验收打点：决策表入口的全貌（每键一条，正常输入零风险——
+        // 只在 diag 开启时落盘，Diagnostics.log 自带开关）。
+        Diagnostics.log("hwkey",
+            "down code=$keyCode meta=${event.metaState} rep=${event.repeatCount} " +
+                "hwJsReady=$pageReady/${jsHwKeys} mode=${coordinator.currentMode.wireName}")
         // Shift 单按检测维护 pressed 集合（武装在 DOWN，触发在 UP）。
         hwPressedKeys.getOrPut(event.deviceId) { HashSet() }.let { set ->
             if (event.repeatCount == 0) set.add(keyCode)

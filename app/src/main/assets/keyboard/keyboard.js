@@ -1540,7 +1540,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.hwWaitSeq = 0;
             this.hwSeqCounter = 0;
             this.hwDoneSeq = 0;
-            this.hwReported = false;
             try {
                 const speed = parseInt(localStorage.getItem('feelime_scrub_speed') || '3', 10);
                 if (speed >= 1 && speed <= 5) this.scrubSpeed = speed;
@@ -10989,13 +10988,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 迁移后的对。
             this.adoptQuickPairForHandwriting(nextMode);
             this.ready = true;
-            // #H：基础握手成功后上报硬键能力（design §6）。native 的
-            // keyboardReady 处理器会重推最后一次引擎状态，首个 state
-            // 的到达由该机制保证，无需在此额外等待。
-            if (!this.hwReported && typeof Native.reportHwKeys === 'function') {
-                this.hwReported = true;
-                this.call(() => Native.reportHwKeys(1, this.token));
-            }
             // 模式切换=组合语境整体作废：挂起的两步逗号不跨模式补发。
             if (modeChanged) this.pendingPunct = null;
             // Scheme switch re-renders the letter layer: the wide sep key
@@ -11063,6 +11055,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (document.getElementById('heightCard').classList.contains('open')) this.renderHeightCard();
             }
             Native.keyboardReady(KEYBOARD_VERSION, MIN_NATIVE_API, JSON.stringify(REQUIRED_CAPABILITIES), this.token);
+            // #H：硬键能力上报（design §6）——必须排在 keyboardReady 之后
+            //（#27 同款时序坑：native pageReady 在 keyboardReady 处理器里
+            // 才置位，早于此的桥调用必被门闸吞掉）。每次握手都报：
+            // mode 切换等触发的 hello 重推会复位 native 的 pageReady/
+            // jsHwKeys（页面换代语义），一次性标志会让硬键在重推后
+            // 静默失效（AVD 实测定罪）。上报幂等（native 侧重复置位
+            // 无害）。
+            if (typeof Native.reportHwKeys === 'function') {
+                this.call(() => Native.reportHwKeys(1, this.token));
+            }
             // #27 补推（评审 P1）：hello handler 里 applyBackground 早于
             // keyboardReady，首推 pushChromeColor 必被 native 的 !pageReady
             // 门闸吞掉；此刻 pageReady 已置位，补一次不再依赖二次 hello。
