@@ -102,6 +102,31 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private var voiceRequestId = 0L
     private var voiceStartRequestId = 0L
     private var inputConnectionGeneration = 0L
+    // ---- #H 硬件键盘状态（design hardware-keyboard.md §2-§5）----
+    /** 输入会话身份（onStartInput/onFinishInput 递增——独立于
+     *  inputConnectionGeneration，后者在 onFinishInputView 也递增且被
+     *  退格手势/语音等既有使用方依赖，不能改语义）。hw 桥终检用。 */
+    private var hwInputGeneration = 0L
+    /** 按压归属表：deviceId:keyCode:downTime → owned（首次 DOWN 定整次
+     *  按压归属，repeat/UP 同归属执行——Ctrl 松开后 Space 继续按住不吐字）。 */
+    private val hwKeyOwnership = HashMap<String, Boolean>()
+    /** 按设备 pressed 键集合（Shift 单按检测：武装时集合必须为空）。 */
+    private val hwPressedKeys = HashMap<Int, MutableSet<Int>>()
+    /** Shift 单按武装（deviceId+downTime 绑定，600ms 窗）。 */
+    private var hwShiftArmed: Triple<Int, Long, Long>? = null
+    /** 切换在途（design §3）：quickPairToggle 发出后置位，state listener
+     *  看到 mode 变化（相对 toggle 前的 modeAtArm）即完成并重路由缓存；
+     *  strictReady 拒绝等无 mode 事件路径靠 200ms 超时收尾。 */
+    private var hwPendingSwitch: HwPendingSwitch? = null
+    private var hwSwitchEpoch = 0L
+    private val hwMain = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private class HwPendingSwitch(
+        val epoch: Long,
+        val modeAtArm: String,
+        val armedAt: Long,
+        val cached: MutableList<Pair<String, Int>> = ArrayList(), // kind to ('char' codepoint / 控制键 0 / 'toggle' 0)
+    )
     private var cursorQueryGeneration = 0L
     private val pendingCursorDeltas = ArrayDeque<Int>()
     private var cursorQueryActive = false
@@ -894,6 +919,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                             "reason=${event.degrade.reason} seq=${event.degrade.seq}",
                     )
                 }
+                // #H 切换在途的完成检测（design §3）：state 载荷的 mode
+                // 相对武装时的 modeAtArm 已变 = 目标模式已实际应用且本条
+                // 推送即将送达 JS（双条件）。epoch 校验防迟到结果清新门闩。
+                hwPendingSwitch?.let { ps ->
+                    if (event.stamp.mode.wireName != ps.modeAtArm) {
+                        hwMain.post { hwSettleSwitch(ps.epoch, timedOut = false) }
+                    }
+                }
                 // 诊断埋点（issue #12）：keyboardView 为 null 时 composing/
                 // 候选推送被静默跳过 = 「引擎有产出但 UI 看不到」的直接形态。
                 if (keyboardView == null) {
@@ -969,6 +1002,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     override fun onCreateInputView(): View {
         pageToken = newToken()
         pageReady = false
+        // #H：页面换代（冷启动/热更重载）——硬键能力声明复位，新页
+        // 重新握手+上报后才接管（design §6）。
+        jsHwKeys = false
         val active = KeyboardUpdateCenter.activeKeyboard(this)
         servedRevision = active.revision
         assetStore = KeyboardAssetStore(active.dir)
@@ -1253,6 +1289,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         inputConnectionGeneration += 1
+        // #H：输入会话换代——归属表/武装/切换门闩清空，在途 hw 桥调用
+        // 由 coordinator 的 stamp 机制天然拦截（跨会话 STALE）。
+        hwInputGeneration += 1
+        hwClearKeyState()
+        hwPendingSwitch = null
         // #34：连接已换（含同编辑器重启），手势会话作废——旧基线/延迟
         // 删除不得进新连接（codex 评审 P1-1 的代际收口）。
         endBackspaceGestureSession(executeQueued = false)
@@ -1344,6 +1385,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     override fun onFinishInputView(finishingInput: Boolean) {
         Diagnostics.log("ui", "inputViewHidden finishing=$finishingInput")
         inputConnectionGeneration += 1
+        // #H：视图隐藏作废按压归属与 Shift 武装（design §5.2——组合与
+        // 输入会话不在此结束，hwPendingSwitch 保留给重新显示后续跑）。
+        hwClearKeyState()
         // 键盘已收起：在途手势会话一并作废（延迟删除丢弃）。
         endBackspaceGestureSession(executeQueued = false)
         invalidatePendingVoiceStartOnEditorChange()
@@ -1479,6 +1523,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         assetStore = KeyboardAssetStore(active.dir)
         pageToken = newToken()
         pageReady = false
+        // #H：页面换代（冷启动/热更重载）——硬键能力声明复位，新页
+        // 重新握手+上报后才接管（design §6）。
+        jsHwKeys = false
         Diagnostics.log("bridge", "pageLoad at=reload view=${System.identityHashCode(keyboardView)}")
         keyboardView?.loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
     }
@@ -1993,6 +2040,201 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         val night = resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK
         return if (night == android.content.res.Configuration.UI_MODE_NIGHT_YES) "dark" else "light"
+    }
+
+    // ---- #H 硬件键盘决策表（design §2，六轮评审定稿）----
+    /** 接硬字符的模式（design §2）：T9/笔画是触摸形态（字母无意义）、
+     *  手写走识别器、DIRECT=IME 不碰文本。LOADING 的 pendingEngine 期间
+     *  currentMode 已是目标引擎模式——排队不拆词。 */
+    private val hwCharModes = setOf(
+        com.feelime.ime.engine.InputMode.PINYIN,
+        com.feelime.ime.engine.InputMode.DOUBLE_PINYIN,
+        com.feelime.ime.engine.InputMode.FLYPY,
+        com.feelime.ime.engine.InputMode.FRENCH,
+        com.feelime.ime.engine.InputMode.RUSSIAN,
+        com.feelime.ime.engine.InputMode.JAPANESE,
+    )
+    /** 只接控制键（DEL/SPACE/ENTER）的模式：+T9/笔画（组合中回车=按 id
+     *  选词的特例在 JS enterAction；DIRECT/手写完全旁路）。 */
+    private val hwCtrlModes = hwCharModes + setOf(
+        com.feelime.ime.engine.InputMode.T9,
+        com.feelime.ime.engine.InputMode.STROKE,
+    )
+
+    private fun hwJsReady(): Boolean = pageReady && jsHwKeys
+
+    private fun hwCharMode(): Boolean = coordinator.currentMode in hwCharModes
+    private fun hwCtrlMode(): Boolean = coordinator.currentMode in hwCtrlModes
+
+    private fun hwKeyCombo(event: KeyEvent): Boolean =
+        event.metaState and (KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK or KeyEvent.META_META_MASK) != 0
+
+    /** 精确 Ctrl+空格：CTRL 任一位（聚合掩码），无 ALT/META/SHIFT。 */
+    private fun hwIsCtrlSpace(event: KeyEvent): Boolean =
+        event.keyCode == KeyEvent.KEYCODE_SPACE &&
+            event.metaState and KeyEvent.META_CTRL_MASK != 0 &&
+            event.metaState and (KeyEvent.META_ALT_MASK or KeyEvent.META_META_MASK) == 0 &&
+            !event.isShiftPressed
+
+    /** 可打印：unicodeChar 非零、非控制字符、无 dead-key 标志；SPACE/
+     *  ENTER/TAB 有字符值但由控制键行显式处理，不在此判。 */
+    private fun hwIsPrintable(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_SPACE ||
+            event.keyCode == KeyEvent.KEYCODE_ENTER ||
+            event.keyCode == KeyEvent.KEYCODE_TAB ||
+            event.keyCode == KeyEvent.KEYCODE_DEL
+        ) return false
+        val uc = event.unicodeChar
+        if (uc == 0 || uc < 0x20 || uc == 0x7F) return false
+        // dead key：getUnicodeChar 返回 accent|0x80000000（KeyCharacterMap
+        // 未公开 FLAG 常量，只有 MASK=0x7FFFFFFF）——符号位判断等价。
+        if (uc < 0) return false
+        return true
+    }
+
+    private fun hwOwnershipKey(event: KeyEvent): String =
+        "${event.deviceId}:${event.keyCode}:${event.downTime}"
+
+    /** 缓存上限（design §3）：超限丢最旧+诊断。 */
+    private fun hwCache(kind: String, value: Int) {
+        val ps = hwPendingSwitch ?: return
+        if (ps.cached.size >= 8) {
+            ps.cached.removeAt(0)
+            Diagnostics.log("hwkey", "cacheOverflow dropped=oldest size=8")
+        }
+        ps.cached.add(kind to value)
+    }
+
+    /** 切换完成（state listener 驱动或超时）：epoch 校验后清门闩并重路由
+     *  缓存键（design §3 六审收窄——统一 evaluate 入口，实际执行模式
+     *  可能已变，不承诺按 toggle 前模式）。 */
+    private fun hwSettleSwitch(epoch: Long, timedOut: Boolean) {
+        val ps = hwPendingSwitch ?: return
+        if (ps.epoch != epoch) return // 迟到结果不得清除新一轮门闩
+        hwPendingSwitch = null
+        if (timedOut) Diagnostics.log("hwkey", "switchTimeout epoch=$epoch cached=${ps.cached.size}")
+        // 缓存里的 toggle 重触发（行 1 语义）；文本/控制键按当前 mode
+        // 重路由（决策表此刻的 hwJsReady/mode 判定）。
+        for ((kind, value) in ps.cached) {
+            if (kind == "toggle") { hwFireQuickPairToggle(); continue }
+            if (!hwJsReady()) continue
+            when {
+                kind == "char" && hwCharMode() ->
+                    evaluate("window.Feelime && window.Feelime.hwKey && window.Feelime.hwKey('char', $value)")
+                kind == "space" && hwCtrlMode() -> hwEvaluateKey("space")
+                kind == "enter" && hwCtrlMode() -> hwEvaluateKey("enter")
+                kind == "backspace" && hwCtrlMode() -> hwEvaluateKey("backspace")
+                else -> Diagnostics.log("hwkey", "cachedDropped kind=$kind (mode=${coordinator.currentMode})")
+            }
+        }
+    }
+
+    private fun hwEvaluateKey(kind: String) {
+        evaluate("window.Feelime && window.Feelime.hwKey && window.Feelime.hwKey('$kind', 0)")
+    }
+
+    private fun hwFireQuickPairToggle() {
+        if (!hwJsReady()) { Diagnostics.log("hwkey", "toggleSkip notReady"); return }
+        val epoch = ++hwSwitchEpoch
+        val ps = HwPendingSwitch(epoch, coordinator.currentMode.wireName, android.os.SystemClock.elapsedRealtime())
+        hwPendingSwitch = ps
+        evaluate("window.Feelime && window.Feelime.quickPairToggle && window.Feelime.quickPairToggle()")
+        hwMain.postDelayed({ hwSettleSwitch(epoch, timedOut = true) }, 200)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Shift 单按检测维护 pressed 集合（武装在 DOWN，触发在 UP）。
+        hwPressedKeys.getOrPut(event.deviceId) { HashSet() }.let { set ->
+            if (event.repeatCount == 0) set.add(keyCode)
+            // 任何其他键的 DOWN 解除武装（双 Shift 防重武装由 downTime 绑定）。
+            if (keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT) {
+                if (event.repeatCount == 0 && set.size == 1 &&
+                    hwShiftArmed == null && !hwKeyCombo(event)) {
+                    hwShiftArmed = Triple(event.deviceId, event.downTime, android.os.SystemClock.elapsedRealtime())
+                }
+            } else if (hwShiftArmed != null) {
+                hwShiftArmed = null
+            }
+        }
+        val pending = hwPendingSwitch != null
+        // 行 1 / 行 1.5：精确 Ctrl+空格（pending 时缓存为 toggle 动作）。
+        if (hwIsCtrlSpace(event) && event.repeatCount == 0 && hwJsReady()) {
+            hwKeyOwnership[hwOwnershipKey(event)] = true
+            if (pending) hwCache("toggle", 0) else hwFireQuickPairToggle()
+            return true
+        }
+        // 行 3：切换在途——仅文本/控制键缓存（方向键/F/TAB/系统键落原表）。
+        val textOrCtrl = keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_SPACE ||
+            keyCode == KeyEvent.KEYCODE_ENTER || hwIsPrintable(event)
+        if (pending && textOrCtrl) {
+            hwKeyOwnership[hwOwnershipKey(event)] = true
+            hwCache(
+                when {
+                    keyCode == KeyEvent.KEYCODE_DEL -> "backspace"
+                    keyCode == KeyEvent.KEYCODE_SPACE -> "space"
+                    keyCode == KeyEvent.KEYCODE_ENTER -> "enter"
+                    else -> "char"
+                },
+                if (hwIsPrintable(event)) event.unicodeChar else 0,
+            )
+            return true
+        }
+        // 行 2：其余一切修饰组合（含 AltGr、带修饰控制键）放行。
+        if (hwKeyCombo(event)) return super.onKeyDown(keyCode, event)
+        // 行 4：控制键（DEL/SPACE/ENTER；SHIFT 允许——Shift+空格仍属文本键）。
+        if ((keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_SPACE ||
+                keyCode == KeyEvent.KEYCODE_ENTER) && hwCtrlMode() && hwJsReady()
+        ) {
+            hwKeyOwnership[hwOwnershipKey(event)] = true
+            hwEvaluateKey(
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DEL -> "backspace"
+                    KeyEvent.KEYCODE_SPACE -> "space"
+                    else -> "enter"
+                },
+            )
+            return true
+        }
+        // 行 5：可打印字符（charModes 含 LOADING——JS→key→warmup 排队不拆词）。
+        if (hwIsPrintable(event) && hwCharMode() && hwJsReady()) {
+            hwKeyOwnership[hwOwnershipKey(event)] = true
+            evaluate(
+                "window.Feelime && window.Feelime.hwKey && window.Feelime.hwKey('char', ${event.unicodeChar})",
+            )
+            return true
+        }
+        // 行 6：其余（方向键/F/TAB/系统键/未 ready/不支持模式）→ 父类
+        //（保留 Back 收起等系统行为；DIRECT/HANDWRITING 文本键在此旁路）。
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        val set = hwPressedKeys[event.deviceId]
+        set?.remove(keyCode)
+        // Shift 单按触发：武装命中（同设备+同 downTime+600ms 窗+集合已空）。
+        val armed = hwShiftArmed
+        if ((keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT) && armed != null) {
+            hwShiftArmed = null
+            val inWindow = android.os.SystemClock.elapsedRealtime() - armed.third < 600
+            if (armed.first == event.deviceId && armed.second == event.downTime &&
+                (set?.isEmpty() == true) && inWindow && hwJsReady()
+            ) {
+                if (hwPendingSwitch != null) hwCache("toggle", 0) else hwFireQuickPairToggle()
+                return true // 触发即消费；普通 Shift UP 本身放行（见下）
+            }
+        }
+        // 归属表：DOWN 已认领的按压，UP 同归属消费。
+        val key = hwOwnershipKey(event)
+        val owned = hwKeyOwnership.remove(key)
+        return if (owned == true) true else super.onKeyUp(keyCode, event)
+    }
+
+    /** #H 生命周期清理（design §5.2）：输入会话边界/销毁清全部硬键状态。
+     *  不提交组合——隐藏视图/切走 IME 的组合保留策略与现状一致。 */
+    private fun hwClearKeyState() {
+        hwKeyOwnership.clear()
+        hwPressedKeys.clear()
+        hwShiftArmed = null
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

@@ -2062,6 +2062,78 @@ test('emoji sub-view commits and remembers; 123 tab returns', {since: '3.27.0'},
         'emoji view reset after leaving the pad');
 });
 
+// ---- #H 硬件键盘（design hardware-keyboard.md）：hwKey 注入走软键盘
+// 同一批 action；native 侧决策表（onKeyDown）在设备段验证。 ----
+test('hwKey: physical comma rides the same two-step flow as the soft keycap (#H)', {since: '3.73.49'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }, { id: 'c2', text: '拟' }], hasNextPage: false });
+    world.context.window.Feelime.hwKey('char', ','.codePointAt(0));
+    equal(world.native.of('hwChoose').length + world.native.of('chooseCandidate').length, 1,
+        'composing comma confirms the pool head (hwChoose carries the seq watermark)');
+    equal(world.native.of('key').filter(c => c.args[0] === ',').length, 0,
+        'no ASCII comma enters the engine mid-composition');
+    world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    const commits = world.native.of('commitText').map(c => c.args[0]);
+    equal(commits[commits.length - 1], '，',
+        'the full-width comma lands once the echo ends the composition');
+});
+
+test('hwKey: physical letters keep their own case, no soft shift rewriting (#H)', {since: '3.73.49'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.context.window.Feelime.hwKey('char', 'N'.codePointAt(0));
+    const keys = world.native.of('hwKeyChar').map(c => c.args[0]);
+    equal(keys[0], 'N', 'physical Shift+N lands as-is via the hw bridge');
+});
+
+test('hwKey: state-dependent actions wait for the hwDoneSeq watermark (#H)', {since: '3.73.49'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.context.window.Feelime.hwKey('char', 'i'.codePointAt(0));
+    equal(world.native.of('hwKeyChar').length, 1, 'letter dispatches immediately (letters carry no state barrier)');
+    // 空格是状态依赖动作：字母的回声未到（hwDoneSeq 落后）→ 挂起等待。
+    world.context.window.Feelime.hwKey('space', 0);
+    equal(world.native.of('hwSpace').length + world.native.of('space').length, 0,
+        'space waits for the last hw command echo');
+    // 回声到达（水位推进）→ 空格放行；组合 'i' 无候选 → 走直发 space。
+    world.engineState({ mode: 'pinyin', revision: 1, hwDoneSeq: 1, composing: 'i', rawInput: 'i',
+        candidates: [], hasNextPage: false });
+    equal(world.native.of('hwSpace').length + world.native.of('space').length, 1,
+        'space released once the watermark advances');
+});
+
+test('hwKey: letters queue behind a pending two-step punctuation (#H)', {since: '3.73.49'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.engineState({ mode: 'pinyin', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    world.context.window.Feelime.hwKey('char', ','.codePointAt(0));
+    world.context.window.Feelime.hwKey('char', 'h'.codePointAt(0));
+    equal(world.native.of('hwKeyChar').filter(c => c.args[0] === 'h').length, 0,
+        'the next letter stays queued while the punctuation commit is pending');
+    world.engineState({ mode: 'pinyin', revision: 2, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    equal(world.native.of('hwKeyChar').filter(c => c.args[0] === 'h').length, 1,
+        'the letter proceeds after the pending punctuation settles');
+    // 顺序：全角逗号的 commitText 先于字母进引擎（calls 全序索引比较）。
+    const commaAt = world.native.calls.findIndex(c => c.method === 'commitText' && c.args[0] === '，');
+    const hAt = world.native.calls.findIndex(c => c.method === 'hwKeyChar' && c.args[0] === 'h');
+    assert(commaAt >= 0 && hAt > commaAt, 'the full-width comma landed before the letter');
+});
+
+test('quickPairToggle export rides toggleChineseEnglish (#H)', {since: '3.73.49'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.context.window.Feelime.quickPairToggle();
+    const modes = world.native.of('selectMode').map(c => c.args[0]);
+    equal(modes[modes.length - 1], 'direct', 'the export flips the quick pair to direct');
+});
+
+test('hw capability report rides the handshake (#H)', {since: '3.73.49'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    const reports = world.native.of('reportHwKeys');
+    equal(reports.length, 1, 'one report after the page became ready');
+    equal(reports[0].args[0], 1, 'protocol version 1');
+});
+
 test('kaomoji renders as its own form: head chips row + full grid (#67)', {since: '3.73.47'}, () => {
     const world = touchWorld();
     world.context.testKeyboard.runPanelStep('kaomoji');

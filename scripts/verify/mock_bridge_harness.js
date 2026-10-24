@@ -698,6 +698,14 @@ class MockNative {
     keyboardReady(version, minApi, caps, token) {
         this._record('keyboardReady', [version, minApi, caps, token]);
     }
+    // #H 硬件键盘桥（design §4/§6）：hwKeyChar/hwSpace/hwEnter/hwBackspace/
+    // hwChoose 带 JS 自产水位 seq；reportHwKeys 能力上报。
+    hwKeyChar(char, seq, token) { this._record('hwKeyChar', [char, seq, token]); }
+    hwSpace(seq, token) { this._record('hwSpace', [seq, token]); }
+    hwEnter(seq, token) { this._record('hwEnter', [seq, token]); }
+    hwBackspace(seq, token) { this._record('hwBackspace', [seq, token]); }
+    hwChoose(seq, revision, id, token) { this._record('hwChoose', [seq, revision, id, token]); }
+    reportHwKeys(version, token) { this._record('reportHwKeys', [version, token]); }
     commitAssoc(text, token) {
         this._record('commitAssoc', [text, token]);
     }
