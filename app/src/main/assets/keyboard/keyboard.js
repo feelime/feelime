@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.49';
+    const KEYBOARD_VERSION = '3.73.50';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -497,6 +497,9 @@ const TOOL_CATALOG = {
     // #67 颜文字面板：默认不上栏，用户从工具编辑仓库自选。
     kaomoji: 'toolKaomoji',
 };
+// #H 硬键盘接字符的模式（design §2，与 native hwCharModes 同源集）。
+const HW_TEXT_MODES = new Set(['pinyin', 'double-pinyin', 'flypy', 'french', 'russian', 'japanese']);
+
 const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'mic'] };
     const MIN_NATIVE_API = 1;
     const REQUIRED_CAPABILITIES = [
@@ -1540,6 +1543,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.hwWaitSeq = 0;
             this.hwSeqCounter = 0;
             this.hwDoneSeq = 0;
+            this.hardwareKeyboard = false;
+            this.hwkbForm = 'candidates';
             try {
                 const speed = parseInt(localStorage.getItem('feelime_scrub_speed') || '3', 10);
                 if (speed >= 1 && speed <= 5) this.scrubSpeed = speed;
@@ -6799,6 +6804,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.syncOverlay();
         }
 
+        /* ===== #H 硬键盘候选条形态（design hardware-keyboard.md §5）=====
+         * body.hwkb = hardwareKeyboard（hello 字段）&& 档位==candidates &&
+         * mode∈引擎文本模式。手写/T9/笔画/direct 即使硬键盘在也显示完整
+         * 键盘（笔迹区/九键/英文键帽必须可见）。档位存 native pref
+         * （feelime_hwkb_form），随 hello 的 hwkbForm 字段下发。
+         * 高度由 native 的 contentHeightPx 收缩——CSS 只隐藏键区。 */
+        applyHwForm() {
+            const active = !!this.hardwareKeyboard &&
+                (this.hwkbForm || 'candidates') === 'candidates' &&
+                HW_TEXT_MODES.has(this.mode);
+            if (document.body.classList.contains('hwkb') === active) return;
+            document.body.classList.toggle('hwkb', active);
+            this.applyHeight();
+        }
+
         /* ===== orientation & keyboard height  ===== */
 
         applyOrientation(landscape) {
@@ -10984,6 +11004,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const nextMode = MODES[payload.mode] ? payload.mode : 'direct';
             const modeChanged = nextMode !== this.mode;
             this.mode = nextMode;
+            // #H：hello 带硬键盘状态与形态档位（design §5/§7）。
+            this.hardwareKeyboard = !!payload.hardwareKeyboard;
+            this.hwkbForm = payload.hwkbForm || 'candidates';
+            this.applyHwForm();
             // 先于 renderMode：切换键的键面（快捷切换目标简写）读的就是
             // 迁移后的对。
             this.adoptQuickPairForHandwriting(nextMode);
@@ -11238,6 +11262,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.variantReplaying) return;
             if (payload.mode && MODES[payload.mode] && payload.mode !== this.mode) {
                 this.mode = payload.mode;
+                this.applyHwForm(); // #H 模式变化重评估候选条形态
                 this.adoptQuickPairForHandwriting(payload.mode);
                 this.renderMode();
             }

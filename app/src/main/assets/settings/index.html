@@ -384,6 +384,21 @@
       </div>
     </section>
 
+    <!-- #H 硬件键盘（design hardware-keyboard.md）：物理键盘连接时的
+         键盘形态三档。 -->
+    <section class="card" id="sec-hwkb" aria-labelledby="hwkbTitle">
+      <div class="section-heading"><h2 id="hwkbTitle" data-keywords="物理 硬件 键盘 外接 蓝牙 候选条 硬键盘 hardware keyboard" data-i18n="input.hwkb.title">物理键盘</h2><span class="eyebrow" data-i18n="input.hwkb.badge">输入</span></div>
+      <div class="row">
+        <label class="row-label" for="hwkbForm"><span data-i18n="input.hwkb.form">连接物理键盘时</span><small data-i18n="input.hwkb.formHint">仅候选条：键盘收成一条候选（拼音/双拼等模式）；完整键盘：照常显示；跟随系统：由系统的「连接键盘时显示屏幕键盘」开关决定。</small></label>
+        <select id="hwkbForm" class="select" data-keywords="物理 硬件 外接 蓝牙 候选条 跟随系统" aria-label="物理键盘形态" data-i18n-aria="input.hwkb.form">
+          <option value="candidates" data-i18n="input.hwkb.candidates">仅候选条</option>
+          <option value="full" data-i18n="input.hwkb.full">完整键盘</option>
+          <option value="follow" data-i18n="input.hwkb.follow">跟随系统</option>
+        </select>
+      </div>
+      <p class="hint" data-i18n="input.hwkb.hint">硬键盘打字：字母直接进拼音组合、空格选词、Ctrl+空格 或 单按 Shift 切换中英。</p>
+    </section>
+
     <section class="card" id="sec-assoc" aria-labelledby="assocTitle">
       <div class="section-heading"><h2 id="assocTitle" data-i18n="input.assoc.title">中文联想</h2><span class="eyebrow" data-i18n="input.assoc.badge">输入</span></div>
       <label class="row switch-row" for="associationOn">

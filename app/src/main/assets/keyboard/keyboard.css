@@ -218,6 +218,22 @@ button { font: inherit; }
 /* #39 挖孔安全区：padding 落在 #softKeyboard 上（背景默认铺满 padding 区，
  * 同单手模式语义）——键区给挖孔侧让位，背景仍铺到屏幕边。开关关闭时
  * JS 侧把 --safe-side-* 清 0，键也铺满。 */
+/* #H 硬键盘候选条形态（design hardware-keyboard.md §5）：键区整层
+ * 隐藏，只保留 candidateBar（预编辑 band 由 native 的候选条高度预算
+ * 承载）。native 侧 contentHeightPx 已收缩窗口高度——CSS 只做视觉
+ * 收口；applyHeight 同步重排。 */
+body.hwkb #qwertyLayer,
+body.hwkb #symbolLayer,
+body.hwkb #ninePad,
+body.hwkb .kb-rows,
+body.hwkb #voiceOverlay,
+body.hwkb #ctrlLayer { display: none; }
+body.hwkb #candidateBar { display: flex; }
+/* 候选条在 hwkb 态独占键区：margin 归零（原生高度预算已按 40px bar
+ * 计算，2/10px margin 会让 bar 沉底）。 */
+body.hwkb #candidateBar { margin: 0; }
+body.hwkb #softKeyboard { padding-bottom: calc(2px + var(--safe-bottom, 0px)); }
+
 body.landscape #softKeyboard {
     padding: 4px calc(4px + var(--safe-side-r, 0px))
         calc(4px + var(--safe-bottom, 0px) + var(--kb-bottom-pad, 0px))

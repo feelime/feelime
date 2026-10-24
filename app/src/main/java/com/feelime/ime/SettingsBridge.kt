@@ -267,6 +267,17 @@ fun readLandscapeCeilPct(context: Context): Int =
         .getInt(PREF_LANDSCAPE_CEIL_PCT, 60)
         .let { if (it in LANDSCAPE_CEIL_RANGE) it else 60 }
 
+/** #H 物理键盘形态档（design hardware-keyboard.md §7）：candidates
+ *  （仅候选条，默认）/ full（完整键盘，即既有恒显行为）/ follow（跟随
+ *  系统硬键盘判定）。非法值回默认。 */
+private const val PREF_HWKB_FORM = "feelime_hwkb_form"
+private val HWKB_FORMS = setOf("candidates", "full", "follow")
+
+fun readHwkbForm(context: Context): String =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_HWKB_FORM, "candidates")
+        ?.let { if (it in HWKB_FORMS) it else "candidates" } ?: "candidates"
+
 fun readLandscapeOpacity(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_LANDSCAPE_OPACITY, 100)
@@ -870,6 +881,7 @@ class SettingsBridge(
             .put("keyOpacity", readKeyOpacity(context))
             .put("landscapeSafeArea", if (readLandscapeSafeArea(context)) 1 else 0)
             .put("landscapeCeil", readLandscapeCeilPct(context))
+            .put("hwkbForm", readHwkbForm(context))
             .put("landscapeOpacity", readLandscapeOpacity(context))
             .put("keyBubble", readKeyBubble(context))
             .put("bubbleLinger", readBubbleLinger(context))
@@ -1345,6 +1357,20 @@ class SettingsBridge(
     fun setLandscapeSafeArea(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_LANDSCAPE_SAFE_AREA, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #H 物理键盘形态档（design hardware-keyboard.md §7）：candidates/
+     *  full/follow，非法值拒写。变更广播走 ACTION_KEYBOARD_PREFS_CHANGED
+     *  （service 侧补 updateInputViewShown + hello 重推）。 */
+    @JavascriptInterface
+    fun setHwkbForm(form: String, token: String) = guarded(token) {
+        if (form !in HWKB_FORMS) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_HWKB_FORM, form).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

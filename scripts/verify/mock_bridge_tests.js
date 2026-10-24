@@ -2120,6 +2120,23 @@ test('hwKey: letters queue behind a pending two-step punctuation (#H)', {since: 
     assert(commaAt >= 0 && hAt > commaAt, 'the full-width comma landed before the letter');
 });
 
+test('hwkb form: candidates form collapses the key layers to the bar (#H)', {since: '3.73.50'}, () => {
+    const world = fresh({ mode: 'pinyin', hardwareKeyboard: true, hwkbForm: 'candidates' });
+    const body = world.document.body;
+    equal(body.classList.contains('hwkb'), true, 'hwkb class on with a hard keyboard in an engine mode');
+    // 形态只对引擎文本模式生效：切 direct 收回。
+    world.engineState({ mode: 'direct', revision: 2, composing: '', rawInput: '', candidates: [], hasNextPage: false });
+    equal(body.classList.contains('hwkb'), false, 'direct drops the form (full keyboard needed)');
+    world.engineState({ mode: 'pinyin', revision: 3, composing: '', rawInput: '', candidates: [], hasNextPage: false });
+    equal(body.classList.contains('hwkb'), true, 'back to pinyin re-arms the form');
+    // full 档：硬键盘在也不收键区。
+    const full = fresh({ mode: 'pinyin', hardwareKeyboard: true, hwkbForm: 'full' });
+    equal(full.document.body.classList.contains('hwkb'), false, 'full form keeps the keyboard');
+    // 无硬键盘：恒不收。
+    const none = fresh({ mode: 'pinyin' });
+    equal(none.document.body.classList.contains('hwkb'), false, 'no hard keyboard, no form');
+});
+
 test('quickPairToggle export rides toggleChineseEnglish (#H)', {since: '3.73.49'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.context.window.Feelime.quickPairToggle();

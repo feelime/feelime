@@ -197,6 +197,14 @@ const I18N = {
         "input.assoc.enable": "选词后联想下一个词",
         "input.assoc.hint": "上屏后在候选条给出高频接续词，点击可连续联想；只在全拼/双拼生效。",
         "input.assoc.backspaceClear": "联想时退格清除联想",
+        "input.hwkb.title": "物理键盘",
+        "input.hwkb.badge": "输入",
+        "input.hwkb.form": "连接物理键盘时",
+        "input.hwkb.formHint": "仅候选条：键盘收成一条候选（拼音/双拼等模式）；完整键盘：照常显示；跟随系统：由系统的「连接键盘时显示屏幕键盘」开关决定。",
+        "input.hwkb.candidates": "仅候选条",
+        "input.hwkb.full": "完整键盘",
+        "input.hwkb.follow": "跟随系统",
+        "input.hwkb.hint": "硬键盘打字：字母直接进拼音组合、空格选词、Ctrl+空格 或 单按 Shift 切换中英。",
         "input.assoc.backspaceClearHint": "联想候选显示时按退格先清联想、恢复工具栏（不删字）；关闭则退格照旧删字。",
         "input.datetime.title": "日期时间候选",
         "input.datetime.badge": "输入",
@@ -979,6 +987,14 @@ const I18N = {
         "input.assoc.enable": "Suggest the next word after a commit",
         "input.assoc.hint": "Shows frequent followers in the candidates bar after a word commits; tap to keep the chain going. Full/Double Pinyin only.",
         "input.assoc.backspaceClear": "Backspace dismisses associations",
+        "input.hwkb.title": "Physical keyboard",
+        "input.hwkb.badge": "Input",
+        "input.hwkb.form": "When a physical keyboard is connected",
+        "input.hwkb.formHint": "Candidates only: the keyboard collapses to a candidates bar (pinyin/double-pinyin etc.); Full keyboard: unchanged; Follow system: obey the system's show-on-screen-keyboard setting.",
+        "input.hwkb.candidates": "Candidates only",
+        "input.hwkb.full": "Full keyboard",
+        "input.hwkb.follow": "Follow system",
+        "input.hwkb.hint": "Type with a hard keyboard: letters feed the pinyin composer, space picks a candidate, Ctrl+Space or a lone Shift toggles Chinese/English.",
         "input.assoc.backspaceClearHint": "When association candidates are showing, backspace clears them and restores the toolbar (nothing deleted); off = backspace deletes as usual.",
         "input.datetime.title": "Date & time candidates",
         "input.datetime.badge": "Input",
@@ -2277,6 +2293,9 @@ function render(state) {
 function renderLandscape(state) {
     const safe = $("landscapeSafeArea");
     if (safe && document.activeElement !== safe) safe.checked = state.landscapeSafeArea !== 0;
+    // #H 物理键盘形态档回显（焦点中不抢用户操作）。
+    const hwkb = $("hwkbForm");
+    if (hwkb && document.activeElement !== hwkb) hwkb.value = state.hwkbForm || "candidates";
     const ceil = $("landscapeCeil");
     const ceilOut = $("landscapeCeilOut");
     const ceilVal = Number(state.landscapeCeil);
@@ -4135,6 +4154,7 @@ $("btnCheckUpdate").addEventListener("click", () => call("checkUpdate", $("updat
 $("autoUpdateCheck").addEventListener("change", event => call("setAutoUpdateCheck", event.target.checked));
 $("associationOn").addEventListener("change", event => call("setAssociation", event.target.checked));
 $("backspaceAssocOn").addEventListener("change", event => call("setBackspaceAssoc", event.target.checked));
+$("hwkbForm").addEventListener("change", event => call("setHwkbForm", event.target.value));
 $("wxSlashOn").addEventListener("change", event => call("setWxSlash", event.target.checked));
 $("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateTime", event.target.checked));
 $("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));

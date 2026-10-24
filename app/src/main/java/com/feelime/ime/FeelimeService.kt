@@ -495,6 +495,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 (keyboardView?.parent as? View)?.requestLayout()
                 // #39 横屏透明度改窗口涂层，pref 变更即重涂。
                 applyChromeColor()
+                // #H 形态档位变更（design §7 六审 P1-6）：重推 hello 之外
+                // 必须重评估 input view 显示（follow↔candidates/full 的
+                // onEvaluateInputViewShown 结果反转，仅推 hello 不触发
+                // 框架重评估）。
+                updateInputViewShown()
                 pushBridgeHello()
                 if (readAssociation(this@FeelimeService)) {
                     com.feelime.ime.engine.AssociationStore.prewarm(this@FeelimeService)
@@ -1093,7 +1098,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         return host
     }
 
-    override fun onEvaluateInputViewShown(): Boolean = true
+    /** #H 显示策略三档（design §7）：candidates/full 保持恒显（现行为，
+     *  回归风险最小——初版恒显覆写疑似防 AVD/厂商硬键盘误报）；follow
+     *  走 super（系统「硬键盘时显示屏幕键盘」开关生效）。 */
+    override fun onEvaluateInputViewShown(): Boolean =
+        when (com.feelime.ime.readHwkbForm(this)) {
+            "follow" -> super.onEvaluateInputViewShown()
+            else -> true
+        }
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
@@ -1230,7 +1242,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         val screenH = resources.displayMetrics.heightPixels
         val landscape =
             resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val base = if (keyboardHeightOverride > 0) keyboardHeightOverride else desiredHeightPx
+        val base = when {
+            // #H 硬键盘候选条形态：高度换成固定候选条预算（design §5，
+            // 与用户保存的完整高度分离）；keyboardHeightOverride（高度
+            // 卡片实时预览）优先级更高——预览时按预览值走。
+            hwCandidatesFormActive() && keyboardHeightOverride <= 0 -> hwCandidatesHeightPx()
+            keyboardHeightOverride > 0 -> keyboardHeightOverride
+            else -> desiredHeightPx
+        }
         val height = when {
             landscape && screenH > 0 ->
                 minOf(base, landscapeCeilPx()) + safeBottomSnapshot() + bottomPadPx()
@@ -2063,6 +2082,35 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
 
     private fun hwJsReady(): Boolean = pageReady && jsHwKeys
 
+    /** 硬键盘「展开」（design §5）：hardKeyboardHidden==NO 且 keyboard
+     *  != NOKEYS（「无键盘」与「键盘未隐藏」的配置组合区分）。 */
+    private fun hwKeyboardAttached(): Boolean {
+        val c = resources.configuration
+        return c.hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO &&
+            c.keyboard != android.content.res.Configuration.KEYBOARD_NOKEYS
+    }
+
+    /** hwkb 候选条形态激活（design §5）：native 侧近似（JS 的 body class
+     *  是渲染真相，本判定供窗口高度；mode 双方同源于 state 推送，误差
+     *  窗口=一帧高度抖动，模式切换时 onEngineState 重评估兜住）。 */
+    private fun hwCandidatesFormActive(): Boolean =
+        hwKeyboardAttached() &&
+            com.feelime.ime.readHwkbForm(this) == "candidates" &&
+            coordinator.currentMode in hwCharModes
+
+    /** 候选条形态高度（design §5）：preedit band + candidateBar(40px)
+     *  + 安全区/底部留白，与用户保存的完整键盘高度分离（不进持久化，
+     *  互不污染）。CSS 值按 density 换算（band 18/22/25 取 22 中值——
+     *  形态高度只需一行候选的空间，band 残差一帧内）。 */
+    private fun hwCandidatesHeightPx(): Int {
+        val landscape =
+            resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val band = dp(if (landscape) 18 else 22)
+        val bar = dp(40)
+        val height = band + bar + safeBottomSnapshot() + bottomPadPx()
+        return minOf(height, realHeightPixels() - dp(32))
+    }
+
     private fun hwCharMode(): Boolean = coordinator.currentMode in hwCharModes
     private fun hwCtrlMode(): Boolean = coordinator.currentMode in hwCtrlModes
 
@@ -2314,6 +2362,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                 ).toInt(),
             )
             .put("pageGenerationToken", pageToken)
+            // #H 硬键盘展开状态与形态档位（design §5/§7）。
+            .put("hardwareKeyboard", hwKeyboardAttached())
+            .put("hwkbForm", com.feelime.ime.readHwkbForm(this))
             .put("mode", coordinator.currentMode.wireName)
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(this))
             // Degraded-engine state survives WebView rebuilds via hello
