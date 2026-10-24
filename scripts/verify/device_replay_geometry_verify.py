@@ -712,6 +712,10 @@ def main():
         d.shell("settings put system user_rotation 0")
         d.shell(f"run-as {d.PKG} rm -f {HEIGHT_PREF}")
         d.shell("am force-stop " + d.PKG)
+        # #H：清基线把 hwkb 形态 pin 一并抹掉——AVD 硬键盘 + 持久化
+        # 拼音模式会在下次启动直接收成候选条（fresh_kb 拿不到键区）。
+        # 进程已停再写（活进程的 SharedPreferences 写盘会盖回夹具）。
+        d.pin_hwkb_form()
         time.sleep(1.0)
         d.prepare()
         keyboard = d.fresh_kb(refocus=True)
