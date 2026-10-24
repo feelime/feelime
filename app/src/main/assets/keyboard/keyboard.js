@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.47';
+    const KEYBOARD_VERSION = '3.73.48';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1465,7 +1465,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.bottomPad = 0;
             // Candidate text scale: 80-150 continuous % (issue #42).
             this.candidateFont = 100;
-            // 键帽字号（issue #70）：80-150 连续百分比，同候选字号口径。
+            // 键帽字号（issue #70）：50-150 连续百分比，缩小侧比候选字号更宽。
             this.keycapFont = 100;
             // 用户字体（issue #70）：当前生效的 digest；空 = 系统字体栈。
             this.userFontDigest = "";
@@ -6769,12 +6769,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.body.style.setProperty('--cand-font-scale', String(clamped / 100));
         }
 
-        // 键帽字号（issue #70）：80-150 连续百分比直写 --keycap-font-scale，
-        // 口径同候选字号——只缩放键面文字，行高/触摸区预算不动；与角标
-        // 的碰撞由 CSS min() 静态钳制（见 .kb-main/.t9-group）。
+        // 键帽字号（issue #70）：50-150 连续百分比直写 --keycap-font-scale，
+        // 只缩放键面文字，行高/触摸区预算不动；与角标的碰撞由 CSS min()
+        // 静态钳制（见 .kb-main/.t9-group），缩小侧无碰撞风险。
         applyKeycapFont() {
             const pct = Number(this.keycapFont);
-            const clamped = Number.isFinite(pct) ? Math.min(150, Math.max(80, pct)) : 100;
+            const clamped = Number.isFinite(pct) ? Math.min(150, Math.max(50, pct)) : 100;
             document.body.dataset.keycapFont = clamped === 100 ? 'normal' : 'scaled';
             document.body.style.setProperty('--keycap-font-scale', String(clamped / 100));
         }
@@ -10555,7 +10555,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 键帽字号（issue #70）：80-150；旧 APK 不带字段不覆盖。
             {
                 const kf = Number(payload.keycapFont);
-                if (kf >= 80 && kf <= 150) this.keycapFont = kf;
+                if (kf >= 50 && kf <= 150) this.keycapFont = kf;
             }
             this.applyKeycapFont();
             // 用户字体（issue #70）：digest 非空 = 导入过；路由 404/损坏时

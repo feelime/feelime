@@ -4632,11 +4632,14 @@ test('keycap font scale rides hello into the CSS variable (issue #70)', {since: 
     world.hello({keycapFont: 150});
     equal(world.document.body.style['--keycap-font-scale'], '1.5', 'continuous 150% scales');
     equal(world.document.body.dataset.keycapFont, 'scaled', 'scaled anchor set');
+    // 50% 下限（用户验收裁定）：纯缩小无碰撞风险。
+    world.hello({keycapFont: 50});
+    equal(world.document.body.style['--keycap-font-scale'], '0.5', 'lower bound 50% accepted');
     // 旧 APK 的 hello 不带该字段：保持现值不覆盖。
     world.hello({});
-    equal(world.document.body.style['--keycap-font-scale'], '1.5', 'missing field keeps last');
-    world.hello({keycapFont: 9});
-    equal(world.document.body.style['--keycap-font-scale'], '1.5', 'off-range ignored (keeps last)');
+    equal(world.document.body.style['--keycap-font-scale'], '0.5', 'missing field keeps last');
+    world.hello({keycapFont: 49});
+    equal(world.document.body.style['--keycap-font-scale'], '0.5', 'off-range ignored (keeps last)');
 });
 
 test('user font rides hello into a same-origin stylesheet link (issue #70)', {since: '3.73.47'}, () => {

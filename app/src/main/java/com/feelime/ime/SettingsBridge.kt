@@ -476,8 +476,9 @@ fun readCandidateFont(context: Context): Int =
             }
         }
 
-/** 键帽字号（issue #70）：无旧档位迁移，越界值一律回默认 100。 */
-val KEYCAP_FONT_RANGE = 80..150
+/** 键帽字号（issue #70）：无旧档位迁移，越界值一律回默认 100。
+ *  下限 50（用户验收裁定）：50% 仍可读，且远低于角标让位线，纯缩小无碰撞。 */
+val KEYCAP_FONT_RANGE = 50..150
 
 fun readKeycapFont(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)

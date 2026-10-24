@@ -202,7 +202,7 @@ startVoice 无权限分支改为拉起它；Activity 调 requestPermissions(RECO
   prefs 不动缓存，恢复窗口内任意一次 persist（上屏/满 64 击键/服务销毁 flush）
   都会用陈旧缓存把备份值冲掉（AVD 复现实录：恢复成功 3 秒内一次上屏即归零）。
   覆盖语义不变；缺段/空段/类型不符不触发回调。
-- `feelime_keyboard.keycap_font`（#70 键帽字号，80–150 连续百分比）进
+- `feelime_keyboard.keycap_font`（#70 键帽字号，50–150 连续百分比）进
   `INT_KEYS` 类型契约——未登记的 int 键会把数值写成字符串，读侧 getInt 崩。
 - 用户键盘字体（TTF/OTF 单槽位，存 `filesDir/fonts/keyboard/`）**不进备份**：
   备份只带偏好不带走字体文件，换机后键盘页按 hello 的空 digest 回落系统字体栈，

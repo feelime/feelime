@@ -675,7 +675,7 @@ const I18N = {
         "input.feel.candFont": "候选字号",
         "input.feel.candFontHint": "候选词文字的大小（80%-150%），不改变键盘行高。",
         "input.feel.keycapFont": "键帽字号",
-        "input.feel.keycapFontHint": "键帽主文字的大小（80-150%），不改变键盘行高；过大时自动收在角标下方。",
+        "input.feel.keycapFontHint": "键帽主文字的大小（50-150%），不改变键盘行高；过大时自动收在角标下方。",
         "input.feel.userFont": "键盘字体",
         "input.feel.userFontHint": "用导入的字体渲染键盘文字（TTF/OTF）；不随数据备份，换机后需重新导入。",
         "input.feel.userFontImport": "导入字体…",
@@ -1456,7 +1456,7 @@ const I18N = {
         "input.feel.candFont": "Candidate text size",
         "input.feel.candFontHint": "Size of the candidate words (80%-150%); keyboard row height is unchanged.",
         "input.feel.keycapFont": "Keycap text size",
-        "input.feel.keycapFontHint": "Size of the keycap labels (80%-150%); row height is unchanged. Oversized labels are clamped under the superscripts.",
+        "input.feel.keycapFontHint": "Size of the keycap labels (50%-150%); row height is unchanged. Oversized labels are clamped under the superscripts.",
         "input.feel.userFont": "Keyboard font",
         "input.feel.userFontHint": "Render keyboard text with an imported font (TTF/OTF). Not included in backups; re-import after switching devices.",
         "input.feel.userFontImport": "Import font…",
@@ -2320,7 +2320,7 @@ function renderFeel(state) {
     {
         const kc = $("keycapFont");
         const kcVal = Number(state.keycapFont ?? 100);
-        if (Number.isFinite(kcVal) && kcVal >= 80 && kcVal <= 150 &&
+        if (Number.isFinite(kcVal) && kcVal >= 50 && kcVal <= 150 &&
             document.activeElement !== kc) {
             kc.value = String(kcVal);
         }
