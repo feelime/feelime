@@ -278,6 +278,37 @@ fun readHwkbForm(context: Context): String =
         .getString(PREF_HWKB_FORM, "candidates")
         ?.let { if (it in HWKB_FORMS) it else "candidates" } ?: "candidates"
 
+/** #H 快捷切换策略（codex 双拼事故二轮定案）：follow=当前键盘↔英文
+ *  （新默认，英文侧返回最近成功使用的非英文键盘 quickReturnMode）；
+ *  fixed=沿用用户自定义固定配对（存量语义）。非法值回 follow。 */
+private const val PREF_QUICK_SWITCH_POLICY = "feelime_quick_switch_policy"
+private val QUICK_SWITCH_POLICIES = setOf("follow", "fixed")
+
+fun readQuickSwitchPolicy(context: Context): String =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_QUICK_SWITCH_POLICY, "follow")
+        ?.let { if (it in QUICK_SWITCH_POLICIES) it else "follow" } ?: "follow"
+
+/** #H 返回键盘记忆（follow 策略）：最近一次成功落地的非英文键盘。
+ *  仅在引擎 READY 成功应用时由 service 写入（LOADING/降级/密码框强制
+ *  Direct/被拒切换都不写——codex 二轮 §2.3 生命周期）。默认全拼。 */
+private const val PREF_QUICK_RETURN_MODE = "feelime_quick_return_mode"
+private val QUICK_RETURN_MODES = setOf(
+    "pinyin", "double-pinyin", "flypy", "t9", "stroke", "handwriting",
+    "french", "russian", "japanese",
+)
+
+fun readQuickReturnMode(context: Context): String =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(PREF_QUICK_RETURN_MODE, "pinyin")
+        ?.let { if (it in QUICK_RETURN_MODES) it else "pinyin" } ?: "pinyin"
+
+fun writeQuickReturnMode(context: Context, mode: String): Boolean {
+    if (mode !in QUICK_RETURN_MODES) return false
+    return context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .edit().putString(PREF_QUICK_RETURN_MODE, mode).commit()
+}
+
 fun readLandscapeOpacity(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_LANDSCAPE_OPACITY, 100)
@@ -882,6 +913,8 @@ class SettingsBridge(
             .put("landscapeSafeArea", if (readLandscapeSafeArea(context)) 1 else 0)
             .put("landscapeCeil", readLandscapeCeilPct(context))
             .put("hwkbForm", readHwkbForm(context))
+            .put("quickSwitchPolicy", readQuickSwitchPolicy(context))
+            .put("quickReturnMode", readQuickReturnMode(context))
             .put("landscapeOpacity", readLandscapeOpacity(context))
             .put("keyBubble", readKeyBubble(context))
             .put("bubbleLinger", readBubbleLinger(context))
@@ -1361,6 +1394,29 @@ class SettingsBridge(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
         pushState()
+    }
+
+    /** #H 快捷切换策略（codex 双拼事故二轮定案）：follow=当前键盘↔英文
+     *  （默认，英文侧返回 quickReturnMode 记忆）、fixed=固定配对（存量）。
+     *  设置页与 JS 首载迁移各调一次；变更广播 + 推状态（键面目标小字
+     *  跟着换）。 */
+    @JavascriptInterface
+    fun setQuickSwitchPolicy(policy: String, token: String) = guarded(token) {
+        if (policy !in QUICK_SWITCH_POLICIES) return@guarded
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(PREF_QUICK_SWITCH_POLICY, policy).commit()
+        context.sendBroadcast(
+            android.content.Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #H 返回键盘记忆写入（JS 首载迁移的一次性初始化；此后由 service
+     *  的引擎成功落地点维护，JS 不再写）。 */
+    @JavascriptInterface
+    fun setQuickReturnMode(mode: String, token: String) = guarded(token) {
+        if (mode !in QUICK_RETURN_MODES) return@guarded
+        writeQuickReturnMode(context, mode)
     }
 
     /** #H 物理键盘形态档（design hardware-keyboard.md §7）：candidates/

@@ -397,6 +397,13 @@
         </select>
       </div>
       <p class="hint" data-i18n="input.hwkb.hint">硬键盘打字：字母直接进拼音组合、空格选词、Ctrl+空格 或 单按 Shift 切换中英。</p>
+      <div class="row">
+        <label class="row-label" for="quickSwitchPolicy"><span data-i18n="input.quickSwitch.policy">快捷切换（切换键/Ctrl+空格）</span><small data-i18n="input.quickSwitch.policyHint">当前键盘↔英文：从英文切回最近使用的键盘；固定配对：始终在你选定的两个键盘间切换。</small></label>
+        <select id="quickSwitchPolicy" class="select" data-keywords="快捷 切换 中英 Ctrl 空格 配对" aria-label="快捷切换策略" data-i18n-aria="input.quickSwitch.policy">
+          <option value="follow" data-i18n="input.quickSwitch.follow">当前键盘↔英文</option>
+          <option value="fixed" data-i18n="input.quickSwitch.fixed">固定配对</option>
+        </select>
+      </div>
     </section>
 
     <section class="card" id="sec-assoc" aria-labelledby="assocTitle">

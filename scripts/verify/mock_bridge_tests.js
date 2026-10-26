@@ -873,11 +873,74 @@ test('bottom row: toggle flips the quick keyboard pair', () => {
     world.engineState({ phase: 'READY', revision: 2, mode: 'pinyin', composing: '', candidates: [] });
     world.tap(toggle);
     equal(world.native.of('selectMode')[1].args[0], 'direct', 'pinyin back to direct');
-    // a mode outside the pair returns to the pair's Chinese end (3.20.0
-    // semantics; R13 replaces this for 3.21.2+ - see the gated test below)
+    // codex 双拼事故二轮定案（3.73.55）：默认 follow=当前键盘↔英文——
+    // 配对外模式（法/双拼等）直接切英文，不再掉回 pair[0]（旧语义把
+    // 双拼按 Ctrl+空格 切到全拼的坑）。3.73.54 及以前的键盘保持旧
+    // 合约（baseline era 纪律：按版本分叉断言）。
     world.engineState({ phase: 'READY', revision: 3, mode: 'french', composing: '', candidates: [] });
     world.tap(toggle);
-    equal(world.native.of('selectMode')[2].args[0], 'pinyin', 'french falls back to pair end');
+    const expect = verAtLeast(KEYBOARD_VERSION, '3.73.55') ? 'direct' : 'pinyin';
+    equal(world.native.of('selectMode')[2].args[0], expect,
+        verAtLeast(KEYBOARD_VERSION, '3.73.55') ? 'french toggles straight to English' : 'french falls back to pair end (pre-3.73.55)');
+});
+
+test('quick switch: follow returns to the last keyboard from English', {since: '3.73.55'}, () => {
+    // follow 策略：英文侧回 quickReturnMode（native 真相源快照，随 hello
+    // 下发）。双拼 → En → 双拼往返不经过全拼。
+    const world = fresh({ mode: 'double-pinyin', quickSwitchPolicy: 'follow', quickReturnMode: 'double-pinyin' });
+    const toggle = world.$('modeToggle');
+    world.tap(toggle);
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'direct', 'double-pinyin toggles to English');
+    world.engineState({ phase: 'READY', revision: 2, mode: 'direct', composing: '', candidates: [] });
+    world.tap(toggle);
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'double-pinyin',
+        'English returns to the remembered keyboard, not pinyin');
+});
+
+test('quick switch: success toast fires once across hello and state echoes', {since: '3.73.56'}, () => {
+    // 模式切换会先触发 hello 重推（hello 先更新 mode）再推 state——
+    // 回执两条通道都检查但只兑现一次（AVD 实测曾因 hello 抢先而不弹）。
+    const world = touchWorld({ mode: 'double-pinyin', quickSwitchPolicy: 'follow', quickReturnMode: 'double-pinyin' });
+    const kb = world.context.testKeyboard;
+    let toasts = 0;
+    const origToast = kb.showToast.bind(kb);
+    kb.showToast = msg => { toasts++; origToast(msg); };
+    world.context.window.Feelime.quickPairToggle();
+    world.hello({ mode: 'direct' });
+    equal(toasts, 1, 'toast fired once on the hello echo');
+    assert(/英文/.test(world.$('toast').textContent), 'toast names the target keyboard');
+    world.engineState({ phase: 'READY', revision: 2, mode: 'direct', composing: '', candidates: [] });
+    equal(toasts, 1, 'state echo does not fire a second toast');
+    // 非意图模式事件（无 pending 窗）不弹。
+    world.hello({ mode: 'pinyin' });
+    equal(toasts, 1, 'unrelated mode changes never toast');
+});
+
+test('quick switch: fixed keeps the pair semantics', {since: '3.73.55'}, () => {
+    // fixed：存量固定配对语义原样保留（ace 用户配置的双拼/En 对）。
+    const world = fresh({ mode: 'double-pinyin', quickSwitchPolicy: 'fixed' });
+    world.context.window.Feelime.onStoresRestored({ feelime_quick_pair: JSON.stringify(['double-pinyin', 'direct']) });
+    const toggle = world.$('modeToggle');
+    world.tap(toggle);
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'direct', 'pair[0] flips to pair[1]');
+    world.engineState({ phase: 'READY', revision: 2, mode: 'direct', composing: '', candidates: [] });
+    world.tap(toggle);
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'double-pinyin', 'pair[1] flips back');
+});
+
+test('quick switch: first-load migration classifies the saved pair', {since: '3.73.55'}, () => {
+    // 迁移表（codex 二轮 §2.5）：hello 不带 policy（旧壳/首载）时按存量
+    // localStorage 配对判定——恰出厂默认对/无配对 → follow；非默认对 →
+    // fixed（用户自配语义保留）。上报一次后不再重判。
+    const factory = fresh();
+    equal(factory.native.of('setQuickSwitchPolicy').length, 1,
+        'no saved pair migrates to follow (reported once)');
+    equal(factory.native.of('setQuickSwitchPolicy')[0].args[0], 'follow', 'factory default is follow');
+    const custom = new KeyboardWorld().build();
+    custom.storage.set('feelime_quick_pair', JSON.stringify(['double-pinyin', 'direct']));
+    custom.hello({});
+    equal(custom.native.of('setQuickSwitchPolicy').slice(-1)[0].args[0], 'fixed',
+        'customized pair migrates to fixed');
 });
 
 test('toggle returns to the last user-selected mode', {
@@ -4821,13 +4884,13 @@ test('degraded short-press retries the failed mode instead of the pair', {since:
     world.tap(world.$('modeToggle'));
     equal(world.native.of('selectMode').slice(-1)[0].args[0], 'double-pinyin',
         'short press retries the failed mode');
-    // After recovery the toggle returns to the saved pair behaviour
-    // (default pair 拼/En; mode=direct → partner is pinyin).
+    // After recovery the toggle follows the 3.73.55 default policy:
+    // current keyboard ↔ English (double-pinyin → direct).
     world.engineState({phase: 'READY', revision: 2, mode: 'double-pinyin', composing: '',
         degraded: true, degradedActive: false, failedMode: 'double-pinyin', degradeSeq: 1});
     world.tap(world.$('modeToggle'));
-    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'pinyin',
-        'healthy toggle flips to the pair partner');
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'direct',
+        'healthy toggle follows current-keyboard-to-English');
 });
 
 test('warming shows the preparing strip until the engine is ready', {since: '3.30.0'}, () => {
@@ -9344,14 +9407,15 @@ test('handwriting round-5: the bottom-row key is the standard quick-pair toggle 
     const modeKey = world.$('modeToggle');
     assert(modeKey && modeKey.dataset.lp === 'mode-menu', 'standard toggle key rendered');
     equal(world.native.of('switchInputMethod').length, 0, 'system picker untouched');
-    // 键面 = 当前模式简写（大）+ 配对目标（小）：出厂默认对（拼/En）在
-    // 进手写时迁成 手写↔上次键盘——fresh world 没有历史，落到 拼。
+    // 键面 = 当前模式简写（大）+ 目标（小）：3.73.55 默认 follow=当前
+    // 键盘↔英文（手写 ↔ En；codex 二轮 §2.4——自动迁 手写↔上次键盘
+    // 的旧逻辑退出运行时）。
     equal(modeKey.querySelector('.cn-main').textContent, '手', 'current shorthand leads');
-    equal(modeKey.querySelector('.cn-sub').textContent, '拼', 'pair target previews');
-    // 短按 = 翻 quick-pair（手 → 拼），不再开菜单。
+    equal(modeKey.querySelector('.cn-sub').textContent, 'En', 'follow target previews');
+    // 短按 = follow 切换（手写 → En），不再开菜单。
     world.tap(modeKey);
-    equal(world.native.of('selectMode').filter(c => c.args[0] === 'pinyin').length, 1,
-        'tap flips to the pair partner');
+    equal(world.native.of('selectMode').filter(c => c.args[0] === 'direct').length, 1,
+        'tap toggles to English');
     assert(!world.$('modeMenu').classList.contains('open'), 'tap does not open the menu');
     // 长按 = 完整模式菜单（锚在 #modeToggle 上，round-4 通道保留）。
     world.touchDown(modeKey);
@@ -9366,29 +9430,28 @@ test('handwriting round-5: the bottom-row key is the standard quick-pair toggle 
     assert(!items[items.length - 1].textContent.includes('快捷切换'),
         'no pair editor entry in the menu tail (round-6 removed)');
     world.tap(items[1]); // 全拼
-    equal(world.native.of('selectMode').filter(c => c.args[0] === 'pinyin').length, 2,
-        'picking a mode rides selectMode');
+    equal(world.native.of('selectMode').filter(c => c.args[0] === 'pinyin').length, 1,
+        'picking a mode rides selectMode (tap toggled to English, not pinyin)');
     assert(!world.$('modeMenu').classList.contains('open'), 'menu closed after the pick');
 });
 
 
 
-test('handwriting round-5: quick-pair adopts 手写↔last keyboard on first entry (factory pair only)', {since: '3.59.0'}, () => {
+test('handwriting round-5: entering handwriting no longer rewrites the pair (3.73.55)', {since: '3.59.0'}, () => {
     const world = fresh();
     world.hello({ mode: 'pinyin' });
-    equal(world.storage.get('feelime_last_kb_mode'), 'pinyin', 'last keyboard tracked');
+    equal(world.storage.get('feelime_last_kb_mode'), 'pinyin', 'last keyboard still tracked');
     world.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });
-    equal(JSON.parse(world.storage.get('feelime_quick_pair')).join('/'),
-        'handwriting/pinyin', 'factory pair migrates to 手写↔上次键盘');
-    equal(world.$('modeToggle').querySelector('.cn-sub').textContent, '拼',
-        'toggle previews the pair target');
-    // 回到全拼（引擎 echo 通道）：切换键翻回手写，双向都成立。
-    world.engineState({ phase: 'READY', revision: 2, mode: 'pinyin', composing: '', candidates: [] });
+    // codex 双拼事故二轮 §2.4：自动迁移退出运行时——quick_pair 不再被
+    // 改写（要 手写↔指定键盘 用固定配对策略显式配置）。
+    assert(world.storage.get('feelime_quick_pair') == null, 'saved pair untouched on handwriting entry');
+    equal(world.$('modeToggle').querySelector('.cn-sub').textContent, 'En',
+        'toggle previews the follow target (English)');
+    // 手写下短按切英文（follow），不再翻回全拼。
     world.tap(world.$('modeToggle'));
-    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'handwriting',
-        'pinyin flips straight back to handwriting');
-    // 用户定制过的对（设置页键盘选择保存的）不动：3.60 起编辑器入口
-    // 外移，直接落同一 localStorage 键模拟定制结果。
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'direct',
+        'handwriting toggles straight to English');
+    // 用户定制过的对（固定配对）依旧原样保留。
     const custom = fresh();
     custom.storage.set('feelime_quick_pair', JSON.stringify(['direct', 'double-pinyin']));
     custom.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });

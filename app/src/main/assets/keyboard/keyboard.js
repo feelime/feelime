@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.54';
+    const KEYBOARD_VERSION = '3.73.56';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1553,6 +1553,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.hwPanelHeightSent = null;
             this.hardwareKeyboard = false;
             this.hwkbForm = 'candidates';
+            // #H 快捷切换策略（codex 双拼事故二轮定案）：follow=当前
+            // 键盘↔英文（英文侧返回 quickReturnMode——native 是真相源，
+            // JS 只持快照）；fixed=固定配对（存量）。
+            this.quickSwitchPolicy = 'follow';
+            this.quickReturnMode = 'pinyin';
+            // 切换成功 toast 的意图回执窗（quickSwitchTarget 发出后等
+            // 权威 mode 回声，回声匹配才提示——不乐观弹）。
+            this.quickSwitchPendingToast = null;
             try {
                 const speed = parseInt(localStorage.getItem('feelime_scrub_speed') || '3', 10);
                 if (speed >= 1 && speed <= 5) this.scrubSpeed = speed;
@@ -3554,39 +3562,42 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 定制过的对不动（含用户特意选回 拼/En 的情形），改对走
          * 模式菜单/设置页的 快捷切换 入口。 */
         adoptQuickPairForHandwriting(nextMode) {
+            // codex 双拼事故二轮 §2.4：自动迁移职责退出运行时——follow
+            // 策略下手写按「手写↔英文」走，固定配对用户原样保留；旧
+            // lastKbMode 不再参与切换目标（quickSwitchTarget 不读它）。
+            // 仅保留 lastKbMode 记录（既有诊断/其它读取方不受影响）。
             if (nextMode !== 'handwriting') {
                 this.lastKbMode = nextMode;
                 try { localStorage.setItem('feelime_last_kb_mode', nextMode); } catch (_) {}
-                return;
             }
-            // 「用户从未定制过」以持久值为准：内存对可能滞后（备份恢复刚
-            // 写 storage、hello 尾部才同步内存），单看内存会把刚恢复的定制
-            // 对误迁成 手写↔X。
-            let savedPair = null;
-            try { savedPair = JSON.parse(localStorage.getItem('feelime_quick_pair') || 'null'); } catch (_) { /* unset */ }
-            const current = (Array.isArray(savedPair) && savedPair.length === 2) ? savedPair : this.quickPair;
-            const factory = current.length === 2 &&
-                current[0] === 'pinyin' && current[1] === 'direct';
-            if (!factory) return;
-            const other = this.lastKbMode && this.lastKbMode !== 'handwriting' &&
-                MODES[this.lastKbMode] ? this.lastKbMode : 'pinyin';
-            this.quickPair = ['handwriting', other];
-            try {
-                localStorage.setItem('feelime_quick_pair', JSON.stringify(this.quickPair));
-            } catch (_) {}
         }
 
         /** The saved pair alone determines the shortcut. A temporary mode
          * selected from the long-press menu returns to the first pair entry.
          * While a degrade fallback serves, the short press retries the
          * FAILED mode instead of toggling the pair (mode-fallback §2.3). */
+        /** #H 快捷切换目标（codex 双拼事故二轮定案）：软键盘切换键、
+         *  硬键 Ctrl+空格/Shift 单按、底行目标小字共用同一解析——
+         *  follow：当前键盘↔英文（英文侧回 quickReturnMode 记忆）；
+         *  fixed：固定配对翻转（配对外模式回 pair[0]，存量约定）。
+         *  降级重试优先级保留在上层调用处。 */
+        quickSwitchTarget() {
+            if ((this.quickSwitchPolicy || 'follow') === 'fixed') {
+                const pair = this.quickPair;
+                return this.mode === pair[0] ? pair[1] : pair[0];
+            }
+            if (this.mode === 'direct') {
+                return MODES[this.quickReturnMode] ? this.quickReturnMode : 'pinyin';
+            }
+            return 'direct';
+        }
+
         toggleChineseEnglish() {
             if (this.degrade && this.degrade.active && this.degrade.failedMode) {
                 this.call(() => Native.selectMode(this.degrade.failedMode, this.token));
                 return;
             }
-            const pair = this.quickPair;
-            const target = this.mode === pair[0] ? pair[1] : pair[0];
+            const target = this.quickSwitchTarget();
             // 快捷对里的 strictReady 模式不可用时不出击（codex 评审 P2：
             // 旧 APK 的 hello 不带 stroke 字段，直发 selectMode 只会被
             // 原生拒绝，切换键看起来坏了）。strictReady 与 engine 标志
@@ -3597,6 +3608,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.showToast(t("该键盘还在准备中"));
                 return;
             }
+            this.quickSwitchPendingToast = { to: target, at: Date.now() };
             this.call(() => Native.selectMode(target, this.token));
         }
 
@@ -5320,8 +5332,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The small label previews the target from the saved pair.
             const toggle = document.getElementById('modeToggle');
             if (!toggle) return;
-            const pair = this.quickPair;
-            const target = this.mode === pair[0] ? pair[1] : pair[0];
+            const target = this.quickSwitchTarget();
             toggle.querySelector('.cn-main').textContent =
                 modeLabel(this.mode);
             toggle.querySelector('.cn-sub').textContent =
@@ -6874,6 +6885,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.body.classList.toggle('hwkb', active);
             this.applyHeight();
             this.hwNotifyPanelHeight();
+            this.updateHwModeTag();
         }
 
         /* ===== #H 面板高度态（design §7，codex 评审 P1-9）=====
@@ -6881,6 +6893,38 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * candidates=候选条预算、ctrl=控制行预算、full=完整键盘高度。
          * 状态取自标志位（时序无关 DOM），native 侧只在 hwkb 形态
          * 分支消费该值，其余形态自然忽略。 */
+        /** #H 切换成功回执（codex 二轮 §3）：模式切换会先触发 hello
+         *  重推（hello 里就更新 this.mode）再推 state 事件——回执必须
+         *  在两条通道的 mode 到达点都检查，只挂 onEngineState 会被
+         *  hello 抢先更新 this.mode 后跳过（AVD 实测定罪）。仅匹配
+         *  quickSwitchPendingToast 意图窗内的目标才弹。 */
+        quickSwitchAck(newMode) {
+            const pend = this.quickSwitchPendingToast;
+            if (!pend || pend.to !== newMode || Date.now() - pend.at >= 3000) return;
+            this.quickSwitchPendingToast = null;
+            const names = {
+                pinyin: t("全拼"), 'double-pinyin': t("双拼"), flypy: t("鹤形"),
+                french: t("法语"), russian: t("俄语"), japanese: t("日语"),
+            };
+            this.showToast(t("已切换：") + (names[newMode] || t("英文")));
+        }
+
+        /** #H 候选条形态的模式短标签文案（codex 二轮 §3）：两字全名
+         *  可辨（只写「中」分不出全拼/双拼——用户事故的可见性根源）。
+         *  显隐由 CSS（body.hwkb）管，这里只刷文案。 */
+        updateHwModeTag() {
+            const el = document.getElementById('hwModeTag');
+            if (!el) return;
+            const names = {
+                pinyin: t("全拼"), 'double-pinyin': t("双拼"), flypy: t("鹤形"),
+                french: t("法语"), russian: t("俄语"), japanese: t("日语"),
+            };
+            el.textContent = names[this.mode] || '';
+            // 显隐由这里管（CSS [hidden] 只做兜底）：候选条形态且有可辨
+            // 全名时摘 hidden；Direct/手写等非文本模式随形态自然隐藏。
+            el.hidden = !(document.body.classList.contains('hwkb') && names[this.mode]);
+        }
+
         hwPanelHeightState() {
             if (['listening', 'loading', 'stopping'].includes(this.voiceState)) return 'full';
             // 数字/符号/Emoji 层（工具栏可达入口，codex 复审 P1-9：不
@@ -11114,9 +11158,29 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const nextMode = MODES[payload.mode] ? payload.mode : 'direct';
             const modeChanged = nextMode !== this.mode;
             this.mode = nextMode;
+            // #H 切换回执通道一（hello 重推先于 state 到达时在这里兑现）。
+            this.quickSwitchAck(nextMode);
             // #H：hello 带硬键盘状态与形态档位（design §5/§7）。
             this.hardwareKeyboard = !!payload.hardwareKeyboard;
             this.hwkbForm = payload.hwkbForm || 'candidates';
+            // #H 快捷切换策略/返回记忆快照（native 是真相源）。hello 未
+            // 带 policy 字段（旧壳或首载迁移未完成）时按迁移表从存量
+            // localStorage 配对判定一次并上报：恰出厂默认对/无配对 →
+            // follow；非默认有效对 → fixed（用户自配语义保留）。
+            if (payload.quickSwitchPolicy !== undefined) {
+                this.quickSwitchPolicy = payload.quickSwitchPolicy;
+                this.quickReturnMode = payload.quickReturnMode || 'pinyin';
+            } else if (!this.quickPolicyMigrated) {
+                // 只判定快照；上报在 ready 之后（call 门闸会吞掉
+                // keyboardReady 之前的桥调用——#27 同款时序坑）。
+                this.quickPolicyMigrated = true;
+                let savedPair = null;
+                try { savedPair = JSON.parse(localStorage.getItem('feelime_quick_pair') || 'null'); } catch (_) { /* unset */ }
+                const customized = Array.isArray(savedPair) && savedPair.length === 2 &&
+                    !(savedPair[0] === 'pinyin' && savedPair[1] === 'direct');
+                this.quickSwitchPolicy = customized ? 'fixed' : 'follow';
+                this.quickPolicyReportPending = true;
+            }
             // #H 会话代数（codex 评审 P1-1）：重载/换页后以 native 当前
             // gen 为基准——旧 gen 的队列/续步全部作废。
             if (payload.hwGen !== undefined) this.hwGen = Number(payload.hwGen) || 0;
@@ -11197,6 +11261,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (document.getElementById('heightCard').classList.contains('open')) this.renderHeightCard();
             }
             Native.keyboardReady(KEYBOARD_VERSION, MIN_NATIVE_API, JSON.stringify(REQUIRED_CAPABILITIES), this.token);
+            // #H 快捷切换策略首载迁移上报（codex 二轮 §2.5）：hello 不带
+            // policy（旧壳/未迁移）时按存量配对判定一次并上报 native——
+            // 必须排在 keyboardReady 之后（pageReady 门闸）。
+            if (this.quickPolicyReportPending) {
+                this.quickPolicyReportPending = false;
+                if (typeof Native.setQuickSwitchPolicy === 'function') {
+                    this.call(() => Native.setQuickSwitchPolicy(this.quickSwitchPolicy, this.token));
+                }
+            }
             // #H：硬键能力上报（design §6）——必须排在 keyboardReady 之后
             //（#27 同款时序坑：native pageReady 在 keyboardReady 处理器里
             // 才置位，早于此的桥调用必被门闸吞掉）。codex 评审 P1-8：只在
@@ -11397,6 +11470,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.applyHwForm(); // #H 模式变化重评估候选条形态
                 this.adoptQuickPairForHandwriting(payload.mode);
                 this.renderMode();
+                this.updateHwModeTag();
+                this.quickSwitchAck(payload.mode);
             }
             this.updateComposing(payload, payload.rawInput || payload.composing || '');
             // ONE accumulated pool feeds both the candidate bar and

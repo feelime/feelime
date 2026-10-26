@@ -205,6 +205,10 @@ const I18N = {
         "input.hwkb.full": "完整键盘",
         "input.hwkb.follow": "跟随系统",
         "input.hwkb.hint": "硬键盘打字：字母直接进拼音组合、空格选词、Ctrl+空格 或 单按 Shift 切换中英。",
+        "input.quickSwitch.policy": "快捷切换（切换键/Ctrl+空格）",
+        "input.quickSwitch.policyHint": "当前键盘↔英文：从英文切回最近使用的键盘；固定配对：始终在你选定的两个键盘间切换。",
+        "input.quickSwitch.follow": "当前键盘↔英文",
+        "input.quickSwitch.fixed": "固定配对",
         "input.assoc.backspaceClearHint": "联想候选显示时按退格先清联想、恢复工具栏（不删字）；关闭则退格照旧删字。",
         "input.datetime.title": "日期时间候选",
         "input.datetime.badge": "输入",
@@ -995,6 +999,10 @@ const I18N = {
         "input.hwkb.full": "Full keyboard",
         "input.hwkb.follow": "Follow system",
         "input.hwkb.hint": "Type with a hard keyboard: letters feed the pinyin composer, space picks a candidate, Ctrl+Space or a lone Shift toggles Chinese/English.",
+        "input.quickSwitch.policy": "Quick switch (toggle / Ctrl+Space)",
+        "input.quickSwitch.policyHint": "Current keyboard ↔ English: returns to the last keyboard you used; Fixed pair: always flips between the two keyboards you picked.",
+        "input.quickSwitch.follow": "Current keyboard ↔ English",
+        "input.quickSwitch.fixed": "Fixed pair",
         "input.assoc.backspaceClearHint": "When association candidates are showing, backspace clears them and restores the toolbar (nothing deleted); off = backspace deletes as usual.",
         "input.datetime.title": "Date & time candidates",
         "input.datetime.badge": "Input",
@@ -2296,6 +2304,8 @@ function renderLandscape(state) {
     // #H 物理键盘形态档回显（焦点中不抢用户操作）。
     const hwkb = $("hwkbForm");
     if (hwkb && document.activeElement !== hwkb) hwkb.value = state.hwkbForm || "candidates";
+    const qsp = $("quickSwitchPolicy");
+    if (qsp && document.activeElement !== qsp) qsp.value = state.quickSwitchPolicy || "follow";
     const ceil = $("landscapeCeil");
     const ceilOut = $("landscapeCeilOut");
     const ceilVal = Number(state.landscapeCeil);
@@ -4155,6 +4165,7 @@ $("autoUpdateCheck").addEventListener("change", event => call("setAutoUpdateChec
 $("associationOn").addEventListener("change", event => call("setAssociation", event.target.checked));
 $("backspaceAssocOn").addEventListener("change", event => call("setBackspaceAssoc", event.target.checked));
 $("hwkbForm").addEventListener("change", event => call("setHwkbForm", event.target.value));
+$("quickSwitchPolicy").addEventListener("change", event => call("setQuickSwitchPolicy", event.target.value));
 $("wxSlashOn").addEventListener("change", event => call("setWxSlash", event.target.checked));
 $("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateTime", event.target.checked));
 $("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));

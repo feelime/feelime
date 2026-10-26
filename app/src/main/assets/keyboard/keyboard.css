@@ -234,6 +234,12 @@ body.hwkb .kb-rows { display: none; }
 /* 候选条在 hwkb 态独占键区：margin 归零（原生高度预算已按 40px bar
  * 计算，2/10px margin 会让 bar 沉底）。 */
 body.hwkb #candidateBar { margin: 0; }
+/* #H 候选条形态模式标签（codex 二轮 §3）：只在 hwkb 形态显示，
+ * 两字宽行内固定件（ink-tag 同款排版），不随候选滚动。 */
+#hwModeTag { display: none; }
+#hwModeTag[hidden] { display: none; }
+body.hwkb #hwModeTag { display: inline-block; }
+body.hwkb #hwModeTag[hidden] { display: none; }
 body.hwkb #softKeyboard { padding-bottom: calc(2px + var(--safe-bottom, 0px)); }
 
 body.landscape #softKeyboard {

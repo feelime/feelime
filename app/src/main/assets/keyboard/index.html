@@ -199,6 +199,10 @@
              让位，这一行左侧的模式标识与右侧 ×（composeClear）一起构成
              候选行；平时隐藏，不占布局。 -->
         <span id="inkTag" class="ink-tag" hidden data-i18n="手写">手写</span>
+ <!-- #H 候选条形态的模式短标签（codex 双拼事故二轮 §3）：键区隐藏时
+             唯一的模式可见性——软硬切换后用户能看见自己身在哪个键盘。
+             只读两字标签，不占候选编号；完整键盘形态仍用 modeToggle。 -->
+        <span id="hwModeTag" class="ink-tag" hidden></span>
         <div id="candidates"></div>
  <!-- Engine lifecycle notice (mode-fallback §2.3): overlays the
              candidate strip while the engine warms up or a degrade fallback

@@ -709,6 +709,9 @@ class MockNative {
     hwChoose(seq, gen, revision, id, token) { this._record('hwChoose', [seq, gen, revision, id, token]); }
     reportHwKeys(version, token) { this._record('reportHwKeys', [version, token]); }
     hwPanelHeight(state, token) { this._record('hwPanelHeight', [state, token]); }
+    // #H 快捷切换策略（codex 双拼事故二轮）：策略与返回键盘记忆桥。
+    setQuickSwitchPolicy(policy, token) { this._record('setQuickSwitchPolicy', [policy, token]); }
+    setQuickReturnMode(mode, token) { this._record('setQuickReturnMode', [mode, token]); }
     hwCommit(text, gen, token) { this._record('hwCommit', [text, gen, token]); }
     commitAssoc(text, token) {
         this._record('commitAssoc', [text, token]);

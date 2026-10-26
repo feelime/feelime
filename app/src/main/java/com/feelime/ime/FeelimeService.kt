@@ -938,6 +938,17 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                             "reason=${event.degrade.reason} seq=${event.degrade.seq}",
                     )
                 }
+                // #H 返回键盘记忆（codex 二轮 §2.3）：非英文键盘引擎 READY
+                //  成功落地才写——LOADING/降级/密码框强制 Direct 都不污染。
+                if (event.phase == com.feelime.ime.engine.Phase.READY &&
+                    event.stamp.mode != com.feelime.ime.engine.InputMode.DIRECT &&
+                    event.degrade == null
+                ) {
+                    val wire = event.stamp.mode.wireName
+                    if (wire != com.feelime.ime.readQuickReturnMode(this@FeelimeService)) {
+                        com.feelime.ime.writeQuickReturnMode(this@FeelimeService, wire)
+                    }
+                }
                 // #H 切换在途的完成检测（design §3）：state 载荷的 mode
                 // 相对武装时的 modeAtArm 已变 = 目标模式已实际应用且本条
                 // 推送即将送达 JS（双条件）。epoch 校验防迟到结果清新门闩。
@@ -2487,6 +2498,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // #H 硬键盘展开状态与形态档位（design §5/§7）。
             .put("hardwareKeyboard", hwKeyboardAttached())
             .put("hwkbForm", com.feelime.ime.readHwkbForm(this))
+            .put("quickSwitchPolicy", com.feelime.ime.readQuickSwitchPolicy(this))
+            .put("quickReturnMode", com.feelime.ime.readQuickReturnMode(this))
             // #H 会话代数（P1-1）：JS 队列/桥调用携带的 gen 基准——
             // 重载/换页后 JS 以此初始化，旧 gen 的在途请求一律终检丢弃。
             .put("hwGen", hwInputGeneration)
