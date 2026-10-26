@@ -379,4 +379,5 @@ switches:
 translator:
   dictionary: luna_pinyin
   prism: ziranma_double_pinyin
+  stable_segmentation: true
   user_dict: feelime_dp

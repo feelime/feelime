@@ -386,6 +386,8 @@ simplifier:
 
 translator:
   dictionary: luna_pinyin
+  # issue #72：尾追加时保持上一帧音节分段（librime patch 配套开关，仅自然码启用）
+  stable_segmentation: true
   # Dedicated user dict so double-pinyin word-building never leaks
   # into the full-pinyin luna_pinyin.userdb (per-scheme isolation).
   user_dict: feelime_dp
