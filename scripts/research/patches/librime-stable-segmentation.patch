@@ -104,7 +104,7 @@ index 1167e29..299eec6 100644
  
   protected:
 diff --git a/src/rime/engine.cc b/src/rime/engine.cc
-index 4a54f64..2b346b0 100644
+index 4a54f64..e0e6760 100644
 --- a/src/rime/engine.cc
 +++ b/src/rime/engine.cc
 @@ -22,6 +22,8 @@
@@ -156,6 +156,21 @@ index 4a54f64..2b346b0 100644
    comp.Reset(active_input);
    if (ctx->caret_pos() < ctx->input().length() &&
        ctx->caret_pos() == comp.GetConfirmedPosition()) {
+@@ -332,6 +367,14 @@ void ConcreteEngine::InitializeComponents() {
+   filters_.clear();
+   formatters_.clear();
+   post_processors_.clear();
++  // feelime #72 round-3: schema components are being rebuilt -- reset the
++  // stable-hint state so a switch to a schema with the feature OFF stops
++  // reading the previous schema's menu (lazy evaluation side effects) and
++  // never sees stale spans. A newly created enabling translator re-arms it.
++  stable_hint_enabled_ = false;
++  segmentation_hint_ = SegmentationHint{};
++  prev_compose_input_.clear();
++  prev_caret_pos_ = 0;
+ 
+   if (switcher_) {
+     processors_.push_back(switcher_);
 diff --git a/src/rime/engine.h b/src/rime/engine.h
 index 6b51a68..c0261e6 100644
 --- a/src/rime/engine.h
@@ -212,10 +227,54 @@ index 6b51a68..c0261e6 100644
  
  }  // namespace rime
 diff --git a/src/rime/gear/script_translator.cc b/src/rime/gear/script_translator.cc
-index aef6217..4e4d1b8 100644
+index aef6217..66104e9 100644
 --- a/src/rime/gear/script_translator.cc
 +++ b/src/rime/gear/script_translator.cc
-@@ -77,16 +77,27 @@ static bool syllabify_dfs(SyllabifyTask* task,
+@@ -21,8 +21,10 @@
+ #include <rime/schema.h>
+ #include <rime/translation.h>
+ #include <rime/algo/syllabifier.h>
++#include <rime/algo/spelling.h>
+ #include <rime/dict/corrector.h>
+ #include <rime/dict/dictionary.h>
++#include <rime/dict/prism.h>
+ #include <rime/dict/user_dictionary.h>
+ #include <rime/gear/poet.h>
+ #include <rime/gear/script_translator.h>
+@@ -73,20 +75,60 @@ static bool syllabify_dfs(SyllabifyTask* task,
+   return false;
+ }
+ 
++// feelime #72 round-3: an old hint vertex pair [s, e) may anchor the next
++// frame's graph only if the raw keys of that span form an EXACT normal
++// spelling in the current schema's prism. Abbreviation (single-key shuangpin
++// initials) and completion spans must stay re-shapeable: locking them froze
++// parses like ni|h|l|kj against the intended ni|hl|kj.
++static bool HasExactNormalSpelling(Prism& prism,
++                                   const string& input,
++                                   size_t s,
++                                   size_t e,
++                                   const string& delimiters) {
++  while (s < e && delimiters.find(input[s]) != string::npos) ++s;
++  while (s < e && delimiters.find(input[e - 1]) != string::npos) --e;
++  if (s == e)
++    return false;
++  const string raw = input.substr(s, e - s);
++  // inner delimiters mean the span cannot be one syllable
++  if (raw.find_first_of(delimiters) != string::npos)
++    return false;
++  int spelling_id = 0;
++  if (!prism.GetValue(raw, &spelling_id))
++    return false;
++  for (auto a = prism.QuerySpelling(spelling_id); !a.exhausted(); a.Next()) {
++    const auto& p = a.properties();
++    if (p.type == kNormalSpelling && !p.is_correction)
++      return true;
++  }
++  return false;
++}
++
+ }  // anonymous namespace
  
  class ScriptSyllabifier : public PhraseSyllabifier {
   public:
@@ -245,7 +304,7 @@ index aef6217..4e4d1b8 100644
      if (corrector) {
        syllabifier_.EnableCorrection(corrector);
      }
-@@ -106,6 +117,8 @@ class ScriptSyllabifier : public PhraseSyllabifier {
+@@ -106,6 +148,8 @@ class ScriptSyllabifier : public PhraseSyllabifier {
    size_t start_;
    Syllabifier syllabifier_;
    SyllableGraph syllable_graph_;
@@ -254,7 +313,7 @@ index aef6217..4e4d1b8 100644
  };
  
  class ScriptTranslation : public Translation {
-@@ -117,13 +130,16 @@ class ScriptTranslation : public Translation {
+@@ -117,13 +161,16 @@ class ScriptTranslation : public Translation {
                      size_t start,
                      size_t end_of_input,
                      int max_sentences,
@@ -274,7 +333,7 @@ index aef6217..4e4d1b8 100644
          enable_correction_(corrector),
          max_sentences_(max_sentences),
          sentence_cutoff_threshold_(sentence_cutoff_threshold) {
-@@ -190,6 +206,10 @@ ScriptTranslator::ScriptTranslator(const Ticket& ticket)
+@@ -190,6 +237,10 @@ ScriptTranslator::ScriptTranslator(const Ticket& ticket)
      config->GetBool(name_space_ + "/always_show_comments",
                      &always_show_comments_);
      config->GetBool(name_space_ + "/enable_correction", &enable_correction_);
@@ -285,22 +344,55 @@ index aef6217..4e4d1b8 100644
      if (!config->GetBool(name_space_ + "/enable_word_completion",
                           &enable_word_completion_)) {
        enable_word_completion_ = enable_completion_;
-@@ -219,10 +239,26 @@ an<Translation> ScriptTranslator::Query(const string& input,
+@@ -219,10 +270,59 @@ an<Translation> ScriptTranslator::Query(const string& input,
        user_dict_ && user_dict_->loaded() && !IsUserDictDisabledFor(input);
  
    size_t end_of_input = engine_->context()->input().length();
-+  // feelime #72: on a pure tail append, constrain the syllable graph with the
-+  // previous frame's boundaries so the visible segmentation stays stable.
-+  // The hint applies only to the same segment it came from (same start).
++  // feelime #72 round-3: on a pure tail append, anchor only the CONTIGUOUS
++  // prefix of the previous frame's boundaries whose spans are exact normal
++  // spellings. The first span that is an abbreviation / completion / not in
++  // the prism stops the anchoring -- the rest of the graph stays free so a
++  // pending initial can still grow into a full syllable (h + l -> hl).
 +  vector<size_t> stable_vertices;
 +  size_t stable_old_length = 0;
 +  if (stable_segmentation_) {
 +    const auto& hint = engine_->segmentation_hint();
-+    if (hint.valid && hint.origin == segment.start) {
-+      // vertices are absolute; shift into segment-local coordinates.
-+      for (size_t v : hint.vertices)
-+        stable_vertices.push_back(v - segment.start);
-+      stable_old_length = hint.old_length - segment.start;
++    bool geometry_ok = hint.valid && !hint.vertices.empty() &&
++                       hint.origin == segment.start &&
++                       hint.vertices.front() == hint.origin &&
++                       hint.old_length >= hint.origin &&
++                       hint.old_length - hint.origin <= input.length();
++    if (geometry_ok) {
++      // vertices.front() == origin is already checked above; strict
++      // increase applies to the pairs AFTER it (the leading vertex IS the
++      // origin -- counting it into v <= prev rejected every hint, trace
++      // logcat feelime72 geo=0 on every frame).
++      size_t prev = hint.origin;
++      for (size_t i = 1; i < hint.vertices.size(); ++i) {
++        const size_t v = hint.vertices[i];
++        if (v <= prev || v > hint.old_length) {
++          geometry_ok = false;
++          break;
++        }
++        prev = v;
++      }
++    }
++    if (geometry_ok) {
++      stable_vertices.push_back(0);
++      for (size_t i = 0; geometry_ok && i + 1 < hint.vertices.size(); ++i) {
++        const size_t s = hint.vertices[i] - segment.start;
++        const size_t e = hint.vertices[i + 1] - segment.start;
++        if (!HasExactNormalSpelling(*dict_->prism(), input, s, e,
++                                    delimiters())) {
++          break;  // first incomplete span: drop it and the whole suffix
++        }
++        stable_vertices.push_back(e);
++      }
++      if (stable_vertices.size() < 2) {
++        stable_vertices.clear();
++      } else {
++        stable_old_length = hint.old_length - segment.start;
++      }
 +    }
 +  }
    // the translator should survive translations it creates
@@ -313,7 +405,7 @@ index aef6217..4e4d1b8 100644
    if (!result || !result->Evaluate(
                       dict_.get(), enable_user_dict ? user_dict_.get() : NULL)) {
      return nullptr;
-@@ -354,7 +390,7 @@ Spans ScriptSyllabifier::Syllabify(const Phrase* phrase) {
+@@ -354,7 +454,7 @@ Spans ScriptSyllabifier::Syllabify(const Phrase* phrase) {
    vector<size_t> vertices;
    vertices.push_back(start_);
    SyllabifyTask task{
@@ -322,7 +414,7 @@ index aef6217..4e4d1b8 100644
        [&](SyllabifyTask* task, size_t depth, size_t current_pos,
            size_t next_pos) { vertices.push_back(start_ + next_pos); },
        [&](SyllabifyTask* task, size_t depth) { vertices.pop_back(); }};
-@@ -365,8 +401,10 @@ Spans ScriptSyllabifier::Syllabify(const Phrase* phrase) {
+@@ -365,8 +465,10 @@ Spans ScriptSyllabifier::Syllabify(const Phrase* phrase) {
  }
  
  size_t ScriptSyllabifier::BuildSyllableGraph(Prism& prism) {
