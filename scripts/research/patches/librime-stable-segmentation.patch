@@ -1,0 +1,369 @@
+diff --git a/src/rime/algo/syllabifier.cc b/src/rime/algo/syllabifier.cc
+index 11d0efc..f40dcb6 100644
+--- a/src/rime/algo/syllabifier.cc
++++ b/src/rime/algo/syllabifier.cc
+@@ -28,9 +28,45 @@ using VertexQueue =
+ const double kCompletionPenalty = -2.995732273553991;      // log(0.05)
+ const double kCorrectionCredibility = -4.605170185988091;  // log(0.01)
+ 
+-int Syllabifier::BuildSyllableGraph(const string& input,
+-                                    Prism& prism,
+-                                    SyllableGraph* graph) {
++namespace {
++// feelime #72: whether an edge [s, e) is allowed under the segmentation
++// stability constraint. verts = previous frame's syllable boundaries
++// {0 = v0 < v1 < ... < vk = T}, L = previous input length; both in the
++// coordinate system of the current input (a pure tail append of it).
++// Rules:
++//   R1  s >= L              : fresh keys, unconstrained
++//   R2  (s, e) in P         : keep a previously visible syllable span
++//   R3  e <= T (not in P)   : forbid alternate cuts inside/below the
++//                             previously visible syllables
++//   R4  s == last start of P, or s >= T : allow the trailing syllable to
++//                             keep growing (or a dangling tail to form)
++//   R5  otherwise           : forbid (boundary-crossing or split edges)
++bool EdgeAllowedByStableVertices(const vector<size_t>& verts,
++                                 size_t old_length,
++                                 size_t s,
++                                 size_t e) {
++  if (verts.size() < 2)
++    return true;  // no usable snapshot: unconstrained
++  const size_t T = verts.back();
++  if (s >= old_length)
++    return true;  // R1
++  for (size_t i = 0; i + 1 < verts.size(); ++i) {
++    if (verts[i] == s && verts[i + 1] == e)
++      return true;  // R2
++  }
++  if (e <= T)
++    return false;  // R3
++  const size_t last_start = verts[verts.size() - 2];
++  return s == last_start || s >= T;  // R4 / R5
++}
++}  // namespace
++
++int Syllabifier::BuildSyllableGraph(
++    const string& input,
++    Prism& prism,
++    SyllableGraph* graph,
++    const vector<size_t>* stable_vertices,
++    size_t stable_old_length) {
+   if (input.empty())
+     return 0;
+ 
+@@ -100,6 +136,12 @@ int Syllabifier::BuildSyllableGraph(const string& input,
+                delimiters_.find(input[end_pos]) != string::npos)
+           ++end_pos;
+         DLOG(INFO) << "end_pos: " << end_pos;
++        if (stable_vertices &&
++            !EdgeAllowedByStableVertices(*stable_vertices, stable_old_length,
++                                         current_pos, end_pos)) {
++          DLOG(INFO) << "edge rejected by stable segmentation constraint.";
++          continue;
++        }
+         bool matches_input = (current_pos == 0 && end_pos == input.length());
+         SpellingMap& spellings(end_vertices[end_pos]);
+         SpellingType end_vertex_type = kInvalidSpelling;
+@@ -213,6 +255,15 @@ int Syllabifier::BuildSyllableGraph(const string& input,
+       size_t current_pos = farthest;
+       size_t end_pos = input.length();
+       size_t code_length = end_pos - current_pos;
++      // feelime #72: completion edges are subject to the same segmentation
++      // stability constraint — a completion crossing the previously visible
++      // boundaries must not enter the graph.
++      if (stable_vertices && !EdgeAllowedByStableVertices(
++                                 *stable_vertices, stable_old_length,
++                                 current_pos, end_pos)) {
++        DLOG(INFO) << "completion rejected by stable segmentation constraint.";
++        return farthest;
++      }
+       auto& end_vertices(graph->edges[current_pos]);
+       auto& spellings(end_vertices[end_pos]);
+       for (const auto& m : keys) {
+diff --git a/src/rime/algo/syllabifier.h b/src/rime/algo/syllabifier.h
+index 1167e29..299eec6 100644
+--- a/src/rime/algo/syllabifier.h
++++ b/src/rime/algo/syllabifier.h
+@@ -54,9 +54,15 @@ class Syllabifier {
+         enable_completion_(enable_completion),
+         strict_spelling_(strict_spelling) {}
+ 
+-  RIME_DLL int BuildSyllableGraph(const string& input,
+-                                  Prism& prism,
+-                                  SyllableGraph* graph);
++  RIME_DLL int BuildSyllableGraph(
++      const string& input,
++      Prism& prism,
++      SyllableGraph* graph,
++      // feelime #72: optional segmentation stability constraint — the
++      // previous frame's syllable boundaries (ascending, front == 0, in
++      // `input` coordinates) and its input length. NULL = unconstrained.
++      const vector<size_t>* stable_vertices = nullptr,
++      size_t stable_old_length = 0);
+   RIME_DLL void EnableCorrection(Corrector* corrector);
+ 
+  protected:
+diff --git a/src/rime/engine.cc b/src/rime/engine.cc
+index 4a54f64..2b346b0 100644
+--- a/src/rime/engine.cc
++++ b/src/rime/engine.cc
+@@ -22,6 +22,8 @@
+ #include <rime/ticket.h>
+ #include <rime/translation.h>
+ #include <rime/translator.h>
++// feelime #72: Phrase::spans() for the segmentation stability hint.
++#include <rime/gear/translator_commons.h>
+ 
+ namespace rime {
+ 
+@@ -157,6 +159,39 @@ void ConcreteEngine::Compose(Context* ctx) {
+   Composition& comp = ctx->composition();
+   const string active_input = ctx->input().substr(0, ctx->caret_pos());
+   DLOG(INFO) << "active input: " << active_input;
++  // feelime #72: snapshot the highlighted candidate's syllable boundaries so
++  // that script_translator can keep the previous segmentation on pure tail
++  // appends. The tail-append test compares FULL inputs (and requires the
++  // previous caret to be at the end), so caret round-trips don't count as
++  // appends. The hint is recomputed on every Compose() and consumed within
++  // that pass; edits (backspace, caret moves, selections, clears) either
++  // break the tail-append relation or leave no guessed segment to snapshot.
++  SegmentationHint hint;
++  const string& full_input = ctx->input();
++  bool tail_append = stable_hint_enabled_ && prev_caret_pos_ ==
++                                                   prev_compose_input_.length() &&
++                     full_input.length() > prev_compose_input_.length() &&
++                     full_input.compare(0, prev_compose_input_.length(),
++                                         prev_compose_input_) == 0;
++  if (tail_append && !comp.empty() && comp.back().status == Segment::kGuess) {
++    if (auto cand = Candidate::GetGenuineCandidate(
++            comp.back().GetSelectedCandidate())) {
++      // Phrase::spans() re-walks the syllable graph held by the candidate's
++      // syllabifier, which is still alive through the old menu. Vertices are
++      // absolute positions in the previous full input.
++      if (auto* phrase = dynamic_cast<Phrase*>(cand.get())) {
++        hint.vertices = phrase->spans().vertices();
++        if (hint.vertices.size() >= 2) {
++          hint.valid = true;
++          hint.origin = hint.vertices.front();
++          hint.old_length = prev_compose_input_.length();
++        }
++      }
++    }
++  }
++  set_segmentation_hint(hint);
++  prev_compose_input_ = full_input;
++  prev_caret_pos_ = ctx->caret_pos();
+   comp.Reset(active_input);
+   if (ctx->caret_pos() < ctx->input().length() &&
+       ctx->caret_pos() == comp.GetConfirmedPosition()) {
+diff --git a/src/rime/engine.h b/src/rime/engine.h
+index 6b51a68..c0261e6 100644
+--- a/src/rime/engine.h
++++ b/src/rime/engine.h
+@@ -21,6 +21,19 @@ class Engine : public Messenger {
+  public:
+   using CommitSink = signal<void(const string& commit_text)>;
+ 
++  // feelime #72: syllable-boundary stability hint, computed at the top of
++  // each Compose() from the previous composition and consumed by translators
++  // (script_translator) within that same Compose() pass only. vertices are
++  // absolute positions in the previous full input; origin is the start of
++  // the segment they describe.
++  struct SegmentationHint {
++    bool valid = false;
++    vector<size_t> vertices;  // syllable boundaries of the highlighted
++                              // candidate, ascending
++    size_t origin = 0;        // previous segment start (vertices.front())
++    size_t old_length = 0;    // previous full input length
++  };
++
+   virtual ~Engine();
+   virtual bool ProcessKey(const KeyEvent& key_event) { return false; }
+   virtual void ApplySchema(Schema* schema) {}
+@@ -31,6 +44,18 @@ class Engine : public Messenger {
+   Context* context() const { return context_.get(); }
+   CommitSink& sink() { return sink_; }
+ 
++  const SegmentationHint& segmentation_hint() const {
++    return segmentation_hint_;
++  }
++  void set_segmentation_hint(const SegmentationHint& hint) {
++    segmentation_hint_ = hint;
++  }
++  // Set by translators whose schema enables stable segmentation; when no
++  // translator consumes hints, Compose() skips the snapshot entirely.
++  void set_stable_hint_enabled(bool enabled) {
++    stable_hint_enabled_ = enabled;
++  }
++
+   Engine* active_engine() { return active_engine_ ? active_engine_ : this; }
+   void set_active_engine(Engine* engine = nullptr) { active_engine_ = engine; }
+ 
+@@ -43,6 +68,11 @@ class Engine : public Messenger {
+   the<Context> context_;
+   CommitSink sink_;
+   Engine* active_engine_ = nullptr;
++  SegmentationHint segmentation_hint_;
++  // Previous frame's full input and caret, for the tail-append test.
++  string prev_compose_input_;
++  size_t prev_caret_pos_ = 0;
++  bool stable_hint_enabled_ = false;
+ };
+ 
+ }  // namespace rime
+diff --git a/src/rime/gear/script_translator.cc b/src/rime/gear/script_translator.cc
+index aef6217..4e4d1b8 100644
+--- a/src/rime/gear/script_translator.cc
++++ b/src/rime/gear/script_translator.cc
+@@ -77,16 +77,27 @@ static bool syllabify_dfs(SyllabifyTask* task,
+ 
+ class ScriptSyllabifier : public PhraseSyllabifier {
+  public:
++  // feelime #72: stable_vertices (segment-local, ascending, front == 0) are
++  // the previous frame's syllable boundaries; old_length is the previous
++  // input length in segment-local coordinates. While both are set, edges in
++  // the syllable graph are constrained to preserve those boundaries
++  // (allowing the trailing syllable to keep growing), so that appending a
++  // key does not flip the segmentation the user is already seeing.
+   ScriptSyllabifier(ScriptTranslator* translator,
+                     Corrector* corrector,
+                     const string& input,
+-                    size_t start)
++                    size_t start,
++                    const vector<size_t>* stable_vertices = nullptr,
++                    size_t stable_old_length = 0)
+       : translator_(translator),
+         input_(input),
+         start_(start),
+         syllabifier_(translator->delimiters(),
+                      translator->enable_completion(),
+-                     translator->strict_spelling()) {
++                     translator->strict_spelling()),
++        stable_vertices_(stable_vertices ? *stable_vertices
++                                         : vector<size_t>()),
++        stable_old_length_(stable_old_length) {
+     if (corrector) {
+       syllabifier_.EnableCorrection(corrector);
+     }
+@@ -106,6 +117,8 @@ class ScriptSyllabifier : public PhraseSyllabifier {
+   size_t start_;
+   Syllabifier syllabifier_;
+   SyllableGraph syllable_graph_;
++  vector<size_t> stable_vertices_;  // feelime #72 (owned copy)
++  size_t stable_old_length_ = 0;    // feelime #72
+ };
+ 
+ class ScriptTranslation : public Translation {
+@@ -117,13 +130,16 @@ class ScriptTranslation : public Translation {
+                     size_t start,
+                     size_t end_of_input,
+                     int max_sentences,
+-                    double sentence_cutoff_threshold)
++                    double sentence_cutoff_threshold,
++                    const vector<size_t>* stable_vertices = nullptr,
++                    size_t stable_old_length = 0)
+       : translator_(translator),
+         poet_(poet),
+         start_(start),
+         end_of_input_(end_of_input),
+-        syllabifier_(
+-            New<ScriptSyllabifier>(translator, corrector, input, start)),
++        syllabifier_(New<ScriptSyllabifier>(translator, corrector, input, start,
++                                            stable_vertices,
++                                            stable_old_length)),
+         enable_correction_(corrector),
+         max_sentences_(max_sentences),
+         sentence_cutoff_threshold_(sentence_cutoff_threshold) {
+@@ -190,6 +206,10 @@ ScriptTranslator::ScriptTranslator(const Ticket& ticket)
+     config->GetBool(name_space_ + "/always_show_comments",
+                     &always_show_comments_);
+     config->GetBool(name_space_ + "/enable_correction", &enable_correction_);
++    config->GetBool(name_space_ + "/stable_segmentation",
++                    &stable_segmentation_);
++    if (stable_segmentation_ && engine_)
++      engine_->set_stable_hint_enabled(true);
+     if (!config->GetBool(name_space_ + "/enable_word_completion",
+                          &enable_word_completion_)) {
+       enable_word_completion_ = enable_completion_;
+@@ -219,10 +239,26 @@ an<Translation> ScriptTranslator::Query(const string& input,
+       user_dict_ && user_dict_->loaded() && !IsUserDictDisabledFor(input);
+ 
+   size_t end_of_input = engine_->context()->input().length();
++  // feelime #72: on a pure tail append, constrain the syllable graph with the
++  // previous frame's boundaries so the visible segmentation stays stable.
++  // The hint applies only to the same segment it came from (same start).
++  vector<size_t> stable_vertices;
++  size_t stable_old_length = 0;
++  if (stable_segmentation_) {
++    const auto& hint = engine_->segmentation_hint();
++    if (hint.valid && hint.origin == segment.start) {
++      // vertices are absolute; shift into segment-local coordinates.
++      for (size_t v : hint.vertices)
++        stable_vertices.push_back(v - segment.start);
++      stable_old_length = hint.old_length - segment.start;
++    }
++  }
+   // the translator should survive translations it creates
+   auto result = New<ScriptTranslation>(
+       this, corrector_.get(), poet_.get(), input, segment.start, end_of_input,
+-      max_sentences_, sentence_cutoff_threshold_);
++      max_sentences_, sentence_cutoff_threshold_,
++      stable_vertices.empty() ? nullptr : &stable_vertices,
++      stable_old_length);
+   if (!result || !result->Evaluate(
+                      dict_.get(), enable_user_dict ? user_dict_.get() : NULL)) {
+     return nullptr;
+@@ -354,7 +390,7 @@ Spans ScriptSyllabifier::Syllabify(const Phrase* phrase) {
+   vector<size_t> vertices;
+   vertices.push_back(start_);
+   SyllabifyTask task{
+-      phrase->code(), syllable_graph_, phrase->end() - start_,
++      phrase->matching_code(), syllable_graph_, phrase->end() - start_,
+       [&](SyllabifyTask* task, size_t depth, size_t current_pos,
+           size_t next_pos) { vertices.push_back(start_ + next_pos); },
+       [&](SyllabifyTask* task, size_t depth) { vertices.pop_back(); }};
+@@ -365,8 +401,10 @@ Spans ScriptSyllabifier::Syllabify(const Phrase* phrase) {
+ }
+ 
+ size_t ScriptSyllabifier::BuildSyllableGraph(Prism& prism) {
+-  return (size_t)syllabifier_.BuildSyllableGraph(input_, prism,
+-                                                 &syllable_graph_);
++  return (size_t)syllabifier_.BuildSyllableGraph(
++      input_, prism, &syllable_graph_,
++      stable_vertices_.empty() ? nullptr : &stable_vertices_,
++      stable_old_length_);
+ }
+ 
+ bool ScriptSyllabifier::IsCorrection(const Code& code,
+diff --git a/src/rime/gear/script_translator.h b/src/rime/gear/script_translator.h
+index e5b60a7..c25c7f4 100644
+--- a/src/rime/gear/script_translator.h
++++ b/src/rime/gear/script_translator.h
+@@ -50,6 +50,7 @@ class ScriptTranslator : public Translator,
+   int spelling_hints() const { return spelling_hints_; }
+   bool always_show_comments() const { return always_show_comments_; }
+   bool enable_word_completion() const { return enable_word_completion_; }
++  bool stable_segmentation() const { return stable_segmentation_; }
+   int max_word_length() const { return max_word_length_; }
+   int core_word_length() const;
+ 
+@@ -61,6 +62,7 @@ class ScriptTranslator : public Translator,
+   bool always_show_comments_ = false;
+   bool enable_correction_ = false;
+   bool enable_word_completion_ = false;
++  bool stable_segmentation_ = false;  // feelime #72
+   the<Corrector> corrector_;
+   the<Poet> poet_;
+   vector<an<Phrase>> queue_;
+diff --git a/src/rime/gear/translator_commons.h b/src/rime/gear/translator_commons.h
+index 6217e5a..572ff7e 100644
+--- a/src/rime/gear/translator_commons.h
++++ b/src/rime/gear/translator_commons.h
+@@ -42,6 +42,7 @@ class Spans {
+   size_t end() const { return vertices_.empty() ? 0 : vertices_.back(); }
+   bool HasVertex(size_t vertex) const;
+   void set_vertices(vector<size_t>&& vertices) { vertices_ = vertices; }
++  const vector<size_t>& vertices() const { return vertices_; }  // feelime #72
+ 
+  private:
+   vector<size_t> vertices_;

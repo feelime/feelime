@@ -78,7 +78,7 @@
     },
     "rime/luna_pinyin.prism.bin": {
       "bytes": 31800,
-      "sha256": "bd3f46536fdbda087e75e21d28c80a437c727e30887e9142465aeb829ea6e185"
+      "sha256": "59cc92970f348c13839b8d8426b2b3398316cc326d1a5bfcbf244919c012fb08"
     },
     "rime/luna_pinyin.prism.txt": {
       "bytes": 20318,
@@ -254,7 +254,7 @@
     },
     "rime/stroke.prism.bin": {
       "bytes": 2285884,
-      "sha256": "1f5ed4ecff70b27788b7167e691a5de06fa337c1b8d65d6da8877b623ca65072"
+      "sha256": "164d9d8ba066cb7742fcbe4f47b6b5a0a21e69ccd92c70e00d562fbfd66d7733"
     },
     "rime/stroke.table.bin": {
       "bytes": 3334340,
@@ -262,15 +262,15 @@
     },
     "rime/ziranma_double_pinyin.prism.bin": {
       "bytes": 22344,
-      "sha256": "c20563fbac53311b3161d9d56163601eef6c22c50834cd24c1d63ef70cbb1bc5"
+      "sha256": "b8c21ffeafd32208a68511d90ba263d29124d6fce21a07adb43fdc9df403b452"
     },
     "rime/ziranma_double_pinyin.prism.txt": {
       "bytes": 13417,
       "sha256": "acc36a533f55fc31c22d61226c020505408e6806a683c4b5a2b271a79036e3a9"
     },
     "rime/ziranma_double_pinyin.schema.yaml": {
-      "bytes": 39485,
-      "sha256": "ac60c13a00eae405d57cb98cc7801d44c95865ccf76119390c7aa845c87ef6a5"
+      "bytes": 39513,
+      "sha256": "28aff12e9cf73d9610a007dd154af520572a2fb3a3c2f5d141898d599b7347ad"
     }
   },
   "formatVersion": 1

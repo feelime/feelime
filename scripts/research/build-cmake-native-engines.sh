@@ -30,6 +30,11 @@ extract_into leveldb-99b3c03b3284f5886f9ef9a4ef703d57373e61be.tar.gz "$work/src/
 extract_into marisa-trie-3e87d53b78e15f2f43783d5e376561a8c9722051.tar.gz "$work/src/rime/librime/deps/marisa-trie"
 extract_into opencc-e9f3bb3fa1d058fe2fd4f096503222854bdc31ab.tar.gz "$work/src/rime/librime/deps/opencc"
 extract_into boost-1.89.0-cmake.tar.xz "$work/src/rime/boost"
+# See patches/librime-stable-segmentation.patch (issue #72): keep the
+# previous frame's syllable segmentation on pure tail appends in double
+# pinyin, so the first candidate stops flickering between parses.
+patch --silent -d "$work/src/rime/librime" -p1 \
+  < "$repo_root/scripts/research/patches/librime-stable-segmentation.patch"
 cp -R "$repo_root/spikes/native-engine-smoke/native-src/rime/." "$work/src/rime/"
 
 for package in prelude essay luna-pinyin; do
@@ -102,6 +107,7 @@ python3 "$repo_root/scripts/generate-stroke-dict.py" \
   --src "$work/src/rime-data/stroke/stroke.dict.yaml" \
   --essay "$work/src/rime-data/essay/essay.txt"
 cp "$repo_root/app/src/main/assets/engine-data/rime/feelime_stroke.schema.yaml" "$rime_shared/"
+cp "$repo_root/app/src/main/assets/engine-data/rime/luna_pinyin_fuzzy.schema.yaml" "$rime_shared/"
 deployer="$work/build/rime-host/librime/bin/rime_deployer"
 "$deployer" --compile "$rime_shared/luna_pinyin.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
 "$deployer" --compile "$rime_shared/ziranma_double_pinyin.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
