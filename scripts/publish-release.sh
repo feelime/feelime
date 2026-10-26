@@ -10,27 +10,38 @@
 #      一律拒绝）、versionName 精确等于 tag、签名者非 debug 证书
 #   3. thin→cp→full→cp 顺序坑固化（同路径输出互相覆盖，memory 1.0.14）
 #
-# 用法: scripts/publish-release.sh v<version> [--upload] [--notes-file <file>]
+# 用法: scripts/publish-release.sh v<version> [--upload] [--notes-file <file>] [--verify-sha <file>]
 #   v<version>      版本 tag（如 v1.2.2），必须与 app versionName 一致
 #   --upload        校验全过后发布 GitHub release（release 不存在会自动
 #                   create；上传后自动核验资产 state/digest/包名）
 #   --notes-file F  create 时用的发布说明文件（缺省 --generate-notes，
 #                   发布说明可事后 gh release edit 补）
+#   --verify-sha F  冒烟验收时记录的 sha256sum 清单（相对 release-dist 的
+#                   文件名）。--upload 时强制：重建出的 thin/full APK 字节
+#                   必须与验收清单一致（构建不可复现/源码漂移都会在此拦下），
+#                   任何不一致在创建 release 前失败。
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAG="${1:-}"
 UPLOAD=0
 NOTES_FILE=""
+SHA_FILE=""
 shift || true
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --upload) UPLOAD=1 ;;
         --notes-file) NOTES_FILE="${2:-}"; shift ;;
+        --verify-sha) SHA_FILE="${2:-}"; shift ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
 done
+# 清单路径按调用者目录转绝对——后续在 PROJECT_DIR / DIST 下 cd 多次，
+# 相对路径会失效或意外命中同名文件。
+if [[ -n "$SHA_FILE" && "$SHA_FILE" != /* ]]; then
+    SHA_FILE="$(pwd)/$SHA_FILE"
+fi
 if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "usage: $0 v<version> [--upload]   (e.g. $0 v1.2.1)" >&2
     exit 2
@@ -98,6 +109,50 @@ echo "== sha256 =="
 ( cd "$DIST" && sha256sum "feelime-v${VER}-thin.apk" "feelime-v${VER}-full.apk" )
 
 if [[ "$UPLOAD" == 1 ]]; then
+    # ---- 上传门闸（必须发布验收过的包，任何不一致在创建 release 前失败）----
+    # 1) HEAD 必须正是传入 tag：从 tag worktree 构建，防止「验收了 A、上传了 B」
+    # 2) 工作区必须干净：脏构建的字节没有对应验收记录
+    # 3) --verify-sha 必填：重建字节与冒烟验收清单逐一比对（构建不可复现/
+    #    源码漂移在此拦下，绝不带未验收字节上 release）
+    TAG_COMMIT="$(git -C "$PROJECT_DIR" rev-parse -q --verify "refs/tags/${TAG}^{commit}")" \
+        || { echo "REJECT: local tag $TAG not found — create (and push) the tag first" >&2; exit 1; }
+    HEAD_COMMIT="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
+    [[ "$HEAD_COMMIT" == "$TAG_COMMIT" ]] \
+        || { echo "REJECT: HEAD $HEAD_COMMIT != $TAG ($TAG_COMMIT) — build from the tag worktree" >&2; exit 1; }
+    [[ -z "$(git -C "$PROJECT_DIR" status --porcelain)" ]] \
+        || { echo "REJECT: dirty worktree — commit or stash before publishing" >&2; exit 1; }
+    [[ -n "$SHA_FILE" ]] \
+        || { echo "REJECT: --upload requires --verify-sha <accepted sha256 list> (release-smoke acceptance record)" >&2; exit 1; }
+    [[ -f "$SHA_FILE" ]] \
+        || { echo "REJECT: --verify-sha file not found: $SHA_FILE" >&2; exit 1; }
+    # 清单必须恰好列出本版本 thin/full 两个文件各一次。sha256sum -c 只验
+    # 证清单里已有的条目——漏掉 full、重复 thin、甚至只列一个无关文件都
+    # 会"通过"，随后照常上传两个 APK。且 sha256sum 把「哈希后两个空格的
+    # 其余全部」当文件名（可含空格）：`<hash>␣␣other feelime-…-thin.apk`
+    # 会被首/末字段解析放过而实际校验的是另一个文件——所以必须整行精确
+    # 等于 "<64hex>␣␣<本版本文件名>"（sha256sum 默认双空格格式）。
+    thin_entry="feelime-v${VER}-thin.apk"; full_entry="feelime-v${VER}-full.apk"
+    n_thin=0; n_full=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" ]] || continue
+        hash="${line%% *}"
+        if [[ "$hash" =~ ^[0-9a-f]{64}$ && ( "$line" == "$hash  $thin_entry" || "$line" == "$hash  $full_entry" ) ]]; then
+            if [[ "$line" == *"$thin_entry" ]]; then n_thin=$((n_thin+1)); else n_full=$((n_full+1)); fi
+        else
+            echo "REJECT: malformed or unexpected entry in $SHA_FILE: $line" >&2; exit 1
+        fi
+    done < "$SHA_FILE"
+    [[ "$n_thin" == 1 && "$n_full" == 1 ]] \
+        || { echo "REJECT: $SHA_FILE must list $thin_entry and $full_entry exactly once each (got thin=$n_thin full=$n_full)" >&2; exit 1; }
+    echo "== verify accepted SHAs ($SHA_FILE) =="
+    # bash read 会丢 NUL，会造成上面的行校验与 sha256sum 的解析不一致
+    # （sha256sum 默认跳过畸形行，攻击行可以只过门闸、不参与字节校验）。
+    # 先在原始字节层面拒绝 NUL，再让 sha256sum 以 --strict 遇畸形行即败。
+    if ! cmp -s "$SHA_FILE" <(tr -d '\0' < "$SHA_FILE"); then
+        echo "REJECT: NUL byte in $SHA_FILE" >&2; exit 1
+    fi
+    ( cd "$DIST" && sha256sum --strict -c "$SHA_FILE" ) \
+        || { echo "REJECT: rebuilt artifacts differ from the accepted SHAs — rerun smoke acceptance on these bytes before uploading" >&2; exit 1; }
     # gh release upload 只能往已存在的 release 里传——release 还没建就
     # 先 create（tag 已 push 时 create 不会重复打 tag）。--notes-file
     # 可选，缺省 --generate-notes（发布说明可事后 gh release edit 补）。

@@ -398,3 +398,20 @@ ASCII fixture 上复现 `b uy sv`；新路径（只读迭代器 + hint 取材 fa
 全帧正确。注意：探针的 snapshot 会读取 top5/spanN 候选（触发惰性生成），
 「none 模式」不是零读取 burst 对照。
 
+
+## 发布产物门闸（--verify-sha）
+
+`scripts/publish-release.sh v<ver> --upload --verify-sha <清单>` 把「必须发布
+验收过的字节」固化成脚本门闸，任何不一致都在创建 release 之前失败：本地
+tag 存在且 HEAD 即该 tag（从 tag worktree 构建）、工作区干净、`--verify-sha`
+必填。清单为 sha256sum 格式，必须**恰好**列出本版本 thin/full 两个文件各
+一次——畸形哈希、重复条目、无关文件、缺任一文件都拒绝（`sha256sum -c`
+本身只验证清单已有条目，挡不住这些）；随后在 release-dist 内做字节比对。
+清单路径按调用者目录解析，相对/绝对一致。冒烟通过后不要改动任何源码/
+构建输入再触发构建；SHA 不一致时按新产物重新走验收，而不是放宽门闸。
+
+隔离测试 `scripts/research/test-publish-release-gates.sh`（stub 临时仓库，
+不碰真实仓库/SDK/GitHub）：10 个失败场景必须 REJECT 且 `gh release
+create/upload` 零调用；完整正确清单（绝对/相对路径各一）门闸放行并恰好
+调用一次 create 与 upload。post-upload 的远端 digest 核验依赖真实 gh api，
+不在该测试的断言范围。
