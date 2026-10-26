@@ -379,3 +379,16 @@ trace，缺少附件时仍需从报障设备提供 bugreport/tombstone。
 Java 崩溃段使用 debug 且诊断开启时才响应的 DEBUG_JAVA_CRASH intent，
 在应用主线程真实抛出异常；不采用 am crash 代替（部分设备实测返回
 CRASH_NATIVE / SIGTRAP）。该入口没有产品控件，release 不响应。
+
+## 候选分页不变量探针（#72，2026-10-27）
+
+`scripts/research/run-candidate-paging-probe.sh <native-work-dir> [data-dir]`
+对 host librime 跑 3 串（nihlkj/buysvkfhds/buvidku）× 3 词库（干净/
+ASCII 学习词 fixture ×2：双词条与跨页变体）× 2 模式（none/iterator）矩阵并逐帧断言（第 5 帧
+与终帧分段），另跑 pages 模式留档旧壳病态。探针源
+`scripts/research/probes/candidate-paging-probe.cc`（iterator 模式带
+MUTATED 不变量：取页前后引擎状态必须逐字节一致）。修复回归的两层保证：
+旧路径（每键 PAGE_DOWN×2 拖高亮）在 ace 词库上复现 `ni h lk/你好老`、
+ASCII fixture 上复现 `b uy sv`；新路径（只读迭代器 + hint 取材 fallback）
+全帧正确。注意：探针的 snapshot 会读取 top5 候选（触发惰性生成），
+「none 模式」不是零读取 burst 对照。

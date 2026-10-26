@@ -1,8 +1,7 @@
 diff --git a/src/rime/algo/syllabifier.cc b/src/rime/algo/syllabifier.cc
-index 11d0efc..f40dcb6 100644
 --- a/src/rime/algo/syllabifier.cc
 +++ b/src/rime/algo/syllabifier.cc
-@@ -28,9 +28,45 @@ using VertexQueue =
+@@ -28,9 +28,45 @@
  const double kCompletionPenalty = -2.995732273553991;      // log(0.05)
  const double kCorrectionCredibility = -4.605170185988091;  // log(0.01)
  
@@ -51,7 +50,7 @@ index 11d0efc..f40dcb6 100644
    if (input.empty())
      return 0;
  
-@@ -100,6 +136,12 @@ int Syllabifier::BuildSyllableGraph(const string& input,
+@@ -100,6 +136,12 @@
                 delimiters_.find(input[end_pos]) != string::npos)
            ++end_pos;
          DLOG(INFO) << "end_pos: " << end_pos;
@@ -64,7 +63,7 @@ index 11d0efc..f40dcb6 100644
          bool matches_input = (current_pos == 0 && end_pos == input.length());
          SpellingMap& spellings(end_vertices[end_pos]);
          SpellingType end_vertex_type = kInvalidSpelling;
-@@ -213,6 +255,15 @@ int Syllabifier::BuildSyllableGraph(const string& input,
+@@ -213,6 +255,15 @@
        size_t current_pos = farthest;
        size_t end_pos = input.length();
        size_t code_length = end_pos - current_pos;
@@ -81,10 +80,9 @@ index 11d0efc..f40dcb6 100644
        auto& spellings(end_vertices[end_pos]);
        for (const auto& m : keys) {
 diff --git a/src/rime/algo/syllabifier.h b/src/rime/algo/syllabifier.h
-index 1167e29..299eec6 100644
 --- a/src/rime/algo/syllabifier.h
 +++ b/src/rime/algo/syllabifier.h
-@@ -54,9 +54,15 @@ class Syllabifier {
+@@ -54,9 +54,15 @@
          enable_completion_(enable_completion),
          strict_spelling_(strict_spelling) {}
  
@@ -104,7 +102,6 @@ index 1167e29..299eec6 100644
  
   protected:
 diff --git a/src/rime/engine.cc b/src/rime/engine.cc
-index 4a54f64..e0e6760 100644
 --- a/src/rime/engine.cc
 +++ b/src/rime/engine.cc
 @@ -22,6 +22,8 @@
@@ -116,7 +113,7 @@ index 4a54f64..e0e6760 100644
  
  namespace rime {
  
-@@ -157,6 +159,39 @@ void ConcreteEngine::Compose(Context* ctx) {
+@@ -157,6 +159,57 @@
    Composition& comp = ctx->composition();
    const string active_input = ctx->input().substr(0, ctx->caret_pos());
    DLOG(INFO) << "active input: " << active_input;
@@ -135,18 +132,36 @@ index 4a54f64..e0e6760 100644
 +                     full_input.compare(0, prev_compose_input_.length(),
 +                                         prev_compose_input_) == 0;
 +  if (tail_append && !comp.empty() && comp.back().status == Segment::kGuess) {
-+    if (auto cand = Candidate::GetGenuineCandidate(
-+            comp.back().GetSelectedCandidate())) {
-+      // Phrase::spans() re-walks the syllable graph held by the candidate's
-+      // syllabifier, which is still alive through the old menu. Vertices are
-+      // absolute positions in the previous full input.
-+      if (auto* phrase = dynamic_cast<Phrase*>(cand.get())) {
-+        hint.vertices = phrase->spans().vertices();
-+        if (hint.vertices.size() >= 2) {
-+          hint.valid = true;
-+          hint.origin = hint.vertices.front();
-+          hint.old_length = prev_compose_input_.length();
-+        }
++    // #72 round-4 (2026-10-27): the highlighted candidate is only the FIRST
++    // source for the hint, not the only one. Candidates without syllable
++    // spans (ASCII user_table entries rank first on exact full-input match,
++    // e.g. learned "buy"/"buys") used to void the hint and drop the anchor
++    // (buysvkfhds -> "b uy sv ..."). Try the highlight first -- user
++    // navigation keeps its choice -- then scan the old menu from #0 for the
++    // first candidate with structurally valid spans. Read-only: no
++    // Highlight(), no paging, no selection.
++    const Segment& seg = comp.back();
++    auto try_hint = [&](const an<Candidate>& candidate) {
++      auto cand = Candidate::GetGenuineCandidate(candidate);
++      auto* phrase = dynamic_cast<Phrase*>(cand.get());
++      if (!phrase || phrase->start() != seg.start || phrase->end() > seg.end)
++        return false;
++      auto vertices = phrase->spans().vertices();
++      if (vertices.size() < 2 || vertices.front() != seg.start ||
++          vertices.back() > prev_compose_input_.length())
++        return false;
++      for (size_t i = 1; i < vertices.size(); ++i)
++        if (vertices[i] <= vertices[i - 1]) return false;
++      hint.vertices = std::move(vertices);
++      hint.valid = true;
++      hint.origin = seg.start;
++      hint.old_length = prev_compose_input_.length();
++      return true;
++    };
++    if (!try_hint(seg.GetSelectedCandidate())) {
++      for (size_t i = 0;; ++i) {
++        auto candidate = seg.GetCandidateAt(i);
++        if (!candidate || try_hint(candidate)) break;
 +      }
 +    }
 +  }
@@ -156,7 +171,7 @@ index 4a54f64..e0e6760 100644
    comp.Reset(active_input);
    if (ctx->caret_pos() < ctx->input().length() &&
        ctx->caret_pos() == comp.GetConfirmedPosition()) {
-@@ -332,6 +367,14 @@ void ConcreteEngine::InitializeComponents() {
+@@ -332,6 +385,14 @@
    filters_.clear();
    formatters_.clear();
    post_processors_.clear();
@@ -172,10 +187,9 @@ index 4a54f64..e0e6760 100644
    if (switcher_) {
      processors_.push_back(switcher_);
 diff --git a/src/rime/engine.h b/src/rime/engine.h
-index 6b51a68..c0261e6 100644
 --- a/src/rime/engine.h
 +++ b/src/rime/engine.h
-@@ -21,6 +21,19 @@ class Engine : public Messenger {
+@@ -21,6 +21,19 @@
   public:
    using CommitSink = signal<void(const string& commit_text)>;
  
@@ -195,7 +209,7 @@ index 6b51a68..c0261e6 100644
    virtual ~Engine();
    virtual bool ProcessKey(const KeyEvent& key_event) { return false; }
    virtual void ApplySchema(Schema* schema) {}
-@@ -31,6 +44,18 @@ class Engine : public Messenger {
+@@ -31,6 +44,18 @@
    Context* context() const { return context_.get(); }
    CommitSink& sink() { return sink_; }
  
@@ -214,7 +228,7 @@ index 6b51a68..c0261e6 100644
    Engine* active_engine() { return active_engine_ ? active_engine_ : this; }
    void set_active_engine(Engine* engine = nullptr) { active_engine_ = engine; }
  
-@@ -43,6 +68,11 @@ class Engine : public Messenger {
+@@ -43,6 +68,11 @@
    the<Context> context_;
    CommitSink sink_;
    Engine* active_engine_ = nullptr;
@@ -227,7 +241,6 @@ index 6b51a68..c0261e6 100644
  
  }  // namespace rime
 diff --git a/src/rime/gear/script_translator.cc b/src/rime/gear/script_translator.cc
-index aef6217..66104e9 100644
 --- a/src/rime/gear/script_translator.cc
 +++ b/src/rime/gear/script_translator.cc
 @@ -21,8 +21,10 @@
@@ -241,7 +254,7 @@ index aef6217..66104e9 100644
  #include <rime/dict/user_dictionary.h>
  #include <rime/gear/poet.h>
  #include <rime/gear/script_translator.h>
-@@ -73,20 +75,60 @@ static bool syllabify_dfs(SyllabifyTask* task,
+@@ -73,20 +75,60 @@
    return false;
  }
  
@@ -304,7 +317,7 @@ index aef6217..66104e9 100644
      if (corrector) {
        syllabifier_.EnableCorrection(corrector);
      }
-@@ -106,6 +148,8 @@ class ScriptSyllabifier : public PhraseSyllabifier {
+@@ -106,6 +148,8 @@
    size_t start_;
    Syllabifier syllabifier_;
    SyllableGraph syllable_graph_;
@@ -313,7 +326,7 @@ index aef6217..66104e9 100644
  };
  
  class ScriptTranslation : public Translation {
-@@ -117,13 +161,16 @@ class ScriptTranslation : public Translation {
+@@ -117,13 +161,16 @@
                      size_t start,
                      size_t end_of_input,
                      int max_sentences,
@@ -333,7 +346,7 @@ index aef6217..66104e9 100644
          enable_correction_(corrector),
          max_sentences_(max_sentences),
          sentence_cutoff_threshold_(sentence_cutoff_threshold) {
-@@ -190,6 +237,10 @@ ScriptTranslator::ScriptTranslator(const Ticket& ticket)
+@@ -190,6 +237,10 @@
      config->GetBool(name_space_ + "/always_show_comments",
                      &always_show_comments_);
      config->GetBool(name_space_ + "/enable_correction", &enable_correction_);
@@ -344,7 +357,7 @@ index aef6217..66104e9 100644
      if (!config->GetBool(name_space_ + "/enable_word_completion",
                           &enable_word_completion_)) {
        enable_word_completion_ = enable_completion_;
-@@ -219,10 +270,59 @@ an<Translation> ScriptTranslator::Query(const string& input,
+@@ -219,10 +270,59 @@
        user_dict_ && user_dict_->loaded() && !IsUserDictDisabledFor(input);
  
    size_t end_of_input = engine_->context()->input().length();
@@ -405,7 +418,7 @@ index aef6217..66104e9 100644
    if (!result || !result->Evaluate(
                       dict_.get(), enable_user_dict ? user_dict_.get() : NULL)) {
      return nullptr;
-@@ -354,7 +454,7 @@ Spans ScriptSyllabifier::Syllabify(const Phrase* phrase) {
+@@ -354,7 +454,7 @@
    vector<size_t> vertices;
    vertices.push_back(start_);
    SyllabifyTask task{
@@ -414,7 +427,7 @@ index aef6217..66104e9 100644
        [&](SyllabifyTask* task, size_t depth, size_t current_pos,
            size_t next_pos) { vertices.push_back(start_ + next_pos); },
        [&](SyllabifyTask* task, size_t depth) { vertices.pop_back(); }};
-@@ -365,8 +465,10 @@ Spans ScriptSyllabifier::Syllabify(const Phrase* phrase) {
+@@ -365,8 +465,10 @@
  }
  
  size_t ScriptSyllabifier::BuildSyllableGraph(Prism& prism) {
@@ -428,10 +441,9 @@ index aef6217..66104e9 100644
  
  bool ScriptSyllabifier::IsCorrection(const Code& code,
 diff --git a/src/rime/gear/script_translator.h b/src/rime/gear/script_translator.h
-index e5b60a7..c25c7f4 100644
 --- a/src/rime/gear/script_translator.h
 +++ b/src/rime/gear/script_translator.h
-@@ -50,6 +50,7 @@ class ScriptTranslator : public Translator,
+@@ -50,6 +50,7 @@
    int spelling_hints() const { return spelling_hints_; }
    bool always_show_comments() const { return always_show_comments_; }
    bool enable_word_completion() const { return enable_word_completion_; }
@@ -439,7 +451,7 @@ index e5b60a7..c25c7f4 100644
    int max_word_length() const { return max_word_length_; }
    int core_word_length() const;
  
-@@ -61,6 +62,7 @@ class ScriptTranslator : public Translator,
+@@ -61,6 +62,7 @@
    bool always_show_comments_ = false;
    bool enable_correction_ = false;
    bool enable_word_completion_ = false;
@@ -448,10 +460,9 @@ index e5b60a7..c25c7f4 100644
    the<Poet> poet_;
    vector<an<Phrase>> queue_;
 diff --git a/src/rime/gear/translator_commons.h b/src/rime/gear/translator_commons.h
-index 6217e5a..572ff7e 100644
 --- a/src/rime/gear/translator_commons.h
 +++ b/src/rime/gear/translator_commons.h
-@@ -42,6 +42,7 @@ class Spans {
+@@ -42,6 +42,7 @@
    size_t end() const { return vertices_.empty() ? 0 : vertices_.back(); }
    bool HasVertex(size_t vertex) const;
    void set_vertices(vector<size_t>&& vertices) { vertices_ = vertices; }

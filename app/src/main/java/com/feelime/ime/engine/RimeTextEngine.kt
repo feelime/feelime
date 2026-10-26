@@ -19,7 +19,11 @@ class RimeTextEngine(
     /** 本 session 所属引擎代数：reloadGlobal 换代后旧 handle 悬垂，
      *  closeNative 不得再拿它调 librime（地址可能被新 session 复用）。 */
     private var sessionEpoch = 0L
-    private var page = 0
+    // #72 只读候选通道：应用侧视图页。native 的 selector/页号不再被
+    // 候选浏览移动（那是 nihlk 第 5 帧丢锚的根因——PAGE_DOWN 拖走高亮，
+    // stable-seg hint 取到深页候选的残缺 spans）。任何键/编辑/选删/
+    // Reset 后回到第 0 页重新读取。
+    private var viewPage = 0
     private var lastState = EngineState("", "", emptyList(), false, false, null)
 
     override fun startNative() {
@@ -64,7 +68,7 @@ class RimeTextEngine(
                 // 判断「引擎没接这个键」（空组合下的部分符号等）。透传真值，
                 // JS/Native 侧可据「未处理且无状态变化」做防御分流。
                 val handled = NativeSmoke.rimeProcessKey(session, command.unicodeScalar, command.modifiers)
-                page = 0
+                viewPage = 0
                 emit(stateEvent(consumed = handled))
                 val ms = android.os.SystemClock.elapsedRealtime() - t0
                 if (ms > 60) com.feelime.ime.Diagnostics.log(
@@ -73,9 +77,9 @@ class RimeTextEngine(
             is EngineCommand.Space -> synchronized(gate) {
                 NativeSmoke.rimeProcessKey(session, SPACE, 0)
                 val committed = commitHarvest()
+                viewPage = 0
                 val state = parseState()
                 lastState = state
-                page = 0
                 if (committed == null && state.composing.isEmpty()) {
                     // Empty composition: librime has no binding for space at
                     // all (user report - nothing landed in Chinese
@@ -88,6 +92,7 @@ class RimeTextEngine(
                 }
             }
             is EngineCommand.EnterRaw -> synchronized(gate) {
+                viewPage = 0
                 NativeSmoke.rimeProcessKey(session, ENTER, 0)
                 val committed = commitHarvest()
                 if (committed == null) {
@@ -115,9 +120,9 @@ class RimeTextEngine(
                 val hadComposing = lastState.composing.isNotEmpty()
                 NativeSmoke.rimeProcessKey(session, BACKSPACE, 0)
                 val committed = commitHarvest()
+                viewPage = 0
                 val state = parseState()
                 lastState = state
-                page = 0
                 if (!hadComposing && state.composing.isEmpty() && committed == null) {
                     // Nothing in the engine to delete: fall through to the
                     // editor deletion cascade (design section 5.4).
@@ -139,30 +144,19 @@ class RimeTextEngine(
                 // a stale id from another composition misses the map anyway.
                 val target = shownCandidates[command.candidateId]
                     ?: return staleRevision()
-                var guard = 0
-                while (page != target.first && guard++ < 64) {
-                    NativeSmoke.rimeProcessKey(
-                        session,
-                        if (target.first > page) PAGE_DOWN else PAGE_UP,
-                        0,
-                    )
-                    parseState()
-                }
-                if (page != target.first) {
-                    // The seek stalled (page boundary or budget): selecting on
-                    // the WRONG page would commit a different candidate for
-                    // the same index. Report the (moved) state and reject.
+                // 上游 delete/select 对无效下标防御不完整：先只读回验该
+                // 候选仍在原绝对下标上（菜单一经变动即拒绝，防错选）。
+                if (!candidateStillAt(command.candidateId)) {
                     lastState = parseState()
                     emit(event(Phase.READY, lastState))
                     return staleRevision()
                 }
-                if (!NativeSmoke.rimeSelectCandidate(session, target.second)) {
-                    // The seek already moved librime's page; the UI must see
-                    // the new page even though the selection failed.
+                if (!NativeSmoke.rimeSelectCandidateAbsolute(session, target)) {
                     lastState = parseState()
                     emit(event(Phase.READY, lastState))
                     return staleRevision()
                 }
+                viewPage = 0
                 // Continuous word-building: confirming
                 // part of the input keeps the rest composing (preedit "你hk"),
                 // so the user picks the next syllable's candidate. Only flush
@@ -200,16 +194,11 @@ class RimeTextEngine(
                 // 只作用于 userdb 里的自造词；固定词库词与不可删候选是引擎内
                 // 静默 no-op，进程键的返回值只表示"键被消费"，删没删成由 JS
                 // 对比删前后候选池判定。
-                // Shift+Delete 删的是「当前高亮」候选，而 UI 的累积池首项在
-                // 第 0 页首位：先像 Choose 一样 seek 回第 0 页，高亮才会落在
-                // 池首上（feelime 流程内页内高亮恒在首位，翻页只挪页号）。
-                var guard = 0
-                while (page != 0 && guard++ < 64) {
-                    NativeSmoke.rimeProcessKey(session, PAGE_UP, 0)
-                    parseState()
-                }
-                NativeSmoke.rimeProcessKey(session, DELETE, SHIFT_MASK)
+                // 只读通道下 selector 高亮恒在第 0 位（浏览不再挪动它），
+                // 「当前高亮」即池首——按绝对下标 0 直接删，不再 seek。
+                NativeSmoke.rimeDeleteCandidateAbsolute(session, 0)
                 val committed = commitHarvest()
+                viewPage = 0
                 val state = parseState()
                 lastState = state
                 emit(event(Phase.READY, if (committed != null) state.copy(commit = committed) else state))
@@ -223,25 +212,14 @@ class RimeTextEngine(
                 // selector.cc:36) index times, then delete.
                 val target = shownCandidates[command.candidateId]
                     ?: return staleRevision()
-                var guard = 0
-                while (page != target.first && guard++ < 64) {
-                    NativeSmoke.rimeProcessKey(
-                        session,
-                        if (target.first > page) PAGE_DOWN else PAGE_UP,
-                        0,
-                    )
-                    parseState()
-                }
-                if (page != target.first) {
+                if (!candidateStillAt(command.candidateId)) {
                     lastState = parseState()
                     emit(event(Phase.READY, lastState))
                     return staleRevision()
                 }
-                repeat(target.second.coerceAtMost(15)) {
-                    NativeSmoke.rimeProcessKey(session, DOWN, 0)
-                }
-                NativeSmoke.rimeProcessKey(session, DELETE, SHIFT_MASK)
+                NativeSmoke.rimeDeleteCandidateAbsolute(session, target)
                 val committed = commitHarvest()
+                viewPage = 0
                 val state = parseState()
                 lastState = state
                 emit(event(Phase.READY, if (committed != null) state.copy(commit = committed) else state))
@@ -249,7 +227,7 @@ class RimeTextEngine(
             is EngineCommand.Reset -> synchronized(gate) {
                 NativeSmoke.rimeDestroySession(session)
                 session = NativeSmoke.rimeCreateSession(schemaId)
-                page = 0
+                viewPage = 0
                 emit(stateEvent())
             }
             EngineCommand.Close -> close(emit)
@@ -259,29 +237,50 @@ class RimeTextEngine(
     }
 
     private fun pageCommand(direction: Int, emit: (EngineEvent) -> Unit) = synchronized(gate) {
-        val beforePage = page
-        NativeSmoke.rimeProcessKey(session, if (direction > 0) PAGE_DOWN else PAGE_UP, 0)
-        val next = parseState()
-        if (page == beforePage) {
-            // librime's page number is authoritative. Candidate text can repeat
-            // across pages, so comparing only the visible list is insufficient.
-            lastState = next
-            emit(event(Phase.READY, next, consumed = false, code = EngineCode.PAGE_BOUNDARY))
-        } else {
-            lastState = next
-            emit(event(Phase.READY, lastState))
+        // #72 只读翻页：直接读目标视图页，不发 PAGE_DOWN/PAGE_UP——
+        // 键控翻页会挪 selector 高亮（候选预加载每帧翻页 = 高亮被拖到
+        // 深页 = stable-seg hint 取到残缺 spans = nihlk 第 5 帧病态）。
+        val target = viewPage + direction
+        if (target < 0) {
+            emit(event(Phase.READY, lastState, consumed = false, code = EngineCode.PAGE_BOUNDARY))
+            return@synchronized
         }
+        val json = JSONObject(NativeSmoke.rimeContextAtPage(session, target))
+        if (json.optInt("code", -1) != 0) {
+            // 越界/空页：保留当前视图页，如实上报边界。
+            emit(event(Phase.READY, lastState, consumed = false, code = EngineCode.PAGE_BOUNDARY))
+            return@synchronized
+        }
+        viewPage = target
+        val next = parseState()
+        lastState = next
+        emit(event(Phase.READY, lastState))
         Unit
     }
 
     /**
      * Every candidate the UI has shown for the current composition,
-     * id -> (page, index on page). Cleared whenever the preedit changes so a
-     * stale id can never address the wrong composition; the expectedRevision
-     * guard on Choose covers the rest.
+     * id -> absolute index (candidate_list 平铺序号) + id -> text（选/删前
+     * 只读回验用）。Cleared whenever the preedit changes so a stale id can
+     * never address the wrong composition; the expectedRevision guard on
+     * Choose covers the rest.
      */
-    private var shownCandidates: Map<String, Pair<Int, Int>> = emptyMap()
+    private var shownCandidates: Map<String, Int> = emptyMap()
+    private var shownTexts: Map<String, String> = emptyMap()
+    private var lastPageSize = 5
     private var shownPreedit: String? = null
+
+    /** 选/删前回验：该 id 的候选文本仍在其记录的绝对下标上。 */
+    private fun candidateStillAt(candidateId: String): Boolean {
+        val absolute = shownCandidates[candidateId] ?: return false
+        val text = shownTexts[candidateId] ?: return false
+        if (lastPageSize <= 0) return false
+        val json = JSONObject(NativeSmoke.rimeContextAtPage(session, absolute / lastPageSize))
+        if (json.optInt("code", -1) != 0) return false
+        val lines = json.optString("candidates").split("\n")
+        val slot = absolute % lastPageSize
+        return slot < lines.size && lines[slot] == text
+    }
 
     private fun stateEvent(consumed: Boolean = true): EngineEvent {
         val committed = commitHarvest()
@@ -296,40 +295,46 @@ class RimeTextEngine(
     }
 
     private fun parseState(): EngineState {
-        val json = JSONObject(NativeSmoke.rimeContext(session))
-        page = json.optInt("pageNo", 0).coerceAtLeast(0)
-        val isLastPage = json.optInt("isLastPage", 1) != 0
-        val rawPreedit = json.optString("preedit")
-        // librime drops the syllable-separator spaces from the preedit once
-        // the page moves ("xi an" -> "xian"). The composition itself is
-        // unchanged, but the UI pins its accumulation to rawInput: the flip
-        // reset the expanded candidate strip and shrank the variant column
-        // . Same string ignoring spaces = same composition, so keep
-        // the preedit the UI already shows.
-        val preedit = if (lastState.composing.isNotEmpty() &&
-            rawPreedit.replace(" ", "") == lastState.composing.replace(" ", "")
-        ) {
-            lastState.composing
-        } else {
-            rawPreedit
+        // 只读通道：按应用视图页读取（键后恒为第 0 页，翻页只动 viewPage）。
+        var json = JSONObject(NativeSmoke.rimeContextAtPage(session, viewPage))
+        if (json.optInt("code", -1) != 0) {
+            // 越界视图页（新组合重置了菜单）：回读第 0 页自愈。分页失败
+            // 绝不能被解释成组合结束（codex 四轮 P1）。
+            viewPage = 0
+            json = JSONObject(NativeSmoke.rimeContextAtPage(session, 0))
+            if (json.optInt("code", -1) != 0) {
+                return EngineState("", "", emptyList(), false, false, null)
+            }
         }
+        val viewPageNo = json.optInt("pageNo", viewPage).coerceAtLeast(0)
+        val pageSize = json.optInt("pageSize", 0)
+        if (pageSize > 0) lastPageSize = pageSize
+        val isLastPage = json.optInt("isLastPage", 1) != 0
+        val preedit = json.optString("preedit")
         if (preedit != shownPreedit) {
             shownCandidates = emptyMap()
+            shownTexts = emptyMap()
             shownPreedit = preedit
         }
         val candidates = json.optString("candidates").lineSequence()
-            .filter { it.isNotEmpty() }
             .mapIndexed { index, value ->
-                val id = stableCandidateId(engineName, page, index, value)
-                shownCandidates = shownCandidates + (id to (page to index))
+                // null 文本占位（bridge 保留下标对齐）在 Kotlin 侧跳过渲染，
+                // 但绝对下标仍按行号推进——寻址不漂移。
+                val absolute = viewPageNo * lastPageSize + index
+                val id = stableCandidateId(engineName, viewPageNo, index, value)
+                if (value.isNotEmpty()) {
+                    shownCandidates = shownCandidates + (id to absolute)
+                    shownTexts = shownTexts + (id to value)
+                }
                 Candidate(id, value)
             }
+            .filter { it.text.isNotEmpty() }
             .toList()
         return EngineState(
             composing = preedit,
             rawInput = preedit,
             candidates = candidates,
-            hasPreviousPage = page > 0,
+            hasPreviousPage = viewPage > 0,
             hasNextPage = candidates.isNotEmpty() && !isLastPage,
         )
     }
@@ -349,12 +354,7 @@ class RimeTextEngine(
         private const val SPACE = 0x20
         private const val ENTER = 0xff0d
         private const val BACKSPACE = 0xff08
-        private const val PAGE_DOWN = 0xff56
-        private const val PAGE_UP = 0xff55
         private const val ESCAPE = 0xff1b
-        private const val DELETE = 0xffff // XK_Delete
-        private const val DOWN = 0xff54 // XK_Down (selector: next candidate)
-        private const val SHIFT_MASK = 1 // kShiftMask
         private val gate = Any()
         @Volatile private var globallyInitialized = false
         /** 引擎代数：reloadGlobal 递增，标记所有现存 session handle 失效。 */

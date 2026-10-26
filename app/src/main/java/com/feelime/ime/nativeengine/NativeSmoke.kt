@@ -28,6 +28,14 @@ object NativeSmoke {
     @JvmStatic external fun rimeCreateSession(schemaId: String): Long
     @JvmStatic external fun rimeProcessKey(session: Long, keyCode: Int, modifiers: Int): Boolean
     @JvmStatic external fun rimeSelectCandidate(session: Long, pageIndex: Int): Boolean
+    /** #72 只读候选通道：绝对下标（整个候选列表的平铺序号）选/删，
+     *  替代 seek 翻页+页内下标——翻页会挪 selector 高亮，污染
+     *  stable-seg hint 的取材候选（nihlk 第 5 帧病态根因）。 */
+    @JvmStatic external fun rimeSelectCandidateAbsolute(session: Long, index: Int): Boolean
+    @JvmStatic external fun rimeDeleteCandidateAbsolute(session: Long, index: Int): Boolean
+    /** 按应用页只读读取候选（不发键、不动高亮、不收 commit）。
+     *  JSON: code(0 成功/-4 页越界) preedit candidates pageNo isLastPage hasNext */
+    @JvmStatic external fun rimeContextAtPage(session: Long, viewPage: Int): String
     @JvmStatic external fun rimeContext(session: Long): String
     @JvmStatic external fun rimeCommit(session: Long): String
     @JvmStatic external fun rimeDestroySession(session: Long)

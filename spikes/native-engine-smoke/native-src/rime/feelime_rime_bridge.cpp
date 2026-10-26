@@ -40,7 +40,15 @@ FEELIME_EXPORT int feelime_rime_has_required_api() {
          api->destroy_session != nullptr && api->finalize != nullptr &&
          api->start_maintenance != nullptr &&
          api->join_maintenance_thread != nullptr &&
-         api->is_maintenance_mode != nullptr;
+         api->is_maintenance_mode != nullptr &&
+         // #72 预加载定罪（2026-10-27）：候选浏览必须走不移动高亮的
+         // 只读迭代器（PAGE_DOWN 会拖 selector 高亮，污染 stable-seg
+         // hint 的取材候选）。绝对下标的选/删接口同理替换 seek+翻页。
+         api->candidate_list_from_index != nullptr &&
+         api->candidate_list_next != nullptr &&
+         api->candidate_list_end != nullptr &&
+         api->select_candidate != nullptr &&
+         api->delete_candidate != nullptr;
 }
 
 FEELIME_EXPORT int feelime_rime_initialize(const char* shared_data_dir,
@@ -131,6 +139,109 @@ FEELIME_EXPORT int feelime_rime_select_candidate(std::uintptr_t session,
   std::lock_guard<std::mutex> lock(g_mutex);
   return g_initialized && session != 0 &&
          rime_get_api()->select_candidate_on_current_page(session, page_index);
+}
+
+// 绝对下标（整个候选列表的平铺序号，与 candidate_list_from_index 的
+// iterator.index 同域）。候选浏览/深页点选不再靠 seek 翻页 + 页内下标。
+FEELIME_EXPORT int feelime_rime_select_candidate_absolute(
+    std::uintptr_t session, std::size_t index) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_initialized && session != 0 &&
+         rime_get_api()->select_candidate(session, index);
+}
+
+FEELIME_EXPORT int feelime_rime_delete_candidate_absolute(
+    std::uintptr_t session, std::size_t index) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_initialized && session != 0 &&
+         rime_get_api()->delete_candidate(session, index);
+}
+
+// 只读取第 view_page 页候选：candidate_list_from_index 起步、next 推进
+// pageSize+1 次（末次只判 hasNext）。全程不动 selector 高亮、不发键、
+// 不收割 commit——预加载从此无副作用（#72 nihlk 第 5 帧病态根因）。
+// 返回：0 成功（含「有 preedit、无候选」的合法空页）；-1 参数；
+// -2 引擎/会话不可用；-3 缓冲不足；-4 页越界/空页（PAGE_BOUNDARY，
+// 调用方应保留当前页）。page_no 回填 view_page，is_last_page=无下一页。
+FEELIME_EXPORT int feelime_rime_context_at_page(std::uintptr_t session,
+                                                int view_page,
+                                                char* preedit,
+                                                std::size_t preedit_size,
+                                                char* candidates,
+                                                std::size_t candidates_size,
+                                                int* page_no,
+                                                int* is_last_page,
+                                                int* has_next,
+                                                int* page_size_out) {
+  if (preedit == nullptr || preedit_size == 0 || candidates == nullptr ||
+      candidates_size == 0 || page_no == nullptr || is_last_page == nullptr ||
+      has_next == nullptr || page_size_out == nullptr) {
+    return -1;
+  }
+  if (view_page < 0) {
+    return -4;
+  }
+  std::lock_guard<std::mutex> lock(g_mutex);
+  const RimeApi* api = rime_get_api();
+  if (!g_initialized || session == 0 || api == nullptr) {
+    return -2;
+  }
+  RIME_STRUCT(RimeContext, context);
+  if (!api->get_context(session, &context)) {
+    return -2;
+  }
+  const int page_size = context.menu.page_size;
+  *page_size_out = page_size;
+  const std::string preedit_value =
+      context.composition.preedit == nullptr ? "" : context.composition.preedit;
+  api->free_context(&context);
+  // 组合态与候选页分开处理（codex 四轮 P1）：有输入、无候选（如全拼单
+  // 字母 i/u/v，menu 为空、page_size<=0）是合法状态——preedit 照抄、候
+  // 选为空，不算错误。只有复制失败才是 -3。
+  if (page_size <= 0) {
+    if (!copy_result(preedit_value, preedit, preedit_size) ||
+        !copy_result(std::string(), candidates, candidates_size)) {
+      return -3;
+    }
+    *page_no = view_page;
+    *is_last_page = 1;
+    *has_next = 0;
+    return 0;
+  }
+  RimeCandidateListIterator iterator = {};
+  if (!api->candidate_list_from_index(session, &iterator,
+                                      view_page * page_size)) {
+    return -4;
+  }
+  std::string candidate_value;
+  bool page_empty = true;
+  for (int i = 0; i < page_size; ++i) {
+    if (!api->candidate_list_next(&iterator)) {
+      break;
+    }
+    page_empty = false;
+    if (i > 0) {
+      candidate_value.push_back('\n');
+    }
+    // null 文本也占一个绝对下标位：保留空行对齐，调用方按下标寻址。
+    const char* text = iterator.candidate.text;
+    if (text != nullptr) {
+      candidate_value.append(text);
+    }
+  }
+  const bool more = api->candidate_list_next(&iterator);
+  api->candidate_list_end(&iterator);
+  if (page_empty) {
+    return -4;
+  }
+  if (!copy_result(preedit_value, preedit, preedit_size) ||
+      !copy_result(candidate_value, candidates, candidates_size)) {
+    return -3;
+  }
+  *page_no = view_page;
+  *is_last_page = more ? 0 : 1;
+  *has_next = more ? 1 : 0;
+  return 0;
 }
 
 FEELIME_EXPORT int feelime_rime_get_context(std::uintptr_t session,

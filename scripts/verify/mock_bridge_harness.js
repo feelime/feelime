@@ -1041,6 +1041,7 @@ class KeyboardWorld {
                     'favorites-v1',
                     'favorites-v2',
                     'ime-control-v1',
+                    'rime-read-only-paging-v1',
                     'key-event-v1',
                     'keyboard-update-status-v1',
                     'keyboard-height-reset-v1',

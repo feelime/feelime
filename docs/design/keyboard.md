@@ -583,12 +583,37 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 - 候选条与展开区共享同一累积池（`expandCandidates`）：native 分页经
   `pageNext/Previous` 追加，按 id 去重；组合 key 变化才重置（切变体的
   rewind 中间态不重置——空 raw echo 守卫）。
+- **应用页与引擎高亮分离（#72，2026-10-27）**：候选浏览是纯读取——
+  native 侧 `candidate_list_from_index` 迭代器按应用视图页取数
+  （`rimeContextAtPage`），不发 PAGE_DOWN/PAGE_UP、不动 selector 高亮、
+  不收割 commit。旧壳的键控翻页会把高亮拖到深页（收起条内容窄于视口
+  时预加载每键自动追页），stable-seg hint 从被拖走的高亮候选取到残缺
+  spans，双拼中间帧丢锚（`nihlk` 第 5 帧 `ni h lk`「你好老」，ace
+  trace `selection changed 0→5→10` 定罪）。新壳以 hello 能力
+  `rime-read-only-paging-v1` 声明；旧键盘热更到新壳无感，新键盘据它
+  解除 §9.3a 的 stroke 追页禁令。
+- **hint 取材规则（#72 round-4，2026-10-27）**：稳定分段 hint 的 spans
+  来源不盲信「当前高亮候选」——高亮无结构可用 spans 时（ASCII
+  user_table 学习词按精确全串匹配排首且无音节 spans，如学过的
+  buy/buys），从旧菜单 #0 顺序取**第一个结构合法**的候选（Phrase、
+  起止落在旧 segment 内、≥2 顶点、首点=segment 起点、尾点≤上一帧
+  输入长、严格递增）。高亮优先保留用户显式导航的语义；全程只读。
+  「结构合法」与「可锁定完整音节」两层分离：消费侧照旧走
+  HasExactNormalSpelling 前缀过滤，首个合法来源若锁不住即保持自由
+  分段，不继续搜「能锁住的候选」（那会改变解析偏好）。
+- **E1 边界（另行追踪，未解决）**：退格/编辑帧释放约束后，续打可能
+  沿另一条路径重建 hint（host 对照观察：ace 词库 `nihlkj` 全串退一格
+  出现 `ni h lk/你好老`，续打恢复）。本修复（只读分页 + 取材 fallback）
+  不改变编辑帧的约束释放规则，E1 单列回归记录现状。
 - 条全量渲染池（首候选 pill + 绿字），横向滚动到末端自动追加（加载后
   900ms rearm 防卡死；重建保持 scrollLeft）；展开区纵向网格同池。
 - 「确认第 N 候选」（含空格确认池首）一律按 id 选择（`chooseCandidate`），
-  引擎侧维护 id→(page,index) 映射并 seek 到位——与当前页游标解耦。
-  每次分页带 revision，过期回包拒绝（防旧分页响应覆盖新状态）。
-- seek 失败发当前状态并 reject，不静默错选。
+  引擎侧维护 id→绝对下标映射（candidate_list 平铺序号），经
+  `selectCandidateAbsolute` 直达——与引擎高亮/页号完全解耦。选/删前
+  只读回验该 id 的文本仍在原绝对下标上，菜单已变动即 reject（上游对
+  无效下标防御不完整）。每次分页带 revision，过期回包拒绝（防旧分页
+  响应覆盖新状态）。
+- 回验失败发当前状态并 reject，不静默错选。
 
 ### 7.2 展开区（拼音）
 
@@ -635,14 +660,16 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 
 ### 7.5 删除自造词
 
-- 通道：librime 桌面同款 `Shift+Delete`（经 express_editor 的
-  ShiftAsControl 命中 `Editor::DeleteCandidate`，写 userdb 删除标记），
-  不需要重编 native。
-- 任意候选：按候选 id seek（Next/Previous 循环）到页首再逐位移高亮到
-  目标，然后删除；删除静默且返回值不可信——JS 记 pending，echo 到达后
-  重建池并按**文本比对**判定成败（词还在 →「来自固定词库，无法删除」；
-  词消失 →「已删除」）；展开层打开时整层重绘（增量渲染会残留被删词的
-  按钮）。
+- 通道：`RimeDeleteCandidate`（绝对下标，直连 `Context::DeleteCandidate`
+  → `Editor::DeleteCandidate`，写 userdb 删除标记）。#72 只读分页改造
+  （2026-10-27）前的实现是 seek 翻页 + 逐位移高亮 + Shift+Delete——那套
+  会翻动引擎高亮/耗尽翻译流，已整体废弃；高亮删除（池首）同样按绝对
+  下标 0 直删（只读通道下 selector 恒在第 0 位，不再 seek 回首页）。
+- 任意候选：按候选 id → 绝对下标直删，删前只读回验该 id 的文本仍在
+  原下标（上游对无效下标防御不完整；菜单已变动即 reject）。删除静默
+  且返回值不可信——JS 记 pending，echo 到达后重建池并按**文本比对**
+  判定成败（词还在 →「来自固定词库，无法删除」；词消失 →「已删除」）；
+  展开层打开时整层重绘（增量渲染会残留被删词的按钮）。
 - 已知边界：删过的词再次上屏会重新学习（librime 删除标记复活）；同文本
   同时存在于固定词库时可能误报「无法删除」（低概率，接受）。
 
@@ -837,9 +864,12 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   高亮挪走，composition 直接塌成分段坏态（`那'个` 输入显示「乙hhpzs'p」、
   候选只剩「乙」；INFO 日志实锤：`translation #0 has been exhausted` +
   `process key: Next`）。`maybeLoadMoreCandidates` 对 stroke 组合态直接
-  return；拼音候选多、一两页就溢出停止，不受影响。排查时已排除 .so/
-  数据/多会话/setup 序列等全部变量（原生 probe 同链路全对），差异只在
-  JS 侧的自动翻页。
+  return；拼音候选多、一两页就溢出停止，「不受影响」——这句假设在
+  #72（2026-10-27）被 ace 实测推翻：收起条内容窄于视口时拼音/双拼同样
+  每键追页，同一颗雷炸掉 stable-seg hint（见 §7.1 应用页与引擎高亮
+  分离）。根治后（新壳只读分页）stroke 禁令按 `rime-read-only-paging-v1`
+  能力解除，旧壳保留。排查时已排除 .so/数据/多会话/setup 序列等全部
+  变量（原生 probe 同链路全对），差异只在 JS 侧的自动翻页。
 - **strictReady**：stroke 菜单项要求 hello 的 `engineDataReady.stroke ===
   true` 才可点（旧 APK 不带该字段，宽松的 `!== false` 会给出可点却无效
   的入口）。

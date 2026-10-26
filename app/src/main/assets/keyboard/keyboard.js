@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.56';
+    const KEYBOARD_VERSION = '3.73.57';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3778,11 +3778,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.commitInkCandidate(this.inkCandidates[0]);
                 return;
             }
-            // While composing, space must confirm the TOP
-            // candidate. Native space confirms the highlight, which sits
-            // on whatever page the bar/grid preloading dragged the cursor
-            // to (nihao + preload -> space committed a page-3 word).
-            // Choosing the pool head by id decouples it from paging.
+            // While composing, space must confirm the TOP candidate —
+            // the displayed pool head (english reorder / favorites inject
+            // ahead of it), not the engine highlight. Choosing by id also
+            // decouples it from paging: on old shells the bar/grid
+            // preloading dragged the native highlight to deep pages
+            // (nihao + preload -> space committed a page-3 word; the same
+            // drag corrupted the #72 stable-seg hint — nihlk frame 5).
+            // New shells page read-only, but the id path stays: it owns
+            // the pool-head product semantics.
             const ordered = this.englishOrderedPool(this.expandCandidates || []);
             const candidate = ordered.find(item =>
                 !String(item.id).startsWith('alt:'));
@@ -9624,14 +9628,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * screen drives the shared native cursor. */
         maybeLoadMoreCandidates() {
             if (!this.expandHasNext || this.loadingMore) return;
-            // 笔画组合中不追页（三个调用点统一在这拦）：候选池本来就只有
-            // 几条（completion 单字 + 压后的句子候选），条永远不满，
-            // 「拉到溢出为止」会在组合中每键自动发一次 PAGE_DOWN——
-            // librime 的 Next 耗尽 MakeSentence 翻译流后还会挪 selector
-            // 高亮，composition 直接塌成分段坏态（那'个 →「乙hhpzs'p」，
-            // device + INFO 日志实锤 2026-09-20）。拼音候选多、一两页就
-            // 溢出停止，不受影响。
-            if (this.mode === 'stroke' && this.composing) return;
+            // 笔画组合中不追页（旧壳保留；三个调用点统一在这拦）：旧壳
+            // 追页要发 PAGE_DOWN——librime 的 Next 耗尽 MakeSentence 翻
+            // 译流后还会挪 selector 高亮，composition 直接塌成分段坏态
+            // （那'个 →「乙hhpzs'p」，device + INFO 日志实锤 2026-09-20）。
+            // 新壳（rime-read-only-paging-v1）翻页是只读取数、零副作用，
+            // 禁令解除——同一机制也是 #72 nihlk 第 5 帧丢锚的根因，双拼/
+            // 拼音在旧壳上同样中招（收起条内容窄于视口时每键自动追页）。
+            if (this.mode === 'stroke' && this.composing && !this.readOnlyPaging) return;
             const strip = document.getElementById('expandGrid');
             const bar = document.getElementById('candidates');
             let nearEnd = false;
@@ -10808,6 +10812,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 的高度被无声覆盖（「保存→收起→弹出回旧值」的真凶之一）。
             // hello 到达前一切「按 stored 回推高度」的路径一律不执行。
             this.helloSeen = true;
+            // #72 只读候选通道能力：新壳的候选浏览不再 PAGE_DOWN 挪
+            // selector 高亮（预加载拖走高亮 = stable-seg hint 取到残缺
+            // spans = nihlk 第 5 帧病态）。旧壳缺此能力时保留 stroke
+            // 组合中的追页禁令（2026-09-20 塌组合事故的兼容边界）。
+            this.readOnlyPaging = provided.includes("rime-read-only-paging-v1");
             // 高度保存回执能力（codex 二轮 P2-5）：新壳才有 onHeightSaved
             // 回执——保存提示的兜底策略按能力分流（见保存按钮 handler）。
             this.nativeCaps = provided;

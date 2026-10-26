@@ -15,6 +15,11 @@ void feelime_rime_join_maintenance();
 std::uintptr_t feelime_rime_create_session(const char*);
 int feelime_rime_process_key(std::uintptr_t, int, int);
 int feelime_rime_select_candidate(std::uintptr_t, std::size_t);
+int feelime_rime_select_candidate_absolute(std::uintptr_t, std::size_t);
+int feelime_rime_delete_candidate_absolute(std::uintptr_t, std::size_t);
+int feelime_rime_context_at_page(
+    std::uintptr_t, int, char*, std::size_t, char*, std::size_t,
+    int*, int*, int*, int*);
 int feelime_rime_get_context(
     std::uintptr_t, char*, std::size_t, char*, std::size_t, int*, int*);
 int feelime_rime_get_commit(std::uintptr_t, char*, std::size_t);
@@ -171,6 +176,44 @@ Java_com_feelime_ime_nativeengine_NativeSmoke_rimeSelectCandidate(
     JNIEnv*, jclass, jlong session, jint page_index) {
   return feelime_rime_select_candidate(
       static_cast<std::uintptr_t>(session), static_cast<std::size_t>(page_index)) != 0;
+}
+
+// #72 只读候选通道：绝对下标选/删 + 按应用页读取（不挪 selector 高亮）。
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_feelime_ime_nativeengine_NativeSmoke_rimeSelectCandidateAbsolute(
+    JNIEnv*, jclass, jlong session, jint index) {
+  return feelime_rime_select_candidate_absolute(
+      static_cast<std::uintptr_t>(session), static_cast<std::size_t>(index)) != 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_feelime_ime_nativeengine_NativeSmoke_rimeDeleteCandidateAbsolute(
+    JNIEnv*, jclass, jlong session, jint index) {
+  return feelime_rime_delete_candidate_absolute(
+      static_cast<std::uintptr_t>(session), static_cast<std::size_t>(index)) != 0;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_feelime_ime_nativeengine_NativeSmoke_rimeContextAtPage(
+    JNIEnv* env, jclass, jlong session, jint view_page) {
+  char preedit[1024] = {};
+  char candidates[16384] = {};
+  int page_no = 0;
+  int is_last_page = 1;
+  int has_next = 0;
+  int page_size = 0;
+  const int code = feelime_rime_context_at_page(
+      static_cast<std::uintptr_t>(session), view_page, preedit, sizeof(preedit),
+      candidates, sizeof(candidates), &page_no, &is_last_page, &has_next,
+      &page_size);
+  std::ostringstream out;
+  out << "{\"code\":" << code << ",\"preedit\":\"" << json_escape(preedit)
+      << "\",\"candidates\":\"" << json_escape(candidates)
+      << "\",\"pageNo\":" << page_no
+      << ",\"isLastPage\":" << is_last_page
+      << ",\"hasNext\":" << has_next
+      << ",\"pageSize\":" << page_size << "}";
+  return env->NewStringUTF(out.str().c_str());
 }
 
 extern "C" JNIEXPORT jstring JNICALL

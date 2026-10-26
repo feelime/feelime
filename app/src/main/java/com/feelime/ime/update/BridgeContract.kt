@@ -32,6 +32,11 @@ object BridgeContract {
         // Unicode setComposition accepts non-ASCII letters used by accent
         // variants and other locale-specific keyboard parses.
         "unicode-compose-v1",
+        // #72 只读候选通道：候选浏览走 candidate_list 迭代器取页，不再
+        // PAGE_DOWN 挪 selector 高亮（预加载拖走高亮会污染 stable-seg
+        // hint，nihlk 第 5 帧病态）。不进键盘 REQUIRED——旧键盘热更到
+        // 本壳无感；新键盘据它解除 stroke 组合中的追页禁令。
+        "rime-read-only-paging-v1",
         // The control-key layer sends raw key events with a
         // meta state (Ctrl+C, Alt+., Ctrl+Shift+V ...) into the host editor.
         "key-event-v1",
