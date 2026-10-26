@@ -384,11 +384,17 @@ CRASH_NATIVE / SIGTRAP）。该入口没有产品控件，release 不响应。
 
 `scripts/research/run-candidate-paging-probe.sh <native-work-dir> [data-dir]`
 对 host librime 跑 3 串（nihlkj/buysvkfhds/buvidku）× 3 词库（干净/
-ASCII 学习词 fixture ×2：双词条与跨页变体）× 2 模式（none/iterator）矩阵并逐帧断言（第 5 帧
-与终帧分段），另跑 pages 模式留档旧壳病态。探针源
+ASCII 学习词 fixture ×2：双词条与跨页变体）× 2 模式（none/iterator）矩阵，
+none 与 iterator 均做逐帧断言（第 5 帧与终帧 preedit）；终帧首选断言定位
+最后一条 KEY 行（不做全文搜索，防中间帧假通过）；每个用例断言恰好一次
+COMMIT 且词正确（none/iterator 均查）。另跑 pages 模式留档旧壳病态。探针源
 `scripts/research/probes/candidate-paging-probe.cc`（iterator 模式带
-MUTATED 不变量：取页前后引擎状态必须逐字节一致）。修复回归的两层保证：
+MUTATED 不变量：取页前后引擎状态必须逐字节一致；每帧另输出前 10 项候选
+的 spans 顶点数 spanN 序列）。跨页 fixture 的前提成立有显式断言：buy 帧
+前 9 项 spanN=0、buys 帧前 5 项 spanN=0（页大小 5），首个至少含两个
+spans 顶点的候选确实在首页之外——前提不成立时整组断言按失败处理。修复回归的两层保证：
 旧路径（每键 PAGE_DOWN×2 拖高亮）在 ace 词库上复现 `ni h lk/你好老`、
 ASCII fixture 上复现 `b uy sv`；新路径（只读迭代器 + hint 取材 fallback）
-全帧正确。注意：探针的 snapshot 会读取 top5 候选（触发惰性生成），
+全帧正确。注意：探针的 snapshot 会读取 top5/spanN 候选（触发惰性生成），
 「none 模式」不是零读取 burst 对照。
+

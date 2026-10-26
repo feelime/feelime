@@ -34,7 +34,10 @@ std::string snapshot(RimeSessionId sid) {
  std::ostringstream s;s<<"raw="<<ctx->input()<<" caret="<<ctx->caret_pos()<<" preedit=["<<ctx->GetPreedit().text<<"]";
  for(auto&seg:ctx->composition()) {s<<" seg="<<seg.start<<":"<<seg.end<<":"<<seg.status<<" selected="<<seg.selected_index<<" tags=";for(auto&t:seg.tags)s<<t<<",";
  auto p=As<Phrase>(Candidate::GetGenuineCandidate(seg.GetSelectedCandidate()));if(p){s<<" selectedSpans=";auto spans=p->spans();for(auto v:spans.vertices())s<<v<<",";}
- s<<" top5=";for(int i=0;i<5;i++){auto c=seg.GetCandidateAt(i);if(!c)break;s<<c->text()<<"|";}}
+ s<<" top5=";for(int i=0;i<5;i++){auto c=seg.GetCandidateAt(i);if(!c)break;s<<c->text()<<"|";}
+ // 前 10 项每项 spans 顶点数（非 Phrase / 无 spans 记 0）。runner 用它断言
+ // ascii8 fixture 的「首个结构合法 spans 候选在首页之外」前提成立。
+ s<<" spanN=";for(int i=0;i<10;i++){auto c=seg.GetCandidateAt(i);if(!c)break;auto p=As<Phrase>(Candidate::GetGenuineCandidate(c));s<<(p?p->spans().vertices().size():0)<<",";}}
  RIME_STRUCT(RimeCommit,commit);assert(!api->get_commit(sid,&commit));return s.str();
 }
 int main(int argc,char**argv){

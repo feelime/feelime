@@ -69,21 +69,19 @@ for data in "$base" "$base-ascii" "$base-ascii8"; do
     for str in nihlkj buysvkfhds buvidku; do
       out=$(run_case "$data" "$str" "$mode" 2>&1) || fail=1
       echo "$out" > "$data/probe-$tag-$mode-$str.log"
-      # 逐帧断言：iterator 与 none 一致由探针 exit code（MUTATED=2）保证；
-      # 这里断言关键帧分段（第5帧）与终帧。
+      # 逐帧断言（none 与 iterator 均查——两模式的帧状态必须同形）：
+      # iterator 与 none 一致由探针 exit code（MUTATED=2）与末尾全快照比对
+      # 保证；这里断言关键帧分段（第5帧）与终帧 preedit。
       case "$str" in
         nihlkj)
-          [ "$mode" = none ] || continue
-          echo "$out" | grep -q "KEY k .*preedit=\[ni hl k\]" || { echo "FAIL[$tag] nihlk 第5帧"; fail=1; }
-          echo "$out" | grep "^KEY j .*preedit=\[ni hl kj\]" | tail -1 | grep -q . || { echo "FAIL[$tag] nihlk 终帧"; fail=1; } ;;
+          echo "$out" | grep -q "KEY k .*preedit=\[ni hl k\]" || { echo "FAIL[$tag/$mode] nihlk 第5帧"; fail=1; }
+          echo "$out" | grep "^KEY j .*preedit=\[ni hl kj\]" | tail -1 | grep -q . || { echo "FAIL[$tag/$mode] nihlk 终帧"; fail=1; } ;;
         buysvkfhds)
-          [ "$mode" = none ] || continue
-          echo "$out" | grep -q "KEY v .*preedit=\[bu ys v\]" || { echo "FAIL[$tag] buysv 第5帧"; fail=1; }
-          echo "$out" | grep "^KEY s .*preedit=\[bu ys vk fh ds\]" | tail -1 | grep -q . || { echo "FAIL[$tag] 终帧"; fail=1; } ;;
+          echo "$out" | grep -q "KEY v .*preedit=\[bu ys v\]" || { echo "FAIL[$tag/$mode] buysv 第5帧"; fail=1; }
+          echo "$out" | grep "^KEY s .*preedit=\[bu ys vk fh ds\]" | tail -1 | grep -q . || { echo "FAIL[$tag/$mode] 终帧"; fail=1; } ;;
         buvidku)
-          [ "$mode" = none ] || continue
-          echo "$out" | grep -q "KEY k .*preedit=\[bu vi dk\]" || { echo "FAIL[$tag] buvidku 第6帧"; fail=1; }
-          echo "$out" | grep "^KEY u .*preedit=\[bu vi dk u\]" | tail -1 | grep -q . || { echo "FAIL[$tag] buvidku 终帧"; fail=1; } ;;
+          echo "$out" | grep -q "KEY k .*preedit=\[bu vi dk\]" || { echo "FAIL[$tag/$mode] buvidku 第6帧"; fail=1; }
+          echo "$out" | grep "^KEY u .*preedit=\[bu vi dk u\]" | tail -1 | grep -q . || { echo "FAIL[$tag/$mode] buvidku 终帧"; fail=1; } ;;
       esac
       # 实际提交断言（none/iterator 均查）：恰好一次、词正确
       case "$str" in
@@ -122,11 +120,31 @@ for tag in ascii ascii8; do
   grep -q "KEY s .*selectedSpans= top5=buys|" "$d/probe-$tag-none-buysvkfhds.log" || {
     echo "FAIL[$tag] frame 'buys' head is not the spanless ASCII entry"; fail=1; }
 done
-# ---- 终帧候选与实际提交断言 ----
+# ---- ascii8 跨页前提断言：首个结构合法 spans 候选必须在首页之外。
+# 页大小 5（schema menu/page_size）。实测形态（2026-10-27，r6 矩阵）：
+#   buy  帧：buy+buy1..8 共 9 条无 spans 的 user_table 排前 → spanN 前 9 项 0，第 10 项才有效
+#   buys 帧：buys+buys1..4 恰好占满第 0 页 → spanN 前 5 项 0，第 6 项（下标 5，首页外）才有效
+# fallback 必须跨页扫描才能取到合法来源。若 fixture 退化（首选就带 spans），
+# 此断言失败，后面的「跨页 fallback 生效」断言即失去意义。
+for mode in none iterator; do
+  f="$base-ascii8/probe-ascii8-$mode-buysvkfhds.log"
+  grep -E -q "KEY y .*spanN=0,0,0,0,0,0,0,0,0,[2-9]" "$f" || {
+    echo "FAIL[ascii8/$mode] frame 'buy': first spanned candidate not beyond page 0"; fail=1; }
+  grep -E -q "KEY s .*spanN=0,0,0,0,0,[2-9]" "$f" || {
+    echo "FAIL[ascii8/$mode] frame 'buys': first spanned candidate not beyond page 0"; fail=1; }
+done
+# ---- 终帧候选断言：定位最后一条 KEY 行（none/iterator 均查），断言其 top5
+# 首选为预期词——防止中间帧偶然出现期望词造成全文搜索假通过。
 for tag in clean ascii ascii8; do
   d=$( [ "$tag" = clean ] && echo "$base" || { [ "$tag" = ascii ] && echo "$base-ascii" || echo "$base-ascii8"; } )
-  grep -q "top5=你还看|" "$d/probe-$tag-none-nihlkj.log" || { echo "FAIL[$tag] nihlkj 终帧首选"; fail=1; }
-  grep -q "top5=不用找房东|" "$d/probe-$tag-none-buysvkfhds.log" || { echo "FAIL[$tag] buysvkfhds 终帧首选"; fail=1; }
-  grep -q "top5=不知道是|" "$d/probe-$tag-none-buvidku.log" || { echo "FAIL[$tag] buvidku 终帧首选"; fail=1; }
+  for mode in none iterator; do
+    for pair in "nihlkj:你还看" "buysvkfhds:不用找房东" "buvidku:不知道是"; do
+      str="${pair%%:*}"; want="${pair#*:}"
+      log="$d/probe-$tag-$mode-$str.log"
+      last=$(grep "^KEY " "$log" | tail -1)
+      case "$last" in *"top5=$want|"*) : ;;
+        *) echo "FAIL[$tag/$mode/$str] 终帧首选不含 $want"; fail=1 ;; esac
+    done
+  done
 done
 [ "$fail" = 0 ] && echo "probe matrix: ALL PASS" || { echo "probe matrix: FAILURES"; exit 1; }
