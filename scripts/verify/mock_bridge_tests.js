@@ -1956,9 +1956,9 @@ test('123 opens on 常用: digits row 1, zh rows for Chinese', {since: '3.73.50'
     world.tap(key123);
     assert(world.$('qwertyLayer').hidden, 'letters hidden');
     assert(!world.$('symbolLayer').hidden, 'symbols visible');
-    // 竖向滚动改造后行数不设限，但 常用 表仍是 3 行。
+    // 竖向滚动改造后行数不设限；常用 3.73.54 起扩到 60（6 行，可上滑）。
     const rows = () => [...world.$('symGrid').querySelectorAll('.kb-row')];
-    equal(rows().length, 3, 'three rows');
+    equal(rows().length, 6, 'six rows');
     equal(
         [...rows()[0].children].map(k => k.textContent).join(''),
         '1234567890',
@@ -2481,10 +2481,14 @@ test('scrollable categories render all rows; cells stay click-only', {since: '3.
     // 杀原生滚动）；网格已无 ⌫（在分类条上）。
     const bound = world.$('symGrid').querySelector('.sym-grid-inner .kb-key[data-bound]');
     assert(!bound, 'symbol cells carry no bindTouch gesture layer');
-    // 常用表仍 3 行（不滚动分类不变形）。
+    // 常用表扩容后 6 行（可上滑，历史 30 格逐字在前）。
     world.tap(world.document.querySelector('[data-sym-cat="common"]'));
-    equal([...world.$('symGrid').querySelectorAll('.kb-row')].length, 3,
-        'common keeps exactly 3 rows');
+    const commonRows = [...world.$('symGrid').querySelectorAll('.kb-row')];
+    equal(commonRows.length, 6, 'common renders its 6 rows');
+    equal([...commonRows[2].children].map(k => k.textContent).join(''),
+        '“”‘’《》〈〉…·', 'common historical rows stay verbatim');
+    assert([...commonRows[5].children].map(k => k.textContent).join('').includes('〇'),
+        'common appended rows ride at the end');
 });
 
 test('boxdraw tab: new category between 特殊 and 方向, commits literally', {since: '3.73.50'}, () => {
