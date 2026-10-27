@@ -293,8 +293,8 @@ fun readQuickSwitchPolicy(context: Context): String =
  *  仅在引擎 READY 成功应用时由 service 写入（LOADING/降级/密码框强制
  *  Direct/被拒切换都不写——codex 二轮 §2.3 生命周期）。默认全拼。 */
 private const val PREF_QUICK_RETURN_MODE = "feelime_quick_return_mode"
-private val QUICK_RETURN_MODES = setOf(
-    "pinyin", "double-pinyin", "flypy", "t9", "stroke", "handwriting",
+internal val QUICK_RETURN_MODES = setOf(
+    "pinyin", "double-pinyin", "wubi-86", "flypy", "t9", "stroke", "handwriting",
     "french", "russian", "japanese",
 )
 

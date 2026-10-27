@@ -20,7 +20,7 @@ const $ = id => document.getElementById(id);
 // 键盘选择（验收 2026-09-24）：与键盘 MODES 一致；默认菜单 = round-6 五项。
 const KEYBOARD_MODES = [
     ['direct', '英文直出'], ['pinyin', '全拼'], ['double-pinyin', '双拼'],
-    ['t9', '九宫格'], ['stroke', '笔画'], ['flypy', '音形'],
+    ['t9', '九宫格'], ['stroke', '笔画'], ['wubi-86', '五笔 86'], ['flypy', '音形'],
     ['handwriting', '手写'],
     ['french', '法语'], ['russian', '俄语'], ['japanese', '日语'],
 ];
@@ -101,7 +101,7 @@ const I18N = {
         "nav.groups": "设置分组",
         "nav.back": "返回首页",
         "entry.input.title": "键盘与输入",
-        "entry.input.subtitle": "双拼 · 定制按键",
+        "entry.input.subtitle": "双拼 · 五笔 · 定制按键",
         "entry.dict.title": "词库",
         "entry.dict.subtitle": "导入 rime 词库 · 叠加候选",
         "entry.voice.title": "语音识别",
@@ -895,7 +895,7 @@ const I18N = {
         "nav.back": "Back to home",
         "nav.backAppearance": "Back to appearance",
         "entry.input.title": "Keyboard & input",
-        "entry.input.subtitle": "Double pinyin · Custom keys",
+        "entry.input.subtitle": "Double pinyin · Wubi · Custom keys",
         "entry.dict.title": "Lexicon",
         "entry.dict.subtitle": "Import rime dicts · Extra candidates",
         "entry.backup.title": "Backup & restore",

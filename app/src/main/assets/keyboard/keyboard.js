@@ -47,6 +47,8 @@
         "全拼 Pinyin": "Pinyin",
         "双拼": "Double Pinyin",
         "笔画 Stroke": "Stroke",
+        "五笔 86 Wubi": "Wubi 86",
+        "五笔 86": "Wubi 86",
         "重输": "Restart",
         "该键盘还在准备中": "That keyboard is still preparing",
         "已截断至 200 字": "Truncated to 200 characters",
@@ -311,7 +313,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.58';
+    const KEYBOARD_VERSION = '3.74.1';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -498,7 +500,9 @@ const TOOL_CATALOG = {
     kaomoji: 'toolKaomoji',
 };
 // #H 硬键盘接字符的模式（design §2，与 native hwCharModes 同源集）。
-const HW_TEXT_MODES = new Set(['pinyin', 'double-pinyin', 'flypy', 'french', 'russian', 'japanese']);
+const HW_TEXT_MODES = new Set([
+    'pinyin', 'double-pinyin', 'wubi-86', 'flypy', 'french', 'russian', 'japanese',
+]);
 
 const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'mic'] };
     const MIN_NATIVE_API = 1;
@@ -546,6 +550,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // APK 的 hello 不带 stroke 就绪字段，缺失必须当不可用——沿用
         // !== false 的宽松判定会把缺键当可用，出现可点却无效的入口。
         'stroke': { label: '笔', title: '笔画 Stroke', layout: 't9', engine: true, strictReady: true },
+        // 五笔 86：26 键完整码表，四码一字/词；随 engine-data 内置分发。
+        'wubi-86': { label: '五', title: '五笔 86 Wubi', layout: 'qwerty', engine: true, strictReady: true },
         // 音形（issue #20，首版小鹤音形）：qwerty 键面（码即字母），
         // 码表用户导入、设备端编译独立 flypy table/prism。strictReady：
         // 未导入（hello 缺字段或产物未落地）时菜单不出入口。
@@ -1263,7 +1269,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // re-checked against the prisms by scripts/verify/guard_dp_finals.js.
 
     function modeLabel(mode) {
-        if (uiLocale === 'en') return ({pinyin: 'PY', 'double-pinyin': 'DP', t9: 'T9', japanese: 'JP', handwriting: 'HW'})[mode] || MODES[mode].label;
+        if (uiLocale === 'en') return ({pinyin: 'PY', 'double-pinyin': 'DP', t9: 'T9', 'wubi-86': 'WB', japanese: 'JP', handwriting: 'HW'})[mode] || MODES[mode].label;
         return (MODES[mode] || MODES.direct).label;
     }
 
@@ -2140,13 +2146,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.mode === 't9' || this.mode === 'stroke';
         }
 
-        /** #39-8：形码（flypy）的符号交互与拼音一致——上滑 CN_ALTS 全角
+        /** #39-8：形码（五笔/音形）的符号交互与拼音一致——上滑 CN_ALTS 全角
          * 符号、弹层/下滑 literal 直发（sendSymbol），否则符号会走 sendText
          * 进形码引擎当编码被静默吞掉（用户实测「上滑没有反应」）。但引擎
-         * 语义仍是形码：isChineseMode 不收 flypy（第三行左键的分词/Shift
+         * 语义仍是形码：isChineseMode 不收五笔/flypy（第三行左键的分词/Shift
          * 选择、T9 弹层等以它为准，' 分词对形码引擎无语义）。 */
         chineseSymMode() {
-            return this.isChineseMode() || this.mode === 'flypy';
+            return this.isChineseMode() || this.mode === 'wubi-86' || this.mode === 'flypy';
         }
 
         sendKey(key) {
@@ -3530,7 +3536,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 的组合串是 schema xlit 后的部件字形（一丨丿…），落进
             // 编辑器就是乱码，同样必须拦截。repeat 长按在 T9 关闭：
             // 确认后残留的 interval 点击会落进非组合分支连发换行。
-            if ((this.mode === 't9' || this.mode === 'stroke') && this.composing) {
+            if ((this.mode === 't9' || this.mode === 'stroke' ||
+                this.mode === 'wubi-86') && this.composing) {
                 const candidate = (this.expandCandidates || []).find(item =>
                     !String(item.id).startsWith('alt:'));
                 if (candidate) {
@@ -5297,7 +5304,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #39-7：形码同此——键面大写与拼音统一（码即字母，四码顶字，
             // 键面大写不会误导输入）。
             const chinese = this.mode === 'pinyin' || this.mode === 'double-pinyin' ||
-                this.mode === 'flypy';
+                this.mode === 'wubi-86' || this.mode === 'flypy';
             const upper = this.shift || this.caps;
             document.querySelectorAll('[data-key]').forEach(button => {
                 const key = button.dataset.key;
@@ -6698,7 +6705,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         renderFnLabels() {
             const on = this.ctrlView && this.sticky.Fn;
             const chinese = this.mode === 'pinyin' || this.mode === 'double-pinyin' ||
-                this.mode === 'flypy';
+                this.mode === 'wubi-86' || this.mode === 'flypy';
             const upper = this.shift || this.caps;
             document.querySelectorAll('#qwertyLayer [data-key]').forEach(button => {
                 const key = button.dataset.key;
@@ -6907,7 +6914,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!pend || pend.to !== newMode || Date.now() - pend.at >= 3000) return;
             this.quickSwitchPendingToast = null;
             const names = {
-                pinyin: t("全拼"), 'double-pinyin': t("双拼"), flypy: t("鹤形"),
+                pinyin: t("全拼"), 'double-pinyin': t("双拼"),
+                'wubi-86': t("五笔 86"), flypy: t("鹤形"),
                 french: t("法语"), russian: t("俄语"), japanese: t("日语"),
             };
             this.showToast(t("已切换：") + (names[newMode] || t("英文")));
@@ -6920,7 +6928,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const el = document.getElementById('hwModeTag');
             if (!el) return;
             const names = {
-                pinyin: t("全拼"), 'double-pinyin': t("双拼"), flypy: t("鹤形"),
+                pinyin: t("全拼"), 'double-pinyin': t("双拼"),
+                'wubi-86': t("五笔 86"), flypy: t("鹤形"),
                 french: t("法语"), russian: t("俄语"), japanese: t("日语"),
             };
             el.textContent = names[this.mode] || '';
@@ -9259,7 +9268,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 .filter(item => !engineTexts.has(item.text));
             const exact = [];
             const prefix = [];
-            if (raw) {
+            // 常用语输入码是拼音/双拼键序；五笔、笔画、音形等独立编码
+            // 不应把同字母序列误当常用语码。
+            if (raw && (this.mode === 'pinyin' || this.mode === 'double-pinyin')) {
                 (this.favoriteItems || []).forEach(item => {
                     const code = (item.code || '').toLowerCase();
                     if (!code || !raw.startsWith(code)) return;

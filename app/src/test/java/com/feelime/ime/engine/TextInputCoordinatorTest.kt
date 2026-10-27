@@ -1496,6 +1496,23 @@ class TextInputCoordinatorTest {
     }
 
     @Test
+    fun wubiPreeditStaysInKeyboardAndRawCodeCanBeAccepted() {
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        assertEquals(
+            TextInputCoordinator.ModeSelectionResult.ACCEPTED,
+            c.selectMode(InputMode.WUBI_86),
+        )
+        c.key('w'.code)
+        c.key('q'.code)
+        assertEquals("wq", events.last().state.composing)
+        assertEquals(0, editor.operations.count { it.startsWith("setComposing") })
+
+        c.acceptCurrentComposition()
+        assertTrue(editor.operations.contains("commitText:wq"))
+    }
+
+    @Test
     fun clearComposingResetsEngineAndRestoresDirect() {
         val c = coordinator()
         c.onEditorStarted(sensitive = false)

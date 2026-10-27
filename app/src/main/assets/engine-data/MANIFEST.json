@@ -76,6 +76,10 @@
       "bytes": 2467,
       "sha256": "a53d3d24a683778a6f992db964b25c2f1c1859ff5b92ca9ff8fb373827cd8802"
     },
+    "rime/feelime_wubi86.schema.yaml": {
+      "bytes": 1508,
+      "sha256": "a633f56889080676c84be478336f38a36272f6a6c5c32b99ef46f070abd5145d"
+    },
     "rime/luna_pinyin.prism.bin": {
       "bytes": 31800,
       "sha256": "59cc92970f348c13839b8d8426b2b3398316cc326d1a5bfcbf244919c012fb08"
@@ -235,6 +239,14 @@
     "rime/luna_pinyin_t9.schema.yaml": {
       "bytes": 45604,
       "sha256": "3929ff92603cdc4ab8c1e5e8cd68ed8038e721b3e5be3675e94d1c898fa9d811"
+    },
+    "rime/wubi86.prism.bin": {
+      "bytes": 1179964,
+      "sha256": "91a4b681147e0cb927bd5cecf11a66d32735d71ab821cbde5e78c18b4f774888"
+    },
+    "rime/wubi86.table.bin": {
+      "bytes": 5133196,
+      "sha256": "b6013a0e1d82f9bbabb4b7d78b2010bf0d72610b1812ae8f1791c4d9a38f6e3e"
     },
     "rime/opencc/TSCharacters.txt": {
       "bytes": 104512,

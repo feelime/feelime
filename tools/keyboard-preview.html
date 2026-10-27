@@ -113,6 +113,7 @@ body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; 
   <button id="actOneHand">单手 关→左→右</button>
   <button id="actNumpad">九宫格</button>
   <button id="actT9">T9 键盘</button>
+  <button id="actWubi">五笔 86</button>
   <button id="actHandwriting">手写键盘</button>
   <button id="actVoiceOverlay">语音浮层(mic)</button>
   <button id="actVoiceHold">长按语音浮层</button>
@@ -233,6 +234,11 @@ const PINYIN_WORDS = {
     chuan: ['船', '传'], shuo: ['说', '硕'], dui: ['对', '队'],
 };
 const FRENCH_WORDS = ['café', 'très', 'après', 'français', 'être', 'père', 'déjà', 'où'];
+const WUBI_CANDS = {
+    w: ['人', '八'], ww: ['从'], www: ['众'],
+    wwww: ['人', '众人', '人人', '偷偷', '合作伙伴'],
+    wqvb: ['你好', '您好'], ggtt: ['五笔'], kwsg: ['只配'],
+};
 
 function doublePinyinToPinyin(raw) {
     // 零声母（a/e/o 开头）直接按全拼处理。
@@ -274,6 +280,7 @@ function fakeCandidates(raw) {
         return hits.length ? hits : [key + '…'];
     }
     if (keyboardMode === 'japanese') return ['こんにちは', 'コンニチハ', key + '（占位）'];
+    if (keyboardMode === 'wubi-86') return WUBI_CANDS[key] ? WUBI_CANDS[key].slice() : [];
     if (!raw) return [];
     return [raw + '（占位）', raw + '2', raw + '3'];
 }
@@ -327,7 +334,7 @@ function makeBridge() {
             setTimeout(pushHello, 0);
         },
         key(char) {
-            const viaEngine = keyboardMode.includes('pinyin');
+            const viaEngine = ['pinyin', 'double-pinyin', 'wubi-86'].includes(keyboardMode);
             log('key', esc(char) + (viaEngine ? ' <span class="dim">→ 引擎</span>' : ''));
             if (viaEngine && /[a-z']/.test(char)) {
                 rawInput += char;
@@ -607,7 +614,8 @@ function pushHello() {
         pageGenerationToken: 'tok-1',
         mode: keyboardMode,
         engineDataReady: { pinyin: true, 'double-pinyin': true, japanese: true,
-            french: true, russian: true, t9: true, stroke: true, handwriting: true },
+            french: true, russian: true, t9: true, stroke: true, 'wubi-86': true,
+            handwriting: true },
         // 键盘侧偏好（真机由原生 hello 下发；值同 previewPrefs）。
         uiLanguage: previewPrefs.uiLanguage,
         associationOn: previewPrefs.associationOn,
@@ -789,6 +797,12 @@ document.getElementById('actT9').onclick = () => {
     pushEngineState('', false);
     pushHello();
 };
+document.getElementById('actWubi').onclick = () => {
+    keyboardMode = 'wubi-86';
+    pushHello();
+    rawInput = 'wqvb';
+    pushEngineState(rawInput, true);
+};
 // 手写键面（issue #28）：笔迹走书写区 canvas，候选由 recognizeInk 假桥
 // 延时回推。
 document.getElementById('actHandwriting').onclick = () => {
@@ -921,6 +935,7 @@ build();
  * ?act=t9popup           T9 长按三行弹层（按住 5 键的瞬间）
  * ?act=t9track           相对跟手：手往左滑，高亮滑到数字左边的符号
  * ?act=t9cancel          虚拟光标滑出卡片：缩小变淡 + 「松手撤销」
+ * ?act=wubi              五笔 86 键面（wqvb → 你好）
  * ?act=handwriting       手写键面（canvas 书写 + 模拟识别候选）
  * 可叠加 &theme=light / &locale=en。 */
 (() => {
@@ -954,6 +969,8 @@ build();
             }
         } else if (act === 't9' || act === 't9popup' || act === 't9cancel' || act === 't9track') {
             document.getElementById('actT9').click();
+        } else if (act === 'wubi') {
+            document.getElementById('actWubi').click();
         } else if (act === 'handwriting') {
             document.getElementById('actHandwriting').click();
         }

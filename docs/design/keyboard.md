@@ -724,6 +724,7 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 | 全拼 / 双拼（自然码/小鹤/搜狗/紫光） | librime（RimeTextEngine） | §9.3 |
 | T9 九宫格 | librime（RimeTextEngine，独立 schema） | §2.7 / t9.md |
 | 笔画五键 | librime（RimeTextEngine） | §9.3a |
+| 五笔 86 | librime（RimeTextEngine，独立 schema） | §9.3b |
 | 法语 / 俄语 | Hunspell（HunspellTextEngine） | §9.2 |
 | 日语 | Mozc（MozcTextEngine） | §9.4 |
 | 手写（单字） | 独立识别引擎（HandwritingEngine，不实现 TextEngine） | §9.7 / handwriting.md |
@@ -881,6 +882,33 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 - 已知边界：completion 排序契约含「剩余码长度」维度，通配行不保证严格按
   字频排在精确行后（首格为精确行的实测样本稳定）；completion 的剩余码
   comment 不展示（v1）。
+
+### 9.3b 五笔 86
+
+- **模式与键面**：独立模式 `wubi-86`，复用 26 键 qwerty 键面，字母直接
+  进入 librime；第三行左键保持 Shift（五笔没有拼音分词语义）。模式采用
+  `strictReady`，只有 hello 明确下发 `engineDataReady["wubi-86"] === true`
+  才能进入。硬键盘字符、空格、回车和退格走 #H 统一通道；follow 快捷切换
+  可从英文返回五笔 86。
+- **schema**：`feelime_wubi86`，26 字母码表、`max_code_length: 4`；
+  `auto_select_pattern: ^[a-z]{4}$` 让唯一四码自动上屏，其余仍由候选条
+  按 id 选择。关闭 completion 与 sentence，按五笔完整码表出单字/词组。
+- **词表**：`scripts/generate-wubi-dict.py` 从项目已固定的
+  rime-frost@96278d8 `cn_dicts_wb/chars.dict.yaml` 与
+  `words.dict.yaml` 合并生成可审计源表 `scripts/data/wubi86.dict.yaml`
+  （text/code/weight，丢弃仅拆分提示使用的 stem 列）；该源表不进 APK。
+  同一来源在 pinned host 管线中编译 `wubi86.table.bin` /
+  `wubi86.prism.bin`，设备端不编译，只部署预编译产物。
+- **标点与联想**：五笔按形码处理，上滑符号与标点走统一中文
+  `chineseSymMode` / `enginePunct` 两步流；上屏汉字参与中文联想。组合串
+  只在键盘 preedit 显示，不写入宿主编辑器。
+- **分隔符/连续输入探针**：尾部或前导 `'` 被 Rime 精确查表裁掉，输入
+  `wqvb'` 仍出「你好」；内部 `wq'vb` 会按分隔片段查询且无候选。连续输入
+  超过四码时，唯一上一码先自动上屏再以第 5 键开启新组合
+  （`wqvbwqvb` → 你好 + 新的 `wqvb` 候选）。
+- **已知边界**：首版不提供 Z 键拼音反查、拆字反查、简繁切换、英文翻译
+  或用户词频学习（`enable_user_dict: false`）；前四项依赖上游
+  rime-frost 的额外 schema 与 lua 组件，仓库裁剪版 librime 不加载。
 
 ### 9.4 日语（Mozc）
 

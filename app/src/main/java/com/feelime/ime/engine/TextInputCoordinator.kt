@@ -226,11 +226,12 @@ class TextInputCoordinator(
         }
     }
 
-    /** 拼音族（全拼/双拼/T9）：preedit 只在键盘 UI（候选条/preedit 行），
-     * 宿主编辑器不落组合串；其余模式保持经典 span 语义（IN-04）。 */
+    /** 中文编码族（拼音/双拼/T9/笔画/五笔）：preedit 只在键盘 UI
+     * （候选条/preedit 行），宿主编辑器不落组合串；其余模式保持经典
+     * span 语义（IN-04）。 */
     private fun isPinyinFamily(mode: InputMode): Boolean =
         mode == InputMode.PINYIN || mode == InputMode.DOUBLE_PINYIN || mode == InputMode.T9 ||
-            mode == InputMode.STROKE
+            mode == InputMode.STROKE || mode == InputMode.WUBI_86
 
     private fun expectReplacement(length: Int) {
         if (predictedSelectionStart < 0 || predictedSelectionEnd < 0) return

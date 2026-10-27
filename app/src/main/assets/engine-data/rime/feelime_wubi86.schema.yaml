@@ -1,0 +1,65 @@
+# Rime schema: feelime_wubi86 — 五笔字型 86
+# 词表由 scripts/generate-wubi-dict.py 从固定版本的 rime-frost
+# cn_dicts_wb 生成，设备只加载同场编译的 table/prism。
+# - 26 字母、四码上限；唯一四码自动上屏
+# - 不开笔画式 completion/sentence：五笔按完整码表出候选
+# - 组件集对齐仓库裁剪版 librime（无 lua/octagram）
+__build_info:
+  rime_version: 1.17.0
+schema:
+  schema_id: feelime_wubi86
+  name: 五笔 86
+  version: "1.0"
+  author:
+    - 王永民先生（五笔字型）
+    - rime-frost cn_dicts_wb
+  description: |
+    五笔字型 86 版，四码一字/词。
+
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [ 中文, 西文 ]
+
+engine:
+  processors:
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - ascii_segmentor
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - table_translator
+
+speller:
+  alphabet: abcdefghijklmnopqrstuvwxyz
+  delimiter: " '"
+  auto_select: true
+  auto_select_pattern: ^[a-z]{4}$
+  max_code_length: 4
+
+menu:
+  page_size: 5
+
+translator:
+  dictionary: wubi86
+  enable_completion: false
+  enable_sentence: false
+  enable_user_dict: false
+  comment_format:
+    - "xform/~//"
+
+# 与笔画/音形相同：部署目录没有 default.yaml，标点必须内联。
+punctuator:
+  half_shape:
+    ",": {commit: "，"}
+    ".": {commit: "。"}

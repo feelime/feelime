@@ -33,6 +33,8 @@ object EngineFactory {
         // 笔画五键（issue #18）：GB2312 裁剪词典 + 单通配派生行，资产
         // 缺失时由引擎数据就绪判定挡在模式菜单。
         InputMode.STROKE -> RimeTextEngine(context, "feelime_stroke")
+        // 五笔字型 86：26 键、四码一字/词；词表随 engine-data 分发。
+        InputMode.WUBI_86 -> RimeTextEngine(context, "feelime_wubi86")
         // 音形码（issue #20）：用户导入码表的设备端编译产物；就绪判定
         // （EngineDataStore.isModeReady）以产物存在为准，未导入不会走到这。
         InputMode.FLYPY -> RimeTextEngine(
