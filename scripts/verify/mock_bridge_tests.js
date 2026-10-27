@@ -8946,6 +8946,29 @@ test('stroke: no auto page-fetch on old shells while composing', {since: '3.50.0
         'old-shell pinyin composing still pre-fetches when the bar is short');
 });
 
+test('stroke: explicit split keeps engine order, sentence leads (2026-10-27)', {since: '3.73.58'}, () => {
+    // 笔画分词报障：你的笔画 + 分词(') + 好的笔画——引擎把整句「你好」
+    // 排首位（sentence [0,14)），后随各长度前缀字（你/化/仍/亻/丿）。
+    // 无分词的多字压后规则（issue #18）只该作用于造句兜底；显式分词时
+    // 再压后会把「你好」挤到第 8 位，空格确认到错误候选。
+    const world = fresh({ mode: 'stroke' });
+    world.engineState({ phase: 'READY', mode: 'stroke', revision: 1,
+        composing: "丿丨丿乙乙丿丶'乙丿一乙丨一",
+        rawInput: "丿丨丿乙乙丿丶'乙丿一乙丨一",
+        candidates: [
+            { id: 's0', text: '你好' }, { id: 's1', text: '你' },
+            { id: 's2', text: '化' }, { id: 's3', text: '仍' },
+            { id: 's4', text: '亻' }, { id: 's5', text: '丿' },
+        ], hasNextPage: false });
+    const bar = [...world.document.querySelectorAll('#candidates .candidate')]
+        .map(b => b.textContent).join('');
+    equal(bar, '你好你化仍亻丿', 'explicit split: engine order kept, sentence leads');
+    // 空格确认=引擎首位整句「你好」。
+    world.tap(world.$('spaceKey'));
+    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 's0',
+        'space confirms the sentence head by id');
+});
+
 test('stroke: read-only paging shells may auto-fetch while composing', {since: '3.73.57'}, () => {
     // #72 nihlk 第 5 帧定罪的同一颗雷：旧壳预加载翻页拖 selector 高亮
     // → stable-seg hint 取到深页候选的残缺 spans → 双拼中间帧丢锚

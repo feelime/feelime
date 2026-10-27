@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.57';
+    const KEYBOARD_VERSION = '3.73.58';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -9231,9 +9231,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             // 笔画句子候选压后（issue #18）：词典 max_phrase_length=1，
             // 多字候选必来自 enable_sentence 造句（☯；comment 不在桥协议
-            // 里，按字长识别）。不压后的话 h'z 的句子「一乙」会顶掉首字
-            // 候选，空格确认整段上屏（probe 实测首格被句子占据）。
-            if (this.mode === 'stroke') {
+            // 里，按字长识别）。不压后的话 hspp 长码兜底的句子「才丿」
+            // 会顶掉首字候选，空格确认整段上屏（probe 实测首格被句子占）。
+            // 例外（2026-10-27 笔画分词报障）：raw 回声带显式分词符 ' =
+            // 用户明确要求按整句组词，引擎已把整句排首位（你的笔画'
+            // 好的笔画 → 你好[0,14) 居首），再压后会被各长度前缀字
+            // （你/化/仍/仇/仉/亻/丿）挤到第 8 位、空格确认到错误候选。
+            // 此时保留引擎顺序。preedit 由 sentence 格式化插入的空格不
+            // 是分词符，lastRawInput 含 ' 才算显式分词。
+            if (this.mode === 'stroke'
+                && !(this.lastRawInput || '').includes("'")) {
                 const sentences = engine.filter(candidate =>
                     [...candidate.text].length > 1);
                 if (sentences.length) {

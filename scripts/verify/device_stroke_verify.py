@@ -142,16 +142,16 @@ def main():
            preedit() == before and ("通配" in str(toast) or "wildcard" in str(toast)),
            f"preedit={preedit()!r} toast={toast!r}")
 
-    # ===== 分词 + 句子候选压后：h'z → 单字在前，「一乙」(☯) 压后 =====
+    # ===== 显式分词：引擎序保留，整句「一乙」(☯) 居首（2026-10-27 报障
+    # 修订：无分词的多字压后只作用于造句兜底；分词=整句组词语义） =====
     d.clear_field(kb)
     type_digits(geo, "195")
     time.sleep(0.8)
     cands = wait_candidates()
     record("stroke: h'z split query yields candidates",
            bool(cands), f"cands={cands[:6]}")
-    record("stroke: sentence candidate is pushed back",
-           bool(cands) and len(cands[0]) == 1 and "一乙" in cands
-           and cands.index("一乙") > 0,
+    record("stroke: explicit split keeps the sentence first",
+           bool(cands) and "一乙" in cands and cands[0] == "一乙",
            f"cands={cands[:6]}")
 
     # ===== 空格确认=池头单字 =====
