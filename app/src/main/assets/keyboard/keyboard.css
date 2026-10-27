@@ -798,6 +798,11 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
  * the four symbol rows must stay inside the same 272px budget. */
 #symCatBar { display: flex; gap: 5px; margin-top: 5px; }
 #symCatBar [data-action="letters"] { flex: 1.35; font-size: 13px; }
+/* 符号层 ⌫（setup 注入，换行左侧）：与 ABC/换行同权重。390dp 下
+ * ≈57px 热区；分类条 4.8→收窄仍有 ~4 个 tab 可见、mask 提示可滚。
+ * 长按连删由 specialKey 的 repeat 提供（bar 在滚动容器外，bindTouch
+ * 合法——numpad back 同判定）。 */
+#symCatBar [data-role="backspace"] { flex: 1.35; }
 #symEnterKey { flex: 1.35; font-size: 13px; }
 #symCats {
     flex: 4.8;
@@ -876,7 +881,44 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
 .sep { font-size: 14px; font-weight: 500; }
 .kb-layer[hidden] { display: none; }
 .kb-layer { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; }
-#symGrid { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+/* #symGrid 是竖向滚动容器（分类行数不设限，货币/假名/制表等多行
+ * 分类上下滑动）。justify-content 不能留在 scroller 本体——溢出时
+ * 负剩余空间把起始方向的内容裁进不可滚区（.sym-custom-row 同教训），
+ * 分布职责摘到内层 .sym-grid-inner。 */
+#symGrid {
+    flex: 1;
+    min-height: 0; /* 无此则撑破层高，被 #softKeyboard overflow:hidden 裁掉 */
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+#symGrid::-webkit-scrollbar { display: none; }
+/* 滚动容器的键盘焦点圈（.ink-scroll 真机实录同因）。 */
+#symGrid:focus { outline: none; }
+/* ≤3 行时 wrapper=视口高，space-between 分布与旧版逐像素一致；
+ * >3 行时 wrapper 高=内容高，space-between 无负空间、起点永不裁。
+ * renderSymbols 每次重建 inner，scrollTop 随内容清空归零=进分类回顶
+ * （搜狗同语义，有意为之）。 */
+.sym-grid-inner {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+/* 压过 .kb-key 的 touch-action:none——否则从键上起手的竖向拖动被
+ * 杀。作用域限定 inner：定制分支的 .sym-custom 直挂 #symGrid，其
+ * pan-x 横滚不受影响。 */
+.sym-grid-inner .kb-key { touch-action: pan-y; }
+/* 可滚才挂（JS 量高后 toggle）：底边 8px 渐隐提示还有更多行；
+ * 顶部不需——每次进分类都回顶。 */
+#symGrid.sym-scrollable {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 8px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 8px), transparent);
+}
 #symGrid .kb-row:last-child { margin-bottom: 0; }
 
 /* ===== 九宫格数字键盘（长按 123，design §2.6）===== */

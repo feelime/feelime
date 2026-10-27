@@ -651,12 +651,13 @@ def main():
         "[...document.querySelectorAll('#symGrid .kb-key')].map(e => e.textContent).join('')"
     ) or ""
     backspace_role = d.devtools_eval(
-        "document.querySelector('#symGrid .kb-row:last-child .kb-key:last-child')?.dataset.role"
+        "document.querySelector('#symCatBar [data-role=backspace]')?.dataset.role"
     )
     record(
         "I5 symbol category strip with kana content",
-        # The 定制 (custom) category joins the strip after common.
-        ",".join(cats) == "common,custom,recent,quote,money,math,special,arrows,num,pinyin,hira,kata,greek"
+        # The 定制 (custom) category joins the strip after common;
+        # 制表 (boxdraw) joins between 特殊 and 方向 (3.73.50).
+        ",".join(cats) == "common,custom,recent,quote,money,math,special,boxdraw,arrows,num,pinyin,hira,kata,greek"
         and "あ" in hira_keys and backspace_role == "backspace",
         f"cats={cats} hira_has_a={'あ' in hira_keys} bs={backspace_role}",
     )
