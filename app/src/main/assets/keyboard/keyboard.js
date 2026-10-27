@@ -733,7 +733,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // the delete key and row 4 carries ABC | sliding categories | enter.
     const ZH_COMMON_ROWS = [
         ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-        ['，', '。', '、', '；', '：', '？', '！', '～', '（', '）'],
+        // 行首两位是半角 +/-（用户需求：数学/列表高频，中式标点已被
+        // 主键盘标点槽与 T9/手写左列覆盖）；、；：？！～（）仍是全角。
+        ['+', '-', '、', '；', '：', '？', '！', '～', '（', '）'],
         ['“', '”', '‘', '’', '《', '》', '〈', '〉', '…'],
     ];
     const EN_COMMON_ROWS = [
