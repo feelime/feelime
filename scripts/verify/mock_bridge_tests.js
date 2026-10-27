@@ -1957,9 +1957,15 @@ test('wubi 86 uses the qwerty face and keeps codes on the engine path', {since: 
         'pinyin-coded favorites never enter an independent shape-code pool',
     );
     world.tap(world.$('enterKey'));
-    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 'w1',
-        'confirm chooses the Wubi head candidate instead of committing raw letters');
-    equal(world.native.of('enter').length, 0, 'confirm never sends raw Enter while composing');
+    equal(world.native.of('enter').length, 1,
+        'Wubi confirm requests raw-letter commit while composing');
+    equal(world.native.of('chooseCandidate').length, 0,
+        'Wubi confirm does not select the Chinese head candidate');
+    world.engineState({ mode: 'wubi-86', revision: 2, composing: 'ip', rawInput: 'ip',
+        candidates: [{ id: 'w-ip', text: '学' }], hasNextPage: false });
+    world.tap(world.$('spaceKey'));
+    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 'w-ip',
+        'Space still confirms the Wubi Chinese candidate');
 });
 
 test('wubi 86 punctuation uses the Chinese two-step flow', {since: '3.74.0'}, () => {
@@ -2286,7 +2292,7 @@ test('hwKey: physical letters keep their own case, no soft shift rewriting (#H)'
     equal(keys[0], 'N', 'physical Shift+N lands as-is via the hw bridge');
 });
 
-test('hwKey: Wubi 86 accepts physical letters, selection and deletion (#H)', {since: '3.74.1'}, () => {
+test('hwKey: Wubi 86 accepts physical letters, raw Enter and deletion (#H)', {since: '3.74.1'}, () => {
     const world = fresh({
         mode: 'wubi-86',
         engineDataReady: FLYPY_READY,
@@ -2313,12 +2319,13 @@ test('hwKey: Wubi 86 accepts physical letters, selection and deletion (#H)', {si
         'hardware composition renders normal Wubi candidates');
 
     world.context.window.Feelime.hwKey('enter', 0, 7);
-    const picked = world.native.of('hwChoose');
-    equal(picked.length, 1, 'hardware Enter confirms the Wubi pool head');
-    equal(picked[0].args[3], 'w1', 'Enter selects the head candidate by id');
+    const rawEnter = world.native.of('hwEnter');
+    equal(rawEnter.length, 1, 'hardware Enter requests raw Wubi letters');
+    equal(world.native.of('hwChoose').length, 0,
+        'hardware Enter does not select the Chinese Wubi candidate');
 
     world.engineState({
-        mode: 'wubi-86', revision: 2, hwDoneSeq: picked[0].args[0],
+        mode: 'wubi-86', revision: 2, hwDoneSeq: rawEnter[0].args[0],
         composing: 'wqv', rawInput: 'wqv',
         candidates: [{ id: 'w3', text: '侮' }], hasNextPage: false,
     });

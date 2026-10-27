@@ -313,7 +313,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.2';
+    const KEYBOARD_VERSION = '3.74.3';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3598,8 +3598,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 的组合串是 schema xlit 后的部件字形（一丨丿…），落进
             // 编辑器就是乱码，同样必须拦截。repeat 长按在 T9 关闭：
             // 确认后残留的 interval 点击会落进非组合分支连发换行。
-            if ((this.mode === 't9' || this.mode === 'stroke' ||
-                this.mode === 'wubi-86') && this.composing) {
+            if ((this.mode === 't9' || this.mode === 'stroke') && this.composing) {
                 const candidate = (this.expandCandidates || []).find(item =>
                     !String(item.id).startsWith('alt:'));
                 if (candidate) {

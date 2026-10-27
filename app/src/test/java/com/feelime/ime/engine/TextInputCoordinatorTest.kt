@@ -1513,6 +1513,19 @@ class TextInputCoordinatorTest {
     }
 
     @Test
+    fun wubiEnterRawCommitsCurrentLettersForChineseEnglishInput() {
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        c.selectMode(InputMode.WUBI_86)
+        c.key('i'.code)
+        c.key('p'.code)
+
+        assertEquals(DispatchAck.Accepted, c.enterRaw())
+        assertTrue(editor.operations.contains("commitText:ip"))
+        assertEquals("", events.last().state.composing)
+    }
+
+    @Test
     fun clearComposingResetsEngineAndRestoresDirect() {
         val c = coordinator()
         c.onEditorStarted(sensitive = false)
