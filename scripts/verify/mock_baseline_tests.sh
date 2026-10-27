@@ -16,11 +16,11 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # 全是 3.20.0 之后的行为，之前无门挂在 baseline 上红了整个分支（41 failed
 # 早于本轮快修存在，diff 定责见当轮记录）。挂门后 3.20.0 基线的合理通过数
 # 落在 122；逐条考古真实落地版本 deferred。
-# 2026-10-28：地板回到 122。3.73.50 曾把 123 opens/I1b/recent 三例挂
-# {since:'3.73.50'} 门（配合已撤回的「⌫ 迁分类条」结构）；3.73.51 撤回
-# 该结构后三例改为 wrapper 无关访问器，3.20.0 fixture 上语义重新成立，
-# 摘门，通过数随之复原。
-MIN_PASSED=122
+# 2026-10-28（二轮）：地板 122 → 120。3.73.52 把符号条定为
+# ABC|分类|⌫（⌫ 顶替换行键位、网格不带删除键），recent 用例断言
+# 「网格无 ⌫」在 3.20.0 fixture（网格末位有 ⌫ 的旧结构）上不成立，
+# 重新挂 {since:'3.73.52'} 门转 skip，地板随差值下调。
+MIN_PASSED=120
 
 OUT=$(FEELIME_KEYBOARD_SRC="$ROOT/test-fixtures/keyboard-3.20.0" \
     node "$ROOT/scripts/verify/mock_bridge_tests.js") || {

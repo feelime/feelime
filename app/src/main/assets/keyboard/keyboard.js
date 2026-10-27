@@ -312,7 +312,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.51';
+    const KEYBOARD_VERSION = '3.73.52';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -737,26 +737,26 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // 行首两位是半角 +/-（用户需求：数学/列表高频，中式标点已被
         // 主键盘标点槽与 T9/手写左列覆盖）；、；：？！～（）仍是全角。
         ['+', '-', '、', '；', '：', '？', '！', '～', '（', '）'],
-        ['“', '”', '‘', '’', '《', '》', '〈', '〉', '…'],
+        ['“', '”', '‘', '’', '《', '》', '〈', '〉', '…', '·'],
     ];
     const EN_COMMON_ROWS = [
         ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
         ['-', '/', ':', ';', '(', ')', '&', '@', '+', '='],
-        ['.', ',', '?', '!', '"', "'", '*', '#', '%'],
+        ['.', ',', '?', '!', '"', "'", '*', '#', '%', '^'],
     ];
     // The 引号 table's zh side (the only quote table until the 中/En
     // toggle landed): fullwidth CJK quotes and brackets.
     const ZH_QUOTE_ROWS = [
         ['“', '”', '‘', '’', '„', '‟', '«', '»', '‹', '›'],
         ['「', '」', '『', '』', '【', '】', '〖', '〗', '〔', '〕'],
-        ['《', '》', '〈', '〉', '［', '］', '｛', '｝', '＃'],
+        ['《', '》', '〈', '〉', '［', '］', '｛', '｝', '＃', '﹁'],
     ];
     // The 引号 table's en side: ASCII quotes and brackets the zh table
     // has no room for ([ ] were unreachable on the whole keyboard).
     const EN_QUOTE_ROWS = [
         ['[', ']', '{', '}', '(', ')', '<', '>', '\'', '"'],
         ['`', '*', '/', '\\', '|', '~', '^', '&', '@', '#'],
-        ['$', '%', '=', '+', '_', '«', '»', '‹', '›'],
+        ['$', '%', '=', '+', '_', '«', '»', '‹', '›', '§'],
     ];
     // Categories shipping a 中/En table pair; a second tap on the ACTIVE
     // tab flips the pin (design §2.4).
@@ -871,8 +871,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             rows: [
                 ['$', '€', '£', '¥', '₩', '₽', '₹', '₫', '฿', '¢'],
                 ['¤', '₴', '₦', '₲', '₱', '﷼', '₪', '₭', '₮', '₯'],
-                ['₿', '₺', '₼', '₾', 'ƒ', '৳', '₡', '₵', '₸'],
-                ['％', '＄', '＆'],
+                ['₿', '₺', '₼', '₾', 'ƒ', '৳', '₡', '₵', '₸', '₠'],
+                ['₢', '₣', '₤', '₥', '₧', '₨', '₳', '％', '＄', '＆'],
             ],
         },
         {
@@ -883,7 +883,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['′', '″', '‰', '⊕', '⊗', '⊙', '∵', '∴', '⊥'],
                 ['≡', '≃', '≅', '∝', '∠', '∧', '∨', '¬', '∃', '∀'],
                 ['⊆', '⊇', '⊖', '⊘', '∖', '∂', '∇', 'ℵ', '−', '∎'],
-                ['⌈', '⌉', '⌊', '⌋', '∘', '∗', '⋅', '∓', '∔'],
+                ['⌈', '⌉', '⌊', '⌋', '∘', '∗', '⋅', '∓', '∔', '∷'],
+                ['≔'],
             ],
         },
         // 特殊（#64，微信输入法「图形」tab 同类）：星形/勾叉/国际象棋/
@@ -899,7 +900,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['♞', '♟', '♤', '♥', '♦', '♧', '♩', '♪', '♫'],
                 ['□', '■', '▢', '▣', '▤', '▥', '▦', '▧', '▨', '▩'],
                 ['◐', '◑', '◒', '◓', '◕', '◇', '◆', '◈', '○', '◎'],
-                ['●', '☐', '☒', '♡', '♢'],
+                ['●', '☐', '☒', '♡', '♢', '▲', '▼', '◄', '►', '▬'],
+                ['◢'],
             ],
         },
         // 制表（box-drawing）：单线/双线/混合线/圆角/斜线/半格，
@@ -915,11 +917,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['┪', '┫', '┬', '┭', '┮', '┯', '┰', '┱', '┲', '┳'],
                 ['┴', '┵', '┶', '┷', '┸', '┹', '┺', '┻', '┼', '┽'],
                 ['┾', '┿', '╀', '╁', '╂', '╃', '╄', '╅', '╆', '╇'],
-                ['╈', '╉', '╊', '╋', '╭', '╮', '╯', '╰', '╱', '╲'],
+                ['╈', '╉', '╋', '╭', '╮', '╯', '╰', '╱', '╲'],
                 ['╳', '╿', '═', '║', '╒', '╓', '╔', '╕', '╖', '╗'],
                 ['╘', '╙', '╚', '╛', '╜', '╝', '╞', '╟', '╠', '╡'],
                 ['╢', '╣', '╤', '╥', '╦', '╧', '╨', '╩', '╪', '╫'],
-                ['╬', '╽'],
+                ['╬'],
             ],
         },
         // The 方向 category fires HOST key events, not text - it has no
@@ -943,6 +945,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['㉗', '㉘', '㉙', '㉚', '㉛', '㉜', '㉝', '㉞', '㉟', '㊱'],
                 ['㊲', '㊳', '㊴', '㊵', '㊶', '㊷', '㊹', '㊺', '㊻', '㊼'],
                 ['㊽', '㊾', '㊿'],
+                ['⓫', '⓬', '⓭', '⓮', '⓯', '⓰', '⓱'],
             ],
         },
         {
@@ -958,6 +961,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['à', 'â', 'ä', 'é', 'è', 'ê', 'ë', 'î', 'ï', 'ô'],
                 ['ù', 'û', 'ü', 'ç', 'œ', 'æ', 'ÿ', 'ø', 'å', 'ñ'],
                 ['ã', 'õ', 'ì', 'ò', 'ý', 'č', 'š', 'ž', '¿', '¡'],
+                ['ř', 'ź'],
             ],
         },
         {
@@ -972,7 +976,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['ぽ', 'ま', 'み', 'む', 'め', 'も', 'ゃ', 'や', 'ゅ', 'ゆ'],
                 ['ょ', 'よ', 'ら', 'り', 'る', 'れ', 'ろ', 'ゎ', 'わ', 'を'],
                 // ー 长音、゛゜（U+309B/C 间隔形，禁组合形）、ゝゞ 繰り返し。
-                ['ん', 'ー', '゛', '゜', 'ゝ', 'ゞ', 'ゐ', 'ゑ'],
+                ['ん', 'ー', '゛', '゜', 'ゝ', 'ゞ', 'ゐ', 'ゑ', '・', '〆'],
             ],
         },
         {
@@ -998,7 +1002,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ['η', 'θ', 'ι', 'κ', 'λ', 'μ', 'ν', 'ξ', 'ο', 'π'],
                 ['ρ', 'σ', 'ς', 'τ', 'υ', 'φ', 'χ', 'ψ', 'ω'],
                 ['ά', 'έ', 'ή', 'ί', 'ό', 'ύ', 'ώ', 'ϊ', 'ϋ', 'ΐ'],
-                ['ΰ', 'Ά', 'Έ', 'Ή', 'Ί', 'Ό', 'Ώ'],
+                ['ΰ', 'Ά', 'Έ', 'Ή', 'Ί', 'Ό', 'Ώ', 'ϖ', 'ϱ', 'ϲ'],
+                ['ϴ'],
             ],
         },
     ];
@@ -1864,8 +1869,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.call(() => Native.openSetup(this.token));
                 });
             }
-            // Symbol layer row 4 : the enter key lives there too.
-            document.getElementById('symEnterKey').addEventListener('click', () => this.call(() => Native.enter(this.token)));
+            // Symbol layer row 4 = ABC | 分类条 | ⌫：⌫ 占换行键原位
+            // （符号层不设换行，2026-10-28 用户定案）。网格不再携带
+            // 删除键；bar 在滚动容器外，bindTouch 合法——长按连删保留。
+            document.getElementById('symCatBar').insertBefore(
+                this.specialKey('backspace', ICONS.backspace,
+                    () => this.backspaceAction(),
+                    'sym-bar-del', 'repeat'),
+                null);
             this.setupToolbarEditor && this.setupToolbarEditor();
             // 单手模式侧边条（issue #15）：光标四向发 DPAD 键事件（与物理
             // 方向键同通道，终端 cursor 语义兼容），全选/复制/剪切/粘贴走
@@ -5239,12 +5250,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 enter.textContent = label;
                 enter.setAttribute('aria-label', label);
             }
-            // Symbol layer row 4 carries its own enter key .
-            const symEnter = document.getElementById('symEnterKey');
-            if (symEnter) {
-                symEnter.textContent = label;
-                symEnter.setAttribute('aria-label', label);
-            }
+            // Symbol layer row 4 no longer carries an enter key — the ⌫
+            // took its slot (2026-10-28); the nine-pad keeps its own.
             // So does the nine-pad's action column.
             const numEnter = document.getElementById('numEnterKey');
             if (numEnter) {
@@ -6234,29 +6241,30 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.pumpCustomChain();
         }
         symbolCategoryRows() {
-            // 中/En paired tables (常用/引号) pick rows by variant.
+            // 整表拉平、按 10 列重排（2026-10-28 用户反馈：按 authored
+            // 行渲染时短行尾留缺位格，每隔几行一个洞）。所有表的总量
+            // 都凑成 10 的倍数，拉平后没有空位；分类条 ⌫ 顶替换行键位
+            // 后网格不再需要预留删除格。
+            let values;
             if (VARIANT_TABLES[this.symbolCat]) {
-                return this.rowsFor(this.symbolCat);
-            }
-            if (this.symbolCat === 'recent') {
-                const values = this.recent();
+                values = this.rowsFor(this.symbolCat).flat();
+            } else if (this.symbolCat === 'recent') {
+                values = this.recent();
                 // Fill the remainder from the common set so the grid always
-                // shows full, evenly spaced rows (style fix). 29 = 3×10-1，
-                // 末格留给 ⌫（原位契约）。
+                // shows full, evenly spaced rows (style fix).
                 for (const row of this.commonRows()) {
                     for (const value of row) {
-                        if (values.length >= 29) break;
+                        if (values.length >= 30) break;
                         if (!values.includes(value)) values.push(value);
                     }
                 }
-                const rows = [];
-                for (let i = 0; i < values.length; i += 10) rows.push(values.slice(i, i + 10));
-                return rows;
+            } else {
+                const category = SYMBOL_CATEGORIES.find(c => c.id === this.symbolCat) || SYMBOL_CATEGORIES[0];
+                values = category.rows.flat();
             }
-            const category = SYMBOL_CATEGORIES.find(c => c.id === this.symbolCat) || SYMBOL_CATEGORIES[0];
-            // 行数组原样交给渲染层补空位：行内 pad 足 10 的责任在
-            // 渲染端统一做（历史上在数据端做导致 flat 后左右错位）。
-            return category.rows;
+            const rows = [];
+            for (let i = 0; i < values.length; i += 10) rows.push(values.slice(i, i + 10));
+            return rows;
         }
 
         /** 通用符号格：click-only，绝不 bindTouch——bindTouch 的
@@ -6406,59 +6414,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     }
                     wrap.append(row);
                 });
-                // 行 3 末位固定 ⌫（keyboard.md §155）：方向页同样守原位。
-                const lastRow = this.row();
-                for (let i = 0; i < 9; i++) {
-                    const blank = document.createElement('span');
-                    blank.className = 'sym-blank';
-                    lastRow.append(blank);
-                }
-                lastRow.append(this.specialKey('backspace', ICONS.backspace,
-                    () => this.backspaceAction(),
-                    'kb-special', 'repeat'));
-                wrap.append(lastRow);
                 grid.append(wrap);
                 return;
             }
             // 通用分类：行数不设限（数据表有多少行渲多少行），装进
             // .sym-grid-inner 交给 CSS 竖向滚动（≤3 行时 space-between
-            // 分布与旧版逐像素一致）。⌫ 恪守「网格最后一行末位」原位
-            // （2026-10-28 用户反馈撤回分类条方案，全分类一致）。
+            // 分布与旧版逐像素一致）。网格不再携带 ⌫——它顶替了分类
+            // 条右端的换行键（2026-10-28 用户定案）。
             const inner = document.createElement('div');
             inner.className = 'sym-grid-inner';
-            const putCell = (row, value) => {
-                if (value === '') {
-                    const blank = document.createElement('span');
-                    blank.className = 'sym-blank';
-                    row.append(blank);
-                    return;
-                }
-                row.append(this.symCell(value, { rerender: this.symbolCat === 'recent' }));
-            };
-            const backspaceKey = () => this.specialKey('backspace', ICONS.backspace,
-                () => this.backspaceAction(), 'kb-special', 'repeat');
-            const rows = this.symbolCategoryRows();
-            rows.forEach((values, idx) => {
+            this.symbolCategoryRows().forEach(values => {
                 const row = this.row();
                 const cells = [...values];
-                if (idx < rows.length - 1) {
-                    while (cells.length < 10) cells.push('');
-                    cells.forEach(v => putCell(row, v));
-                } else if (cells.length > 9) {
-                    // 末行满编（如片假名 90 字）：符号一个不丢，⌫ 在
-                    // 下方自起一行继续守末位。
-                    cells.forEach(v => putCell(row, v));
-                    inner.append(row);
-                    const extra = this.row();
-                    for (let i = 0; i < 9; i++) putCell(extra, '');
-                    extra.append(backspaceKey());
-                    inner.append(extra);
-                    return;
-                } else {
-                    while (cells.length < 9) cells.push('');
-                    cells.forEach(v => putCell(row, v));
-                    row.append(backspaceKey());
-                }
+                while (cells.length < 10) cells.push('');
+                cells.forEach(value => {
+                    if (value === '') {
+                        const blank = document.createElement('span');
+                        blank.className = 'sym-blank';
+                        row.append(blank);
+                        return;
+                    }
+                    row.append(this.symCell(value, { rerender: this.symbolCat === 'recent' }));
+                });
                 inner.append(row);
             });
             grid.append(inner);

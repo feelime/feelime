@@ -651,7 +651,7 @@ def main():
         "[...document.querySelectorAll('#symGrid .kb-key')].map(e => e.textContent).join('')"
     ) or ""
     backspace_role = d.devtools_eval(
-        "document.querySelector('#symGrid .kb-row:last-child [data-role=backspace]')?.dataset.role"
+        "document.querySelector('#symCatBar [data-role=backspace]')?.dataset.role"
     )
     record(
         "I5 symbol category strip with kana content",

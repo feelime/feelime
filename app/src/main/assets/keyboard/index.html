@@ -313,7 +313,8 @@
         <div id="symCatBar">
             <button class="kb-key kb-special" data-action="letters">ABC</button>
             <div id="symCats"></div>
-            <button class="kb-key kb-special" id="symEnterKey" aria-label="换行" data-i18n-aria-label="换行" data-i18n="换行">换行</button>
+            <!-- ⌫ 由 setup 注入（specialKey repeat，占换行键原位）：
+                 符号层不设换行——换行走 ABC 回主键盘（2026-10-28 用户定案）。 -->
         </div>
     </section>
     <!-- 九宫格数字键盘（长按 123 打开），全部由 renderNumpad 填充 -->

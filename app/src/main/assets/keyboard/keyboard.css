@@ -798,7 +798,9 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
  * the four symbol rows must stay inside the same 272px budget. */
 #symCatBar { display: flex; gap: 5px; margin-top: 5px; }
 #symCatBar [data-action="letters"] { flex: 1.35; font-size: 13px; }
-#symEnterKey { flex: 1.35; font-size: 13px; }
+/* ⌫ 顶替换行键位（setup 注入）：与 ABC 同权重，长按连删（bar 在
+ * 滚动容器外，bindTouch 合法——numpad back 同判定）。 */
+#symCatBar [data-role="backspace"] { flex: 1.35; }
 #symCats {
     flex: 4.8;
     display: flex;
