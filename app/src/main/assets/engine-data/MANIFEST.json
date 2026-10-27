@@ -77,8 +77,8 @@
       "sha256": "a53d3d24a683778a6f992db964b25c2f1c1859ff5b92ca9ff8fb373827cd8802"
     },
     "rime/feelime_wubi86.schema.yaml": {
-      "bytes": 1633,
-      "sha256": "b8a359e31b8ce8f8f76287844370592c89c220b7bdf3c29336a80ee93ed2c96b"
+      "bytes": 1645,
+      "sha256": "32a149805b90447064b1073a68eaf727814862e6a2902524d602638ef0b77c87"
     },
     "rime/luna_pinyin.prism.bin": {
       "bytes": 31800,
@@ -242,7 +242,7 @@
     },
     "rime/wubi86.prism.bin": {
       "bytes": 1179964,
-      "sha256": "289067248b342c4e99b3ccee12bb3ede2999bd6350b47b2fa56a776992c941cb"
+      "sha256": "1df70ab2bc0049f49692a1867a98e9cc00c8d892aea9fcdc0eac57dfbb38715a"
     },
     "rime/wubi86.table.bin": {
       "bytes": 5133196,

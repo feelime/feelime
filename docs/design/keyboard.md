@@ -896,8 +896,9 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   可从英文返回五笔 86。
 - **schema**：`feelime_wubi86`，26 字母码表、`max_code_length: 4`；
   唯一四码自动上屏，但 `jjad`/`jfuj`/`jtad` 三个动态候选入口从
-  `auto_select_pattern` 排除；其余仍由候选条按 id 选择。关闭 completion
-  与 sentence，按五笔完整码表出单字/词组。
+  `auto_select_pattern` 排除；其余仍由候选条按 id 选择。开启码表
+  completion，打一至三码时按同一词表的前缀补全单字/词组；关闭 sentence
+  与用户词频学习，避免五笔造句噪声。
 - **词表**：`scripts/generate-wubi-dict.py` 从项目已固定的
   rime-frost@96278d8 `cn_dicts_wb/chars.dict.yaml` 与
   `words.dict.yaml` 合并生成可审计源表 `scripts/data/wubi86.dict.yaml`

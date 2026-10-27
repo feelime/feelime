@@ -2,7 +2,7 @@
 # 词表由 scripts/generate-wubi-dict.py 从固定版本的 rime-frost
 # cn_dicts_wb 生成，设备只加载同场编译的 table/prism。
 # - 26 字母、四码上限；唯一四码自动上屏
-# - 不开笔画式 completion/sentence：五笔按完整码表出候选
+# - 开启码表 completion：一至三码按前缀补全，不启用 sentence 造句
 # - 组件集对齐仓库裁剪版 librime（无 lua/octagram）
 __build_info:
   rime_version: 1.17.0
@@ -53,7 +53,7 @@ menu:
 
 translator:
   dictionary: wubi86
-  enable_completion: false
+  enable_completion: true
   enable_sentence: false
   enable_user_dict: false
   comment_format:

@@ -25,7 +25,7 @@
 ## 3. 触发与展示
 
 - 挂点在 service 的 engine listener：`event.state.commit` 非空且模式为
-  全拼/双拼/T9/笔画且开关开启时，commit 事件尾部经独立的
+  全拼/双拼/T9/笔画/五笔 86 且开关开启时，commit 事件尾部经独立的
   `Feelime.onAssoc` 通道推送词列表。其他事件不推，键盘保留现有联想
   直到组合开始。
 - 键盘：组合（composing）非空时联想让位给引擎候选；组合为空时展示联想词，
