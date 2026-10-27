@@ -2246,7 +2246,7 @@ test('nine-pad enter label follows composition; locale re-renders the pad', {sin
         'emoji', 'emoji entry label stays language-neutral');
 });
 
-test('方向 category commits directional text and a real tab', {since: '3.28.0'}, () => {
+test('方向 category commits directional text', {since: '3.28.0'}, () => {
     const world = fresh();
     world.tap([...world.document.querySelectorAll('.kb-special')].find(
         el => el.textContent === '123',
@@ -2264,13 +2264,25 @@ test('方向 category commits directional text and a real tab', {since: '3.28.0'
         'arrow commits as literal text');
     equal(world.native.of('keyEvent').length, 0, 'no key events');
     equal(world.native.of('key').length, 0, 'no engine traffic');
-    const tab = [...world.$('symGrid').querySelectorAll('.kb-key')].find(
-        el => el.textContent === '⇥',
-    );
-    assert(tab, 'tab cell rendered');
-    world.tap(tab);
-    equal(world.native.of('commitText').slice(-1)[0].args[0], '\t',
-        'tab cell commits a real tab character');
+});
+
+test('方向 second row: white/hook/turning arrows, no tab cell', {since: '3.73.53'}, () => {
+    const world = fresh();
+    world.tap([...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    ));
+    world.tap([...world.document.querySelectorAll('[data-sym-cat]')].find(
+        el => el.dataset.symCat === 'arrows',
+    ));
+    const cells = [...world.$('symGrid').querySelectorAll('.kb-key')]
+        .map(k => k.textContent);
+    assert(!cells.includes('⇥'), 'tab-indent cell removed (2026-10-28)');
+    const wide = [...world.$('symGrid').querySelectorAll('.kb-key')]
+        .find(el => el.textContent === '⇦');
+    assert(wide, 'white arrow row rendered');
+    world.tap(wide);
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '⇦',
+        'white arrow commits literally');
 });
 
 test('quote tab toggles zh/en; en side supplies ascii brackets', {since: '3.28.0'}, () => {
@@ -2462,7 +2474,9 @@ test('scrollable categories render all rows; cells stay click-only', {since: '3.
     ));
     const rows = [...world.$('symGrid').querySelectorAll('.kb-row')];
     equal(rows.length, 9, 'hira renders every row (scroll, not clamp)');
-    equal([...rows[3].children][4].textContent, 'っ', 'sokuon rides row 4');
+    // 五十音图序：清音 46 字在前，促音 っ 紧随其后（46 号位）。
+    equal([...rows[4].children][6].textContent, 'っ',
+        'sokuon rides right after the gojuon chart');
     // 竖滚命门：符号格绝不能 bindTouch（touchstart preventDefault 会
     // 杀原生滚动）；网格已无 ⌫（在分类条上）。
     const bound = world.$('symGrid').querySelector('.sym-grid-inner .kb-key[data-bound]');
