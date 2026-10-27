@@ -286,12 +286,12 @@ def main():
     time.sleep(0.5)
     sym = ev("(() => { const g = document.getElementById('symGrid');"
              " const rows = [...g.querySelectorAll('.kb-row')].map(r => [...r.children].map(c => c.textContent).join(''));"
-             " return { rows, bs: document.querySelector('#symCatBar [data-role=backspace]')?.dataset.role,"
+             " return { rows, bs: g.querySelector('.kb-row:last-child [data-role=backspace]')?.dataset.role,"
              " abc: !!document.querySelector('#symCatBar [data-action=letters]'),"
              " enter: document.getElementById('symEnterKey')?.textContent,"
              " cats: [...document.querySelectorAll('[data-sym-cat]')].map(c => c.dataset.symCat).join(',') }; })()") or {}
     rows = sym.get('rows') or []
-    record("symbol layer: digits row, bar del key, ABC + enter row",
+    record("symbol layer: digits row, del key, ABC + enter row",
            rows and rows[0] == '1234567890'
            and sym.get('bs') == 'backspace'
            and sym.get('abc') is True and sym.get('enter') in ('换行', 'Enter')

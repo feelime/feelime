@@ -312,7 +312,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.50';
+    const KEYBOARD_VERSION = '3.73.51';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1866,14 +1866,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             // Symbol layer row 4 : the enter key lives there too.
             document.getElementById('symEnterKey').addEventListener('click', () => this.call(() => Native.enter(this.token)));
-            // 符号层 ⌫ 常驻分类条（换行左侧）：网格竖向滚动后末格 ⌫
-            // 够不着（keyboard.md §155「行 3 末位固定 ⌫」随之作废）。
-            // bar 在滚动容器外，bindTouch 合法——长按连删保留。
-            document.getElementById('symCatBar').insertBefore(
-                this.specialKey('backspace', ICONS.backspace,
-                    () => this.backspaceAction(),
-                    'sym-bar-del', 'repeat'),
-                document.getElementById('symEnterKey'));
             this.setupToolbarEditor && this.setupToolbarEditor();
             // 单手模式侧边条（issue #15）：光标四向发 DPAD 键事件（与物理
             // 方向键同通道，终端 cursor 语义兼容），全选/复制/剪切/粘贴走
@@ -6249,11 +6241,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.symbolCat === 'recent') {
                 const values = this.recent();
                 // Fill the remainder from the common set so the grid always
-                // shows full, evenly spaced rows (style fix). 网格退格迁去
-                // 分类条后满编从 29 变 30（3×10 无 ⌫ 位）。
+                // shows full, evenly spaced rows (style fix). 29 = 3×10-1，
+                // 末格留给 ⌫（原位契约）。
                 for (const row of this.commonRows()) {
                     for (const value of row) {
-                        if (values.length >= 30) break;
+                        if (values.length >= 29) break;
                         if (!values.includes(value)) values.push(value);
                     }
                 }
@@ -6414,29 +6406,59 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     }
                     wrap.append(row);
                 });
+                // 行 3 末位固定 ⌫（keyboard.md §155）：方向页同样守原位。
+                const lastRow = this.row();
+                for (let i = 0; i < 9; i++) {
+                    const blank = document.createElement('span');
+                    blank.className = 'sym-blank';
+                    lastRow.append(blank);
+                }
+                lastRow.append(this.specialKey('backspace', ICONS.backspace,
+                    () => this.backspaceAction(),
+                    'kb-special', 'repeat'));
+                wrap.append(lastRow);
                 grid.append(wrap);
                 return;
             }
             // 通用分类：行数不设限（数据表有多少行渲多少行），装进
             // .sym-grid-inner 交给 CSS 竖向滚动（≤3 行时 space-between
-            // 分布与旧版逐像素一致）。⌫ 不再占网格末格——常驻分类条
-            // （setup 注入），滚动到任何位置都够得着。
+            // 分布与旧版逐像素一致）。⌫ 恪守「网格最后一行末位」原位
+            // （2026-10-28 用户反馈撤回分类条方案，全分类一致）。
             const inner = document.createElement('div');
             inner.className = 'sym-grid-inner';
+            const putCell = (row, value) => {
+                if (value === '') {
+                    const blank = document.createElement('span');
+                    blank.className = 'sym-blank';
+                    row.append(blank);
+                    return;
+                }
+                row.append(this.symCell(value, { rerender: this.symbolCat === 'recent' }));
+            };
+            const backspaceKey = () => this.specialKey('backspace', ICONS.backspace,
+                () => this.backspaceAction(), 'kb-special', 'repeat');
             const rows = this.symbolCategoryRows();
-            rows.forEach(values => {
+            rows.forEach((values, idx) => {
                 const row = this.row();
                 const cells = [...values];
-                while (cells.length < 10) cells.push('');
-                cells.forEach(value => {
-                    if (value === '') {
-                        const blank = document.createElement('span');
-                        blank.className = 'sym-blank';
-                        row.append(blank);
-                        return;
-                    }
-                    row.append(this.symCell(value, { rerender: this.symbolCat === 'recent' }));
-                });
+                if (idx < rows.length - 1) {
+                    while (cells.length < 10) cells.push('');
+                    cells.forEach(v => putCell(row, v));
+                } else if (cells.length > 9) {
+                    // 末行满编（如片假名 90 字）：符号一个不丢，⌫ 在
+                    // 下方自起一行继续守末位。
+                    cells.forEach(v => putCell(row, v));
+                    inner.append(row);
+                    const extra = this.row();
+                    for (let i = 0; i < 9; i++) putCell(extra, '');
+                    extra.append(backspaceKey());
+                    inner.append(extra);
+                    return;
+                } else {
+                    while (cells.length < 9) cells.push('');
+                    cells.forEach(v => putCell(row, v));
+                    row.append(backspaceKey());
+                }
                 inner.append(row);
             });
             grid.append(inner);

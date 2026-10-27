@@ -1969,9 +1969,9 @@ test('123 opens on 常用: digits row 1, zh rows for Chinese', {since: '3.73.50'
         '+-、；：？！～（）',
         'Chinese mode default rows carry half-width +/- first (issue: 常用(中) + -)',
     );
-    // ⌫ 常驻分类条（竖滚后网格不再含删除键）。
-    equal(world.document.querySelector('#symCatBar [data-role="backspace"]').dataset.role,
-        'backspace', 'backspace lives on the category bar');
+    // Row 3 ends with the delete key（原位契约，撤回分类条方案）。
+    equal(rows()[2].children[9].dataset.role, 'backspace',
+        'row 3 ends with backspace');
     // Typing a symbol inserts literally and records it as recent.
     world.tap([...rows()[2].children].find(k => k.textContent === '“'));
     equal(world.native.of('commitText').slice(-1)[0].args[0], '“',
@@ -2392,9 +2392,10 @@ test('symbol category strip lists all batches with stable keys', {since: '3.28.0
     assert(keyText().includes('ア'), 'katakana row present');
     world.tap(cats.find(c => c.dataset.symCat === 'greek'));
     assert(keyText().includes('Α'), 'greek caps present');
-    // ⌫ 常驻分类条：任何分类下都在，不随网格滚动。
-    assert(world.document.querySelector('#symCatBar [data-role="backspace"]'),
-        'backspace lives on the category bar in every category');
+    // ⌫ 恪守网格最后一行末位（原位契约）：每个分类都在网格里。
+    const lastRow = [...world.$('symGrid').querySelectorAll('.kb-row')].pop();
+    equal(lastRow.children[lastRow.children.length - 1].dataset.role, 'backspace',
+        'last grid row ends with backspace');
 });
 
 test('every 123 entry resets to the 常用 category', () => {
@@ -2416,7 +2417,7 @@ test('every 123 entry resets to the 常用 category', () => {
     equal(firstCell().textContent, '1', 'reset to 常用');
 });
 
-test('recent fills full even rows, remembers order', {since: '3.73.50'}, () => {
+test('recent fills full even rows, remembers order, keeps backspace', () => {
     const world = fresh({ mode: 'pinyin' });
     const key123 = [...world.document.querySelectorAll('.kb-special')].find(
         el => el.textContent === '123',
@@ -2440,11 +2441,10 @@ test('recent fills full even rows, remembers order', {since: '3.73.50'}, () => {
         'most recent first, then padded from 中文 set',
     );
     assert(rows[0].children.length === 10, 'every row is a full 10 cells');
-    // ⌫ 在分类条上（竖滚改造后网格不含删除键）。
-    const barBackspace = world.document.querySelector('#symCatBar [data-role="backspace"]');
-    assert(barBackspace, 'backspace lives on the category bar');
-    world.tap(barBackspace);
-    equal(world.native.of('backspace').length, 1, 'symbol-layer backspace works');
+    const lastCell = rows[2].children[9];
+    equal(lastCell.dataset.role, 'backspace', 'row 3 ends with backspace');
+    world.tap(lastCell);
+    equal(world.native.of('backspace').length, 1, 'symbol-grid backspace works');
 });
 
 test('scrollable categories render all rows; cells stay click-only', {since: '3.73.50'}, () => {
@@ -2460,8 +2460,9 @@ test('scrollable categories render all rows; cells stay click-only', {since: '3.
     equal(rows.length, 9, 'hira renders every row (scroll, not clamp)');
     equal([...rows[3].children][4].textContent, 'っ', 'sokuon rides row 4');
     // 竖滚命门：符号格绝不能 bindTouch（touchstart preventDefault 会
-    // 杀原生滚动）。
-    const bound = world.$('symGrid').querySelector('.sym-grid-inner .kb-key[data-bound]');
+    // 杀原生滚动）；⌫ 是 specialKey（自带 bindTouch）不算数。
+    const bound = world.$('symGrid')
+        .querySelector('.sym-grid-inner .kb-key[data-bound]:not([data-role="backspace"])');
     assert(!bound, 'symbol cells carry no bindTouch gesture layer');
     // 常用表仍 3 行（不滚动分类不变形）。
     world.tap(world.document.querySelector('[data-sym-cat="common"]'));
@@ -2488,13 +2489,13 @@ test('boxdraw tab: new category between 特殊 and 方向, commits literally', {
         'box glyph commits literally');
 });
 
-test('bar backspace deletes once and repeats while held', {since: '3.73.50'}, () => {
+test('symbol-grid backspace deletes once and repeats while held', () => {
     const world = fresh();
     world.tap([...world.document.querySelectorAll('.kb-special')].find(
         el => el.textContent === '123',
     ));
-    const bs = world.document.querySelector('#symCatBar [data-role="backspace"]');
-    assert(bs, 'backspace rendered on the category bar');
+    const bs = world.document.querySelector('#symGrid [data-role="backspace"]');
+    assert(bs, 'backspace rendered in the grid (last cell of last row)');
     world.tap(bs);
     equal(world.native.of('backspace').length, 1, 'tap deletes once');
     world.touchDown(bs);
@@ -2514,7 +2515,9 @@ test('every symbol category renders single-codepoint non-combining cells', {sinc
     cats.filter(c => c.dataset.symCat !== 'custom' && c.dataset.symCat !== 'recent')
         .forEach(c => {
             world.tap(c);
-            [...world.$('symGrid').querySelectorAll('.kb-key')].forEach(k => {
+            [...world.$('symGrid').querySelectorAll('.kb-key')]
+                .filter(k => !k.dataset.role) // ⌫ 是图标键，不在字面量检查内
+                .forEach(k => {
                 const t = k.textContent;
                 assert([...t].length === 1 && t.codePointAt(0) <= 0xFFFF,
                     `${c.dataset.symCat}: "${t}" must be a single BMP glyph`);
