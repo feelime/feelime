@@ -313,7 +313,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.1';
+    const KEYBOARD_VERSION = '3.74.2';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -356,25 +356,87 @@
      *  本词，日期值候选做次选。双拼下 riqi 是真实音节输入（ri'qi=日期），
      *  拼音码只在全拼注册。 */
     const DYNAMIC_INPUT_CODES = {
-        date: { kind: 'date', head: true },
-        time: { kind: 'time', head: true },
-        week: { kind: 'week', head: true },
-        riqi: { kind: 'date', head: false },
-        shijian: { kind: 'time', head: false },
-        xingqi: { kind: 'week', head: false },
-        xingq: { kind: 'week', head: false },
+        date: { kind: 'date', head: true, modes: ['pinyin', 'double-pinyin'] },
+        time: { kind: 'time', head: true, modes: ['pinyin', 'double-pinyin'] },
+        week: { kind: 'week', head: true, modes: ['pinyin', 'double-pinyin'] },
+        riqi: { kind: 'date', head: false, modes: ['pinyin'] },
+        shijian: { kind: 'time', head: false, modes: ['pinyin'] },
+        xingqi: { kind: 'week', head: false, modes: ['pinyin'] },
+        xingq: { kind: 'week', head: false, modes: ['pinyin'] },
+        // 五笔 86：日期、时间、星期。
+        jjad: { kind: 'date', head: false, modes: ['wubi-86'] },
+        jfuj: { kind: 'time', head: false, modes: ['wubi-86'] },
+        jtad: { kind: 'week', head: false, modes: ['wubi-86'] },
     };
     const dynamicWeekNames = ['日', '一', '二', '三', '四', '五', '六'];
+    const lunarDigits = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+
+    function lunarDayName(day) {
+        if (day === 10) return '初十';
+        if (day < 10) return '初' + lunarDigits[day];
+        if (day < 20) return '十' + lunarDigits[day - 10];
+        if (day === 20) return '二十';
+        if (day < 30) return '廿' + lunarDigits[day - 20];
+        return day === 30 ? '三十' : String(day);
+    }
+
+    function lunarDateName(now) {
+        try {
+            const parts = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', {
+                month: 'long',
+                day: 'numeric',
+            }).formatToParts(now);
+            const month = parts.find(part => part.type === 'month')?.value || '';
+            const rawDay = parts.find(part => part.type === 'day')?.value || '';
+            const day = Number(rawDay);
+            return month && Number.isFinite(day) ? `农历${month}${lunarDayName(day)}` : '';
+        } catch (_) {
+            return '';
+        }
+    }
 
     function dynamicCandidatesFor(raw, mode) {
-        if (mode !== 'pinyin' && mode !== 'double-pinyin') return [];
         let spec = DYNAMIC_INPUT_CODES[raw];
-        if (!spec) return [];
-        if (!spec.head && mode !== 'pinyin') return [];
+        if (!spec || !spec.modes.includes(mode)) return [];
         const now = new Date();
         const pad = value => String(value).padStart(2, '0');
         let texts;
-        if (spec.kind === 'date') {
+        if (mode === 'wubi-86') {
+            const y = now.getFullYear();
+            const m = now.getMonth() + 1;
+            const d = now.getDate();
+            const hh = pad(now.getHours());
+            const mm = pad(now.getMinutes());
+            const ss = pad(now.getSeconds());
+            if (spec.kind === 'date') {
+                texts = [
+                    `${y}-${pad(m)}-${pad(d)}`,
+                    `${y}年${m}月${d}日`,
+                    `${y}${pad(m)}${pad(d)}`,
+                    lunarDateName(now),
+                    `${m}月${d}日`,
+                ];
+            } else if (spec.kind === 'time') {
+                texts = [
+                    `${y}-${pad(m)}-${pad(d)} ${hh}:${mm}:${ss}`,
+                    `${y}${pad(m)}${pad(d)}${hh}${mm}${ss}`,
+                    `${hh}:${mm}:${ss}`,
+                    `${hh}:${mm}`,
+                    `${hh}:${mm}:00`,
+                    `${now.getHours()}时${mm}分${ss}秒`,
+                ];
+            } else {
+                const week = `周${dynamicWeekNames[now.getDay()]}`;
+                const longWeek = `星期${dynamicWeekNames[now.getDay()]}`;
+                texts = [
+                    `${y}年${m}月${d}日 ${week}`,
+                    week,
+                    longWeek,
+                    `${y}-${pad(m)}-${pad(d)} ${week}`,
+                    `${m}月${d}日 ${week}`,
+                ];
+            }
+        } else if (spec.kind === 'date') {
             const y = now.getFullYear();
             const m = now.getMonth() + 1;
             const d = now.getDate();
@@ -397,7 +459,7 @@
             const name = dynamicWeekNames[now.getDay()];
             texts = [`星期${name}`, `周${name}`, now.getDay() === 0 ? '星期天' : `礼拜${name}`];
         }
-        return texts.map((text, index) => ({
+        return [...new Set(texts.filter(Boolean))].map((text, index) => ({
             id: `dyn:${spec.kind}-${index}`,
             text,
             dynamic: true,

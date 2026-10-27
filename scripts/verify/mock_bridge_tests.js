@@ -3803,6 +3803,68 @@ test('dynamic date/time candidates ride the overlay pool (issue #22)', {since: '
     assert(!bar().some(text => /^\d{4}-\d{2}-\d{2}$/.test(text)), 'stroke never injects');
 });
 
+test('Wubi 86 date/time/week codes add formatted runtime candidates', {since: '3.74.2'}, () => {
+    const world = fresh({ mode: 'wubi-86', engineDataReady: FLYPY_READY });
+    const bar = () => [...world.$('candidates').querySelectorAll('.candidate')]
+        .map(b => b.textContent);
+
+    world.engineState({
+        mode: 'wubi-86', revision: 1, composing: 'jjad', rawInput: 'jjad',
+        candidates: [{ id: 'w-date', text: '日期' }, { id: 'w-other', text: '暧昧期' }],
+        hasNextPage: false,
+    });
+    const dateBar = bar();
+    equal(dateBar[0], '日期', 'Wubi keeps 日期 as the engine head');
+    assert(dateBar.some(text => /^\d{4}-\d{2}-\d{2}$/.test(text)), 'Wubi date offers ISO date');
+    assert(dateBar.some(text => /^\d{4}年\d+月\d+日$/.test(text)), 'Wubi date offers CJK date');
+    assert(dateBar.some(text => /^\d{8}$/.test(text)), 'Wubi date offers compact date');
+    assert(dateBar.some(text => /^农历.+$/.test(text)), 'Wubi date offers lunar date');
+    assert(dateBar.some(text => /^\d{1,2}月\d{1,2}日$/.test(text)), 'Wubi date offers month/day');
+    const lunar = [...world.$('candidates').querySelectorAll('.candidate')]
+        .find(button => /^农历/.test(button.textContent));
+    lunar.click();
+    equal(world.native.of('clearComposing').length, 1, 'lunar date clears composition');
+    assert(/^农历/.test(world.native.of('commitText').slice(-1)[0].args[0]),
+        'lunar date commits literally');
+
+    world.engineState({
+        mode: 'wubi-86', revision: 2, composing: 'jfuj', rawInput: 'jfuj',
+        candidates: [{ id: 'w-time', text: '时间' }], hasNextPage: false,
+    });
+    const timeBar = bar();
+    equal(timeBar[0], '时间', 'Wubi keeps 时间 as the engine head');
+    assert(timeBar.some(text => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)),
+        'Wubi time offers full timestamp');
+    assert(timeBar.some(text => /^\d{14}$/.test(text)), 'Wubi time offers compact timestamp');
+    assert(timeBar.some(text => /^\d{2}:\d{2}:\d{2}$/.test(text)), 'Wubi time offers clock time');
+    assert(timeBar.some(text => /^\d{2}:\d{2}$/.test(text)), 'Wubi time offers hour/minute');
+    assert(timeBar.some(text => /^\d{2}:\d{2}:00$/.test(text)), 'Wubi time offers zero-second clock');
+
+    world.engineState({
+        mode: 'wubi-86', revision: 3, composing: 'jtad', rawInput: 'jtad',
+        candidates: [{ id: 'w-week', text: '星期' }], hasNextPage: false,
+    });
+    const weekBar = bar();
+    equal(weekBar[0], '星期', 'Wubi keeps 星期 as the engine head');
+    assert(weekBar.some(text => /^\d{4}年\d+月\d+日 周.$/.test(text)),
+        'Wubi week offers full date plus short weekday');
+    assert(weekBar.some(text => /^周.$/.test(text)), 'Wubi week offers short weekday');
+    assert(weekBar.some(text => /^星期.$/.test(text)), 'Wubi week offers full weekday');
+
+    world.hello({ mode: 'wubi-86', engineDataReady: FLYPY_READY, dynamicDateTimeOn: false });
+    world.engineState({
+        mode: 'wubi-86', revision: 4, composing: 'jjad', rawInput: 'jjad',
+        candidates: [{ id: 'w-date', text: '日期' }], hasNextPage: false,
+    });
+    equal(JSON.stringify(bar()), JSON.stringify(['日期']), 'Wubi dynamic values respect the setting toggle');
+
+    world.engineState({
+        mode: 'wubi-86', revision: 5, composing: 'date', rawInput: 'date',
+        candidates: [{ id: 'w-latin', text: '歹' }], hasNextPage: false,
+    });
+    equal(JSON.stringify(bar()), JSON.stringify(['歹']), 'latin date code does not inject in Wubi');
+});
+
 test('dynamic date/time candidates respect the settings toggle', {since: '3.54.0'}, () => {
     // 设置开关（验收反馈）：hello 带 dynamicDateTimeOn=false 时拉丁码与
     // 拼音码通道整体停；缺字段（旧 APK hello）按默认开。

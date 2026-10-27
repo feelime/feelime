@@ -362,6 +362,10 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   date/time/week（拉丁码 head:true，池头空格直选）与 riqi/shijian/
   xingqi（拼音码，排引擎首候选之后）；双拼只认拉丁码（riqi 在双拼是
   真音节输入），T9/笔画不注入；id `dyn:` 前缀走 overlay 直发通道。
+  五笔 86 另注册 `jjad`/`jfuj`/`jtad`，保留引擎首候选「日期/时间/星期」
+  后追加运行时值：日期含 ISO、中文日期、紧凑日期、农历和月日；时间含
+  完整时间戳、紧凑时间戳、时分秒、时分和零秒；星期含完整日期+周几、
+  周几和星期几。五笔不识别拉丁 date/time/week 或拼音码。
   带设置开关「键盘与输入 → 日期时间候选」：pref `dynamic_datetime_on`
   默认开，关掉经 hello `dynamicDateTimeOn=false` 在 keyboard.js 注入前
   整体 gate（拉丁/拼音码同停）。
@@ -891,8 +895,9 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   才能进入。硬键盘字符、空格、回车和退格走 #H 统一通道；follow 快捷切换
   可从英文返回五笔 86。
 - **schema**：`feelime_wubi86`，26 字母码表、`max_code_length: 4`；
-  `auto_select_pattern: ^[a-z]{4}$` 让唯一四码自动上屏，其余仍由候选条
-  按 id 选择。关闭 completion 与 sentence，按五笔完整码表出单字/词组。
+  唯一四码自动上屏，但 `jjad`/`jfuj`/`jtad` 三个动态候选入口从
+  `auto_select_pattern` 排除；其余仍由候选条按 id 选择。关闭 completion
+  与 sentence，按五笔完整码表出单字/词组。
 - **词表**：`scripts/generate-wubi-dict.py` 从项目已固定的
   rime-frost@96278d8 `cn_dicts_wb/chars.dict.yaml` 与
   `words.dict.yaml` 合并生成可审计源表 `scripts/data/wubi86.dict.yaml`
@@ -906,6 +911,9 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   `wqvb'` 仍出「你好」；内部 `wq'vb` 会按分隔片段查询且无候选。连续输入
   超过四码时，唯一上一码先自动上屏再以第 5 键开启新组合
   （`wqvbwqvb` → 你好 + 新的 `wqvb` 候选）。
+- **动态值候选**：`jjad`（日期）、`jfuj`（时间）、`jtad`（星期）在
+  引擎首候选之后追加运行时候选；日期通过 WebView `Intl` 中国农历历法
+  生成「农历九月十八」形式，旧环境不支持该历法时跳过农历项，其余值照常。
 - **已知边界**：首版不提供 Z 键拼音反查、拆字反查、简繁切换、英文翻译
   或用户词频学习（`enable_user_dict: false`）；前四项依赖上游
   rime-frost 的额外 schema 与 lua 组件，仓库裁剪版 librime 不加载。

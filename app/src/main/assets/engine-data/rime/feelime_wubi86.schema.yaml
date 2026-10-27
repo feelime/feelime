@@ -44,7 +44,8 @@ speller:
   alphabet: abcdefghijklmnopqrstuvwxyz
   delimiter: " '"
   auto_select: true
-  auto_select_pattern: ^[a-z]{4}$
+  # 日期/时间/星期是运行时动态候选入口；即使码表唯一也不能自动上屏。
+  auto_select_pattern: '^(?!(?:jjad|jfuj|jtad)$)[a-z]{4}$'
   max_code_length: 4
 
 menu:
