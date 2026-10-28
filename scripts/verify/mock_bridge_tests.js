@@ -1993,23 +1993,45 @@ test('Wubi hybrid pinyin candidates show their real five-code', {since: '3.74.4'
         phase: 'READY', mode: 'wubi-86', revision: 1,
         composing: 'nihao', rawInput: 'nihao',
         candidates: [
-            { id: 'p1', text: '你好', comment: '五笔 wqvb' },
+            { id: 'p1', text: '你好', comment: 'wqvb' },
             { id: 'p2', text: '拟好' },
         ],
         hasNextPage: false,
     });
     const bar = [...world.$('candidates').querySelectorAll('.candidate')];
     equal(bar[0].querySelector('.candidate-text').textContent, '你好');
-    equal(bar[0].querySelector('.candidate-comment').textContent, '五笔 wqvb');
+    equal(bar[0].querySelector('.candidate-comment').textContent, 'wqvb');
     equal(bar[1].querySelector('.candidate-text').textContent, '拟好');
     equal(bar[1].querySelector('.candidate-comment'), null,
         'candidates without a Wubi entry keep a clean label');
     world.tap(world.$('composeExpand'));
     const grid = [...world.$('expandGrid').querySelectorAll('.expand-candidate')];
     equal(grid[0].querySelector('.candidate-text').textContent, '你好');
-    equal(grid[0].querySelector('.candidate-comment').textContent, '五笔 wqvb',
+    equal(grid[0].querySelector('.candidate-comment').textContent, 'wqvb',
         'expanded grid carries the same code annotation');
 });
+
+test('Wubi candidates lead the pool and only pinyin fallback shows a code',
+    {since: '3.74.6'}, () => {
+        const world = fresh({ mode: 'wubi-86', engineDataReady: FLYPY_READY });
+        world.engineState({
+            phase: 'READY', mode: 'wubi-86', revision: 2,
+            composing: 'hao', rawInput: 'hao',
+            candidates: [
+                { id: 'pinyin', text: '好', comment: 'vb vbg' },
+                { id: 'shape', text: '虚', comment: 'hao haog' },
+            ],
+            hasNextPage: false,
+        });
+        const bar = [...world.$('candidates').querySelectorAll('.candidate')];
+        equal(bar[0].querySelector('.candidate-text').textContent, '虚',
+            'shape-code candidate moves ahead of pinyin fallback');
+        equal(bar[0].querySelector('.candidate-comment'), null,
+            'shape-code candidate does not duplicate its own input code');
+        equal(bar[1].querySelector('.candidate-text').textContent, '好');
+        equal(bar[1].querySelector('.candidate-comment').textContent, 'vbg',
+            'pinyin fallback shows its full real Wubi code only');
+    });
 
 test('wubi 86 mode entry requires explicit engine readiness', {since: '3.74.0'}, () => {
     const stale = new KeyboardWorld().build();

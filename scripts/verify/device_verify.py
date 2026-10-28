@@ -503,6 +503,7 @@ MODE_MENU_SUBSTRINGS = {
     "双拼": ["双拼", "DP"],
     "九宫格 T9": ["九宫格", "T9"],
     "笔画 Stroke": ["笔画", "Stroke", "笔"],
+    "五笔 86": ["五笔", "Wubi"],
     "音形 Shape": ["音形", "Shape", "形"],
     "Français": ["Français"],
     "Русский": ["Русский"],
@@ -517,7 +518,7 @@ def opt_in_menu_modes():
     旧模式——5/11 段曾经挂掉的形态）。"""
     devtools_eval(
         "localStorage.setItem('feelime_menu_modes', JSON.stringify("
-        "['direct','pinyin','double-pinyin','t9','stroke',"
+        "['direct','pinyin','double-pinyin','t9','stroke','wubi-86',"
         "'french','russian','japanese']))"
     )
 

@@ -313,7 +313,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.5';
+    const KEYBOARD_VERSION = '3.74.6';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -362,6 +362,23 @@
             note.textContent = comment;
             button.append(note);
         }
+    }
+
+    function wubiCodes(comment) {
+        return String(comment || '').trim().split(/\s+/).filter(Boolean);
+    }
+
+    /** A candidate belongs to the shape-code stream when one of its real Wubi
+     * codes matches the typed prefix. Pinyin-fallback candidates do not match
+     * and therefore keep a visible code annotation. */
+    function isWubiCandidate(raw, comment) {
+        const code = String(raw || '').replace(/[ ']/g, '').toLowerCase();
+        return !!code && wubiCodes(comment).some(candidate => candidate.startsWith(code));
+    }
+
+    function wubiFallbackCode(raw, comment) {
+        if (!comment || isWubiCandidate(raw, comment)) return null;
+        return wubiCodes(comment).sort((a, b) => b.length - a.length)[0] || null;
     }
 
     /** 动态日期时间候选（issue #22 分层结论，rime date.lua 等价体验）：
@@ -9315,6 +9332,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const rest = rawEngine.filter(candidate => !symbolic.includes(candidate));
                 engine = [...rest.slice(0, 2), ...symbolic, ...rest.slice(2)];
             }
+            const raw = (this.lastRawInput || '').replace(/ /g, '').toLowerCase();
+            if (this.mode === 'wubi-86' && raw) {
+                const shapeCandidates = engine.filter(candidate =>
+                    isWubiCandidate(raw, candidate.comment));
+                const pinyinCandidates = engine.filter(candidate =>
+                    !isWubiCandidate(raw, candidate.comment));
+                engine = [...shapeCandidates, ...pinyinCandidates];
+            }
             // 笔画句子候选压后（issue #18）：词典 max_phrase_length=1，
             // 多字候选必来自 enable_sentence 造句（☯；comment 不在桥协议
             // 里，按字长识别）。不压后的话 hspp 长码兜底的句子「才丿」
@@ -9335,7 +9360,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
             }
             // 池前缀 id 签名 → 见池组装后的计算（须按最终展示序）。
-            const raw = (this.lastRawInput || '').replace(/ /g, '').toLowerCase();
             const engineTexts = new Set(engine.map(candidate => candidate.text));
             // 动态日期时间候选（dyn:）：引擎不会给出这些文本，但拼音码
             // （xingqi → 星期日）撞词时去重，避免同文双格。设置开关关掉
@@ -9690,7 +9714,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 setCandidateContent(
                     button,
                     candidate.text,
-                    this.mode === 'wubi-86' ? candidate.comment : null,
+                    this.mode === 'wubi-86'
+                        ? wubiFallbackCode(this.lastRawInput, candidate.comment) : null,
                 );
                 // Native clicks only: bindTouch preventDefaults touchstart,
                 // which cancels the strip's pan .
@@ -9883,7 +9908,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     button,
                     this.mode === 'french' && this.caseMode && state.composing
                         ? this.caseifyText(candidate.text) : candidate.text,
-                    this.mode === 'wubi-86' ? candidate.comment : null,
+                    this.mode === 'wubi-86'
+                        ? wubiFallbackCode(this.lastRawInput, candidate.comment) : null,
                 );
                 let longPressed = false;
                 button.addEventListener('click', () => {

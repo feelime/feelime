@@ -1,5 +1,7 @@
 package com.feelime.ime
 
+import com.feelime.ime.engine.rimeCandidateText
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,6 +39,15 @@ class WubiSchemaTest {
         assertTrue(schema.contains("reverse_lookup_filter@wubi_lookup"))
         assertTrue(schema.contains("dictionary: luna_pinyin"))
         assertTrue(schema.contains("dictionary: wubi86_lookup"))
+        assertFalse(schema.contains("xform/^/五笔 /"))
+        assertTrue(schema.contains("ascii_composer:"))
+        assertTrue(schema.contains("Shift_L: commit_code"))
+    }
+
+    @Test
+    fun bridgeCandidateIdentityIgnoresCodeAnnotation() {
+        assertEquals("你好", rimeCandidateText("你好\twqvb"))
+        assertEquals("拟好", rimeCandidateText("拟好"))
     }
 
     @Test

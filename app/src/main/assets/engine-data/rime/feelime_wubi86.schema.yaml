@@ -69,8 +69,21 @@ translator:
   comment_format:
     - "xform/~//"
 
+# ascii_composer 的 switch_key 通常来自 default.yaml；部署目录没有这份
+# preset，缺少时 librime 每次建会话都会报 "Missing ascii bindings"。
+ascii_composer:
+  good_old_caps_lock: true
+  switch_key:
+    Caps_Lock: clear
+    Shift_L: commit_code
+    Shift_R: noop
+    Control_L: noop
+    Control_R: noop
+
 pinyin:
   dictionary: luna_pinyin
+  # Keep every shape-code candidate ahead of pinyin fallback candidates.
+  initial_quality: -10
   enable_completion: true
   enable_sentence: false
   enable_user_dict: false
@@ -79,8 +92,6 @@ pinyin:
 wubi_lookup:
   dictionary: wubi86_lookup
   overwrite_comment: true
-  comment_format:
-    - "xform/^/五笔 /"
 
 # 与笔画/音形相同：部署目录没有 default.yaml，标点必须内联。
 punctuator:

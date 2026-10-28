@@ -5,6 +5,8 @@ import com.feelime.ime.nativeengine.NativeSmoke
 import java.io.File
 import org.json.JSONObject
 
+internal fun rimeCandidateText(serialized: String): String = serialized.substringBefore('\t')
+
 /**
  * Rime adapter for Chinese full pinyin and the natural-code double-pinyin
  * schema. Process-global librime state is serialized on [gate] so session
@@ -279,7 +281,9 @@ class RimeTextEngine(
         if (json.optInt("code", -1) != 0) return false
         val lines = json.optString("candidates").split("\n")
         val slot = absolute % lastPageSize
-        return slot < lines.size && lines[slot] == text
+        // Bridge lines are "text<TAB>comment"; comments must not turn every
+        // annotated candidate into a false stale-id rejection.
+        return slot < lines.size && rimeCandidateText(lines[slot]) == text
     }
 
     private fun stateEvent(consumed: Boolean = true): EngineEvent {
@@ -323,7 +327,7 @@ class RimeTextEngine(
                 val absolute = viewPageNo * lastPageSize + index
                 val id = stableCandidateId(engineName, viewPageNo, index, value)
                 val parts = value.split('\t', limit = 2)
-                val text = parts[0]
+                val text = rimeCandidateText(value)
                 val comment = parts.getOrNull(1)?.takeIf { it.isNotEmpty() }
                 if (text.isNotEmpty()) {
                     shownCandidates = shownCandidates + (id to absolute)
