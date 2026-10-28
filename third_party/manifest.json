@@ -3,7 +3,7 @@
     "cmake-native": {
       "command": "FEELIME_M0_INPUTS=<verified-inputs> FEELIME_M0_NDK=<verified-r29> FEELIME_M0_WORK=<new-empty-dir> scripts/research/build-cmake-native-engines.sh",
       "script": "scripts/research/build-cmake-native-engines.sh",
-      "scriptSha256": "cef4138e88d374bdcc1c8e20480691adb55986f0087ebb6d904c84b050a3acc5"
+      "scriptSha256": "13255c40693630faed2d737b1a176b99ba0571c2094f6d8584c29e43d001b46e"
     },
     "mozc-android": {
       "command": "FEELIME_M0_INPUTS=<verified-inputs> FEELIME_M0_NDK=<verified-r29> FEELIME_M0_NDK_ARCHIVE=<verified-r29-archive> FEELIME_M0_BAZELISK=<verified-bazelisk> FEELIME_M0_REPOSITORY_CACHE_SEED=<verified-cache> FEELIME_M0_REPOSITORY_CACHE_MANIFEST=<verified-cache-manifest> FEELIME_M0_WORK=<new-empty-dir> scripts/research/build-mozc-android.sh",
@@ -448,9 +448,9 @@
     {
       "apkPath": "assets/engine-data/rime/wubi86.prism.bin",
       "buildRecipe": "cmake-native",
-      "bytes": 1179964,
+      "bytes": 1209660,
       "path": "app/src/main/assets/engine-data/rime/wubi86.prism.bin",
-      "sha256": "1df70ab2bc0049f49692a1867a98e9cc00c8d892aea9fcdc0eac57dfbb38715a",
+      "sha256": "c513622e8127ca158fa0ee15cf5278ed61be7384f91e8483f2f40a07ca71473a",
       "sources": [
         "rime-frost",
         "feelime-original-schema"
@@ -459,9 +459,9 @@
     {
       "apkPath": "assets/engine-data/rime/wubi86.table.bin",
       "buildRecipe": "cmake-native",
-      "bytes": 5133196,
+      "bytes": 6974364,
       "path": "app/src/main/assets/engine-data/rime/wubi86.table.bin",
-      "sha256": "b6013a0e1d82f9bbabb4b7d78b2010bf0d72610b1812ae8f1791c4d9a38f6e3e",
+      "sha256": "d80e9205491d9f63b2d080bb8174fd8152c5b8d658ce792744ad56f8afaebe3e",
       "sources": [
         "rime-frost",
         "feelime-original-schema"
@@ -887,7 +887,7 @@
       "licenseFiles": [
         "third_party/licenses/rime-data/rime-frost-GPL-3.0.txt"
       ],
-      "modified": "slimmed Pinyin import set (8105/41448/base/ext/others/corrections; tencent/cell/GB18030 dropped) via repo umbrella; cn_dicts_wb merged by scripts/generate-wubi-dict.py; host-compiled data",
+      "modified": "slimmed Pinyin import set (8105/41448/base/ext/others/corrections; tencent/cell/GB18030 dropped) via repo umbrella; cn_dicts_wb merged by scripts/generate-wubi-dict.py; Wubi one-to-three-code priority aliases derived by scripts/generate-wubi-short-code-dict.py; host-compiled data",
       "name": "rime-frost",
       "origin": "https://github.com/gaboolic/rime-frost",
       "revision": "96278d8"

@@ -899,6 +899,12 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   `auto_select_pattern` 排除；其余仍由候选条按 id 选择。开启码表
   completion，打一至三码时按同一词表的前缀补全单字/词组；关闭 sentence
   与用户词频学习，避免五笔造句噪声。
+- **短码排序**：librime 的 predictive lookup 会先按码表遍历顺序跨码扫描，
+  因而不能直接按全局词频排列短码候选。host 编译前由
+  `scripts/generate-wubi-short-code-dict.py` 为一至三码生成有界优先层：
+  一级简码固定为该键王码 86 规定字；二/三码先保留精确码候选，再按源词频
+  排常用单字/词组。该派生层只进入 host 编译的 table/prism，不把别名写回
+  审计用源词表，也不进入 APK。
 - **词表**：`scripts/generate-wubi-dict.py` 从项目已固定的
   rime-frost@96278d8 `cn_dicts_wb/chars.dict.yaml` 与
   `words.dict.yaml` 合并生成可审计源表 `scripts/data/wubi86.dict.yaml`

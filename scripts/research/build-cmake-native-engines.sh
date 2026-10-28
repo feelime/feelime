@@ -109,13 +109,16 @@ python3 "$repo_root/scripts/generate-stroke-dict.py" \
 cp "$repo_root/app/src/main/assets/engine-data/rime/feelime_stroke.schema.yaml" "$rime_shared/"
 cp "$repo_root/app/src/main/assets/engine-data/rime/luna_pinyin_fuzzy.schema.yaml" "$rime_shared/"
 # 五笔 86：从同一钉死的 rime-frost 来源生成 text/code/weight 单表，
-# 与已入仓源词表逐字节核对后进编译现场；源词表不随 APK 分发。
+# 与已入仓源词表逐字节核对。编译前再派生一到三码优先别名，修正
+# librime predictive lookup 按表序而非全局词频跨码遍历的问题。
 python3 "$repo_root/scripts/generate-wubi-dict.py" \
   --chars "$work/src/rime-data/rime-frost/cn_dicts_wb/chars.dict.yaml" \
   --words "$work/src/rime-data/rime-frost/cn_dicts_wb/words.dict.yaml" \
   --output "$repo_root/scripts/data/wubi86.dict.yaml" \
   --check
-cp "$repo_root/scripts/data/wubi86.dict.yaml" "$rime_shared/"
+python3 "$repo_root/scripts/generate-wubi-short-code-dict.py" \
+  --input "$repo_root/scripts/data/wubi86.dict.yaml" \
+  --output "$rime_shared/wubi86.dict.yaml"
 cp "$repo_root/app/src/main/assets/engine-data/rime/feelime_wubi86.schema.yaml" "$rime_shared/"
 # Prism metadata embeds source mtimes. Pin both inputs to the repository-wide
 # SOURCE_DATE_EPOCH so an otherwise clean rebuild is byte-identical.

@@ -241,12 +241,12 @@
       "sha256": "3929ff92603cdc4ab8c1e5e8cd68ed8038e721b3e5be3675e94d1c898fa9d811"
     },
     "rime/wubi86.prism.bin": {
-      "bytes": 1179964,
-      "sha256": "1df70ab2bc0049f49692a1867a98e9cc00c8d892aea9fcdc0eac57dfbb38715a"
+      "bytes": 1209660,
+      "sha256": "c513622e8127ca158fa0ee15cf5278ed61be7384f91e8483f2f40a07ca71473a"
     },
     "rime/wubi86.table.bin": {
-      "bytes": 5133196,
-      "sha256": "b6013a0e1d82f9bbabb4b7d78b2010bf0d72610b1812ae8f1791c4d9a38f6e3e"
+      "bytes": 6974364,
+      "sha256": "d80e9205491d9f63b2d080bb8174fd8152c5b8d658ce792744ad56f8afaebe3e"
     },
     "rime/opencc/TSCharacters.txt": {
       "bytes": 104512,
