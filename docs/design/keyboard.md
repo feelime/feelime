@@ -908,9 +908,10 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   审计用源词表，也不进入 APK。
 - **自动调频**：启用 Rime 原生用户词典，只学习用户实际选过的固定字词；
   `enable_encoder`/`encode_commit_history` 关闭，不自动把上屏历史造成
-  新词。一级、二级简码通过 `disable_user_dict_for_patterns` 固定顺序，
-  用户词频从三码起才参与排序（例如常用 `kws`→只要或 `wqvb`→您好会
-  前移）。用户词典位于既有 `rime-user` 目录，随用户数据备份恢复。
+  新词。一级简码通过 `disable_user_dict_for_patterns` 固定顺序；二级起
+  允许用户词频覆盖静态排序（例如反复选择 `vb`→好后可前移，常用
+  `kws`→只要或 `wqvb`→您好也会前移）。用户词典位于既有 `rime-user`
+  目录，随用户数据备份恢复。
 - **词表**：`scripts/generate-wubi-dict.py` 从项目已固定的
   rime-frost@96278d8 `cn_dicts_wb/chars.dict.yaml` 与
   `words.dict.yaml` 合并生成可审计源表 `scripts/data/wubi86.dict.yaml`

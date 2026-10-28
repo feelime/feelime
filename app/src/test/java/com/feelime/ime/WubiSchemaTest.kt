@@ -22,12 +22,12 @@ class WubiSchemaTest {
     }
 
     @Test
-    fun userFrequencyKeepsShortCodesPinnedAndDisablesAutoPhrases() {
+    fun userFrequencyKeepsLevelOnePinnedAndDisablesAutoPhrases() {
         val schema = File("src/main/assets/engine-data/rime/feelime_wubi86.schema.yaml").readText()
         assertTrue(schema.contains("enable_user_dict: true"))
         assertTrue(schema.contains("enable_encoder: false"))
         assertTrue(schema.contains("encode_commit_history: false"))
-        assertTrue(schema.contains("\"^[a-z]{1,2}$\""))
+        assertTrue(schema.contains("\"^[a-z]$\""))
     }
 
     @Test
