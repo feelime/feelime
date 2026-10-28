@@ -1711,6 +1711,9 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
 #panelList {
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     overflow-y: auto;
     border-radius: 10px;
     /* 候选列表块与键帽同材质（验收反馈）：背景按「按键不透明度」
@@ -1753,6 +1756,7 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
 .kaomoji-cell:active { background: rgba(128,128,128,.25); }
 
 .panel-item {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1766,17 +1770,16 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
     font-size: 14px;
     text-align: left;
 }
+.panel-item + .panel-item { border-top: 1px solid var(--kb-border, rgba(128,128,128,.22)); }
 .panel-item:active { background: var(--pressed); }
 .panel-item.disabled { color: var(--muted); }
 .panel-text {
     flex: 1;
     min-width: 0;
-    /* Two-line clamp (design §3.5). */
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    display: block;
     overflow: hidden;
-    word-break: break-all;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .panel-remove {
     flex: none;

@@ -2562,6 +2562,8 @@ test('kaomoji renders as its own form: head chips row + full grid (#67)', {since
     world.context.testKeyboard.runPanelStep('clipboard');
     assert(!world.document.querySelector('.panel-tabs').hidden, 'tab row returns for clipboard');
     assert(world.$('kaomojiTabs').hidden, 'chips row hides for clipboard');
+    equal(world.$('panelLayer').dataset.kaomoji, undefined,
+        'kaomoji grid marker is removed so clipboard rows stay vertical');
 });
 
 test('kaomoji category switch persists across reopen (#67)', {since: '3.73.47'}, () => {
