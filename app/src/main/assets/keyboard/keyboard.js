@@ -311,7 +311,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.58';
+    const KEYBOARD_VERSION = '3.73.59';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -9882,7 +9882,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this._t9ConfirmedText = '';
                 }
             }
-            const recording = this.voiceState !== 'idle';
+            // 与 onNativeState 的 recording 同语义（listening/loading/
+            // stopping）：error 态不算语音占用——权限拒绝后 VoiceState 卡
+            // ERROR（无回 idle 事件），旧的 `!== 'idle'` 会把组合中的
+            // composeExpand/composeClear 藏掉（#75：拒绝麦克风权限后
+            // 候选下拉按钮消失，授权走通一次才恢复）。
+            const recording = ['listening', 'loading', 'stopping'].includes(this.voiceState);
             // Composing hides the setup/mode/clipboard tools but never the mic
             // while a voice session is active (the stop entry must survive).
             document.getElementById('setupButton').hidden = this.composing;
