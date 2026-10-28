@@ -1,7 +1,7 @@
 # Rime schema: feelime_wubi86 — 五笔字型 86
 # 词表由 scripts/generate-wubi-dict.py 从固定版本的 rime-frost
 # cn_dicts_wb 生成，设备只加载同场编译的 table/prism。
-# - 26 字母、四码上限；唯一四码自动上屏
+# - 26 字母；唯一四码不自动上屏，保留候选供空格选中文/确认键提交原文
 # - 开启码表 completion：一至三码按前缀补全，不启用 sentence 造句
 # - 组件集对齐仓库裁剪版 librime（无 lua/octagram）
 __build_info:
@@ -43,10 +43,9 @@ engine:
 speller:
   alphabet: abcdefghijklmnopqrstuvwxyz
   delimiter: " '"
-  auto_select: true
-  # 日期/时间/星期是运行时动态候选入口；即使码表唯一也不能自动上屏。
-  auto_select_pattern: '^(?!(?:jjad|jfuj|jtad)$)[a-z]{4}$'
-  max_code_length: 4
+  auto_select: false
+  # 不截断组合：超过四码时仍保留整串原文，供 EnterRaw 中英混输。
+  max_code_length: 0
 
 menu:
   page_size: 5

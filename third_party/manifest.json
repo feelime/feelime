@@ -437,9 +437,9 @@
     {
       "apkPath": "assets/engine-data/rime/feelime_wubi86.schema.yaml",
       "buildRecipe": "cmake-native",
-      "bytes": 1645,
+      "bytes": 1620,
       "path": "app/src/main/assets/engine-data/rime/feelime_wubi86.schema.yaml",
-      "sha256": "32a149805b90447064b1073a68eaf727814862e6a2902524d602638ef0b77c87",
+      "sha256": "6a8b8e47f29e4350e8c7e687654b13863ba430f151e505f2d2ec2af74803098e",
       "sources": [
         "rime-frost",
         "feelime-original-schema"
@@ -450,7 +450,7 @@
       "buildRecipe": "cmake-native",
       "bytes": 1209660,
       "path": "app/src/main/assets/engine-data/rime/wubi86.prism.bin",
-      "sha256": "c513622e8127ca158fa0ee15cf5278ed61be7384f91e8483f2f40a07ca71473a",
+      "sha256": "72aa3d78402a599de56329427d9b30c9df207ec324cfadab5bf5c289cb6f2888",
       "sources": [
         "rime-frost",
         "feelime-original-schema"
