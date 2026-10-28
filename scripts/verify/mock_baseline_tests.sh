@@ -16,7 +16,11 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # 全是 3.20.0 之后的行为，之前无门挂在 baseline 上红了整个分支（41 failed
 # 早于本轮快修存在，diff 定责见当轮记录）。挂门后 3.20.0 基线的合理通过数
 # 落在 122；逐条考古真实落地版本 deferred。
-MIN_PASSED=122
+# 2026-10-28（二轮）：地板 122 → 120。3.73.52 把符号条定为
+# ABC|分类|⌫（⌫ 顶替换行键位、网格不带删除键），recent 用例断言
+# 「网格无 ⌫」在 3.20.0 fixture（网格末位有 ⌫ 的旧结构）上不成立，
+# 重新挂 {since:'3.73.52'} 门转 skip，地板随差值下调。
+MIN_PASSED=120
 
 OUT=$(FEELIME_KEYBOARD_SRC="$ROOT/test-fixtures/keyboard-3.20.0" \
     node "$ROOT/scripts/verify/mock_bridge_tests.js") || {

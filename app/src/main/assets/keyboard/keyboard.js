@@ -59,6 +59,7 @@
         "货币": "Currency",
         "数学": "Math",
         "特殊": "Special",
+        "制表": "Box",
         "序号": "Numbers",
         "拼音": "Pinyin",
         "平假名": "Hiragana",
@@ -736,27 +737,40 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // the delete key and row 4 carries ABC | sliding categories | enter.
     const ZH_COMMON_ROWS = [
         ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-        ['，', '。', '、', '；', '：', '？', '！', '～', '（', '）'],
-        ['“', '”', '‘', '’', '《', '》', '〈', '〉', '…'],
+        // 行首两位是半角 +/-（用户需求：数学/列表高频，中式标点已被
+        // 主键盘标点槽与 T9/手写左列覆盖）；、；：？！～（）仍是全角。
+        // 前 30 格是历史面（有测试按序冻结），追加行只允许往后放。
+        ['+', '-', '、', '；', '：', '？', '！', '～', '（', '）'],
+        ['“', '”', '‘', '’', '《', '》', '〈', '〉', '…', '·'],
+        // 2026-10-28 用户定案：常用页扩到 60（6 行，可上滑）——
+        // 破折号/人民币/温度/章节号、全角技术符、括号补系。
+        ['—', '￥', '℃', '℉', '§', '№', '＠', '＃', '＊', '＆'],
+        ['％', '＋', '＝', '＼', '／', '｜', '［', '］', '｛', '｝'],
+        ['〔', '〕', '〖', '〗', '【', '】', '＜', '＞', '々', '〇'],
     ];
     const EN_COMMON_ROWS = [
         ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
         ['-', '/', ':', ';', '(', ')', '&', '@', '+', '='],
-        ['.', ',', '?', '!', '"', "'", '*', '#', '%'],
+        ['.', ',', '?', '!', '"', "'", '*', '#', '%', '^'],
+        // 与中文侧同步扩到 60：度量/版权/脚注/序数/货币记号、
+        // 引注与括号补系。
+        ['°', '±', '×', '÷', 'µ', '©', '®', '™', '§', '¶'],
+        ['†', '‡', '•', '‰', '¤', 'ª', 'º', '¨', '¦', '`'],
+        ['–', '—', '‹', '›', '«', '»', '{', '}', '[', ']'],
     ];
     // The 引号 table's zh side (the only quote table until the 中/En
     // toggle landed): fullwidth CJK quotes and brackets.
     const ZH_QUOTE_ROWS = [
         ['“', '”', '‘', '’', '„', '‟', '«', '»', '‹', '›'],
         ['「', '」', '『', '』', '【', '】', '〖', '〗', '〔', '〕'],
-        ['《', '》', '〈', '〉', '［', '］', '｛', '｝', '＃'],
+        ['《', '》', '〈', '〉', '［', '］', '｛', '｝', '＃', '﹁'],
     ];
     // The 引号 table's en side: ASCII quotes and brackets the zh table
     // has no room for ([ ] were unreachable on the whole keyboard).
     const EN_QUOTE_ROWS = [
         ['[', ']', '{', '}', '(', ')', '<', '>', '\'', '"'],
         ['`', '*', '/', '\\', '|', '~', '^', '&', '@', '#'],
-        ['$', '%', '=', '+', '_', '«', '»', '‹', '›'],
+        ['$', '%', '=', '+', '_', '«', '»', '‹', '›', '§'],
     ];
     // Categories shipping a 中/En table pair; a second tap on the ACTIVE
     // tab flips the pin (design §2.4).
@@ -871,27 +885,58 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             rows: [
                 ['$', '€', '£', '¥', '₩', '₽', '₹', '₫', '฿', '¢'],
                 ['¤', '₴', '₦', '₲', '₱', '﷼', '₪', '₭', '₮', '₯'],
-                ['％', '＄', '＆'],
+                ['₿', '₺', '₼', '₾', 'ƒ', '৳', '₡', '₵', '₸', '₠'],
+                ['₢', '₣', '₤', '₥', '₧', '₨', '₳', '％', '＄', '＆'],
             ],
         },
         {
             id: 'math', label: '数学',
             rows: [
-                ['±', '×', '÷', '≠', '≈', '≤', '≥', '∞', '√', '°'],
-                ['∑', '∫', '∏', '∈', '∉', '⊂', '⊃', '∪', '∩', '∅'],
-                ['′', '″', '‰', '⊕', '⊗', '⊙', '∵', '∴', '⊥'],
+                // 行首 + -（2026-10-28 用户定案：数学页最常用的两个符号
+                // 打头）；尾部去掉 ∘ ≔ 冷门符保持 60 整。
+                ['+', '-', '±', '×', '÷', '≠', '≈', '≤', '≥', '∞'],
+                ['√', '°', '∑', '∫', '∏', '∈', '∉', '⊂', '⊃', '∪'],
+                ['∩', '∅', '′', '″', '‰', '⊕', '⊗', '⊙', '∵', '∴'],
+                ['⊥', '≡', '≃', '≅', '∝', '∠', '∧', '∨', '¬', '∃'],
+                ['∀', '⊆', '⊇', '⊖', '⊘', '∖', '∂', '∇', 'ℵ', '−'],
+                ['∎', '⌈', '⌉', '⌊', '⌋', '∘', '∗', '⋅', '∓', '∷'],
             ],
         },
         // 特殊（#64，微信输入法「图形」tab 同类）：星形/勾叉/国际象棋/
-        // 扑克/音符的单色文本符号。3×10 网格行三末位是 ⌫，满打 29 格。
-        // 与 emoji 面板的「表情」分类（彩色 emoji）互不冲突：这里走
-        // sendSymbol 文本直上屏，含 VS16 的彩色形态仍在 emoji 侧。
+        // 扑克/音符的单色文本符号。与 emoji 面板的「表情」分类（彩色
+        // emoji）互不冲突：这里走 sendSymbol 文本直上屏，含 VS16 的
+        // 彩色形态仍在 emoji 侧。前 3 行是历史面（有守门测试逐字冻结），
+        // 新增行只允许追加。
         {
             id: 'special', label: '特殊',
             rows: [
                 ['★', '☆', '✦', '✧', '✩', '✓', '✔', '✗', '✘', '☑'],
                 ['♔', '♕', '♖', '♗', '♘', '♙', '♚', '♛', '♜', '♝'],
                 ['♞', '♟', '♤', '♥', '♦', '♧', '♩', '♪', '♫'],
+                ['□', '■', '▢', '▣', '▤', '▥', '▦', '▧', '▨', '▩'],
+                ['◐', '◑', '◒', '◓', '◕', '◇', '◆', '◈', '○', '◎'],
+                ['●', '☐', '☒', '♡', '♢', '▲', '▼', '◄', '►', '▬'],
+                ['◢'],
+            ],
+        },
+        // 制表（box-drawing）：单线/双线/混合线/圆角/斜线/半格，
+        // 排版表格与代码注释用。全部 U+2500-257F 单 BMP。
+        {
+            id: 'boxdraw', label: '制表',
+            rows: [
+                ['─', '━', '│', '┃', '┄', '┅', '┆', '┇', '┈', '┉'],
+                ['┊', '┋', '╴', '╵', '╶', '╷', '╸', '╹', '╺', '╻'],
+                ['┌', '┍', '┎', '┏', '┐', '┑', '┒', '┓', '└', '┕'],
+                ['┖', '┗', '┘', '┙', '┚', '┛', '├', '┝', '┞', '┟'],
+                ['┠', '┡', '┢', '┣', '┤', '┥', '┦', '┧', '┨', '┩'],
+                ['┪', '┫', '┬', '┭', '┮', '┯', '┰', '┱', '┲', '┳'],
+                ['┴', '┵', '┶', '┷', '┸', '┹', '┺', '┻', '┼', '┽'],
+                ['┾', '┿', '╀', '╁', '╂', '╃', '╄', '╅', '╆', '╇'],
+                ['╈', '╉', '╋', '╭', '╮', '╯', '╰', '╱', '╲'],
+                ['╳', '╿', '═', '║', '╒', '╓', '╔', '╕', '╖', '╗'],
+                ['╘', '╙', '╚', '╛', '╜', '╝', '╞', '╟', '╠', '╡'],
+                ['╢', '╣', '╤', '╥', '╦', '╧', '╨', '╩', '╪', '╫'],
+                ['╬'],
             ],
         },
         // The 方向 category fires HOST key events, not text - it has no
@@ -903,7 +948,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             rows: [
                 ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'],
                 ['⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰', '⑱', '⑲', '⑳'],
-                ['⒈', '⒉', '⒊', '⒋', '⒌', '⒍', '⒎', '⒏', '⒐'],
+                ['⒈', '⒉', '⒊', '⒋', '⒌', '⒍', '⒎', '⒏', '⒐', '⒑'],
+                ['⒒', '⒓', '⒔', '⒕', '⒖', '⒗', '⒘', '⒙', '⒚', '⒛'],
+                ['⑴', '⑵', '⑶', '⑷', '⑸', '⑹', '⑺', '⑻', '⑼', '⑽'],
+                ['⑾', '⑿', '⒀', '⒁', '⒂', '⒃', '⒄', '⒅', '⒆', '⒇'],
+                ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ'],
+                ['Ⅺ', 'Ⅻ', 'ⅰ', 'ⅱ', 'ⅲ', 'ⅳ', 'ⅴ', 'ⅵ', 'ⅶ', 'ⅷ'],
+                ['ⅸ', 'ⅹ', 'ⅺ', 'ⅻ', '㈠', '㈡', '㈢', '㈣', '㈤', '㈥'],
+                ['㈦', '㈧', '㈨', '㈩', '㊀', '㊁', '㊂', '㊄', '㊅', '㊆'],
+                ['㊇', '㊈', '㊉', '⓪', '㉑', '㉒', '㉓', '㉔', '㉕', '㉖'],
+                ['㉗', '㉘', '㉙', '㉚', '㉛', '㉜', '㉝', '㉞', '㉟', '㊱'],
+                ['㊲', '㊳', '㊴', '㊵', '㊶', '㊷', '㊹', '㊺', '㊻', '㊼'],
+                ['㊽', '㊾', '㊿'],
+                ['⓫', '⓬', '⓭', '⓮', '⓯', '⓰', '⓱'],
             ],
         },
         {
@@ -911,23 +968,59 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             rows: [
                 ['ā', 'á', 'ǎ', 'à', 'ō', 'ó', 'ǒ', 'ò', 'ē', 'é'],
                 ['ě', 'è', 'ī', 'í', 'ǐ', 'ì', 'ū', 'ú', 'ǔ', 'ù'],
-                ['ǖ', 'ǘ', 'ǚ', 'ǜ', 'ü', 'ê', 'Ā', 'Á', 'Ǎ'],
+                ['ǖ', 'ǘ', 'ǚ', 'ǜ', 'ü', 'ê', 'ń', 'ň', 'ǹ'],
+                ['Ā', 'Á', 'Ǎ', 'À', 'Ō', 'Ó', 'Ǒ', 'Ò', 'Ē', 'É'],
+                ['Ě', 'È', 'Ī', 'Í', 'Ǐ', 'Ì', 'Ū', 'Ú', 'Ǔ', 'Ù'],
+                ['Ǖ', 'Ǘ', 'Ǚ', 'Ǜ', 'Ü', 'Ê', 'Ń', 'Ň', 'Ǹ'],
+                // 法语/北欧/德语/西语/捷克等拉丁标注。
+                ['à', 'â', 'ä', 'é', 'è', 'ê', 'ë', 'î', 'ï', 'ô'],
+                ['ù', 'û', 'ü', 'ç', 'œ', 'æ', 'ÿ', 'ø', 'å', 'ñ'],
+                ['ã', 'õ', 'ì', 'ò', 'ý', 'č', 'š', 'ž', '¿', '¡'],
+                ['ř', 'ź'],
             ],
         },
         {
             id: 'hira', label: '平假名',
             rows: [
+                // 标准五十音图（2026-10-28 用户定案：先清音按图排，再按
+                // 图序排促音/小书き、清浊音、半浊音，最后记号）。
                 ['あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ'],
                 ['さ', 'し', 'す', 'せ', 'そ', 'た', 'ち', 'つ', 'て', 'と'],
-                ['な', 'に', 'ぬ', 'ね', 'の', 'は', 'ひ', 'ふ', 'へ'],
+                ['な', 'に', 'ぬ', 'ね', 'の', 'は', 'ひ', 'ふ', 'へ', 'ほ'],
+                ['ま', 'み', 'む', 'め', 'も', 'や', 'ゆ', 'よ', 'ら', 'り'],
+                ['る', 'れ', 'ろ', 'わ', 'を', 'ん'],
+                // 促音 + 小书き（五十音图序）。
+                ['っ', 'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'ゃ', 'ゅ', 'ょ', 'ゎ'],
+                // 清浊音（か/さ/た/ば 各行按图序）。
+                ['が', 'ぎ', 'ぐ', 'げ', 'ご', 'ざ', 'じ', 'ず', 'ぜ', 'ぞ'],
+                ['だ', 'ぢ', 'づ', 'で', 'ど', 'ば', 'び', 'ぶ', 'べ', 'ぼ'],
+                // 半浊音。
+                ['ぱ', 'ぴ', 'ぷ', 'ぺ', 'ぽ'],
+                // 记号：ゐゑ、ー 长音、゛゜（U+309B/C 间隔形，禁组合形）、
+                // ゝゞ 繰り返し、中点、〆。
+                ['ゐ', 'ゑ', 'ー', '゛', '゜', 'ゝ', 'ゞ', '・', '〆'],
             ],
         },
         {
             id: 'kata', label: '片假名',
             rows: [
+                // 标准五十音图（与平假名同构：清音 → 促音/小书き →
+                // 清浊音含ヴ → 半浊音 → 记号）。
                 ['ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ'],
                 ['サ', 'シ', 'ス', 'セ', 'ソ', 'タ', 'チ', 'ツ', 'テ', 'ト'],
-                ['ナ', 'ニ', 'ヌ', 'ネ', 'ノ', 'ハ', 'ヒ', 'フ', 'ヘ'],
+                ['ナ', 'ニ', 'ヌ', 'ネ', 'ノ', 'ハ', 'ヒ', 'フ', 'ヘ', 'ホ'],
+                ['マ', 'ミ', 'ム', 'メ', 'モ', 'ヤ', 'ユ', 'ヨ', 'ラ', 'リ'],
+                ['ル', 'レ', 'ロ', 'ワ', 'ヲ', 'ン'],
+                // 促音 + 小书き（五十音图序）。
+                ['ッ', 'ァ', 'ィ', 'ゥ', 'ェ', 'ォ', 'ャ', 'ュ', 'ョ', 'ヮ'],
+                // 清浊音（カ/サ/タ/バ 各行按图序，ヴ=ウ 段浊音收尾）。
+                ['ガ', 'ギ', 'グ', 'ゲ', 'ゴ', 'ザ', 'ジ', 'ズ', 'ゼ', 'ゾ'],
+                ['ダ', 'ヂ', 'ヅ', 'デ', 'ド', 'バ', 'ビ', 'ブ', 'ベ', 'ボ'],
+                ['ヴ'],
+                // 半浊音。
+                ['パ', 'ピ', 'プ', 'ペ', 'ポ'],
+                // 记号：ヰヱ、ー 长音、゛゜（间隔形）、ヽヾ 繰り返し、中点。
+                ['ヰ', 'ヱ', 'ー', '゛', '゜', 'ヽ', 'ヾ', '・'],
             ],
         },
         {
@@ -935,7 +1028,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             rows: [
                 ['Α', 'Β', 'Γ', 'Δ', 'Ε', 'Ζ', 'Η', 'Θ', 'Ι', 'Κ'],
                 ['Λ', 'Μ', 'Ν', 'Ξ', 'Ο', 'Π', 'Ρ', 'Σ', 'Τ', 'Υ'],
-                ['Φ', 'Χ', 'Ψ', 'Ω', 'α', 'β', 'γ', 'δ', 'ε'],
+                ['Φ', 'Χ', 'Ψ', 'Ω', 'α', 'β', 'γ', 'δ', 'ε', 'ζ'],
+                ['η', 'θ', 'ι', 'κ', 'λ', 'μ', 'ν', 'ξ', 'ο', 'π'],
+                ['ρ', 'σ', 'ς', 'τ', 'υ', 'φ', 'χ', 'ψ', 'ω'],
+                ['ά', 'έ', 'ή', 'ί', 'ό', 'ύ', 'ώ', 'ϊ', 'ϋ', 'ΐ'],
+                ['ΰ', 'Ά', 'Έ', 'Ή', 'Ί', 'Ό', 'Ώ', 'ϖ', 'ϱ', 'ϲ'],
+                ['ϴ'],
             ],
         },
     ];
@@ -1826,8 +1924,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.call(() => Native.openSetup(this.token));
                 });
             }
-            // Symbol layer row 4 : the enter key lives there too.
-            document.getElementById('symEnterKey').addEventListener('click', () => this.call(() => Native.enter(this.token)));
+            // Symbol layer row 4 = ABC | 分类条 | ⌫：⌫ 占换行键原位
+            // （符号层不设换行，2026-10-28 用户定案）。网格不再携带
+            // 删除键；bar 在滚动容器外，bindTouch 合法——长按连删保留。
+            document.getElementById('symCatBar').insertBefore(
+                this.specialKey('backspace', ICONS.backspace,
+                    () => this.backspaceAction(),
+                    'sym-bar-del', 'repeat'),
+                null);
             this.setupToolbarEditor && this.setupToolbarEditor();
             // 单手模式侧边条（issue #15）：光标四向发 DPAD 键事件（与物理
             // 方向键同通道，终端 cursor 语义兼容），全选/复制/剪切/粘贴走
@@ -5350,12 +5454,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 enter.textContent = label;
                 enter.setAttribute('aria-label', label);
             }
-            // Symbol layer row 4 carries its own enter key .
-            const symEnter = document.getElementById('symEnterKey');
-            if (symEnter) {
-                symEnter.textContent = label;
-                symEnter.setAttribute('aria-label', label);
-            }
+            // Symbol layer row 4 no longer carries an enter key — the ⌫
+            // took its slot (2026-10-28); the nine-pad keeps its own.
             // So does the nine-pad's action column.
             const numEnter = document.getElementById('numEnterKey');
             if (numEnter) {
@@ -6345,34 +6445,50 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.customChainActive = false;
             this.pumpCustomChain();
         }
-        symbolCategoryValues() {
-            // 中/En paired tables (常用/引号) pick rows by variant.
+        symbolCategoryRows() {
+            // 整表拉平、按 10 列重排（2026-10-28 用户反馈：按 authored
+            // 行渲染时短行尾留缺位格，每隔几行一个洞）。所有表的总量
+            // 都凑成 10 的倍数，拉平后没有空位；分类条 ⌫ 顶替换行键位
+            // 后网格不再需要预留删除格。
+            let values;
             if (VARIANT_TABLES[this.symbolCat]) {
-                return this.rowsFor(this.symbolCat).flat();
-            }
-            if (this.symbolCat === 'recent') {
-                const values = this.recent();
+                values = this.rowsFor(this.symbolCat).flat();
+            } else if (this.symbolCat === 'recent') {
+                values = this.recent();
                 // Fill the remainder from the common set so the grid always
                 // shows full, evenly spaced rows (style fix).
                 for (const row of this.commonRows()) {
                     for (const value of row) {
-                        if (values.length >= 29) break;
+                        if (values.length >= 30) break;
                         if (!values.includes(value)) values.push(value);
                     }
                 }
-                return values;
+            } else {
+                const category = SYMBOL_CATEGORIES.find(c => c.id === this.symbolCat) || SYMBOL_CATEGORIES[0];
+                values = category.rows.flat();
             }
-            const category = SYMBOL_CATEGORIES.find(c => c.id === this.symbolCat) || SYMBOL_CATEGORIES[0];
-            // Pad every row to the full 10 cells: flattening short rows first
-            // shifted the grid left and split pairs like ( ) across rows
- // .
-            const values = [];
-            category.rows.forEach(row => {
-                const padded = [...row];
-                while (padded.length < 10) padded.push('');
-                values.push(...padded);
+            const rows = [];
+            for (let i = 0; i < values.length; i += 10) rows.push(values.slice(i, i + 10));
+            return rows;
+        }
+
+        /** 通用符号格：click-only，绝不 bindTouch——bindTouch 的
+         * touchstart preventDefault 会杀 #symGrid 的竖向原生滚动
+         * （.ink-scroll/.num-syms/.sym-custom-row 同批教训），pan-y 由
+         * CSS 在 .sym-grid-inner .kb-key 上重申。触感放 click 时点：
+         * 从格上起手拖动滚动不该震（inkSymbolCell 同口径）。 */
+        symCell(value, opts = {}) {
+            const button = document.createElement('button');
+            button.className = 'kb-key ' + (value.length > 1 ? 'sym-multi' : 'sym-single');
+            button.textContent = value;
+            button.setAttribute('aria-label', value);
+            button.addEventListener('click', () => {
+                this.nativeKeyFeedback();
+                this.sendSymbol(value);
+                this.remember(value);
+                if (opts.rerender) this.renderSymbols();
             });
-            return values;
+            return button;
         }
 
         renderSymbols() {
@@ -6474,14 +6590,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             grid.replaceChildren();
             if (this.symbolCat === 'arrows') {
                 // The 方向 category commits directional TEXT (design §2.4):
-                // the glyphs land literally and ⇥ commits a real tab
-                // character - no key events, no repeat. Directional glyphs
-                // do land in 最近 (issue #48); the tab commit stays out.
+                // the glyphs land literally - no key events, no repeat, no
+                // \t 格（2026-10-28 用户定案移除）。Directional glyphs
+                // do land in 最近 (issue #48).
                 // Rows live in a top-aligned wrap: two rows spread across
                 // the three-row slot would read as a hole in the middle.
                 const arrowsRows = [
                     [['←'], ['↑'], ['→'], ['↓'], ['↔'], ['↕'], ['↖'], ['↗'], ['↘'], ['↙']],
-                    [['⇥', '\t']],
+                    [['⇦'], ['⇨'], ['⇧'], ['⇩'], ['↩'], ['↪'], ['↰'], ['↱'], ['↲'], ['↳']],
                 ];
                 const wrap = document.createElement('div');
                 wrap.className = 'sym-arrows';
@@ -6503,48 +6619,38 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     }
                     wrap.append(row);
                 });
-                // 行 3 末位固定 ⌫（keyboard.md §155）：分类再特殊，
-                // 删自己刚输入的字符不该先切层。
-                const lastRow = this.row();
-                for (let i = 0; i < 9; i++) {
-                    const blank = document.createElement('span');
-                    blank.className = 'sym-blank';
-                    lastRow.append(blank);
-                }
-                lastRow.append(this.specialKey('backspace', ICONS.backspace,
-                    () => this.backspaceAction(),
-                    'kb-special', 'repeat'));
-                wrap.append(lastRow);
                 grid.append(wrap);
                 return;
             }
-            const values = this.symbolCategoryValues();
-            while (values.length < 29) values.push('');
-            for (let r = 0; r < 3; r++) {
+            // 通用分类：行数不设限（数据表有多少行渲多少行），装进
+            // .sym-grid-inner 交给 CSS 竖向滚动（≤3 行时 space-between
+            // 分布与旧版逐像素一致）。网格不再携带 ⌫——它顶替了分类
+            // 条右端的换行键（2026-10-28 用户定案）。
+            const inner = document.createElement('div');
+            inner.className = 'sym-grid-inner';
+            this.symbolCategoryRows().forEach(values => {
                 const row = this.row();
-                const slice = values.slice(r * 10, r * 10 + 10);
-                if (r === 2) slice.length = 9; // last cell of row 3 is backspace
-                slice.forEach(value => {
+                const cells = [...values];
+                while (cells.length < 10) cells.push('');
+                cells.forEach(value => {
                     if (value === '') {
                         const blank = document.createElement('span');
                         blank.className = 'sym-blank';
                         row.append(blank);
                         return;
                     }
-                    const button = this.functionKey(value, () => {
-                        this.sendSymbol(value);
-                        this.remember(value);
-                        if (this.symbolCat === 'recent') this.renderSymbols();
-                    }, value.length > 1 ? 'sym-multi' : 'sym-single');
-                    row.append(button);
+                    row.append(this.symCell(value, { rerender: this.symbolCat === 'recent' }));
                 });
-                if (r === 2) {
-                    row.append(this.specialKey('backspace', ICONS.backspace,
-                        () => this.backspaceAction(),
-                        'kb-special', 'repeat'));
-                }
-                grid.append(row);
-            }
+                inner.append(row);
+            });
+            grid.append(inner);
+            // 切分类一律回顶（2026-10-28 用户定案：不记住上次拖到哪）。
+            // 显式归零——scroll anchoring/内容重建可能保留旧 offset。
+            grid.scrollTop = 0;
+            // 可滚才挂渐隐 mask（底部 8px 提示还有更多行）；mock 无布局
+            // （两高均为 0）自动跳过，fitCustomRow 同守卫。
+            grid.classList.toggle('sym-scrollable',
+                grid.scrollHeight > grid.clientHeight);
         }
 
         /* ===== control-key layer  ===== */

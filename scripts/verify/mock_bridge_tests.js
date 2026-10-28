@@ -2011,7 +2011,7 @@ test('handwriting space still scrubs after the shared spaceKey guard', {since: '
     equal(world.native.of('commitText').length, 0, 'ink space flick sends no literal');
 });
 
-test('123 opens on 常用: digits row 1, fullwidth rows for Chinese', () => {
+test('123 opens on 常用: digits row 1, zh rows for Chinese', {since: '3.73.50'}, () => {
     const world = fresh({ mode: 'pinyin' });
     const key123 = [...world.document.querySelectorAll('.kb-special')].find(
         el => el.textContent === '123',
@@ -2019,22 +2019,28 @@ test('123 opens on 常用: digits row 1, fullwidth rows for Chinese', () => {
     world.tap(key123);
     assert(world.$('qwertyLayer').hidden, 'letters hidden');
     assert(!world.$('symbolLayer').hidden, 'symbols visible');
-    equal(world.$('symGrid').children.length, 3, 'three rows');
+    // 竖向滚动改造后行数不设限；常用 3.73.54 起扩到 60（6 行，可上滑）。
+    const rows = () => [...world.$('symGrid').querySelectorAll('.kb-row')];
+    equal(rows().length, 6, 'six rows');
     equal(
-        [...world.$('symGrid').children[0].children].map(k => k.textContent).join(''),
+        [...rows()[0].children].map(k => k.textContent).join(''),
         '1234567890',
         'digits lead row 1',
     );
     equal(
-        [...world.$('symGrid').children[1].children].map(k => k.textContent).join(''),
-        '，。、；：？！～（）',
-        'Chinese mode default rows are fullwidth',
+        [...rows()[1].children].map(k => k.textContent).join(''),
+        '+-、；：？！～（）',
+        'Chinese mode default rows carry half-width +/- first (issue: 常用(中) + -)',
     );
-    // Row 3 ends with the delete key.
-    equal(world.$('symGrid').children[2].children[9].dataset.role, 'backspace',
-        'row 3 ends with backspace');
+    // ⌫ 顶替符号条右端的换行键位；网格不再携带删除键，也不再有换行。
+    const barBs = world.document.querySelector('#symCatBar [data-role="backspace"]');
+    assert(barBs, 'backspace occupies the bar (enter replaced)');
+    equal(world.document.getElementById('symEnterKey'), null,
+        'symbol layer has no enter key');
+    assert(!world.$('symGrid').querySelector('[data-role="backspace"]'),
+        'grid carries no extra backspace');
     // Typing a symbol inserts literally and records it as recent.
-    world.tap(world.$('symGrid').children[2].children[0]); // '“'
+    world.tap([...rows()[2].children].find(k => k.textContent === '“'));
     equal(world.native.of('commitText').slice(-1)[0].args[0], '“',
         'symbol inserts literally');
 });
@@ -2432,18 +2438,18 @@ test('rotation keeps the pinned 常用 variant; mode switch resets it', {since: 
         el => el.textContent === '123',
     ));
     const tab = () => world.document.querySelector('[data-sym-cat="common"]');
+    const row2 = () => [...[...world.$('symGrid').querySelectorAll('.kb-row')][1].children]
+        .map(k => k.textContent).join('');
     world.tap(tab());
     equal(tab().querySelector('.cat-sub').textContent, 'En', 'pinned en');
     // Rotation re-renders the SAME mode: pin, badge and grid must agree.
     world.hello({ orientation: 'landscape', mode: 'pinyin' });
     equal(tab().querySelector('.cat-sub').textContent, 'En', 'badge survives rotation');
-    equal([...world.$('symGrid').children[1].children].map(k => k.textContent).join(''),
-        '-/:;()&@+=', 'grid still matches the badge');
+    equal(row2(), '-/:;()&@+=', 'grid still matches the badge');
     // A REAL mode switch resets to the new mode's default, live.
     world.hello({ orientation: 'landscape', mode: 'double-pinyin' });
     equal(tab().querySelector('.cat-sub').textContent, '中', 'mode switch resets the pin');
-    equal([...world.$('symGrid').children[1].children].map(k => k.textContent).join(''),
-        '，。、；：？！～（）', 'grid follows the new default');
+    equal(row2(), '+-、；：？！～（）', 'grid follows the new default');
 });
 
 // #39-4 定稿（用户验收 2026-09-27 二轮）：面板头不携带任何工具栏图标
@@ -2541,7 +2547,7 @@ test('nine-pad enter label follows composition; locale re-renders the pad', {sin
         'emoji', 'emoji entry label stays language-neutral');
 });
 
-test('方向 category commits directional text and a real tab', {since: '3.28.0'}, () => {
+test('方向 category commits directional text', {since: '3.28.0'}, () => {
     const world = fresh();
     world.tap([...world.document.querySelectorAll('.kb-special')].find(
         el => el.textContent === '123',
@@ -2559,13 +2565,25 @@ test('方向 category commits directional text and a real tab', {since: '3.28.0'
         'arrow commits as literal text');
     equal(world.native.of('keyEvent').length, 0, 'no key events');
     equal(world.native.of('key').length, 0, 'no engine traffic');
-    const tab = [...world.$('symGrid').querySelectorAll('.kb-key')].find(
-        el => el.textContent === '⇥',
-    );
-    assert(tab, 'tab cell rendered');
-    world.tap(tab);
-    equal(world.native.of('commitText').slice(-1)[0].args[0], '\t',
-        'tab cell commits a real tab character');
+});
+
+test('方向 second row: white/hook/turning arrows, no tab cell', {since: '3.73.53'}, () => {
+    const world = fresh();
+    world.tap([...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    ));
+    world.tap([...world.document.querySelectorAll('[data-sym-cat]')].find(
+        el => el.dataset.symCat === 'arrows',
+    ));
+    const cells = [...world.$('symGrid').querySelectorAll('.kb-key')]
+        .map(k => k.textContent);
+    assert(!cells.includes('⇥'), 'tab-indent cell removed (2026-10-28)');
+    const wide = [...world.$('symGrid').querySelectorAll('.kb-key')]
+        .find(el => el.textContent === '⇦');
+    assert(wide, 'white arrow row rendered');
+    world.tap(wide);
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '⇦',
+        'white arrow commits literally');
 });
 
 test('quote tab toggles zh/en; en side supplies ascii brackets', {since: '3.28.0'}, () => {
@@ -2578,11 +2596,12 @@ test('quote tab toggles zh/en; en side supplies ascii brackets', {since: '3.28.0
     world.tap(quoteTab());
     equal(quoteTab().querySelector('.cat-sub').textContent, 'En',
         'quote defaults to the en table, following the mode (issue #48)');
-    equal([...world.$('symGrid').children[0].children].map(k => k.textContent).join(''),
+    const row1 = () => [...world.$('symGrid').querySelectorAll('.kb-row')][0];
+    equal([...row1().children].map(k => k.textContent).join(''),
         '[]{}()<>\'"', 'en quote rows lead with ascii brackets');
     world.tap(quoteTab());
     equal(quoteTab().querySelector('.cat-sub').textContent, '中', 'badge flips');
-    equal([...world.$('symGrid').children[0].children].map(k => k.textContent).join(''),
+    equal([...row1().children].map(k => k.textContent).join(''),
         '“”‘’„‟«»‹›', 'zh quote rows');
     // Flip back to en before committing from it (the literal-commit probe
     // needs the ascii bracket cell on screen).
@@ -2607,16 +2626,18 @@ test('second tap on the active 常用 tab flips the zh/en table', {since: '3.28.
     );
     world.tap(key123);
     const commonTab = world.document.querySelector('[data-sym-cat="common"]');
-    const rows = () => [...world.$('symGrid').children[1].children].map(k => k.textContent).join('');
+    const rows = () => [...[...world.$('symGrid').querySelectorAll('.kb-row')][1].children]
+        .map(k => k.textContent).join('');
     equal(commonTab.querySelector('.cat-sub').textContent, '中', 'badge follows the mode');
-    equal(rows(), '，。、；：？！～（）', 'mode default is the zh table');
+    equal(rows(), '+-、；：？！～（）', 'mode default is the zh table');
     world.tap(commonTab);
     equal(commonTab.querySelector('.cat-sub').textContent, 'En', 'badge flips');
     equal(rows(), '-/:;()&@+=', 'grid re-renders from the en table');
-    equal(world.$('symGrid').children[0].children[0].textContent, '1', 'digits still lead row 1');
+    equal([...world.$('symGrid').querySelectorAll('.kb-row')][0].children[0].textContent,
+        '1', 'digits still lead row 1');
     world.tap(commonTab);
     equal(commonTab.querySelector('.cat-sub').textContent, '中', 'toggles back');
-    equal(rows(), '，。、；：？！～（）', 'zh table restored');
+    equal(rows(), '+-、；：？！～（）', 'zh table restored');
     // A mode switch ends the pin - the table follows the mode again.
     world.tap(commonTab); // pin en
     world.engineState({ mode: 'direct', revision: 2, composing: false, candidates: [] });
@@ -2626,13 +2647,13 @@ test('second tap on the active 常用 tab flips the zh/en table', {since: '3.28.
     const tab = world.document.querySelector('[data-sym-cat="common"]');
     equal(tab.querySelector('.cat-sub').textContent, 'En', 'direct keeps the en default');
     equal(
-        [...world.$('symGrid').children[1].children].map(k => k.textContent).join(''),
+        rows(),
         '-/:;()&@+=',
         'en rows without a stale pin',
     );
 });
 
-test('I1b symbol-grid digits insert literally in Chinese modes', () => {
+test('I1b symbol-grid digits insert literally in Chinese modes', {since: '3.73.50'}, () => {
     // Regression: sendText routed through key(); in pinyin mode the engine
     // consumes digits as candidate selectors, so nothing ever landed.
     const world = fresh({ mode: 'pinyin' });
@@ -2640,9 +2661,10 @@ test('I1b symbol-grid digits insert literally in Chinese modes', () => {
         el => el.textContent === '123',
     );
     world.tap(key123);
-    const rows = world.$('symGrid').children;
-    world.tap(rows[0].children[0]); // '1'
-    world.tap(rows[0].children[4]); // '5'
+    const cell = label => [...world.$('symGrid').querySelectorAll('.kb-key')]
+        .find(el => el.textContent === label);
+    world.tap(cell('1'));
+    world.tap(cell('5'));
     const commits = world.native.of('commitText').map(c => c.args[0]);
     equal(JSON.stringify(commits), JSON.stringify(['1', '5']), 'digits committed literally');
     equal(world.native.of('key').length, 0, 'no engine key() traffic from symbol grid');
@@ -2657,22 +2679,24 @@ test('symbol category strip lists all batches with stable keys', {since: '3.28.0
     const cats = [...world.document.querySelectorAll('[data-sym-cat]')];
     equal(
         cats.map(c => c.dataset.symCat).join(','),
-        'common,recent,quote,money,math,special,arrows,num,pinyin,hira,kata,greek',
+        'common,recent,quote,money,math,special,boxdraw,arrows,num,pinyin,hira,kata,greek',
         'category keys frozen',
     );
     equal(
         cats.map(c => c.textContent).join(','),
-        '常用En,最近,引号En,货币,数学,特殊,方向,序号,拼音,平假名,片假名,希腊',
+        '常用En,最近,引号En,货币,数学,特殊,制表,方向,序号,拼音,平假名,片假名,希腊',
         'labels aligned with the category list (paired tables carry 中/En badges)',
     );
     // Japanese kana and Greek are newer symbol-layer additions.
     const keyText = () => [...world.$('symGrid').querySelectorAll('.kb-key')]
         .map(b => b.textContent).join('');
-    // 特殊（#64）：29 格满编（行三末位 ⌫ 占位由通用断言覆盖），
-    // 星形/象棋/扑克/音符逐字在场。
+    // 特殊（#64）：历史 29 格逐字保留在前（守门断言改 startsWith），
+    // 竖滚扩容后追加 □■ 系几何形。
     world.tap(cats.find(c => c.dataset.symCat === 'special'));
-    equal(keyText(), '★☆✦✧✩✓✔✗✘☑♔♕♖♗♘♙♚♛♜♝♞♟♤♥♦♧♩♪♫',
-        'special category carries its 29 glyphs verbatim');
+    assert(keyText().startsWith('★☆✦✧✩✓✔✗✘☑♔♕♖♗♘♙♚♛♜♝♞♟♤♥♦♧♩♪♫'),
+        'special keeps its historical 29 glyphs verbatim at the front');
+    assert(['□', '▣', '▦', '◐', '◈', '☐', '☒'].every(g => keyText().includes(g)),
+        'special carries the appended geometry rows');
     // 点按直上屏（与方向 tab 的 glyph 直发同语义；进「最近」走通用
     // remember 通道，不在此重复断言）。
     world.tap([...world.$('symGrid').querySelectorAll('.kb-key')]
@@ -2685,9 +2709,11 @@ test('symbol category strip lists all batches with stable keys', {since: '3.28.0
     assert(keyText().includes('ア'), 'katakana row present');
     world.tap(cats.find(c => c.dataset.symCat === 'greek'));
     assert(keyText().includes('Α'), 'greek caps present');
-    // The backspace key occupies the last cell of row 3 in every category.
-    equal(world.$('symGrid').children[2].children[9].dataset.role, 'backspace',
-        'row 3 ends with backspace');
+    // ⌫ 只在分类条上；网格无额外删除键。
+    assert(world.document.querySelector('#symCatBar [data-role="backspace"]'),
+        'backspace lives on the category bar');
+    assert(!world.$('symGrid').querySelector('[data-role="backspace"]'),
+        'no extra backspace inside the grid');
 });
 
 test('every 123 entry resets to the 常用 category', () => {
@@ -2696,43 +2722,133 @@ test('every 123 entry resets to the 常用 category', () => {
         el => el.textContent === '123',
     );
     world.tap(key123);
-    equal(world.$('symGrid').children[0].children[0].textContent, '1', 'common category active');
+    const firstCell = () => [...world.$('symGrid').querySelectorAll('.kb-row')][0].children[0];
+    equal(firstCell().textContent, '1', 'common category active');
     world.tap([...world.document.querySelectorAll('[data-sym-cat]')].find(
         el => el.dataset.symCat === 'money',
     ));
-    equal(world.$('symGrid').children[0].children[0].textContent, '$', 'money category active');
+    equal(firstCell().textContent, '$', 'money category active');
     // Back to letters, then 123 again must land on 常用.
     const abc = [...world.document.querySelectorAll('[data-action="letters"]')][0];
     world.tap(abc);
     world.tap(key123);
-    equal(world.$('symGrid').children[0].children[0].textContent, '1', 'reset to 常用');
+    equal(firstCell().textContent, '1', 'reset to 常用');
 });
 
-test('recent fills full even rows, remembers order, keeps backspace', () => {
+test('recent fills full even rows, remembers order', {since: '3.73.52'}, () => {
     const world = fresh({ mode: 'pinyin' });
     const key123 = [...world.document.querySelectorAll('.kb-special')].find(
         el => el.textContent === '123',
     );
     world.tap(key123);
-    // Tap 常用 (fullwidth) symbols to build history.
-    world.tap(world.$('symGrid').children[1].children[0]); // '，'
-    world.tap(world.$('symGrid').children[1].children[1]); // '。'
+    // Tap 常用 zh symbols to build history（行首已是半角 +/-，
+    // 全角顿号/分号仍在第二行）。
+    const cell = label => [...world.$('symGrid').querySelectorAll('.kb-key')]
+        .find(el => el.textContent === label);
+    world.tap(cell('、'));
+    world.tap(cell('；'));
     const recent = [...world.document.querySelectorAll('[data-sym-cat]')].find(
         el => el.dataset.symCat === 'recent',
     );
     world.tap(recent);
-    const rows = world.$('symGrid').children;
+    const rows = [...world.$('symGrid').querySelectorAll('.kb-row')];
     equal(rows.length, 3, 'three full rows (spacing fix)');
     equal(
         [...rows[0].children].map(k => k.textContent).slice(0, 2).join(''),
-        '。，',
+        '；、',
         'most recent first, then padded from 中文 set',
     );
     assert(rows[0].children.length === 10, 'every row is a full 10 cells');
-    const lastCell = rows[2].children[9];
-    equal(lastCell.dataset.role, 'backspace', 'row 3 ends with backspace');
-    world.tap(lastCell);
-    equal(world.native.of('backspace').length, 1, 'symbol-grid backspace works');
+    // 网格不带 ⌫（在分类条上）。
+    assert(!world.$('symGrid').querySelector('[data-role="backspace"]'),
+        'recent grid carries no extra backspace');
+});
+
+test('scrollable categories render all rows; cells stay click-only', {since: '3.73.50'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.tap([...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    ));
+    // 平假名扩容到 9 行：行数不截断，网格装得下（溢出交给滚动）。
+    world.tap([...world.document.querySelectorAll('[data-sym-cat]')].find(
+        el => el.dataset.symCat === 'hira',
+    ));
+    const rows = [...world.$('symGrid').querySelectorAll('.kb-row')];
+    equal(rows.length, 9, 'hira renders every row (scroll, not clamp)');
+    // 五十音图序：清音 46 字在前，促音 っ 紧随其后（46 号位）。
+    equal([...rows[4].children][6].textContent, 'っ',
+        'sokuon rides right after the gojuon chart');
+    // 竖滚命门：符号格绝不能 bindTouch（touchstart preventDefault 会
+    // 杀原生滚动）；网格已无 ⌫（在分类条上）。
+    const bound = world.$('symGrid').querySelector('.sym-grid-inner .kb-key[data-bound]');
+    assert(!bound, 'symbol cells carry no bindTouch gesture layer');
+    // 常用表扩容后 6 行（可上滑，历史 30 格逐字在前）。
+    world.tap(world.document.querySelector('[data-sym-cat="common"]'));
+    const commonRows = [...world.$('symGrid').querySelectorAll('.kb-row')];
+    equal(commonRows.length, 6, 'common renders its 6 rows');
+    equal([...commonRows[2].children].map(k => k.textContent).join(''),
+        '“”‘’《》〈〉…·', 'common historical rows stay verbatim');
+    assert([...commonRows[5].children].map(k => k.textContent).join('').includes('〇'),
+        'common appended rows ride at the end');
+});
+
+test('boxdraw tab: new category between 特殊 and 方向, commits literally', {since: '3.73.50'}, () => {
+    const world = fresh();
+    world.tap([...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    ));
+    const cats = [...world.document.querySelectorAll('[data-sym-cat]')];
+    const idx = cats.findIndex(c => c.dataset.symCat === 'boxdraw');
+    assert(idx > 0 && cats[idx - 1].dataset.symCat === 'special'
+        && cats[idx + 1].dataset.symCat === 'arrows',
+    '制表 sits between 特殊 and 方向');
+    world.tap(cats[idx]);
+    const cell = label => [...world.$('symGrid').querySelectorAll('.kb-key')]
+        .find(el => el.textContent === label);
+    assert(cell('─') && cell('╬'), 'single-line and double-line crosses present');
+    world.tap(cell('├'));
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '├',
+        'box glyph commits literally');
+});
+
+test('bar backspace (enter slot) deletes once and repeats while held', {since: '3.73.52'}, () => {
+    const world = fresh();
+    world.tap([...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    ));
+    const bs = world.document.querySelector('#symCatBar [data-role="backspace"]');
+    assert(bs, 'backspace rendered on the bar (enter slot)');
+    world.tap(bs);
+    equal(world.native.of('backspace').length, 1, 'tap deletes once');
+    world.touchDown(bs);
+    world.clock.advance(400);
+    world.clock.advance(300);
+    world.touchUp(bs);
+    assert(world.native.of('backspace').length >= 4,
+        `long-press repeats (${world.native.of('backspace').length})`);
+});
+
+test('every symbol category renders single-codepoint non-combining cells', {since: '3.73.50'}, () => {
+    const world = fresh();
+    world.tap([...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    ));
+    const cats = [...world.document.querySelectorAll('[data-sym-cat]')];
+    cats.filter(c => c.dataset.symCat !== 'custom' && c.dataset.symCat !== 'recent')
+        .forEach(c => {
+            world.tap(c);
+            [...world.$('symGrid').querySelectorAll('.kb-key')]
+                .filter(k => !k.dataset.role) // ⌫ 是图标键，不在字面量检查内
+                .forEach(k => {
+                const t = k.textContent;
+                assert([...t].length === 1 && t.codePointAt(0) <= 0xFFFF,
+                    `${c.dataset.symCat}: "${t}" must be a single BMP glyph`);
+                // 禁组合符：゛゜必须是 U+309B/C 间隔形，组合形会渲染成
+                // 叠字且误触 sym-multi。
+                assert(t.codePointAt(0) !== 0x3099 && t.codePointAt(0) !== 0x309A,
+                    `${c.dataset.symCat}: combining dingbat U+3099/309A leaked`);
+            });
+        });
 });
 
 test('caps state resets when the keyboard switches (requirement 1)', () => {
