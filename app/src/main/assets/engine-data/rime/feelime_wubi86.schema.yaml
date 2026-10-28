@@ -54,7 +54,13 @@ translator:
   dictionary: wubi86
   enable_completion: true
   enable_sentence: false
-  enable_user_dict: false
+  enable_user_dict: true
+  # 只学习用户实际选过的固定字词，不自动造词/编码上屏历史。
+  enable_encoder: false
+  encode_commit_history: false
+  # 一级、二级简码保持王码 86 固定顺序；三码起允许按个人选词调频。
+  disable_user_dict_for_patterns:
+    - "^[a-z]{1,2}$"
   comment_format:
     - "xform/~//"
 
