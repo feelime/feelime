@@ -52,7 +52,11 @@ internal fun streamingRecognizerConfig(source: ModelSource, hotwordVocab: String
         ),
         enableEndpoint = true,
         decodingMethod = "modified_beam_search",
-        maxActivePaths = 4,
+        // beam=4 时热词路径常进不了每帧 top-k（decoder 先剪枝、再加
+        // context 分），短人名如「姚程」即使 score 拉满也纠正不了
+        // （#79）。8 处于临界（扰动/分块相位即翻），12 在扰动矩阵
+        // 8/8 稳定纠正；host RTF 0.034→0.047（+37%）。
+        maxActivePaths = 12,
         hotwordsScore = 3.0f,
     )
 }
