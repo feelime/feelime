@@ -9187,6 +9187,28 @@ test('stroke: no auto page-fetch on old shells while composing', {since: '3.50.0
         'old-shell pinyin composing still pre-fetches when the bar is short');
 });
 
+test('voice error state does not swallow compose controls (#75)', {since: '3.73.59'}, () => {
+    // 拒绝麦克风权限后 VoiceState 卡 ERROR（无回 idle 事件）：renderCandidates
+    // 的 voiceBusy 曾用 `voiceState !== 'idle'`（含 error），把组合中的
+    // composeExpand/composeClear 藏掉——用户看到「下拉按钮消失」，授权
+    // 走通一次语音才恢复。error 必须与 listening/loading/stopping 的
+    // recording 语义分开（onNativeState 的 overlay 同款判定）。
+    const world = fresh({ mode: 'pinyin' });
+    world.engineState({ phase: 'READY', mode: 'pinyin', revision: 1, composing: 'ni',
+        rawInput: 'ni', candidates: [{ id: 'c0', text: '你' }], hasNextPage: false });
+    // 组合中：下拉按钮在。
+    assert(!world.document.getElementById('composeExpand').hidden,
+        'composing shows the expand chevron');
+    // 权限拒绝：native 推语音 error 态。
+    world.nativeState({ state: 'error', message: '未授予麦克风权限' });
+    assert(!world.document.getElementById('composeExpand').hidden,
+        'voice ERROR must not hide the expand chevron (#75)');
+    // 真正的语音会话仍然让位（overlay 开、组合控制隐藏）。
+    world.nativeState({ state: 'listening', message: '' });
+    assert(world.document.getElementById('composeExpand').hidden,
+        'a live session still yields the compose controls');
+});
+
 test('stroke: explicit split keeps engine order, sentence leads (2026-10-27)', {since: '3.73.58'}, () => {
     // 笔画分词报障：你的笔画 + 分词(') + 好的笔画——引擎把整句「你好」
     // 排首位（sentence [0,14)），后随各长度前缀字（你/化/仍/亻/丿）。

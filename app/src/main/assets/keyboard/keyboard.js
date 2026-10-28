@@ -9978,7 +9978,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this._t9ConfirmedText = '';
                 }
             }
-            const recording = this.voiceState !== 'idle';
+            // 与 onNativeState 的 recording 同语义（listening/loading/
+            // stopping）：error 态不算语音占用——权限拒绝后 VoiceState 卡
+            // ERROR（无回 idle 事件），旧的 `!== 'idle'` 会把组合中的
+            // composeExpand/composeClear 藏掉（#75：拒绝麦克风权限后
+            // 候选下拉按钮消失，授权走通一次才恢复）。
+            const recording = ['listening', 'loading', 'stopping'].includes(this.voiceState);
             // Composing hides the setup/mode/clipboard tools but never the mic
             // while a voice session is active (the stop entry must survive).
             document.getElementById('setupButton').hidden = this.composing;
