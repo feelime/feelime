@@ -52,10 +52,9 @@ internal fun streamingRecognizerConfig(source: ModelSource, hotwordVocab: String
         ),
         enableEndpoint = true,
         decodingMethod = "modified_beam_search",
-        // beam=4 时热词路径常进不了每帧 top-k（decoder 先剪枝、再加
-        // context 分），短人名如「姚程」即使 score 拉满也纠正不了
-        // （#79）。8 处于临界（扰动/分块相位即翻），12 在扰动矩阵
-        // 8/8 稳定纠正；host RTF 0.034→0.047（+37%）。
+        // decoder 先选 top-k，再加入本次热词分，窄 beam 可能提前淘汰目标路径。
+        // #79 姚程样本在 beam=8 的 AVD 测试仍失败；host 八组扰动测试中
+        // beam=8 命中 4/8，beam=12 命中 8/8，因此采用 12，score 保持 3。
         maxActivePaths = 12,
         hotwordsScore = 3.0f,
     )
