@@ -899,7 +899,8 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   第 5 键自动顶出前一码。唯一四码不再自动上屏，统一由候选条按 id 选择；
   空格确认中文，确认键/物理 Enter 提交当前完整字母串。开启码表 completion，
   打一至三码时按同一词表的前缀补全单字/词组；关闭 sentence，避免五笔
-  造句噪声。
+  造句噪声。同一 schema 另挂 `script_translator@pinyin`，复用内置
+  `luna_pinyin` 词库做无前缀拼音兜底。
 - **短码排序**：librime 的 predictive lookup 会先按码表遍历顺序跨码扫描，
   因而不能直接按全局词频排列短码候选。host 编译前由
   `scripts/generate-wubi-short-code-dict.py` 为一至三码生成有界优先层：
@@ -912,6 +913,11 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
   允许用户词频覆盖静态排序（例如反复选择 `vb`→好后可前移，常用
   `kws`→只要或 `wqvb`→您好也会前移）。用户词典位于既有 `rime-user`
   目录，随用户数据备份恢复。
+- **五笔/拼音混输**：同一串字母同时经过五笔与拼音，稳定优先级为
+  「五笔精确码 → 拼音候选 → 五笔前缀补全」。例如 `wqvb` 先保留五笔
+  “你好/您好”，而 `nihao`、`hao` 可直接出拼音汉字。候选旁的
+  `五笔 wqvb` 注释来自基础码表生成的反查库，不会把一至三码优先别名
+  误显示成真实五笔码；普通五笔候选也显示同一份真实码，便于学习。
 - **词表**：`scripts/generate-wubi-dict.py` 从项目已固定的
   rime-frost@96278d8 `cn_dicts_wb/chars.dict.yaml` 与
   `words.dict.yaml` 合并生成可审计源表 `scripts/data/wubi86.dict.yaml`
@@ -932,9 +938,9 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 - **动态值候选**：`jjad`（日期）、`jfuj`（时间）、`jtad`（星期）在
   引擎首候选之后追加运行时候选；日期通过 WebView `Intl` 中国农历历法
   生成「农历九月十八」形式，旧环境不支持该历法时跳过农历项，其余值照常。
-- **已知边界**：首版不提供 Z 键拼音反查、拆字反查、简繁切换、英文翻译
-  （前四项依赖上游 rime-frost 的额外 schema 与 lua 组件，仓库裁剪版
-  librime 不加载）；自动调频暂无独立总开关和一键重置入口。
+- **已知边界**：首版不提供拆字反查、简繁切换、英文翻译（依赖上游
+  rime-frost 的额外 schema 与 lua 组件，仓库裁剪版 librime 不加载）；
+  自动调频暂无独立总开关和一键重置入口。
 
 ### 9.4 日语（Mozc）
 

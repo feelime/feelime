@@ -322,11 +322,14 @@ class RimeTextEngine(
                 // 但绝对下标仍按行号推进——寻址不漂移。
                 val absolute = viewPageNo * lastPageSize + index
                 val id = stableCandidateId(engineName, viewPageNo, index, value)
-                if (value.isNotEmpty()) {
+                val parts = value.split('\t', limit = 2)
+                val text = parts[0]
+                val comment = parts.getOrNull(1)?.takeIf { it.isNotEmpty() }
+                if (text.isNotEmpty()) {
                     shownCandidates = shownCandidates + (id to absolute)
-                    shownTexts = shownTexts + (id to value)
+                    shownTexts = shownTexts + (id to text)
                 }
-                Candidate(id, value)
+                Candidate(id, text, comment)
             }
             .filter { it.text.isNotEmpty() }
             .toList()

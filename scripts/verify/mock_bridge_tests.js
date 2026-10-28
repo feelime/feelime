@@ -1987,6 +1987,30 @@ test('wubi 86 punctuation uses the Chinese two-step flow', {since: '3.74.0'}, ()
         'the pending full-width comma lands after the composition ends');
 });
 
+test('Wubi hybrid pinyin candidates show their real five-code', {since: '3.74.4'}, () => {
+    const world = fresh({ mode: 'wubi-86', engineDataReady: FLYPY_READY });
+    world.engineState({
+        phase: 'READY', mode: 'wubi-86', revision: 1,
+        composing: 'nihao', rawInput: 'nihao',
+        candidates: [
+            { id: 'p1', text: '你好', comment: '五笔 wqvb' },
+            { id: 'p2', text: '拟好' },
+        ],
+        hasNextPage: false,
+    });
+    const bar = [...world.$('candidates').querySelectorAll('.candidate')];
+    equal(bar[0].querySelector('.candidate-text').textContent, '你好');
+    equal(bar[0].querySelector('.candidate-comment').textContent, '五笔 wqvb');
+    equal(bar[1].querySelector('.candidate-text').textContent, '拟好');
+    equal(bar[1].querySelector('.candidate-comment'), null,
+        'candidates without a Wubi entry keep a clean label');
+    world.tap(world.$('composeExpand'));
+    const grid = [...world.$('expandGrid').querySelectorAll('.expand-candidate')];
+    equal(grid[0].querySelector('.candidate-text').textContent, '你好');
+    equal(grid[0].querySelector('.candidate-comment').textContent, '五笔 wqvb',
+        'expanded grid carries the same code annotation');
+});
+
 test('wubi 86 mode entry requires explicit engine readiness', {since: '3.74.0'}, () => {
     const stale = new KeyboardWorld().build();
     stale.storage.set('feelime_mode_order', JSON.stringify(['direct', 'pinyin', 'wubi-86']));

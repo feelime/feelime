@@ -194,7 +194,12 @@ function pushEngineState(raw, composing) {
     revision += 1;
     if (raw !== rawInput) deletedHead = null;
     let candidates = composing
-        ? fakeCandidates(raw).map((text, i) => ({ id: 'c' + revision + '-' + i, text }))
+        ? fakeCandidates(raw).map((text, i) => ({
+            id: 'c' + revision + '-' + i,
+            text,
+            ...(keyboardMode === 'wubi-86' && WUBI_COMMENTS[text]
+                ? { comment: WUBI_COMMENTS[text] } : {}),
+        }))
         : [];
     if (deletedHead) candidates = candidates.filter(c => c.text !== deletedHead);
     frame.contentWindow.Feelime.onEngineState({
@@ -238,6 +243,13 @@ const WUBI_CANDS = {
     w: ['人', '八'], ww: ['从'], www: ['众'],
     wwww: ['人', '众人', '人人', '偷偷', '合作伙伴'],
     wqvb: ['你好', '您好'], ggtt: ['五笔'], kwsg: ['只配'],
+    nihao: ['你好', '拟好', '你', '尼', '逆'],
+};
+const WUBI_COMMENTS = {
+    人: '五笔 w', 八: '五笔 w', 从: '五笔 ww', 众: '五笔 www',
+    你好: '五笔 wqvb', 您好: '五笔 wqvb', 五笔: '五笔 ggtt',
+    只配: '五笔 kwsg', 你: '五笔 wq wqi wqiy',
+    尼: '五笔 nx nxv', 逆: '五笔 ubt ubtp',
 };
 
 function doublePinyinToPinyin(raw) {
@@ -800,7 +812,7 @@ document.getElementById('actT9').onclick = () => {
 document.getElementById('actWubi').onclick = () => {
     keyboardMode = 'wubi-86';
     pushHello();
-    rawInput = 'wqvb';
+    rawInput = 'nihao';
     pushEngineState(rawInput, true);
 };
 // 手写键面（issue #28）：笔迹走书写区 canvas，候选由 recognizeInk 假桥

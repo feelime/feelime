@@ -7,6 +7,8 @@
 __build_info:
   rime_version: 1.17.0
 schema:
+  dependencies:
+    - luna_pinyin
   schema_id: feelime_wubi86
   name: 五笔 86
   version: "1.0"
@@ -36,9 +38,12 @@ engine:
     - abc_segmentor
     - punct_segmentor
     - fallback_segmentor
+  filters:
+    - reverse_lookup_filter@wubi_lookup
   translators:
     - punct_translator
     - table_translator
+    - script_translator@pinyin
 
 speller:
   alphabet: abcdefghijklmnopqrstuvwxyz
@@ -63,6 +68,19 @@ translator:
     - "^[a-z]$"
   comment_format:
     - "xform/~//"
+
+pinyin:
+  dictionary: luna_pinyin
+  enable_completion: true
+  enable_sentence: false
+  enable_user_dict: false
+
+# 基础五笔词表生成的真实码反查；不含一至三码优先别名。
+wubi_lookup:
+  dictionary: wubi86_lookup
+  overwrite_comment: true
+  comment_format:
+    - "xform/^/五笔 /"
 
 # 与笔画/音形相同：部署目录没有 default.yaml，标点必须内联。
 punctuator:

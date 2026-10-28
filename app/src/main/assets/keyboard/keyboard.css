@@ -692,7 +692,30 @@ body.settings-page #candidateBar > .tool { display: none; }
     line-height: normal;
     display: flex;
     align-items: center;
+    gap: 4px;
 }
+
+.candidate-text,
+.expand-candidate .candidate-text {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Wubi/pinyin hybrid lookup comment: compact secondary annotation without
+ * changing the candidate row height. */
+.candidate-comment {
+    flex: none;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
+.expand-candidate .candidate-comment { font-size: 12px; }
 
 /* 联想词（docs/design/association.md）：与引擎候选同尺寸同配色。
  * 用户定稿（2026-09-20）：不做任何「这是联想」的降调标识——不加灰字、
@@ -2486,7 +2509,7 @@ body.expanded #preeditLine { display: none; }
 }
 .expand-candidate {
     flex: none;
-    max-width: 252px; /* 12 glyphs at 18px + padding, per the input cap */
+    max-width: 340px; /* text plus a compact five-code lookup annotation */
     border: 0;
     background: transparent;
     color: var(--text);
@@ -2501,6 +2524,7 @@ body.expanded #preeditLine { display: none; }
     text-overflow: ellipsis;
     white-space: nowrap;
     touch-action: pan-y;
+    gap: 5px;
 }
 .expand-candidate.first { color: var(--accent-text); font-weight: 600; }
 .expand-candidate:active, .expand-candidate.active-touch { background: var(--pressed); }

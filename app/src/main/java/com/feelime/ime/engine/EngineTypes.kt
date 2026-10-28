@@ -27,7 +27,11 @@ data class EngineStamp(
     val mode: InputMode,
 )
 
-data class Candidate(val id: String, val text: String)
+data class Candidate(
+    val id: String,
+    val text: String,
+    val comment: String? = null,
+)
 
 data class EngineState(
     val composing: String,

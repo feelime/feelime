@@ -932,7 +932,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     .put(
                         "candidates",
                         JSONArray(event.state.candidates.map { candidate ->
-                            JSONObject().put("id", candidate.id).put("text", candidate.text)
+                            JSONObject()
+                                .put("id", candidate.id)
+                                .put("text", candidate.text)
+                                .apply {
+                                    candidate.comment?.takeIf { it.isNotEmpty() }
+                                        ?.let { put("comment", it) }
+                                }
                         }),
                     )
                     .put("hasPreviousPage", event.state.hasPreviousPage)

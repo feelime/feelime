@@ -313,7 +313,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.74.3';
+    const KEYBOARD_VERSION = '3.74.4';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -346,6 +346,22 @@
     function isSymbolicText(text) {
         if (!text) return false;
         return [...String(text)].every(ch => !/\p{L}/u.test(ch) && !/\p{N}/u.test(ch));
+    }
+
+    /** Candidate text plus an optional compact engine comment (for example
+     *  `五笔 wqvb` from the Wubi/pinyin hybrid lookup). Tests and callers
+     *  can still read the candidate text from `.candidate-text`. */
+    function setCandidateContent(button, text, comment) {
+        const label = document.createElement('span');
+        label.className = 'candidate-text';
+        label.textContent = text;
+        button.append(label);
+        if (comment) {
+            const note = document.createElement('span');
+            note.className = 'candidate-comment';
+            note.textContent = comment;
+            button.append(note);
+        }
     }
 
     /** 动态日期时间候选（issue #22 分层结论，rime date.lua 等价体验）：
@@ -9671,7 +9687,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (index < this.expandRendered) return;
                 const button = document.createElement('button');
                 button.className = index === 0 ? 'expand-candidate first' : 'expand-candidate';
-                button.textContent = candidate.text;
+                setCandidateContent(
+                    button,
+                    candidate.text,
+                    this.mode === 'wubi-86' ? candidate.comment : null,
+                );
                 // Native clicks only: bindTouch preventDefaults touchstart,
                 // which cancels the strip's pan .
                 let longPressed = false;
@@ -9859,8 +9879,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.englishOrderedPool(this.expandCandidates || []).forEach((candidate, index) => {
                 const button = document.createElement('button');
                 button.className = index === 0 ? 'candidate first' : 'candidate';
-                button.textContent = this.mode === 'french' && this.caseMode && state.composing
-                    ? this.caseifyText(candidate.text) : candidate.text;
+                setCandidateContent(
+                    button,
+                    this.mode === 'french' && this.caseMode && state.composing
+                        ? this.caseifyText(candidate.text) : candidate.text,
+                    this.mode === 'wubi-86' ? candidate.comment : null,
+                );
                 let longPressed = false;
                 button.addEventListener('click', () => {
                     // A long-press opens the delete menu; the
