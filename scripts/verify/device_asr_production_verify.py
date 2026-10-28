@@ -501,10 +501,10 @@ def run_case(case, injector, args):
                    f"anchors(monday={has_monday} wednesday={has_wednesday}) {text!r}")
         if name == "good-hotwords":
             # Positive hotword efficacy moved to the hotword-ab-* cases: on
-            # this fixture the streaming baseline quality is device-dependent,
-            # so only record whether 礼拜 made it through.
-            record(f"{name}: positive hotword presence (observational)",
-                   "礼拜" in text, repr(text))
+            # this fixture the streaming baseline quality is device-dependent.
+            # Purely observational: print only, never affects the exit code.
+            print(f"NOTE {name}: positive hotword presence (observational) "
+                  f"[{'礼拜' in text}] {text!r}", flush=True)
         elif name == "hotword-ab-empty":
             record(f"{name}: short-name hotword is absent without configuration",
                    args.ab_hotword not in text, repr(text))
@@ -668,6 +668,14 @@ def main():
     selected = cases if args.case == "all" else [
         {"empty": cases[0], "good": cases[1], "unrelated": cases[2]}[args.case]
     ]
+    if args.case == "all" and not args.ab_wav:
+        # The three legacy cases can pass with hotwords entirely inert (the
+        # wider beam may already produce the positive word on its own), so a
+        # full gate run without the short-name A/B proves nothing about hotword
+        # efficacy. Single-case debugging without --ab-wav stays allowed.
+        raise GateBlocked(
+            "--case all requires --ab-wav/--ab-hotword (FEELIME_ASR_AB_WAV): "
+            "hotword efficacy is only asserted by the hotword-ab cases")
     outcomes = []
     try:
         for case in selected:

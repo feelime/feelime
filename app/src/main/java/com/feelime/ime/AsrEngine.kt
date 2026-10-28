@@ -54,7 +54,8 @@ internal fun streamingRecognizerConfig(source: ModelSource, hotwordVocab: String
         decodingMethod = "modified_beam_search",
         // decoder 先选 top-k，再加入本次热词分，窄 beam 可能提前淘汰目标路径。
         // #79 姚程样本在 beam=8 的 AVD 测试仍失败；host 八组扰动测试中
-        // beam=8 命中 4/8，beam=12 命中 8/8，因此采用 12，score 保持 3。
+        // beam=8 命中 2/8（另轮 4/8，均不稳定），beam=12 命中 8/8，
+        // 因此采用 12，score 保持 3。
         maxActivePaths = 12,
         hotwordsScore = 3.0f,
     )

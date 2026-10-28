@@ -94,6 +94,8 @@ ANDROID_HOME=… ./gradlew testDebugUnitTest   # 应用 JVM 套件（direct/play
 export FEELIME_ADB_SERIAL=<serial>          # 测试设备
 export FEELIME_VERIFY_APK=$PWD/app/build/outputs/apk/direct/debug/app-direct-debug.apk
 export FEELIME_ASR_FIXTURE=<16kHz wav>      # 本地自备，不入库
+export FEELIME_ASR_AB_WAV=<短人名16kHz wav> # 热词 A/B 音频（--case all 必需，本地自备）
+export FEELIME_ASR_AB_HOTWORD=姚程          # A/B 断言的短人名热词（默认 姚程）
 export FEELIME_AAPT2=/path/to/aapt2         # 可选（x86_64 主机构建）
 export FEELIME_BUILDER_SSH=<user@host>      # 可选（远端 x86_64 构建机跑 JVM 门禁）
 export FEELIME_BUILDER_DIR=<远端仓库路径>    # 可选，默认 ~/code/feelime
@@ -217,7 +219,7 @@ import 其它套件当库（历史教训：height_card 曾被 6 个套件当库�
 | `device_settings_entry_verify` | 系统入口/设置专项（依赖 model_import，按需单独跑） |
 | `device_voice_stop_verify` | 生产语音停/取消专项（真实编辑器+触摸，按需单独跑） |
 | `device_model_import_verify` | 模型本地导入（SAF 选择器 → 校验 → 安装 → 麦克风） |
-| `device_asr_production_verify` | 生产录音链路（模拟器音频注入 → 真实 InputConnection） |
+| `device_asr_production_verify` | 生产录音链路（模拟器音频注入 → 真实 InputConnection）。热词效果断言由 `hotword-ab-empty/hit`（短人名 A/B，`FEELIME_ASR_AB_WAV`）承担：`--case all` 缺该音频直接 BLOCKED；礼拜二断言只作观察（beam 加宽后 baseline 可能已正确） |
 | `archive/check_*.py` | 一次性探针（0.17.6 终端时代遗产，诊断用，不进 run-all） |
 
 新增用户可见行为时：先补 mock/JVM 用例，再加对应设备套件用例，并把
