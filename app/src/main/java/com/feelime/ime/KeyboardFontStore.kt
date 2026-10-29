@@ -6,13 +6,16 @@ import android.net.Uri
 import android.webkit.WebResourceResponse
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.security.MessageDigest
 
 import org.json.JSONObject
 
 /**
- * 用户自定义键盘字体（issue #70）：单槽位。导入经魔数 + 大小上限 +
- * 平台 Typeface 解析三道校验后原子换入 filesDir/fonts/keyboard/。
+ * 用户自定义键盘字体（issue #70）：单槽位。导入经魔数 + 大小校验
+ * （#80 起 20MB 为软上限——超限回报 CONFIRM_LARGE 由用户确认后带
+ * allowLarge 重导，100MB 为绝对上限）+ 平台 Typeface 解析后原子换入
+ * filesDir/fonts/keyboard/。
  * 字体文件按摘要命名（font-<digest>.<ext>，不可变），meta.json 走
  * 临时文件 rename 原子替换、以它为提交标记——任一步失败都保住旧选择。
  *
@@ -29,7 +32,12 @@ import org.json.JSONObject
 object KeyboardFontStore {
     private const val DIR = "fonts/keyboard"
     private const val META = "meta.json"
-    private const val MAX_BYTES = 20 * 1024 * 1024
+
+    /** #80：20MB 只做软上限（确认后可继续——全量 CJK 字体普遍 20~40MB）；
+     * 100MB 是绝对上限，防误选巨型文件把导入进程的堆读爆（整个文件先
+     * 缓存在内存里再校验）。 */
+    private const val SOFT_BYTES = 20L * 1024 * 1024
+    private const val HARD_BYTES = 100L * 1024 * 1024
 
     /** digest 出现在 URL 路径段里，取前 16 位 hex 足够防撞+防猜测。 */
     private const val DIGEST_CHARS = 16
@@ -38,7 +46,10 @@ object KeyboardFontStore {
 
     sealed class ImportOutcome {
         class Ok(val font: UserFont) : ImportOutcome()
-        class Fail(val code: String) : ImportOutcome()
+
+        /** CONFIRM_LARGE 带 bytes：设置页把大小讲给用户听（资源消耗提示），
+         *  确认后带 allowLarge 重导。 */
+        class Fail(val code: String, val bytes: Long = 0) : ImportOutcome()
     }
 
     /** 导入并原子换入。所有入口共用一把锁：导入（worker 线程）、清除
@@ -51,50 +62,80 @@ object KeyboardFontStore {
         /** SAF DISPLAY_NAME（SetupActivity 查询后传入）；lastPathSegment
          *  在部分提供者上是 document id，只作兜底。 */
         displayName: String? = null,
+        /** 用户已在设置页确认「大字体资源消耗」提示（#80 软上限）。 */
+        allowLarge: Boolean = false,
     ): ImportOutcome {
         val resolver = context.contentResolver
-        val bytes = ArrayList<ByteArray>()
-        var total = 0
+        val dir = File(context.filesDir, DIR).apply { mkdirs() }
+        val tmpFont = File(dir, ".import.tmp")
+        val tmpMeta = File(dir, ".meta.tmp")
+        var total = 0L
+        val head = ByteArray(4)
+        val hasher = MessageDigest.getInstance("SHA-256")
+        // 流式分块写临时文件、边写边算摘要（#80 review P1：100MB 上限下
+        // 「分块列表 + 合并数组」双份同活峰值 ~200MB，低配设备直接 OOM；
+        // 全程只留一个 64KB chunk）。魔数取首块前 4 字节。
         runCatching {
             resolver.openInputStream(uri)?.use { input ->
-                val chunk = ByteArray(64 * 1024)
-                while (true) {
-                    val read = input.read(chunk)
-                    if (read < 0) break
-                    total += read
-                    if (total > MAX_BYTES) return ImportOutcome.Fail("TOO_LARGE")
-                    bytes.add(chunk.copyOf(read))
+                FileOutputStream(tmpFont).use { out ->
+                    val chunk = ByteArray(64 * 1024)
+                    while (true) {
+                        val read = input.read(chunk)
+                        if (read < 0) break
+                        total += read
+                        if (total > HARD_BYTES) {
+                            tmpFont.delete()
+                            return ImportOutcome.Fail("TOO_LARGE")
+                        }
+                        if (total == read.toLong()) {
+                            System.arraycopy(chunk, 0, head, 0, minOf(read, head.size))
+                        }
+                        hasher.update(chunk, 0, read)
+                        out.write(chunk, 0, read)
+                    }
                 }
-            } ?: return ImportOutcome.Fail("IO_ERROR")
-        }.onFailure { return ImportOutcome.Fail("IO_ERROR") }
-        if (total == 0) return ImportOutcome.Fail("IO_ERROR")
-        val data = ByteArray(total).also { out ->
-            var off = 0
-            bytes.forEach { b -> b.copyInto(out, off); off += b.size }
+            } ?: run {
+                tmpFont.delete()
+                return ImportOutcome.Fail("IO_ERROR")
+            }
+        }.onFailure {
+            tmpFont.delete()
+            return ImportOutcome.Fail("IO_ERROR")
         }
-        val ext = when (detectFormat(data)) {
+        if (total == 0L) {
+            tmpFont.delete()
+            return ImportOutcome.Fail("IO_ERROR")
+        }
+        if (total > SOFT_BYTES && !allowLarge) {
+            // 确认后重导会重新流式读一遍（SAF 临时授权仍在），不值得为
+            // 省一次读把待确认文件挂在盘上。
+            tmpFont.delete()
+            return ImportOutcome.Fail("CONFIRM_LARGE", total)
+        }
+        val ext = when (detectFormat(head)) {
             "ttf" -> "ttf"
             "otf" -> "otf"
-            else -> return ImportOutcome.Fail("BAD_MAGIC")
+            else -> {
+                tmpFont.delete()
+                return ImportOutcome.Fail("BAD_MAGIC")
+            }
         }
-        val digest = MessageDigest.getInstance("SHA-256").digest(data)
-            .joinToString("") { "%02x".format(it) }.take(DIGEST_CHARS)
+        val digest = hasher.digest().joinToString("") { "%02x".format(it) }.take(DIGEST_CHARS)
         // 展示名只进设置页 JSON，不进 CSS/HTML；截断防极端文件名。
         val name = (displayName ?: uri.lastPathSegment ?: "")
             .substringAfterLast('/')
             .take(64)
             .ifEmpty { "font.$ext" }
 
-        val dir = File(context.filesDir, DIR).apply { mkdirs() }
         val fontFile = File(dir, "font-$digest.$ext")
-        val tmpFont = File(dir, ".import.tmp")
-        val tmpMeta = File(dir, ".meta.tmp")
         runCatching {
-            // 先写临时文件并过平台解析器：魔数对但字形坏的文件在这里死掉，
-            // 不碰现有字体（review P2）。
-            tmpFont.writeBytes(data)
+            // 临时文件已写好，直接过平台解析器：魔数对但字形坏的文件在
+            // 这里死掉，不碰现有字体（review P2）。
             runCatching { Typeface.createFromFile(tmpFont) }
-                .onFailure { return ImportOutcome.Fail("BAD_FONT") }
+                .onFailure {
+                    tmpFont.delete()
+                    return ImportOutcome.Fail("BAD_FONT")
+                }
             if (!tmpFont.renameTo(fontFile)) {
                 // 同摘要重导（幂等）：目标已存在即可收货。
                 if (!(fontFile.isFile && digest == current(context)?.digest)) {

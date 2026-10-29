@@ -152,6 +152,20 @@
       </span>
     </div>
     <p class="save-note" id="userFontNote" role="status" aria-live="polite"></p>
+    <!-- #80 大字体导入确认：20MB 是软上限，资源消耗提示后用户可选择继续。
+         必须放在字体行所在的 appearance 页内——祖先 .page[hidden] 会把
+         跨页弹窗整个藏掉（codex review P1：首版放 update 页用户看不到）。 -->
+    <div class="consent" id="fontConsent" hidden role="dialog" aria-labelledby="fontConsentTitle" aria-describedby="fontConsentMessage">
+      <div class="section-heading">
+        <h3 id="fontConsentTitle" data-i18n="fontLarge.title">字体文件较大</h3>
+        <span class="eyebrow" data-i18n="fontLarge.badge">提示</span>
+      </div>
+      <p class="hint block" id="fontConsentMessage">这个字体文件超过 20MB。大字体会增加内存占用和加载时间，配置较低的设备可能出现卡顿。仍要导入吗？</p>
+      <div class="actions">
+        <button class="btn" id="fontConsentCancel" type="button" data-i18n="fontLarge.cancel">取消</button>
+        <button class="btn primary" id="fontConsentConfirm" type="button" data-i18n="fontLarge.confirm">仍要导入</button>
+      </div>
+    </div>
     <!-- 皮肤（用户验收五轮）：标准 entry 行进三级页（背景/键面独立色调+饱和度）。 -->
     <button class="entry" type="button" data-target="skin" data-keywords="皮肤 主题 配色 色调 饱和度 skin theme">
       <span class="entry-label"><span data-i18n="entry.skin.title">皮肤</span>

@@ -699,9 +699,14 @@ const I18N = {
         "input.feel.userFontActive": "当前：{name}",
         "input.feel.userFontImported": "已导入：{name}",
         "error.font.IO_ERROR": "字体导入失败：文件读取失败，请重试。",
-        "error.font.TOO_LARGE": "字体导入失败：文件超过 20MB 上限。",
+        "error.font.TOO_LARGE": "字体导入失败：文件超过 100MB 上限。",
         "error.font.BAD_MAGIC": "字体导入失败：不是有效的 TTF/OTF 字体文件。",
         "error.font.BAD_FONT": "字体导入失败：文件无法被系统解析为可用字体。",
+        "fontLarge.title": "字体文件较大",
+        "fontLarge.badge": "提示",
+        "fontLarge.message": "这个字体文件有 {mb} MB，超过 20MB。大字体会增加内存占用和加载时间，配置较低的设备可能出现卡顿。仍要导入吗？",
+        "fontLarge.cancel": "取消",
+        "fontLarge.confirm": "仍要导入",
         "input.feel.preeditFont": "拼音字号",
         "input.feel.preeditFontHint": "打字时拼音字母的大小；特大档会占一行更多高度。",
         "input.feel.preeditBold": "拼音加粗",
@@ -1496,9 +1501,14 @@ const I18N = {
         "input.feel.userFontActive": "Current: {name}",
         "input.feel.userFontImported": "Imported: {name}",
         "error.font.IO_ERROR": "Font import failed: could not read the file, please retry.",
-        "error.font.TOO_LARGE": "Font import failed: file exceeds the 20MB limit.",
+        "error.font.TOO_LARGE": "Font import failed: file exceeds the 100MB limit.",
         "error.font.BAD_MAGIC": "Font import failed: not a valid TTF/OTF font file.",
         "error.font.BAD_FONT": "Font import failed: the file could not be parsed as a usable font.",
+        "fontLarge.title": "Large font file",
+        "fontLarge.badge": "Notice",
+        "fontLarge.message": "This font file is {mb} MB, over 20MB. Large fonts use more memory and take longer to load; lower-end devices may feel sluggish. Import anyway?",
+        "fontLarge.cancel": "Cancel",
+        "fontLarge.confirm": "Import anyway",
         "input.feel.preeditFont": "Pinyin text size",
         "input.feel.preeditFontHint": "Size of the pinyin letters while typing; the largest level takes extra band height.",
         "input.feel.preeditBold": "Bold pinyin",
@@ -1947,6 +1957,16 @@ window.FeelimeSettings = {
                 // KeyboardFontStore）。结果挂在 userFontNoteHold 上——
                 // 紧随其后的 pushState 会走渲染分支，不接管就直接被
                 // 「当前：xxx」冲掉（review P2 实测）。
+                // #80：超 20MB 软上限先弹确认（CONFIRM_LARGE 带 bytes），
+                // 确认后 confirmLargeFontImport 带 allowLarge 重导。
+                if (!event.ok && event.code === "CONFIRM_LARGE") {
+                    const mb = Number(event.bytes) > 0 ? (Number(event.bytes) / 1048576).toFixed(1) : "20+";
+                    $("fontConsentMessage").textContent = t("fontLarge.message", { mb });
+                    $("fontConsent").hidden = false;
+                    userFontNoteHold = null;
+                    break;
+                }
+                $("fontConsent").hidden = true;
                 userFontNoteHold = event.ok
                     ? t("input.feel.userFontImported", { name: event.name || "?" })
                     : t(["IO_ERROR", "TOO_LARGE", "BAD_MAGIC", "BAD_FONT"].includes(event.code)
@@ -4040,10 +4060,12 @@ $("keycapFont").addEventListener("change", event => call("setKeycapFont", parseI
 let userFontNoteHold = null;
 $("btnImportFont").addEventListener("click", () => {
     userFontNoteHold = null;
+    $("fontConsent").hidden = true; // 新选择开始，旧确认不再有效
     call("requestUserFontImport");
 });
 $("btnClearFont").addEventListener("click", () => {
     userFontNoteHold = null;
+    $("fontConsent").hidden = true;
     call("clearUserFont");
 });
 $("preeditFont").addEventListener("change", event => call("setPreeditFont", parseInt(event.target.value, 10)));
@@ -4551,6 +4573,14 @@ $("kbSigConsentConfirm").addEventListener("click", () => {
     $("kbSigConsent").hidden = true;
     if (pendingKbSigId) call("confirmKeyboardInstall", pendingKbSigId);
     pendingKbSigId = "";
+});
+// #80 大字体确认：取消只收起；确认走桥带 allowLarge 重导。
+$("fontConsentCancel").addEventListener("click", () => {
+    $("fontConsent").hidden = true;
+});
+$("fontConsentConfirm").addEventListener("click", () => {
+    $("fontConsent").hidden = true;
+    call("confirmLargeFontImport");
 });
 
 function renderBackupStatus(event) {

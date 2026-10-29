@@ -2765,22 +2765,43 @@ class SettingsBridge(
 
     // ---- 用户键盘字体（issue #70）：单槽位导入；二进制不进备份 ----
 
-    /** 设置页点「导入字体」：弹 SAF 选择器，回调接 importUserFontFromUri。 */
+    /** 设置页点「导入字体」：弹 SAF 选择器，回调接 importUserFontFromUri。
+     *  新选择开始即作废旧的大字体确认（#80 review P2：否则 A 待确认时
+     *  选 B，确认仍能拿旧 A 排在 B 后生效）。 */
     @JavascriptInterface
     fun requestUserFontImport(token: String) = guarded(token) {
+        pendingLargeFont = null
         host.openFontDocument()
     }
 
     /** 设置页的 OpenDocument 回调：魔数+大小+平台解析校验后原子换入。
      *  结果走 fontImportStatus 事件；成功即广播键盘 prefs 变更（重推
-     *  hello 带新 digest，键盘页即时换装）。 */
+     *  hello 带新 digest，键盘页即时换装）。超软上限（#80）回报
+     *  CONFIRM_LARGE 带字节数，设置页确认后走 confirmLargeFontImport
+     *  重导（URI 记在 pendingLargeFont，被下一次选择覆盖）。 */
+    private var pendingLargeFont: Pair<Uri, String?>? = null
+
     fun importUserFontFromUri(uri: Uri, displayName: String?) {
+        importFont(uri, displayName, allowLarge = false)
+    }
+
+    /** #80 软上限确认后的重导入口（设置页 consent 对话框回调）。
+     *  同步一次性取走 pending：重复点击/迟到点击不重放旧请求。 */
+    @JavascriptInterface
+    fun confirmLargeFontImport(token: String) = guarded(token) {
+        val pending = pendingLargeFont ?: return@guarded
+        pendingLargeFont = null
+        importFont(pending.first, pending.second, allowLarge = true)
+    }
+
+    private fun importFont(uri: Uri, displayName: String?, allowLarge: Boolean) {
         if (closed) return
         runCatching {
             worker.execute {
                 if (closed) return@execute
-                when (val outcome = KeyboardFontStore.importFromUri(context, uri, displayName)) {
+                when (val outcome = KeyboardFontStore.importFromUri(context, uri, displayName, allowLarge)) {
                     is KeyboardFontStore.ImportOutcome.Ok -> {
+                        pendingLargeFont = null
                         context.sendBroadcast(
                             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
                         )
@@ -2789,10 +2810,18 @@ class SettingsBridge(
                                 .put("ok", true).put("name", outcome.font.name),
                         )
                     }
-                    is KeyboardFontStore.ImportOutcome.Fail -> pushEvent(
-                        JSONObject().put("type", "fontImportStatus")
-                            .put("ok", false).put("code", outcome.code),
-                    )
+                    is KeyboardFontStore.ImportOutcome.Fail -> {
+                        if (outcome.code == "CONFIRM_LARGE") {
+                            pendingLargeFont = uri to displayName
+                        } else {
+                            pendingLargeFont = null
+                        }
+                        pushEvent(
+                            JSONObject().put("type", "fontImportStatus")
+                                .put("ok", false).put("code", outcome.code)
+                                .put("bytes", outcome.bytes),
+                        )
+                    }
                 }
                 pushState()
             }
@@ -2801,6 +2830,7 @@ class SettingsBridge(
 
     @JavascriptInterface
     fun clearUserFont(token: String) = guarded(token) {
+        pendingLargeFont = null
         KeyboardFontStore.clear(context)
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
