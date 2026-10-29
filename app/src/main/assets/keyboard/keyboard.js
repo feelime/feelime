@@ -312,7 +312,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.59';
+    const KEYBOARD_VERSION = '3.73.60';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -10156,7 +10156,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const kaomojiForm = this.panelTab === 'kaomoji';
             document.querySelector('.panel-tabs').hidden = kaomojiForm;
             document.getElementById('kaomojiTabs').hidden = !kaomojiForm;
-            document.getElementById('panelLayer').dataset.kaomoji = kaomojiForm ? '' : null;
+            // 属性必须真的移除：dataset.x = null 会把属性写成字符串
+            // "null"（WebIDL DOMString 转换），[data-kaomoji] 选择器照样
+            // 命中，#panelList 的颜文字态 display:flex 残留到剪贴板/
+            // 常用语——条目横向挤压成一行（#80 真机截图形态）。
+            const kaomojiAttr = document.getElementById('panelLayer').dataset;
+            if (kaomojiForm) kaomojiAttr.kaomoji = '';
+            else delete kaomojiAttr.kaomoji;
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
                 button.classList.toggle('active', button.dataset.panelTab === this.panelTab);
             });

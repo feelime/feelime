@@ -2376,6 +2376,10 @@ test('kaomoji renders as its own form: head chips row + full grid (#67)', {since
     // 定稿形态：剪贴板/常用语 tabs 整块隐藏，分类条上位（右侧 × 固定件）。
     assert(world.document.querySelector('.panel-tabs').hidden, 'tab row hidden in kaomoji form');
     assert(!world.$('kaomojiTabs').hidden, 'category chips row shown in the head');
+    // #80：data-kaomoji 驱动 CSS 颜文字态（#panelList display:flex）。
+    // 清除必须让属性消失——真机 dataset.x = null 会写成字符串 "null"，
+    // [data-kaomoji] 照样命中，剪贴板/常用语条目被压成横向一行。
+    assert(world.$('panelLayer').dataset.kaomoji !== undefined, 'kaomoji form sets data-kaomoji');
     const chips = world.$('kaomojiTabs').querySelectorAll('.kaomoji-chip');
     assert(chips.length === 10, `ten category chips, got ${chips.length}`);
     assert(chips[0].classList.contains('active'), 'first category active by default');
@@ -2391,6 +2395,9 @@ test('kaomoji renders as its own form: head chips row + full grid (#67)', {since
     world.context.testKeyboard.runPanelStep('clipboard');
     assert(!world.document.querySelector('.panel-tabs').hidden, 'tab row returns for clipboard');
     assert(world.$('kaomojiTabs').hidden, 'chips row hides for clipboard');
+    // #80：属性要真移除（= null 残留 "null" 字符串，CSS 照命中）。
+    assert(world.$('panelLayer').dataset.kaomoji === undefined,
+        'data-kaomoji removed when leaving the kaomoji form');
 });
 
 test('kaomoji category switch persists across reopen (#67)', {since: '3.73.47'}, () => {
