@@ -897,6 +897,23 @@ test('quick switch: follow returns to the last keyboard from English', {since: '
         'English returns to the remembered keyboard, not pinyin');
 });
 
+test('quick switch: follow returns to Wubi 86 from English', {since: '3.74.1'}, () => {
+    const world = fresh({
+        mode: 'wubi-86',
+        engineDataReady: { 'wubi-86': true },
+        quickSwitchPolicy: 'follow',
+        quickReturnMode: 'wubi-86',
+    });
+    const toggle = world.$('modeToggle');
+    world.tap(toggle);
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'direct',
+        'Wubi 86 toggles to English');
+    world.engineState({ phase: 'READY', revision: 2, mode: 'direct', composing: '', candidates: [] });
+    world.tap(toggle);
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'wubi-86',
+        'English returns to the remembered Wubi 86 keyboard');
+});
+
 test('quick switch: success toast fires once across hello and state echoes', {since: '3.73.56'}, () => {
     // 模式切换会先触发 hello 重推（hello 先更新 mode）再推 state——
     // 回执两条通道都检查但只兑现一次（AVD 实测曾因 hello 抢先而不弹）。
@@ -1885,7 +1902,7 @@ test('flick swap leaves T9/stroke gestures alone; default stays classic', {since
 
 // ---- 形码键面与手势（#39-7/8：与拼音交互统一） ----
 const FLYPY_READY = { pinyin: true, 'double-pinyin': true, t9: true, stroke: true,
-    flypy: true, japanese: true, french: true, russian: true };
+    'wubi-86': true, flypy: true, japanese: true, french: true, russian: true };
 
 test('flypy keys render uppercase like pinyin; alt hints match CN_ALTS', {since: '3.71.0'}, () => {
     const world = fresh({ mode: 'flypy', engineDataReady: FLYPY_READY });
@@ -1917,6 +1934,131 @@ test('flypy flicks commit literally - never feed the shape engine', {since: '3.7
     equal(world.native.of('commitText').slice(-1)[0].args[0], 'G',
         'down commits uppercase directly');
     equal(world.native.of('key').length, engineCalls, 'uppercase never enters the engine either');
+});
+
+test('wubi 86 uses the qwerty face and keeps codes on the engine path', {since: '3.74.0'}, () => {
+    const world = fresh({ mode: 'wubi-86', engineDataReady: FLYPY_READY });
+    world.favorites([{ id: 'f-wubi', time: 1, text: '误注入常用语', code: 'wq' }]);
+    equal(world.key('w').querySelector('.kb-main').textContent, 'W',
+        'Wubi key face follows the uppercase Chinese keyboard convention');
+    equal(world.key('g').querySelector('.kb-alt').textContent, '（',
+        'symbol alts stay on the shared Chinese path');
+    assert(world.document.querySelector('.shift'), 'Wubi keeps Shift on the wide row');
+    assert(!world.document.querySelector('[data-role="sep"]'),
+        'Wubi has no syllable separator');
+    world.tap(world.key('w'));
+    equal(world.native.of('key').slice(-1)[0].args[0], 'w',
+        'tapping the uppercase face still sends a lowercase Wubi code');
+    world.engineState({ mode: 'wubi-86', revision: 1, composing: 'wq', rawInput: 'wq',
+        candidates: [{ id: 'w1', text: '从' }], hasNextPage: false });
+    equal(
+        [...world.$('candidates').querySelectorAll('.candidate')].map(b => b.textContent).join('|'),
+        '从',
+        'pinyin-coded favorites never enter an independent shape-code pool',
+    );
+    world.tap(world.$('enterKey'));
+    equal(world.native.of('enter').length, 1,
+        'Wubi confirm requests raw-letter commit while composing');
+    equal(world.native.of('chooseCandidate').length, 0,
+        'Wubi confirm does not select the Chinese head candidate');
+    world.engineState({ mode: 'wubi-86', revision: 2, composing: 'ip', rawInput: 'ip',
+        candidates: [{ id: 'w-ip', text: '学' }], hasNextPage: false });
+    world.tap(world.$('spaceKey'));
+    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 'w-ip',
+        'Space still confirms the Wubi Chinese candidate');
+});
+
+test('wubi 86 punctuation uses the Chinese two-step flow', {since: '3.74.0'}, () => {
+    const world = fresh({ mode: 'wubi-86', engineDataReady: FLYPY_READY });
+    world.tap(world.key('.'));
+    equal(world.native.of('key').slice(-1)[0].args[0], ',',
+        'idle punctuation still enters the engine as ASCII');
+    world.engineState({ phase: 'READY', mode: 'wubi-86', revision: 1, composing: 'wqvb',
+        rawInput: 'wqvb', candidates: [{ id: 'w1', text: '你好' },
+            { id: 'w2', text: '侮' }], hasNextPage: false });
+    world.tap(world.key('.'));
+    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 'w1',
+        'composing punctuation confirms the current candidate by id');
+    equal(world.native.of('key').filter(c => c.args[0] === ',').length, 1,
+        'no second ASCII comma enters the engine while composing');
+    world.engineState({ phase: 'READY', mode: 'wubi-86', revision: 2, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '，',
+        'the pending full-width comma lands after the composition ends');
+});
+
+test('Wubi hybrid pinyin candidates show their real five-code', {since: '3.74.4'}, () => {
+    const world = fresh({ mode: 'wubi-86', engineDataReady: FLYPY_READY });
+    world.engineState({
+        phase: 'READY', mode: 'wubi-86', revision: 1,
+        composing: 'nihao', rawInput: 'nihao',
+        candidates: [
+            { id: 'p1', text: '你好', comment: 'wqvb' },
+            { id: 'p2', text: '拟好' },
+        ],
+        hasNextPage: false,
+    });
+    const bar = [...world.$('candidates').querySelectorAll('.candidate')];
+    equal(bar[0].querySelector('.candidate-text').textContent, '你好');
+    equal(bar[0].querySelector('.candidate-comment').textContent, 'wqvb');
+    equal(bar[1].querySelector('.candidate-text').textContent, '拟好');
+    equal(bar[1].querySelector('.candidate-comment'), null,
+        'candidates without a Wubi entry keep a clean label');
+    world.tap(world.$('composeExpand'));
+    const grid = [...world.$('expandGrid').querySelectorAll('.expand-candidate')];
+    equal(grid[0].querySelector('.candidate-text').textContent, '你好');
+    equal(grid[0].querySelector('.candidate-comment').textContent, 'wqvb',
+        'expanded grid carries the same code annotation');
+});
+
+test('Wubi candidates lead the pool and only pinyin fallback shows a code',
+    {since: '3.74.6'}, () => {
+        const world = fresh({ mode: 'wubi-86', engineDataReady: FLYPY_READY });
+        world.engineState({
+            phase: 'READY', mode: 'wubi-86', revision: 2,
+            composing: 'hao', rawInput: 'hao',
+            candidates: [
+                { id: 'pinyin', text: '好', comment: 'vb vbg' },
+                { id: 'shape', text: '虚', comment: 'hao haog' },
+            ],
+            hasNextPage: false,
+        });
+        const bar = [...world.$('candidates').querySelectorAll('.candidate')];
+        equal(bar[0].querySelector('.candidate-text').textContent, '虚',
+            'shape-code candidate moves ahead of pinyin fallback');
+        equal(bar[0].querySelector('.candidate-comment'), null,
+            'shape-code candidate does not duplicate its own input code');
+        equal(bar[1].querySelector('.candidate-text').textContent, '好');
+        equal(bar[1].querySelector('.candidate-comment').textContent, 'vbg',
+            'pinyin fallback shows its full real Wubi code only');
+    });
+
+test('wubi 86 mode entry requires explicit engine readiness', {since: '3.74.0'}, () => {
+    const stale = new KeyboardWorld().build();
+    stale.storage.set('feelime_mode_order', JSON.stringify(['direct', 'pinyin', 'wubi-86']));
+    stale.storage.set('feelime_menu_modes', JSON.stringify(['wubi-86']));
+    stale.hello({});
+    stale.context.window.Feelime.toggleModeMenu();
+    const staleItem = [...stale.$('modeMenu').children]
+        .find(el => el.textContent.includes('五笔 86'));
+    assert(staleItem && staleItem.classList.contains('preparing'),
+        'missing wubi-86 readiness renders the preparing state');
+    stale.tap(staleItem);
+    equal(stale.native.of('selectMode').filter(c => c.args[0] === 'wubi-86').length, 0,
+        'unready Wubi entry is not clickable');
+
+    const ready = new KeyboardWorld().build();
+    ready.storage.set('feelime_mode_order', JSON.stringify(['direct', 'pinyin', 'wubi-86']));
+    ready.storage.set('feelime_menu_modes', JSON.stringify(['wubi-86']));
+    ready.hello({ engineDataReady: FLYPY_READY });
+    ready.context.window.Feelime.toggleModeMenu();
+    const readyItem = [...ready.$('modeMenu').children]
+        .find(el => el.textContent.includes('五笔 86'));
+    equal(readyItem.querySelector('.prep').textContent, '五',
+        'ready Wubi entry shows its mode shorthand');
+    ready.tap(readyItem);
+    equal(ready.native.of('selectMode').slice(-1)[0].args[0], 'wubi-86',
+        'ready Wubi entry selects the mode');
 });
 
 test('horizontal swipe scrubs from a fixed threshold crossing', () => {
@@ -2202,6 +2344,63 @@ test('hwKey: physical letters keep their own case, no soft shift rewriting (#H)'
     equal(keys[0], 'N', 'physical Shift+N lands as-is via the hw bridge');
 });
 
+test('hwKey: Wubi 86 accepts physical letters, raw Enter and deletion (#H)', {since: '3.74.1'}, () => {
+    const world = fresh({
+        mode: 'wubi-86',
+        engineDataReady: FLYPY_READY,
+        hardwareKeyboard: true,
+        hwkbForm: 'candidates',
+        hwGen: 7,
+    });
+    equal(world.document.body.classList.contains('hwkb'), true,
+        'Wubi 86 uses the hardware candidate-bar form');
+    equal(world.$('hwModeTag').textContent, '五笔 86',
+        'hardware candidate bar names the active Wubi 86 mode');
+
+    for (const ch of 'wqvb') world.context.window.Feelime.hwKey('char', ch.codePointAt(0), 7);
+    const typed = world.native.of('hwKeyChar');
+    equal(typed.map(c => c.args[0]).join(''), 'wqvb',
+        'physical letters reach the Wubi engine in order');
+    assert(typed.every(c => c.args[2] === 7), 'every Wubi character carries the session gen');
+
+    world.engineState({
+        mode: 'wubi-86', revision: 1, hwDoneSeq: 4, composing: 'wqvb', rawInput: 'wqvb',
+        candidates: [{ id: 'w1', text: '你好' }, { id: 'w2', text: '您好' }], hasNextPage: false,
+    });
+    equal(world.$('candidates').textContent.includes('你好'), true,
+        'hardware composition renders normal Wubi candidates');
+
+    world.context.window.Feelime.hwKey('enter', 0, 7);
+    const rawEnter = world.native.of('hwEnter');
+    equal(rawEnter.length, 1, 'hardware Enter requests raw Wubi letters');
+    equal(world.native.of('hwChoose').length, 0,
+        'hardware Enter does not select the Chinese Wubi candidate');
+
+    world.engineState({
+        mode: 'wubi-86', revision: 2, hwDoneSeq: rawEnter[0].args[0],
+        composing: 'wqv', rawInput: 'wqv',
+        candidates: [{ id: 'w3', text: '侮' }], hasNextPage: false,
+    });
+    world.context.window.Feelime.hwKey('backspace', 0, 7);
+    equal(world.native.of('hwBackspace').length, 1,
+        'hardware Backspace remains engine-owned while composing Wubi');
+
+    const spaceWorld = fresh({
+        mode: 'wubi-86',
+        engineDataReady: FLYPY_READY,
+        hardwareKeyboard: true,
+        hwkbForm: 'candidates',
+        hwGen: 8,
+    });
+    spaceWorld.engineState({
+        mode: 'wubi-86', revision: 1, composing: 'kwsg', rawInput: 'kwsg',
+        candidates: [{ id: 'w4', text: '只配' }], hasNextPage: false,
+    });
+    spaceWorld.context.window.Feelime.hwKey('space', 0, 8);
+    equal(spaceWorld.native.of('hwChoose')[0]?.args[3], 'w4',
+        'hardware Space confirms the Wubi candidate by id');
+});
+
 test('hwKey: state-dependent actions wait for the hwDoneSeq watermark (#H)', {since: '3.73.49'}, () => {
     const world = fresh({ mode: 'pinyin' });
     world.context.window.Feelime.hwKey('char', 'i'.codePointAt(0));
@@ -2391,6 +2590,8 @@ test('kaomoji renders as its own form: head chips row + full grid (#67)', {since
     world.context.testKeyboard.runPanelStep('clipboard');
     assert(!world.document.querySelector('.panel-tabs').hidden, 'tab row returns for clipboard');
     assert(world.$('kaomojiTabs').hidden, 'chips row hides for clipboard');
+    equal(world.$('panelLayer').dataset.kaomoji, undefined,
+        'kaomoji grid marker is removed so clipboard rows stay vertical');
 });
 
 test('kaomoji category switch persists across reopen (#67)', {since: '3.73.47'}, () => {
@@ -3771,6 +3972,68 @@ test('dynamic date/time candidates ride the overlay pool (issue #22)', {since: '
     world.engineState({ mode: 'stroke', revision: 8, composing: '13', rawInput: '13',
         candidates: [], hasNextPage: false });
     assert(!bar().some(text => /^\d{4}-\d{2}-\d{2}$/.test(text)), 'stroke never injects');
+});
+
+test('Wubi 86 date/time/week codes add formatted runtime candidates', {since: '3.74.2'}, () => {
+    const world = fresh({ mode: 'wubi-86', engineDataReady: FLYPY_READY });
+    const bar = () => [...world.$('candidates').querySelectorAll('.candidate')]
+        .map(b => b.textContent);
+
+    world.engineState({
+        mode: 'wubi-86', revision: 1, composing: 'jjad', rawInput: 'jjad',
+        candidates: [{ id: 'w-date', text: '日期' }, { id: 'w-other', text: '暧昧期' }],
+        hasNextPage: false,
+    });
+    const dateBar = bar();
+    equal(dateBar[0], '日期', 'Wubi keeps 日期 as the engine head');
+    assert(dateBar.some(text => /^\d{4}-\d{2}-\d{2}$/.test(text)), 'Wubi date offers ISO date');
+    assert(dateBar.some(text => /^\d{4}年\d+月\d+日$/.test(text)), 'Wubi date offers CJK date');
+    assert(dateBar.some(text => /^\d{8}$/.test(text)), 'Wubi date offers compact date');
+    assert(dateBar.some(text => /^农历.+$/.test(text)), 'Wubi date offers lunar date');
+    assert(dateBar.some(text => /^\d{1,2}月\d{1,2}日$/.test(text)), 'Wubi date offers month/day');
+    const lunar = [...world.$('candidates').querySelectorAll('.candidate')]
+        .find(button => /^农历/.test(button.textContent));
+    lunar.click();
+    equal(world.native.of('clearComposing').length, 1, 'lunar date clears composition');
+    assert(/^农历/.test(world.native.of('commitText').slice(-1)[0].args[0]),
+        'lunar date commits literally');
+
+    world.engineState({
+        mode: 'wubi-86', revision: 2, composing: 'jfuj', rawInput: 'jfuj',
+        candidates: [{ id: 'w-time', text: '时间' }], hasNextPage: false,
+    });
+    const timeBar = bar();
+    equal(timeBar[0], '时间', 'Wubi keeps 时间 as the engine head');
+    assert(timeBar.some(text => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)),
+        'Wubi time offers full timestamp');
+    assert(timeBar.some(text => /^\d{14}$/.test(text)), 'Wubi time offers compact timestamp');
+    assert(timeBar.some(text => /^\d{2}:\d{2}:\d{2}$/.test(text)), 'Wubi time offers clock time');
+    assert(timeBar.some(text => /^\d{2}:\d{2}$/.test(text)), 'Wubi time offers hour/minute');
+    assert(timeBar.some(text => /^\d{2}:\d{2}:00$/.test(text)), 'Wubi time offers zero-second clock');
+
+    world.engineState({
+        mode: 'wubi-86', revision: 3, composing: 'jtad', rawInput: 'jtad',
+        candidates: [{ id: 'w-week', text: '星期' }], hasNextPage: false,
+    });
+    const weekBar = bar();
+    equal(weekBar[0], '星期', 'Wubi keeps 星期 as the engine head');
+    assert(weekBar.some(text => /^\d{4}年\d+月\d+日 周.$/.test(text)),
+        'Wubi week offers full date plus short weekday');
+    assert(weekBar.some(text => /^周.$/.test(text)), 'Wubi week offers short weekday');
+    assert(weekBar.some(text => /^星期.$/.test(text)), 'Wubi week offers full weekday');
+
+    world.hello({ mode: 'wubi-86', engineDataReady: FLYPY_READY, dynamicDateTimeOn: false });
+    world.engineState({
+        mode: 'wubi-86', revision: 4, composing: 'jjad', rawInput: 'jjad',
+        candidates: [{ id: 'w-date', text: '日期' }], hasNextPage: false,
+    });
+    equal(JSON.stringify(bar()), JSON.stringify(['日期']), 'Wubi dynamic values respect the setting toggle');
+
+    world.engineState({
+        mode: 'wubi-86', revision: 5, composing: 'date', rawInput: 'date',
+        candidates: [{ id: 'w-latin', text: '歹' }], hasNextPage: false,
+    });
+    equal(JSON.stringify(bar()), JSON.stringify(['歹']), 'latin date code does not inject in Wubi');
 });
 
 test('dynamic date/time candidates respect the settings toggle', {since: '3.54.0'}, () => {

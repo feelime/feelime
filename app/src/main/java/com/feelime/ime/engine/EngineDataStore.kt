@@ -54,6 +54,11 @@ object EngineDataStore {
                     File(context.filesDir, "rime-user/build/luna_pinyin_t9.prism.bin").isFile
                 else File(root, "rime/luna_pinyin_t9.schema.yaml").isFile
             InputMode.STROKE -> File(root, "rime/feelime_stroke.schema.yaml").isFile
+            InputMode.WUBI_86 ->
+                File(root, "rime/feelime_wubi86.schema.yaml").isFile &&
+                    File(root, "rime/wubi86.table.bin").isFile &&
+                    File(root, "rime/wubi86.prism.bin").isFile &&
+                    File(root, "rime/wubi86_lookup.reverse.bin").isFile
             // #20 音形码表：产物不在 engine-data（用户设备端编译），就绪 =
             // staging 里 table 存在（未导入时模式菜单不显示）。
             InputMode.FLYPY -> File(

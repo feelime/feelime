@@ -47,6 +47,8 @@
         "全拼 Pinyin": "Pinyin",
         "双拼": "Double Pinyin",
         "笔画 Stroke": "Stroke",
+        "五笔 86 Wubi": "Wubi 86",
+        "五笔 86": "Wubi 86",
         "重输": "Restart",
         "该键盘还在准备中": "That keyboard is still preparing",
         "已截断至 200 字": "Truncated to 200 characters",
@@ -312,7 +314,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.59';
+    const KEYBOARD_VERSION = '3.74.6';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -347,6 +349,39 @@
         return [...String(text)].every(ch => !/\p{L}/u.test(ch) && !/\p{N}/u.test(ch));
     }
 
+    /** Candidate text plus an optional compact engine comment (for example
+     *  `五笔 wqvb` from the Wubi/pinyin hybrid lookup). Tests and callers
+     *  can still read the candidate text from `.candidate-text`. */
+    function setCandidateContent(button, text, comment) {
+        const label = document.createElement('span');
+        label.className = 'candidate-text';
+        label.textContent = text;
+        button.append(label);
+        if (comment) {
+            const note = document.createElement('span');
+            note.className = 'candidate-comment';
+            note.textContent = comment;
+            button.append(note);
+        }
+    }
+
+    function wubiCodes(comment) {
+        return String(comment || '').trim().split(/\s+/).filter(Boolean);
+    }
+
+    /** A candidate belongs to the shape-code stream when one of its real Wubi
+     * codes matches the typed prefix. Pinyin-fallback candidates do not match
+     * and therefore keep a visible code annotation. */
+    function isWubiCandidate(raw, comment) {
+        const code = String(raw || '').replace(/[ ']/g, '').toLowerCase();
+        return !!code && wubiCodes(comment).some(candidate => candidate.startsWith(code));
+    }
+
+    function wubiFallbackCode(raw, comment) {
+        if (!comment || isWubiCandidate(raw, comment)) return null;
+        return wubiCodes(comment).sort((a, b) => b.length - a.length)[0] || null;
+    }
+
     /** 动态日期时间候选（issue #22 分层结论，rime date.lua 等价体验）：
      *  输入码精确命中时在候选池注入运行时生成的 overlay 条目（dyn: 前缀，
      *  点击 clearComposing + commitText 直上屏）。拉丁码（date/time/week）
@@ -355,25 +390,87 @@
      *  本词，日期值候选做次选。双拼下 riqi 是真实音节输入（ri'qi=日期），
      *  拼音码只在全拼注册。 */
     const DYNAMIC_INPUT_CODES = {
-        date: { kind: 'date', head: true },
-        time: { kind: 'time', head: true },
-        week: { kind: 'week', head: true },
-        riqi: { kind: 'date', head: false },
-        shijian: { kind: 'time', head: false },
-        xingqi: { kind: 'week', head: false },
-        xingq: { kind: 'week', head: false },
+        date: { kind: 'date', head: true, modes: ['pinyin', 'double-pinyin'] },
+        time: { kind: 'time', head: true, modes: ['pinyin', 'double-pinyin'] },
+        week: { kind: 'week', head: true, modes: ['pinyin', 'double-pinyin'] },
+        riqi: { kind: 'date', head: false, modes: ['pinyin'] },
+        shijian: { kind: 'time', head: false, modes: ['pinyin'] },
+        xingqi: { kind: 'week', head: false, modes: ['pinyin'] },
+        xingq: { kind: 'week', head: false, modes: ['pinyin'] },
+        // 五笔 86：日期、时间、星期。
+        jjad: { kind: 'date', head: false, modes: ['wubi-86'] },
+        jfuj: { kind: 'time', head: false, modes: ['wubi-86'] },
+        jtad: { kind: 'week', head: false, modes: ['wubi-86'] },
     };
     const dynamicWeekNames = ['日', '一', '二', '三', '四', '五', '六'];
+    const lunarDigits = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+
+    function lunarDayName(day) {
+        if (day === 10) return '初十';
+        if (day < 10) return '初' + lunarDigits[day];
+        if (day < 20) return '十' + lunarDigits[day - 10];
+        if (day === 20) return '二十';
+        if (day < 30) return '廿' + lunarDigits[day - 20];
+        return day === 30 ? '三十' : String(day);
+    }
+
+    function lunarDateName(now) {
+        try {
+            const parts = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', {
+                month: 'long',
+                day: 'numeric',
+            }).formatToParts(now);
+            const month = parts.find(part => part.type === 'month')?.value || '';
+            const rawDay = parts.find(part => part.type === 'day')?.value || '';
+            const day = Number(rawDay);
+            return month && Number.isFinite(day) ? `农历${month}${lunarDayName(day)}` : '';
+        } catch (_) {
+            return '';
+        }
+    }
 
     function dynamicCandidatesFor(raw, mode) {
-        if (mode !== 'pinyin' && mode !== 'double-pinyin') return [];
         let spec = DYNAMIC_INPUT_CODES[raw];
-        if (!spec) return [];
-        if (!spec.head && mode !== 'pinyin') return [];
+        if (!spec || !spec.modes.includes(mode)) return [];
         const now = new Date();
         const pad = value => String(value).padStart(2, '0');
         let texts;
-        if (spec.kind === 'date') {
+        if (mode === 'wubi-86') {
+            const y = now.getFullYear();
+            const m = now.getMonth() + 1;
+            const d = now.getDate();
+            const hh = pad(now.getHours());
+            const mm = pad(now.getMinutes());
+            const ss = pad(now.getSeconds());
+            if (spec.kind === 'date') {
+                texts = [
+                    `${y}-${pad(m)}-${pad(d)}`,
+                    `${y}年${m}月${d}日`,
+                    `${y}${pad(m)}${pad(d)}`,
+                    lunarDateName(now),
+                    `${m}月${d}日`,
+                ];
+            } else if (spec.kind === 'time') {
+                texts = [
+                    `${y}-${pad(m)}-${pad(d)} ${hh}:${mm}:${ss}`,
+                    `${y}${pad(m)}${pad(d)}${hh}${mm}${ss}`,
+                    `${hh}:${mm}:${ss}`,
+                    `${hh}:${mm}`,
+                    `${hh}:${mm}:00`,
+                    `${now.getHours()}时${mm}分${ss}秒`,
+                ];
+            } else {
+                const week = `周${dynamicWeekNames[now.getDay()]}`;
+                const longWeek = `星期${dynamicWeekNames[now.getDay()]}`;
+                texts = [
+                    `${y}年${m}月${d}日 ${week}`,
+                    week,
+                    longWeek,
+                    `${y}-${pad(m)}-${pad(d)} ${week}`,
+                    `${m}月${d}日 ${week}`,
+                ];
+            }
+        } else if (spec.kind === 'date') {
             const y = now.getFullYear();
             const m = now.getMonth() + 1;
             const d = now.getDate();
@@ -396,7 +493,7 @@
             const name = dynamicWeekNames[now.getDay()];
             texts = [`星期${name}`, `周${name}`, now.getDay() === 0 ? '星期天' : `礼拜${name}`];
         }
-        return texts.map((text, index) => ({
+        return [...new Set(texts.filter(Boolean))].map((text, index) => ({
             id: `dyn:${spec.kind}-${index}`,
             text,
             dynamic: true,
@@ -499,7 +596,9 @@ const TOOL_CATALOG = {
     kaomoji: 'toolKaomoji',
 };
 // #H 硬键盘接字符的模式（design §2，与 native hwCharModes 同源集）。
-const HW_TEXT_MODES = new Set(['pinyin', 'double-pinyin', 'flypy', 'french', 'russian', 'japanese']);
+const HW_TEXT_MODES = new Set([
+    'pinyin', 'double-pinyin', 'wubi-86', 'flypy', 'french', 'russian', 'japanese',
+]);
 
 const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'mic'] };
     const MIN_NATIVE_API = 1;
@@ -547,6 +646,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // APK 的 hello 不带 stroke 就绪字段，缺失必须当不可用——沿用
         // !== false 的宽松判定会把缺键当可用，出现可点却无效的入口。
         'stroke': { label: '笔', title: '笔画 Stroke', layout: 't9', engine: true, strictReady: true },
+        // 五笔 86：26 键完整码表，四码一字/词；随 engine-data 内置分发。
+        'wubi-86': { label: '五', title: '五笔 86 Wubi', layout: 'qwerty', engine: true, strictReady: true },
         // 音形（issue #20，首版小鹤音形）：qwerty 键面（码即字母），
         // 码表用户导入、设备端编译独立 flypy table/prism。strictReady：
         // 未导入（hello 缺字段或产物未落地）时菜单不出入口。
@@ -1361,7 +1462,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // re-checked against the prisms by scripts/verify/guard_dp_finals.js.
 
     function modeLabel(mode) {
-        if (uiLocale === 'en') return ({pinyin: 'PY', 'double-pinyin': 'DP', t9: 'T9', japanese: 'JP', handwriting: 'HW'})[mode] || MODES[mode].label;
+        if (uiLocale === 'en') return ({pinyin: 'PY', 'double-pinyin': 'DP', t9: 'T9', 'wubi-86': 'WB', japanese: 'JP', handwriting: 'HW'})[mode] || MODES[mode].label;
         return (MODES[mode] || MODES.direct).label;
     }
 
@@ -2244,13 +2345,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.mode === 't9' || this.mode === 'stroke';
         }
 
-        /** #39-8：形码（flypy）的符号交互与拼音一致——上滑 CN_ALTS 全角
+        /** #39-8：形码（五笔/音形）的符号交互与拼音一致——上滑 CN_ALTS 全角
          * 符号、弹层/下滑 literal 直发（sendSymbol），否则符号会走 sendText
          * 进形码引擎当编码被静默吞掉（用户实测「上滑没有反应」）。但引擎
-         * 语义仍是形码：isChineseMode 不收 flypy（第三行左键的分词/Shift
+         * 语义仍是形码：isChineseMode 不收五笔/flypy（第三行左键的分词/Shift
          * 选择、T9 弹层等以它为准，' 分词对形码引擎无语义）。 */
         chineseSymMode() {
-            return this.isChineseMode() || this.mode === 'flypy';
+            return this.isChineseMode() || this.mode === 'wubi-86' || this.mode === 'flypy';
         }
 
         sendKey(key) {
@@ -5401,7 +5502,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #39-7：形码同此——键面大写与拼音统一（码即字母，四码顶字，
             // 键面大写不会误导输入）。
             const chinese = this.mode === 'pinyin' || this.mode === 'double-pinyin' ||
-                this.mode === 'flypy';
+                this.mode === 'wubi-86' || this.mode === 'flypy';
             const upper = this.shift || this.caps;
             document.querySelectorAll('[data-key]').forEach(button => {
                 const key = button.dataset.key;
@@ -6804,7 +6905,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         renderFnLabels() {
             const on = this.ctrlView && this.sticky.Fn;
             const chinese = this.mode === 'pinyin' || this.mode === 'double-pinyin' ||
-                this.mode === 'flypy';
+                this.mode === 'wubi-86' || this.mode === 'flypy';
             const upper = this.shift || this.caps;
             document.querySelectorAll('#qwertyLayer [data-key]').forEach(button => {
                 const key = button.dataset.key;
@@ -7013,7 +7114,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!pend || pend.to !== newMode || Date.now() - pend.at >= 3000) return;
             this.quickSwitchPendingToast = null;
             const names = {
-                pinyin: t("全拼"), 'double-pinyin': t("双拼"), flypy: t("鹤形"),
+                pinyin: t("全拼"), 'double-pinyin': t("双拼"),
+                'wubi-86': t("五笔 86"), flypy: t("鹤形"),
                 french: t("法语"), russian: t("俄语"), japanese: t("日语"),
             };
             this.showToast(t("已切换：") + (names[newMode] || t("英文")));
@@ -7026,7 +7128,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const el = document.getElementById('hwModeTag');
             if (!el) return;
             const names = {
-                pinyin: t("全拼"), 'double-pinyin': t("双拼"), flypy: t("鹤形"),
+                pinyin: t("全拼"), 'double-pinyin': t("双拼"),
+                'wubi-86': t("五笔 86"), flypy: t("鹤形"),
                 french: t("法语"), russian: t("俄语"), japanese: t("日语"),
             };
             el.textContent = names[this.mode] || '';
@@ -9335,6 +9438,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const rest = rawEngine.filter(candidate => !symbolic.includes(candidate));
                 engine = [...rest.slice(0, 2), ...symbolic, ...rest.slice(2)];
             }
+            const raw = (this.lastRawInput || '').replace(/ /g, '').toLowerCase();
+            if (this.mode === 'wubi-86' && raw) {
+                const shapeCandidates = engine.filter(candidate =>
+                    isWubiCandidate(raw, candidate.comment));
+                const pinyinCandidates = engine.filter(candidate =>
+                    !isWubiCandidate(raw, candidate.comment));
+                engine = [...shapeCandidates, ...pinyinCandidates];
+            }
             // 笔画句子候选压后（issue #18）：词典 max_phrase_length=1，
             // 多字候选必来自 enable_sentence 造句（☯；comment 不在桥协议
             // 里，按字长识别）。不压后的话 hspp 长码兜底的句子「才丿」
@@ -9355,7 +9466,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
             }
             // 池前缀 id 签名 → 见池组装后的计算（须按最终展示序）。
-            const raw = (this.lastRawInput || '').replace(/ /g, '').toLowerCase();
             const engineTexts = new Set(engine.map(candidate => candidate.text));
             // 动态日期时间候选（dyn:）：引擎不会给出这些文本，但拼音码
             // （xingqi → 星期日）撞词时去重，避免同文双格。设置开关关掉
@@ -9365,7 +9475,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 .filter(item => !engineTexts.has(item.text));
             const exact = [];
             const prefix = [];
-            if (raw) {
+            // 常用语输入码是拼音/双拼键序；五笔、笔画、音形等独立编码
+            // 不应把同字母序列误当常用语码。
+            if (raw && (this.mode === 'pinyin' || this.mode === 'double-pinyin')) {
                 (this.favoriteItems || []).forEach(item => {
                     const code = (item.code || '').toLowerCase();
                     if (!code || !raw.startsWith(code)) return;
@@ -9705,7 +9817,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (index < this.expandRendered) return;
                 const button = document.createElement('button');
                 button.className = index === 0 ? 'expand-candidate first' : 'expand-candidate';
-                button.textContent = candidate.text;
+                setCandidateContent(
+                    button,
+                    candidate.text,
+                    this.mode === 'wubi-86'
+                        ? wubiFallbackCode(this.lastRawInput, candidate.comment) : null,
+                );
                 // Native clicks only: bindTouch preventDefaults touchstart,
                 // which cancels the strip's pan .
                 let longPressed = false;
@@ -9893,8 +10010,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.englishOrderedPool(this.expandCandidates || []).forEach((candidate, index) => {
                 const button = document.createElement('button');
                 button.className = index === 0 ? 'candidate first' : 'candidate';
-                button.textContent = this.mode === 'french' && this.caseMode && state.composing
-                    ? this.caseifyText(candidate.text) : candidate.text;
+                setCandidateContent(
+                    button,
+                    this.mode === 'french' && this.caseMode && state.composing
+                        ? this.caseifyText(candidate.text) : candidate.text,
+                    this.mode === 'wubi-86'
+                        ? wubiFallbackCode(this.lastRawInput, candidate.comment) : null,
+                );
                 let longPressed = false;
                 button.addEventListener('click', () => {
                     // A long-press opens the delete menu; the
@@ -10156,7 +10278,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const kaomojiForm = this.panelTab === 'kaomoji';
             document.querySelector('.panel-tabs').hidden = kaomojiForm;
             document.getElementById('kaomojiTabs').hidden = !kaomojiForm;
-            document.getElementById('panelLayer').dataset.kaomoji = kaomojiForm ? '' : null;
+            const layer = document.getElementById('panelLayer');
+            if (kaomojiForm) layer.dataset.kaomoji = '';
+            else delete layer.dataset.kaomoji;
             document.querySelectorAll('[data-panel-tab]').forEach(button => {
                 button.classList.toggle('active', button.dataset.panelTab === this.panelTab);
             });

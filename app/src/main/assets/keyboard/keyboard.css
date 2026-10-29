@@ -692,7 +692,30 @@ body.settings-page #candidateBar > .tool { display: none; }
     line-height: normal;
     display: flex;
     align-items: center;
+    gap: 4px;
 }
+
+.candidate-text,
+.expand-candidate .candidate-text {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Wubi/pinyin hybrid lookup comment: compact secondary annotation without
+ * changing the candidate row height. */
+.candidate-comment {
+    flex: none;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
+.expand-candidate .candidate-comment { font-size: 12px; }
 
 /* 联想词（docs/design/association.md）：与引擎候选同尺寸同配色。
  * 用户定稿（2026-09-20）：不做任何「这是联想」的降调标识——不加灰字、
@@ -1727,6 +1750,9 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
 #panelList {
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     overflow-y: auto;
     border-radius: 10px;
     /* 候选列表块与键帽同材质（验收反馈）：背景按「按键不透明度」
@@ -1769,6 +1795,7 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
 .kaomoji-cell:active { background: rgba(128,128,128,.25); }
 
 .panel-item {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1782,17 +1809,16 @@ body.landscape .panel-head { margin: var(--preedit-band, 18px) 0 4px; }
     font-size: 14px;
     text-align: left;
 }
+.panel-item + .panel-item { border-top: 1px solid var(--kb-border, rgba(128,128,128,.22)); }
 .panel-item:active { background: var(--pressed); }
 .panel-item.disabled { color: var(--muted); }
 .panel-text {
     flex: 1;
     min-width: 0;
-    /* Two-line clamp (design §3.5). */
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    display: block;
     overflow: hidden;
-    word-break: break-all;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .panel-remove {
     flex: none;
@@ -2525,7 +2551,7 @@ body.expanded #preeditLine { display: none; }
 }
 .expand-candidate {
     flex: none;
-    max-width: 252px; /* 12 glyphs at 18px + padding, per the input cap */
+    max-width: 340px; /* text plus a compact five-code lookup annotation */
     border: 0;
     background: transparent;
     color: var(--text);
@@ -2540,6 +2566,7 @@ body.expanded #preeditLine { display: none; }
     text-overflow: ellipsis;
     white-space: nowrap;
     touch-action: pan-y;
+    gap: 5px;
 }
 .expand-candidate.first { color: var(--accent-text); font-weight: 600; }
 .expand-candidate:active, .expand-candidate.active-touch { background: var(--pressed); }

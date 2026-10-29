@@ -18,6 +18,16 @@ object AssociationStore {
     private const val MAX_SUFFIX = 4
     private const val MAX_HOPS = 8
 
+    // 问号在语料里是独立 token，构建 bigram 表时已被纯中文过滤掉。
+    // 上屏内容带明确疑问线索时在查询层补回，避免为了一个标点重建整表。
+    private val questionCue = Regex(
+        "(?:吗|呢|嘛)$|" +
+            "(?:什么|怎么|为什么|为何|如何|谁|哪(?:里|儿|个|些|位|天|年|次|种)?|" +
+            "多少|几点|几个|几位|几岁|几天|几年|几次|几时|几号|" +
+            "是否|是不是|有没有|能不能|可不可以|会不会|要不要|对不对|好不好|" +
+            "行不行|可否|请问)",
+    )
+
     @Volatile private var table: Map<String, List<String>>? = null
     private val prewarming = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -54,9 +64,22 @@ object AssociationStore {
         }
         for (length in minOf(MAX_SUFFIX, committed.length) downTo 1) {
             val hops = map[committed.substring(committed.length - length)]
-            if (!hops.isNullOrEmpty()) return hops
+            if (!hops.isNullOrEmpty()) {
+                return addQuestionMarkCandidate(committed, hops)
+            }
         }
-        return emptyList()
+        return addQuestionMarkCandidate(committed, emptyList())
+    }
+
+    /** 问句的后继词可能为空，但问号仍然有效；显式标点已收尾时不重复补。 */
+    internal fun addQuestionMarkCandidate(
+        committed: String,
+        words: List<String>,
+    ): List<String> {
+        val text = committed.trim()
+        if (text.isEmpty() || text.last() in "？！?!。…") return words
+        if (!questionCue.containsMatchIn(text)) return words
+        return (listOf("？") + words.filterNot { it == "？" }).take(MAX_HOPS)
     }
 
     private fun parse(file: File?): Map<String, List<String>> {

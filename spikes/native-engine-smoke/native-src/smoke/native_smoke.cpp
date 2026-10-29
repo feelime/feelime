@@ -1,4 +1,5 @@
 #include <jni.h>  // Android JNI smoke entry points.
+#include <rime_api.h>
 #include <unistd.h>
 
 #include <cstdint>
@@ -53,6 +54,14 @@ std::string json_escape(const std::string& value) {
     }
   }
   return out;
+}
+
+void append_candidate(std::string* output, const char* text, const char* comment) {
+  if (text != nullptr) output->append(text);
+  if (comment != nullptr && comment[0] != '\0') {
+    output->push_back('\t');
+    output->append(comment);
+  }
 }
 
 }  // namespace
@@ -196,16 +205,48 @@ Java_com_feelime_ime_nativeengine_NativeSmoke_rimeDeleteCandidateAbsolute(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_feelime_ime_nativeengine_NativeSmoke_rimeContextAtPage(
     JNIEnv* env, jclass, jlong session, jint view_page) {
-  char preedit[1024] = {};
-  char candidates[16384] = {};
-  int page_no = 0;
+  const RimeApi* api = rime_get_api();
+  int code = 0;
+  const int page_no = view_page;
   int is_last_page = 1;
   int has_next = 0;
   int page_size = 0;
-  const int code = feelime_rime_context_at_page(
-      static_cast<std::uintptr_t>(session), view_page, preedit, sizeof(preedit),
-      candidates, sizeof(candidates), &page_no, &is_last_page, &has_next,
-      &page_size);
+  std::string preedit;
+  std::string candidates;
+  if (api == nullptr || session == 0 || view_page < 0) {
+    code = -2;
+  } else {
+    RIME_STRUCT(RimeContext, context);
+    if (!api->get_context(static_cast<RimeSessionId>(session), &context)) {
+      code = -2;
+    } else {
+      page_size = context.menu.page_size;
+      preedit = context.composition.preedit == nullptr
+          ? "" : context.composition.preedit;
+      api->free_context(&context);
+      if (page_size > 0) {
+        RimeCandidateListIterator iterator = {};
+        if (!api->candidate_list_from_index(
+                static_cast<RimeSessionId>(session), &iterator,
+                view_page * page_size)) {
+          code = -4;
+        } else {
+          bool page_empty = true;
+          for (int i = 0; i < page_size; ++i) {
+            if (!api->candidate_list_next(&iterator)) break;
+            page_empty = false;
+            if (i > 0) candidates.push_back('\n');
+            append_candidate(
+                &candidates, iterator.candidate.text, iterator.candidate.comment);
+          }
+          has_next = api->candidate_list_next(&iterator) ? 1 : 0;
+          api->candidate_list_end(&iterator);
+          if (page_empty) code = -4;
+          is_last_page = has_next ? 0 : 1;
+        }
+      }
+    }
+  }
   std::ostringstream out;
   out << "{\"code\":" << code << ",\"preedit\":\"" << json_escape(preedit)
       << "\",\"candidates\":\"" << json_escape(candidates)
@@ -219,13 +260,29 @@ Java_com_feelime_ime_nativeengine_NativeSmoke_rimeContextAtPage(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_feelime_ime_nativeengine_NativeSmoke_rimeContext(
     JNIEnv* env, jclass, jlong session) {
-  char preedit[1024] = {};
-  char candidates[16384] = {};
+  const RimeApi* api = rime_get_api();
+  int code = -2;
   int page_no = 0;
   int is_last_page = 1;
-  const int code = feelime_rime_get_context(
-      static_cast<std::uintptr_t>(session), preedit, sizeof(preedit),
-      candidates, sizeof(candidates), &page_no, &is_last_page);
+  std::string preedit;
+  std::string candidates;
+  if (api != nullptr && session != 0) {
+    RIME_STRUCT(RimeContext, context);
+    if (api->get_context(static_cast<RimeSessionId>(session), &context)) {
+      code = 1;
+      preedit = context.composition.preedit == nullptr
+          ? "" : context.composition.preedit;
+      for (int i = 0; i < context.menu.num_candidates; ++i) {
+        if (i > 0) candidates.push_back('\n');
+        append_candidate(
+            &candidates, context.menu.candidates[i].text,
+            context.menu.candidates[i].comment);
+      }
+      page_no = context.menu.page_no;
+      is_last_page = context.menu.is_last_page ? 1 : 0;
+      api->free_context(&context);
+    }
+  }
   std::ostringstream out;
   out << "{\"code\":" << code << ",\"preedit\":\"" << json_escape(preedit)
       << "\",\"candidates\":\"" << json_escape(candidates)

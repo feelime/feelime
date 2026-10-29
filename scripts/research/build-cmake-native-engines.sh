@@ -108,6 +108,31 @@ python3 "$repo_root/scripts/generate-stroke-dict.py" \
   --essay "$work/src/rime-data/essay/essay.txt"
 cp "$repo_root/app/src/main/assets/engine-data/rime/feelime_stroke.schema.yaml" "$rime_shared/"
 cp "$repo_root/app/src/main/assets/engine-data/rime/luna_pinyin_fuzzy.schema.yaml" "$rime_shared/"
+# 五笔 86：从同一钉死的 rime-frost 来源生成 text/code/weight 单表，
+# 与已入仓源词表逐字节核对。编译前再派生一到三码优先别名，修正
+# librime predictive lookup 按表序而非全局词频跨码遍历的问题。
+python3 "$repo_root/scripts/generate-wubi-dict.py" \
+  --chars "$work/src/rime-data/rime-frost/cn_dicts_wb/chars.dict.yaml" \
+  --words "$work/src/rime-data/rime-frost/cn_dicts_wb/words.dict.yaml" \
+  --output "$repo_root/scripts/data/wubi86.dict.yaml" \
+  --check
+sed 's/^name: wubi86$/name: wubi86_lookup/' \
+  "$repo_root/scripts/data/wubi86.dict.yaml" > "$rime_shared/wubi86_lookup.dict.yaml"
+sed \
+  -e 's/^  schema_id: feelime_wubi86$/  schema_id: wubi86_lookup_compile/' \
+  -e 's/^  dictionary: wubi86$/  dictionary: wubi86_lookup/' \
+  "$repo_root/app/src/main/assets/engine-data/rime/feelime_wubi86.schema.yaml" \
+  > "$rime_shared/wubi86_lookup_compile.schema.yaml"
+python3 "$repo_root/scripts/generate-wubi-short-code-dict.py" \
+  --input "$repo_root/scripts/data/wubi86.dict.yaml" \
+  --output "$rime_shared/wubi86.dict.yaml"
+cp "$repo_root/app/src/main/assets/engine-data/rime/feelime_wubi86.schema.yaml" "$rime_shared/"
+# Prism metadata embeds source mtimes. Pin both inputs to the repository-wide
+# SOURCE_DATE_EPOCH so an otherwise clean rebuild is byte-identical.
+touch -d "@$SOURCE_DATE_EPOCH" \
+  "$rime_shared/wubi86_lookup.dict.yaml" \
+  "$rime_shared/wubi86_lookup_compile.schema.yaml" \
+  "$rime_shared/wubi86.dict.yaml" "$rime_shared/feelime_wubi86.schema.yaml"
 deployer="$work/build/rime-host/librime/bin/rime_deployer"
 "$deployer" --compile "$rime_shared/luna_pinyin.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
 "$deployer" --compile "$rime_shared/ziranma_double_pinyin.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
@@ -115,6 +140,8 @@ deployer="$work/build/rime-host/librime/bin/rime_deployer"
 "$deployer" --compile "$rime_shared/double_pinyin_sogou.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
 "$deployer" --compile "$rime_shared/double_pinyin_ziguang.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
 "$deployer" --compile "$rime_shared/feelime_stroke.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
+"$deployer" --compile "$rime_shared/wubi86_lookup_compile.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
+"$deployer" --compile "$rime_shared/feelime_wubi86.schema.yaml" "$rime_user" "$rime_shared" "$rime_build"
 # 模糊音 prism 矩阵（issue #39 起纳入正式链路）：31 个 mask 变体必须与
 # 本现场 table 同场编译。语义校验（prism.txt 拼写集合）在生成器里，
 # byte 级会因 marisa 构建顺序差百字节，不做 cmp。
@@ -133,7 +160,8 @@ for output in \
   double_pinyin_sogou.schema.yaml \
   double_pinyin_ziguang.prism.bin double_pinyin_ziguang.prism.txt \
   double_pinyin_ziguang.schema.yaml \
-  stroke.prism.bin stroke.table.bin; do
+  stroke.prism.bin stroke.table.bin \
+  wubi86.prism.bin wubi86.table.bin wubi86_lookup.reverse.bin; do
   cp "$rime_build/$output" "$work/artifacts/rime-data/"
 done
 mkdir -p "$work/artifacts/rime-data/fuzzy"
@@ -141,11 +169,14 @@ cp "$rime_build/fuzzy"/luna_pinyin_fuzzy_m*.prism.bin "$work/artifacts/rime-data
 # 笔画四件与仓库登记资产逐字节比对——dict/schema 是仓库形态（生成器/
 # 原创源文件，部署直接读源码 yaml），prism/table 是编译产物；全部可再
 # 生成且必须就是被 third_party 清单审计的那几份字节。
-for asset in stroke.dict.yaml feelime_stroke.schema.yaml; do
+for asset in stroke.dict.yaml feelime_stroke.schema.yaml \
+  feelime_wubi86.schema.yaml; do
   cp "$rime_shared/$asset" "$work/artifacts/rime-data/"
 done
 for asset in stroke.dict.yaml stroke.prism.bin stroke.table.bin \
-  feelime_stroke.schema.yaml; do
+  feelime_stroke.schema.yaml \
+  wubi86.prism.bin wubi86.table.bin wubi86_lookup.reverse.bin \
+  feelime_wubi86.schema.yaml; do
   cmp -s "$work/artifacts/rime-data/$asset" \
     "$repo_root/app/src/main/assets/engine-data/rime/$asset" || {
     echo "stroke artifact mismatch: $asset (rerun generate / audit manifests)" >&2

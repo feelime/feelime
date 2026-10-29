@@ -3,7 +3,7 @@
     "cmake-native": {
       "command": "FEELIME_M0_INPUTS=<verified-inputs> FEELIME_M0_NDK=<verified-r29> FEELIME_M0_WORK=<new-empty-dir> scripts/research/build-cmake-native-engines.sh",
       "script": "scripts/research/build-cmake-native-engines.sh",
-      "scriptSha256": "754b6b04545189ae3e0ce8ddfa56d4fca95b917b5e6539f2ca2231f871ef9579"
+      "scriptSha256": "8b0d2c8e1931375dd497c78c9c4b542d41c365d9ef938add0f6158e894e78e60"
     },
     "mozc-android": {
       "command": "FEELIME_M0_INPUTS=<verified-inputs> FEELIME_M0_NDK=<verified-r29> FEELIME_M0_NDK_ARCHIVE=<verified-r29-archive> FEELIME_M0_BAZELISK=<verified-bazelisk> FEELIME_M0_REPOSITORY_CACHE_SEED=<verified-cache> FEELIME_M0_REPOSITORY_CACHE_MANIFEST=<verified-cache-manifest> FEELIME_M0_WORK=<new-empty-dir> scripts/research/build-mozc-android.sh",
@@ -73,7 +73,10 @@
       "name": "feelime-original-schema",
       "origin": "this repository",
       "paths": [
-        "spikes/native-engine-smoke/original-schemas/ziranma_double_pinyin.schema.yaml"
+        "spikes/native-engine-smoke/original-schemas/ziranma_double_pinyin.schema.yaml",
+        "app/src/main/assets/engine-data/rime/feelime_wubi86.schema.yaml",
+        "scripts/generate-wubi-dict.py",
+        "scripts/data/wubi86.dict.yaml"
       ]
     },
     {
@@ -306,9 +309,9 @@
     {
       "apkPath": "lib/arm64-v8a/libfeelime_smoke.so",
       "buildRecipe": "cmake-native",
-      "bytes": 50760,
+      "bytes": 53696,
       "path": "app/src/main/jniLibs/arm64-v8a/libfeelime_smoke.so",
-      "sha256": "ab3d1e90775e9413238071c44276eef688132c324264e1f4dbba8200ea5f3444",
+      "sha256": "d845f537c87557884e2faf7426660e915be5eabb91bdc0c4b77b70b1706b90c9",
       "sources": [
         "feelime-original-adapters"
       ]
@@ -369,9 +372,9 @@
     {
       "apkPath": "lib/x86_64/libfeelime_smoke.so",
       "buildRecipe": "cmake-native",
-      "bytes": 51432,
+      "bytes": 52800,
       "path": "spikes/native-engine-smoke/app/src/main/jniLibs/x86_64/libfeelime_smoke.so",
-      "sha256": "4bcdb084d103f02ef5ad06eab7d22c15de70fed62c5299c9ae0d9cbeaeefb5fd",
+      "sha256": "acb42ea3fd416f70b928d401d7dc38abcca477f0a569559f727389db0a60ed70",
       "sources": [
         "feelime-original-adapters"
       ]
@@ -428,6 +431,50 @@
         "rime-essay",
         "rime-luna-pinyin",
         "rime-stroke",
+        "feelime-original-schema"
+      ]
+    },
+    {
+      "apkPath": "assets/engine-data/rime/feelime_wubi86.schema.yaml",
+      "buildRecipe": "cmake-native",
+      "bytes": 2700,
+      "path": "app/src/main/assets/engine-data/rime/feelime_wubi86.schema.yaml",
+      "sha256": "b29b62e9ca24115351c2cfe3f014a1f90059eaf4406aaf9fc2909cf67013e914",
+      "sources": [
+        "rime-frost",
+        "feelime-original-schema"
+      ]
+    },
+    {
+      "apkPath": "assets/engine-data/rime/wubi86.prism.bin",
+      "buildRecipe": "cmake-native",
+      "bytes": 1209660,
+      "path": "app/src/main/assets/engine-data/rime/wubi86.prism.bin",
+      "sha256": "7c8398be3262a6b6995996861b4e57e26d60b547f877f8fb5ef1e59d4a42ec41",
+      "sources": [
+        "rime-frost",
+        "feelime-original-schema"
+      ]
+    },
+    {
+      "apkPath": "assets/engine-data/rime/wubi86_lookup.reverse.bin",
+      "buildRecipe": "cmake-native",
+      "bytes": 1985004,
+      "path": "app/src/main/assets/engine-data/rime/wubi86_lookup.reverse.bin",
+      "sha256": "35a1d5c0abce7db7b2c06043b9dced5f4f0df808a9000697c0128d0883ac911d",
+      "sources": [
+        "rime-frost",
+        "feelime-original-schema"
+      ]
+    },
+    {
+      "apkPath": "assets/engine-data/rime/wubi86.table.bin",
+      "buildRecipe": "cmake-native",
+      "bytes": 6974364,
+      "path": "app/src/main/assets/engine-data/rime/wubi86.table.bin",
+      "sha256": "d80e9205491d9f63b2d080bb8174fd8152c5b8d658ce792744ad56f8afaebe3e",
+      "sources": [
+        "rime-frost",
         "feelime-original-schema"
       ]
     },
@@ -851,7 +898,7 @@
       "licenseFiles": [
         "third_party/licenses/rime-data/rime-frost-GPL-3.0.txt"
       ],
-      "modified": "slimmed import set (8105/41448/base/ext/others/corrections; tencent/cell/GB18030 dropped) via repo umbrella, host-compiled data",
+      "modified": "slimmed Pinyin import set (8105/41448/base/ext/others/corrections; tencent/cell/GB18030 dropped) via repo umbrella; cn_dicts_wb merged by scripts/generate-wubi-dict.py; Wubi one-to-three-code priority aliases derived by scripts/generate-wubi-short-code-dict.py; separate base-code reverse lookup derived for hybrid pinyin; host-compiled data",
       "name": "rime-frost",
       "origin": "https://github.com/gaboolic/rime-frost",
       "revision": "96278d8"

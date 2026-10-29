@@ -41,6 +41,20 @@ import java.util.ArrayDeque
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** #H 接收物理字符的引擎模式；JS `HW_TEXT_MODES` 与此同源。 */
+internal val HW_CHAR_MODES = setOf(
+    InputMode.PINYIN,
+    InputMode.DOUBLE_PINYIN,
+    InputMode.WUBI_86,
+    InputMode.FLYPY,
+    InputMode.FRENCH,
+    InputMode.RUSSIAN,
+    InputMode.JAPANESE,
+)
+
+/** 同时接收物理控制键（DEL/SPACE/ENTER）的模式。 */
+internal val HW_CTRL_MODES = HW_CHAR_MODES + setOf(InputMode.T9, InputMode.STROKE)
+
 class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngine.Listener {
     private val main = Handler(Looper.getMainLooper())
     private val background = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -918,7 +932,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     .put(
                         "candidates",
                         JSONArray(event.state.candidates.map { candidate ->
-                            JSONObject().put("id", candidate.id).put("text", candidate.text)
+                            JSONObject()
+                                .put("id", candidate.id)
+                                .put("text", candidate.text)
+                                .apply {
+                                    candidate.comment?.takeIf { it.isNotEmpty() }
+                                        ?.let { put("comment", it) }
+                                }
                         }),
                     )
                     .put("hasPreviousPage", event.state.hasPreviousPage)
@@ -985,7 +1005,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                             event.stamp.mode == com.feelime.ime.engine.InputMode.T9 ||
                             // 笔画（issue #18）：上屏的也是汉字文本，联想表
                             // 按文本后继查询，与输入模式无关。
-                            event.stamp.mode == com.feelime.ime.engine.InputMode.STROKE
+                            event.stamp.mode == com.feelime.ime.engine.InputMode.STROKE ||
+                            event.stamp.mode == com.feelime.ime.engine.InputMode.WUBI_86
                         )
                 ) {
                     pushAssoc(com.feelime.ime.engine.AssociationStore.next(applicationContext, committed))
@@ -2123,20 +2144,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     /** 接硬字符的模式（design §2）：T9/笔画是触摸形态（字母无意义）、
      *  手写走识别器、DIRECT=IME 不碰文本。LOADING 的 pendingEngine 期间
      *  currentMode 已是目标引擎模式——排队不拆词。 */
-    private val hwCharModes = setOf(
-        com.feelime.ime.engine.InputMode.PINYIN,
-        com.feelime.ime.engine.InputMode.DOUBLE_PINYIN,
-        com.feelime.ime.engine.InputMode.FLYPY,
-        com.feelime.ime.engine.InputMode.FRENCH,
-        com.feelime.ime.engine.InputMode.RUSSIAN,
-        com.feelime.ime.engine.InputMode.JAPANESE,
-    )
+    private val hwCharModes = HW_CHAR_MODES
     /** 只接控制键（DEL/SPACE/ENTER）的模式：+T9/笔画（组合中回车=按 id
      *  选词的特例在 JS enterAction；DIRECT/手写完全旁路）。 */
-    private val hwCtrlModes = hwCharModes + setOf(
-        com.feelime.ime.engine.InputMode.T9,
-        com.feelime.ime.engine.InputMode.STROKE,
-    )
+    private val hwCtrlModes = HW_CTRL_MODES
 
     private fun hwJsReady(): Boolean = pageReady && jsHwKeys
 
@@ -2581,7 +2592,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     // #20 flypy 是 strictReady：未导入码表时 hello 仍带
                     // 字段（false），菜单不出入口；导入完成的换装广播会
                     // 重推 hello 使其变可用。
-                    listOf("pinyin", "double-pinyin", "t9", "stroke", "flypy", "handwriting", "japanese", "french", "russian").forEach { mode ->
+                    listOf("pinyin", "double-pinyin", "t9", "stroke", "wubi-86", "flypy", "handwriting", "japanese", "french", "russian").forEach { mode ->
                         put(mode, engineDataReady(mode))
                     }
                 },

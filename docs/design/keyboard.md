@@ -292,7 +292,8 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 
 ### 3.2 列表行为
 
-- 剪贴板项：文本预览 + 时间；点击上屏（`commitText`）并关面板。
+- 剪贴板项：纵向逐行列表，每条独占一行；正文单行省略、删除 × 独立靠右；
+  点击正文上屏（`commitText`/`pasteText`）并关面板。
 - 常用语项：文本 + 输入码徽标；点击上屏。
 - 敏感编辑器（密码框）里面板可用但剪贴板列表为空（`getClipboard` 返回空
   数组，避免密码管理器内容出现在屏幕上）——「敏感编辑器里点选常用语仍可
@@ -326,7 +327,7 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
 
 ### 3.5 容量与截断
 
-- 剪贴板项文本预览**两行截断显示，存储不截断**（截断副本=静默数据损坏）。
+- 剪贴板项文本预览**单行省略显示，存储不截断**（截断副本=静默数据损坏）。
 - 剪贴板总预算 64KB（各条目 text 的 UTF-8 字节和 + 8KB 元数据余量），入队
   后循环弹出最旧直到达标；同文本置顶去重。
 - 粘贴上限 2000 code point（`MAX_COMMIT_CODE_POINTS`）：超长条目在面板
@@ -390,6 +391,10 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   date/time/week（拉丁码 head:true，池头空格直选）与 riqi/shijian/
   xingqi（拼音码，排引擎首候选之后）；双拼只认拉丁码（riqi 在双拼是
   真音节输入），T9/笔画不注入；id `dyn:` 前缀走 overlay 直发通道。
+  五笔 86 另注册 `jjad`/`jfuj`/`jtad`，保留引擎首候选「日期/时间/星期」
+  后追加运行时值：日期含 ISO、中文日期、紧凑日期、农历和月日；时间含
+  完整时间戳、紧凑时间戳、时分秒、时分和零秒；星期含完整日期+周几、
+  周几和星期几。五笔不识别拉丁 date/time/week 或拼音码。
   带设置开关「键盘与输入 → 日期时间候选」：pref `dynamic_datetime_on`
   默认开，关掉经 hello `dynamicDateTimeOn=false` 在 keyboard.js 注入前
   整体 gate（拉丁/拼音码同停）。
@@ -752,6 +757,7 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 | 全拼 / 双拼（自然码/小鹤/搜狗/紫光） | librime（RimeTextEngine） | §9.3 |
 | T9 九宫格 | librime（RimeTextEngine，独立 schema） | §2.7 / t9.md |
 | 笔画五键 | librime（RimeTextEngine） | §9.3a |
+| 五笔 86 | librime（RimeTextEngine，独立 schema） | §9.3b |
 | 法语 / 俄语 | Hunspell（HunspellTextEngine） | §9.2 |
 | 日语 | Mozc（MozcTextEngine） | §9.4 |
 | 手写（单字） | 独立识别引擎（HandwritingEngine，不实现 TextEngine） | §9.7 / handwriting.md |
@@ -909,6 +915,62 @@ tile 点按 no-op（typeof 守卫），绝不画假状态。二级内容（快�
 - 已知边界：completion 排序契约含「剩余码长度」维度，通配行不保证严格按
   字频排在精确行后（首格为精确行的实测样本稳定）；completion 的剩余码
   comment 不展示（v1）。
+
+### 9.3b 五笔 86
+
+- **模式与键面**：独立模式 `wubi-86`，复用 26 键 qwerty 键面，字母直接
+  进入 librime；第三行左键保持 Shift（五笔没有拼音分词语义）。模式采用
+  `strictReady`，只有 hello 明确下发 `engineDataReady["wubi-86"] === true`
+  才能进入。硬键盘字符、空格、回车和退格走 #H 统一通道；follow 快捷切换
+  可从英文返回五笔 86。
+- **schema**：`feelime_wubi86`，26 字母码表、`max_code_length: 4`；
+  五笔词条码长仍是四码，但 speller 的 `max_code_length` 设为 0，避免
+  第 5 键自动顶出前一码。唯一四码不再自动上屏，统一由候选条按 id 选择；
+  空格确认中文，确认键/物理 Enter 提交当前完整字母串。开启码表 completion，
+  打一至三码时按同一词表的前缀补全单字/词组；关闭 sentence，避免五笔
+  造句噪声。同一 schema 另挂 `script_translator@pinyin`，复用内置
+  `luna_pinyin` 词库做无前缀拼音兜底。
+- **短码排序**：librime 的 predictive lookup 会先按码表遍历顺序跨码扫描，
+  因而不能直接按全局词频排列短码候选。host 编译前由
+  `scripts/generate-wubi-short-code-dict.py` 为一至三码生成有界优先层：
+  一级简码固定为该键王码 86 规定字；二/三码先保留精确码候选，再按源词频
+  排常用单字/词组。该派生层只进入 host 编译的 table/prism，不把别名写回
+  审计用源词表，也不进入 APK。
+- **自动调频**：启用 Rime 原生用户词典，只学习用户实际选过的固定字词；
+  `enable_encoder`/`encode_commit_history` 关闭，不自动把上屏历史造成
+  新词。一级简码通过 `disable_user_dict_for_patterns` 固定顺序；二级起
+  允许用户词频覆盖静态排序（例如反复选择 `vb`→好后可前移，常用
+  `kws`→只要或 `wqvb`→您好也会前移）。用户词典位于既有 `rime-user`
+  目录，随用户数据备份恢复。
+- **五笔/拼音混输**：同一串字母同时经过五笔与拼音，稳定优先级为
+  「全部五笔候选 → 拼音候选」；各组内仍保持五笔精确码优先于补全。
+  例如 `wqvb` 先保留五笔“你好/您好”，而 `nihao`、`hao` 可直接出拼音
+  汉字。只有拼音兜底候选显示基础码表生成的完整真实五笔码（如 `wqvb`
+  或 `vbg`），五笔候选不再重复展示已经输入的码；一至三码优先别名不会
+  被误显示成真实码。
+- **词表**：`scripts/generate-wubi-dict.py` 从项目已固定的
+  rime-frost@96278d8 `cn_dicts_wb/chars.dict.yaml` 与
+  `words.dict.yaml` 合并生成可审计源表 `scripts/data/wubi86.dict.yaml`
+  （text/code/weight，丢弃仅拆分提示使用的 stem 列）；该源表不进 APK。
+  同一来源在 pinned host 管线中编译 `wubi86.table.bin` /
+  `wubi86.prism.bin`，设备端不编译，只部署预编译产物。
+- **标点与联想**：五笔按形码处理，上滑符号与标点走统一中文
+  `chineseSymMode` / `enginePunct` 两步流；上屏汉字参与中文联想。组合串
+  只在键盘 preedit 显示，不写入宿主编辑器。
+- **中英混输**：五笔组合中空格确认中文候选；确认键/物理 Enter 不选候选，
+  而是走 `EnterRaw` 提交当前字母原文（如 `ip` + 确认 → `ip`，`ip` +
+  空格 → 首候选「学」）。普通唯一四码也保持候选，例如 `kwsg` 等空格/选词
+  才上屏，Enter 则提交 `kwsg` 原文。
+- **分隔符/连续输入探针**：尾部或前导 `'` 被 Rime 精确查表裁掉，输入
+  `wqvb'` 仍出「你好」；内部 `wq'vb` 会按分隔片段查询且无候选。连续输入
+  超过四码时不再自动上屏前一码，组合保留完整原文（`wqvbwqvb`），确认键
+  可一次提交该字母串；需要中文时必须先按码长确认候选。
+- **动态值候选**：`jjad`（日期）、`jfuj`（时间）、`jtad`（星期）在
+  引擎首候选之后追加运行时候选；日期通过 WebView `Intl` 中国农历历法
+  生成「农历九月十八」形式，旧环境不支持该历法时跳过农历项，其余值照常。
+- **已知边界**：首版不提供拆字反查、简繁切换、英文翻译（依赖上游
+  rime-frost 的额外 schema 与 lua 组件，仓库裁剪版 librime 不加载）；
+  自动调频暂无独立总开关和一键重置入口。
 
 ### 9.4 日语（Mozc）
 

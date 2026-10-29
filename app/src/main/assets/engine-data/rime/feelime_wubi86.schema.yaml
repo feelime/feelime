@@ -1,0 +1,100 @@
+# Rime schema: feelime_wubi86 — 五笔字型 86
+# 词表由 scripts/generate-wubi-dict.py 从固定版本的 rime-frost
+# cn_dicts_wb 生成，设备只加载同场编译的 table/prism。
+# - 26 字母；唯一四码不自动上屏，保留候选供空格选中文/确认键提交原文
+# - 开启码表 completion：一至三码按前缀补全，不启用 sentence 造句
+# - 组件集对齐仓库裁剪版 librime（无 lua/octagram）
+__build_info:
+  rime_version: 1.17.0
+schema:
+  dependencies:
+    - luna_pinyin
+  schema_id: feelime_wubi86
+  name: 五笔 86
+  version: "1.0"
+  author:
+    - 王永民先生（五笔字型）
+    - rime-frost cn_dicts_wb
+  description: |
+    五笔字型 86 版，四码一字/词。
+
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [ 中文, 西文 ]
+
+engine:
+  processors:
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - ascii_segmentor
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  filters:
+    - reverse_lookup_filter@wubi_lookup
+  translators:
+    - punct_translator
+    - table_translator
+    - script_translator@pinyin
+
+speller:
+  alphabet: abcdefghijklmnopqrstuvwxyz
+  delimiter: " '"
+  auto_select: false
+  # 不截断组合：超过四码时仍保留整串原文，供 EnterRaw 中英混输。
+  max_code_length: 0
+
+menu:
+  page_size: 5
+
+translator:
+  dictionary: wubi86
+  enable_completion: true
+  enable_sentence: false
+  enable_user_dict: true
+  # 只学习用户实际选过的固定字词，不自动造词/编码上屏历史。
+  enable_encoder: false
+  encode_commit_history: false
+  # 一级简码保持王码 86 固定顺序；二级起允许按个人选词调频。
+  disable_user_dict_for_patterns:
+    - "^[a-z]$"
+  comment_format:
+    - "xform/~//"
+
+# ascii_composer 的 switch_key 通常来自 default.yaml；部署目录没有这份
+# preset，缺少时 librime 每次建会话都会报 "Missing ascii bindings"。
+ascii_composer:
+  good_old_caps_lock: true
+  switch_key:
+    Caps_Lock: clear
+    Shift_L: commit_code
+    Shift_R: noop
+    Control_L: noop
+    Control_R: noop
+
+pinyin:
+  dictionary: luna_pinyin
+  # Keep every shape-code candidate ahead of pinyin fallback candidates.
+  initial_quality: -10
+  enable_completion: true
+  enable_sentence: false
+  enable_user_dict: false
+
+# 基础五笔词表生成的真实码反查；不含一至三码优先别名。
+wubi_lookup:
+  dictionary: wubi86_lookup
+  overwrite_comment: true
+
+# 与笔画/音形相同：部署目录没有 default.yaml，标点必须内联。
+punctuator:
+  half_shape:
+    ",": {commit: "，"}
+    ".": {commit: "。"}
