@@ -238,13 +238,16 @@ val generateModelManifest = tasks.register("generateModelManifest") {
         var filled = 0
         for (model in manifest["models"] as List<MutableMap<Any?, Any?>>) {
             if (devUrls != null) {
-                val existing = (model["urls"] as List<*>).filterIsInstance<String>()
+                val existing = (model["urls"] as? List<*>)?.filterIsInstance<String>().orEmpty()
                 val files = model["files"] as List<Map<*, *>>
                 val modelDir = (files.first()["path"] as String).substringBefore('/')
                 // dev-models.sh serves the local, engine-shaped tree
                 // (asr-model/, final-model/, punctuation/). Keep the public
                 // mirrors at repository root names via downloadPath, while
                 // scoping this one LAN prefix to the matching local folder.
+                // gzip-backed files (gunzip=true, e.g. the streaming encoder)
+                // cannot be served raw here - download them via the public
+                // gitee/github sources instead.
                 val devPrefixes = devUrls.filterIsInstance<String>().map { raw ->
                     val prefix = if (raw.endsWith('/')) raw else "$raw/"
                     if (prefix.endsWith("$modelDir/")) prefix else "$prefix$modelDir/"
@@ -252,19 +255,23 @@ val generateModelManifest = tasks.register("generateModelManifest") {
                 model["urls"] = devPrefixes + existing
             }
             for (file in model["files"] as List<MutableMap<Any?, Any?>>) {
-                // An explicit LAN dev source is populated by dev-models.sh
-                // with the extracted, digest-matched files. Keep directDebug
-                // tests fast and local; production manifests retain the
-                // official archive and never fall back to the mismatched HF
-                // encoder object.
-                if (devUrls != null && file.containsKey("archive")) {
-                    file.remove("archive")
-                }
                 val local = File(modelsDir ?: repoModelsDir, "${file["path"]}")
                 if (local.isFile) {
                     file["bytes"] = local.length()
                     file["sha256"] = sha256(local)
                     filled += 1
+                }
+                // gunzip 文件的 downloadSha256/downloadBytes 是 distribution
+                // 已发布 .gz 附件的静态指纹（gzip 头含实现差异，本地无法离线
+                // 复现）；只做 schema 完整性检查。指纹与附件的对应关系由
+                // ModelManifestTest 的 pin 测试守住：encoder 换版必须重发布。
+                if (file["gunzip"] == true) {
+                    val wireSha = file["downloadSha256"] as? String
+                    val wireBytes = (file["downloadBytes"] as? Number)?.toLong()
+                    check(local.isFile) { "gunzip file ${file["path"]} missing from local model tree" }
+                    check(!wireSha.isNullOrEmpty() && wireSha.length == 64 && wireBytes != null && wireBytes > 0) {
+                        "gunzip file ${file["path"]} needs static downloadSha256/downloadBytes"
+                    }
                 }
             }
         }

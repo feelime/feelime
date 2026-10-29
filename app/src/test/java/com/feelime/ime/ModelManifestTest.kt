@@ -21,19 +21,21 @@ class ModelManifestTest {
               "role": "asr-streaming",
               "version": "2023-02-20",
               "files": [
-                {"path": "asr-model/encoder.int8.onnx", "downloadPath": "encoder-epoch-99-avg-1.int8.onnx", "sha256": "${"a".repeat(64)}", "bytes": 123456,
-                 "archive": {"url": "https://example.test/mobile.tar.bz2", "bytes": 456789,
-                   "sha256": "${"c".repeat(64)}", "entry": "mobile/encoder.onnx",
-                   "entryBytes": 123456, "entrySha256": "${"a".repeat(64)}",
-                   "sourceUrls": {"hf_mirror": "https://proxy.example/mobile.tar.bz2"}}},
+                {"path": "asr-model/encoder.int8.onnx", "downloadPath": "encoder-epoch-99-avg-1.int8.onnx.gz",
+                 "gunzip": true, "downloadSha256": "${"c".repeat(64)}", "downloadBytes": 456789,
+                 "sha256": "${"a".repeat(64)}", "bytes": 123456},
                 {"path": "asr-model/tokens.txt", "sha256": "${"b".repeat(64)}", "bytes": 789}
               ],
+              "sources": {
+                "gitee": "https://gitee.example/distribution/releases/download/asr-streaming-zh-en/",
+                "github": "https://github.example/distribution/releases/download/asr-streaming-zh-en/",
+                "ghproxy": "https://proxy.example/https://github.example/distribution/releases/download/asr-streaming-zh-en/"
+              },
               "urls": [
-                "https://mirror-a.example/f/",
-                "https://mirror-b.example/f/"
+                "https://lan-mirror.example/f/asr-model/"
               ]
             },
-            {"id": "broken", "files": [], "urls": []}
+            {"id": "broken", "files": [], "sources": {}}
           ]
         }
     """.trimIndent()
@@ -49,21 +51,20 @@ class ModelManifestTest {
         assertEquals("asr-model", model.dir)
         assertEquals(2, model.files.size)
         assertEquals(123456L + 789L, model.totalBytes)
+        // gzip 存放的文件按 wire 侧（压缩后）字节数计入下载量。
         assertEquals(456789L + 789L, model.totalDownloadBytes)
         assertEquals(listOf("encoder.int8.onnx", "tokens.txt"), model.files.map { it.path.substringAfter('/') })
-        assertEquals("encoder-epoch-99-avg-1.int8.onnx", model.files.first().downloadPath)
-        assertEquals(456789L, model.files.first().archive?.bytes)
+        assertEquals("encoder-epoch-99-avg-1.int8.onnx.gz", model.files.first().downloadPath)
         val encoder = model.files.single { it.path == "asr-model/encoder.int8.onnx" }
+        assertTrue(encoder.gunzip)
+        assertEquals("c".repeat(64), encoder.wireSha256)
+        assertEquals(456789L, encoder.downloadBytes)
+        assertEquals(3, model.sources.size)
         assertEquals(
-            "https://proxy.example/mobile.tar.bz2",
-            encoder.archive?.sourceUrls?.get("hf_mirror"),
+            "https://gitee.example/distribution/releases/download/asr-streaming-zh-en/",
+            model.sources["gitee"],
         )
-        assertTrue(encoder.archive != null)
-        assertEquals(
-            "mobile/encoder.onnx",
-            encoder.archive?.entry,
-        )
-        assertEquals(2, model.urls.size)
+        assertEquals(1, model.urls.size)
         assertTrue(model.verified)
         assertEquals(model, manifest.byRole("asr-streaming"))
         assertNull(manifest.byRole("asr-final"))
@@ -73,59 +74,87 @@ class ModelManifestTest {
     fun placeholderDigestsReadUnverified() {
         // The repo manifest ships "SEE-DEV-MODELS" until the build fills real
         // digests - downloadSync must refuse these.
-        val json = """{"models":[{"id":"m","role":"r","files":[{"path":"d/f","sha256":"SEE-DEV-MODELS","bytes":0}],"urls":["https://x/"]}]}"""
+        val json = """{"models":[{"id":"m","role":"r","files":[{"path":"d/f","sha256":"SEE-DEV-MODELS","bytes":0}],"sources":{"gitee":"https://x/"}}]}"""
         val model = ModelManifest.parse(json).models.single()
         assertFalse(model.verified)
     }
 
     @Test
-    fun malformedArchiveMetadataDoesNotLeaveAFileOnlyFallbackModel() {
+    fun gunzipWithoutStaticWireDigestDropsTheModel() {
+        // gzip 存放必须带 downloadSha256/downloadBytes（distribution 附件
+        // 口径）；缺失 = 清单坏档，整个条目按不可用处理，不做裸下。
         val json = """
             {"models":[{"id":"m","role":"r","files":[
               {"path":"asr-model/encoder.int8.onnx","sha256":"${"a".repeat(64)}","bytes":10,
-               "archive":{"url":"https://example.test/a.tar.bz2","bytes":100,
-                 "sha256":"${"b".repeat(64)}","entry":"mobile/encoder.onnx",
-                 "entryBytes":10}}
-            ],"urls":["https://example.test/"]}]}
+               "downloadPath":"encoder.gz","gunzip":true}
+            ],"sources":{"gitee":"https://example.test/"}}]}
         """.trimIndent()
 
         assertEquals(0, ModelManifest.parse(json).models.size)
     }
 
-    /** 手写条目（design/handwriting.md §5.3）：urls 首位是 gitee 镜像
-     * （国内直连，默认按 manifest 顺序直用），downloadPath 与 gitee
-     * release 资产名对齐。 */
+    /** distribution 频道形状（gitee 默认源 + gunzip 外层静态指纹）：仓库
+     * manifest 与 feelime/distribution 的发布产物必须一一对应——encoder 换
+     * 版时本测试会失败，提醒先重发布频道再改清单。 */
     @Test
-    fun repoManifestHandwritingEntryPinsDistributionShape() {
+    fun repoManifestPinsDistributionChannelShape() {
         val repo = java.io.File("../models/manifest.json")
         if (!repo.isFile) return // 非 app/ 工作目录的运行环境跳过
         val manifest = ModelManifest.parse(repo.readText())
-        val model = manifest.byRole("handwriting-rec")
-            ?: return // 旧分支无此条目
-        // 模型 v2（issue #32）：Melnyk-Net int8，唯一权威源是我们自己转换
-        // 的产物，gitee release 是一手分发位（无上游直链）。
-        assertEquals("melnyk-net-int8", model.id)
-        assertEquals(listOf("model.onnx"), model.files.map { it.path.substringAfter('/') })
-        assertTrue(model.verified)
-        assertTrue(model.urls.first().startsWith("https://gitee.com/"))
-        assertTrue(model.urls.first().endsWith("/"))
+        val streaming = manifest.byRole("asr-streaming") ?: return
+        assertEquals("2023-02-20", streaming.version)
+        val encoder = streaming.files.single { it.gunzip }
+        assertEquals("asr-model/encoder.int8.onnx", encoder.path)
+        assertEquals("encoder-epoch-99-avg-1.int8.onnx.gz", encoder.downloadPath)
+        // 已发布 .gz 附件的外层指纹（feelime/distribution 两端同值）。
+        assertEquals(91524142L, encoder.downloadBytes)
         assertEquals(
-            "https://gitee.com/feelime/models/releases/download/handwriting-v2/model.onnx",
-            model.urls.first() + model.files.first().downloadPath,
+            "7f5acf8cc2f8073d1887f8bf6cceaa3b41effe3e180ad3d7bf8fae832af441be",
+            encoder.downloadSha256,
         )
-        assertEquals(6613389L, model.files.first().bytes)
+        // 内层（落盘）内容 sha/bytes 是构建期从本地模型树回填的占位口径
+        // （"SEE-DEV-MODELS"/0）；真实值由 generateModelManifest 填充并在
+        // AVD 验收时按已装产物核对。
+        assertEquals("SEE-DEV-MODELS", encoder.sha256)
+        assertEquals(0L, encoder.bytes)
+        for (source in listOf("gitee", "github", "ghproxy")) {
+            val base = streaming.sources[source] ?: throw AssertionError("missing source $source")
+            assertTrue(base.endsWith("/"))
+        }
+        assertEquals(
+            "https://gitee.com/feelime/distribution/releases/download/asr-streaming-zh-en/",
+            streaming.sources["gitee"],
+        )
+        assertEquals(
+            MODEL_DISTRIBUTION_ROOTS["gitee"]!! + "asr-streaming-zh-en/",
+            streaming.sources["gitee"],
+        )
+        // 手写条目同样迁移到 distribution（原 gitee.com/feelime/models）。
+        val handwriting = manifest.byRole("handwriting-rec") ?: return
+        assertEquals(
+            "https://gitee.com/feelime/distribution/releases/download/handwriting/",
+            handwriting.sources["gitee"],
+        )
+        assertEquals("model.onnx", handwriting.files.single().downloadPath)
+        assertEquals(6613389L, handwriting.files.single().bytes)
         assertEquals(
             "04bf65859482f2e9f4836fb872c5a881940a8f6f81bd0994542187617793e932",
-            model.files.first().sha256,
+            handwriting.files.single().sha256,
         )
     }
 
     @Test
-    fun modelDownloadSourceAcceptsGitee() {
+    fun modelDownloadSourceWireValuesAndLegacyMigration() {
         assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue("gitee"))
         assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue("GITEE"))
-        assertEquals(ModelDownloadSource.HF_MIRROR, ModelDownloadSource.fromValue(null))
-        assertEquals(ModelDownloadSource.HF_MIRROR, ModelDownloadSource.fromValue("nonsense"))
+        assertEquals(ModelDownloadSource.GITHUB, ModelDownloadSource.fromValue("github"))
+        assertEquals(ModelDownloadSource.GHPROXY, ModelDownloadSource.fromValue("ghproxy"))
+        assertEquals(ModelDownloadSource.CUSTOM, ModelDownloadSource.fromValue("custom"))
+        // 遗留值与未知值/缺省一律迁移到 gitee（distribution 镜像，sha 兜底）。
+        assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue(null))
+        assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue("nonsense"))
+        assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue("hf_mirror"))
+        assertEquals(ModelDownloadSource.GITEE, ModelDownloadSource.fromValue("official"))
     }
 
     @Test

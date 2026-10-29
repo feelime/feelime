@@ -10,8 +10,10 @@
 #       Generate the same layout under the local cache and serve it with a
 #       temporary `python3 -m http.server`; writes models/dev-urls.json
 #       (gitignored) so the next `-PfeelimeModels=thin -PfeelimeDevModels=true
-#       assembleDirectDebug` build embeds this source FIRST - the settings
-#       page then downloads models from it instead of the public mirrors.
+#       assembleDirectDebug` build embeds this LAN prefix. On the settings
+#       page pick 「自定义源」 (leave the base empty) to download from it.
+#       gzip-backed files (gunzip=true, e.g. the streaming encoder) cannot
+#       be served raw here - download those via the default gitee source.
 #       For a device on a far network, run the same on a host near it
 #       (or its own Termux) and point dev-urls.json at that address.
 #

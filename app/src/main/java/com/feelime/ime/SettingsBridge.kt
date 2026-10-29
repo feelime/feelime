@@ -834,8 +834,8 @@ class SettingsBridge(
                 val source = modelStore.modelDownloadSource()
                 put("mode", source.source.value)
                 put("customBase", source.customBase)
-                put("customArchiveUrl", source.customArchiveUrl)
             })
+            .put("modelSourceSpeed", speedState())
             // Stable protocol values; the page resolves labels from these
             // codes and never infers UI language from the input mode.
             .put("uiLanguage", UiLanguage.choice(context))
@@ -1227,21 +1227,53 @@ class SettingsBridge(
     fun setModelDownloadSource(
         value: String,
         customBase: String,
-        customArchiveUrl: String,
         token: String,
     ) = guarded(token) {
         val source = ModelDownloadSource.fromValue(value)
-        if (!modelStore.setModelDownloadSource(source, customBase, customArchiveUrl)) {
+        if (!modelStore.setModelDownloadSource(source, customBase)) {
             pushEvent(
                 JSONObject()
                     .put("type", "modelSourceError")
                     .put("code", "INVALID_MODEL_SOURCE")
-                    .put("message", t(context, "自定义源需要 HTTPS 仓库地址和对应的 tar.bz2 归档地址", "A custom source needs an HTTPS repository URL and its matching tar.bz2 archive URL")),
+                    .put("message", t(context, "自定义源需要一个可访问的 http(s) 地址", "A custom source needs a reachable http(s) base URL")),
             )
             return@guarded
         }
         pushState()
     }
+
+    /** 源测速（podic speed_test 语义）：并发探测所有源，结果随
+     * modelSourceSpeed 状态推回；in-flight 时返回 false 由前端防重入。 */
+    @JavascriptInterface
+    fun testModelDownloadSpeed(token: String) = guarded(token) {
+        if (!modelStore.speedTestSources { results ->
+                synchronized(this@SettingsBridge) {
+                    lastSourceSpeed = results
+                }
+                pushState()
+            }
+        ) {
+            pushEvent(
+                JSONObject()
+                    .put("type", "modelSourceError")
+                    .put("code", "SPEED_TEST_BUSY")
+                    .put("message", t(context, "测速进行中，请稍候", "A speed test is already running")),
+            )
+        }
+    }
+
+    /** Last speed-test result (source value -> ms, negative = failed). */
+    private var lastSourceSpeed: Map<String, Long?>? = null
+
+    private fun speedState(): JSONObject = JSONObject().apply {
+        val snapshot = synchronized(this@SettingsBridge) { lastSourceSpeed }
+        put("running", modelStoreSpeedRunning())
+        snapshot?.forEach { (source, ms) ->
+            put(source, ms ?: -1L)
+        }
+    }
+
+    private fun modelStoreSpeedRunning(): Boolean = modelStore.speedTestInFlight()
 
     /** 双拼方案切换（docs/design/double-pinyin.md §2）：落盘偏好并广播，
      * IME 在当前双拼会话上换 schema 重建；hello 会把新方案推给键盘。 */

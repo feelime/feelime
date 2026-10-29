@@ -198,9 +198,7 @@ internal class ModelArchiveImporter(
         val candidates = model.files.filter { spec ->
             val localName = spec.path.substringAfter('/')
             val upstreamName = spec.downloadPath.substringAfterLast('/')
-            val archiveEntry = spec.archive?.entry
             name == spec.path || name == localName || name == upstreamName ||
-                archiveEntry?.let { name == it || name.endsWith("/$it") } == true ||
                 name.endsWith("/$localName") || name.endsWith("/$upstreamName")
         }
         return when {

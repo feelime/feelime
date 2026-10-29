@@ -979,24 +979,20 @@
       </div>
       <p class="hint" data-i18n="voice.backend.hint">切换后下次录音生效。选择下载模型会覆盖安装包中的模型，请先下载所需模型。</p>
       <div class="rows model-source-settings">
-        <label class="row" for="modelDownloadSource">
-          <span class="row-label"><span data-i18n="voice.downloadSource.label">模型下载源</span></span>
-          <select id="modelDownloadSource" class="select">
-            <option value="gitee" data-i18n="voice.downloadSource.gitee">Gitee（国内推荐）</option>
-            <option value="hf_mirror" data-i18n="voice.downloadSource.hfMirror">HF 镜像（默认）</option>
-            <option value="official" data-i18n="voice.downloadSource.official">Hugging Face 官方</option>
-            <option value="custom" data-i18n="voice.downloadSource.custom">自定义源</option>
-          </select>
-        </label>
-        <label class="field-label" id="modelDownloadCustomLabel" for="modelDownloadCustom" data-i18n="voice.downloadSource.custom">自定义源</label>
-        <input type="url" id="modelDownloadCustom" data-i18n-placeholder="voice.downloadSource.customPlaceholder" placeholder="例如：https://example.com/huggingface" autocomplete="off" hidden>
-        <label class="field-label" id="modelDownloadArchiveLabel" for="modelDownloadArchive" data-i18n="voice.downloadSource.archive">流式模型压缩包地址</label>
-        <input type="url" id="modelDownloadArchive" data-i18n-placeholder="voice.downloadSource.archivePlaceholder" placeholder="例如：https://example.com/model.tar.bz2" autocomplete="off" hidden>
-        <div class="actions">
-          <button class="btn" id="btnSaveModelSource" type="button" data-i18n="voice.downloadSource.save">保存下载源</button>
+        <div class="row source-head">
+          <span class="row-label" id="voiceSourceLabel"><span data-i18n="voice.downloadSource.label">模型下载源</span><small data-i18n="voice.downloadSource.pick">点选项即保存；「测速」比较各源延迟</small></span>
+          <button class="btn small" id="btnSpeedTest" type="button" data-i18n="voice.downloadSource.speedTest">测速</button>
+        </div>
+        <div id="modelSourceRows" role="radiogroup" aria-labelledby="voiceSourceLabel"></div>
+        <div id="modelSourceCustomBox" hidden>
+          <label class="field-label" id="modelDownloadCustomLabel" for="modelDownloadCustom" data-i18n="voice.downloadSource.custom">自定义源</label>
+          <input type="url" id="modelDownloadCustom" data-i18n-placeholder="voice.downloadSource.customPlaceholder" placeholder="例如：https://example.com/models/" autocomplete="off">
+          <div class="actions">
+            <button class="btn primary small" id="btnSaveCustomSource" type="button" data-i18n="voice.downloadSource.save">保存自定义源</button>
+          </div>
         </div>
       </div>
-      <p class="hint" data-i18n="voice.downloadSource.hint">下载后会校验文件完整性；压缩包地址只用于流式模型的大文件，自定义源需同时填写仓库地址和对应的 tar.bz2 地址。</p>
+      <p class="hint" data-i18n="voice.downloadSource.hint">下载后会校验文件完整性；默认走 Gitee 国内镜像，也可选 GitHub 直连或 gh-proxy 加速。</p>
       <div class="rows" id="modelRows"></div>
       <div class="consent" id="modelConsent" hidden role="dialog" aria-labelledby="modelConsentTitle" aria-describedby="modelConsentMessage">
         <div class="section-heading">

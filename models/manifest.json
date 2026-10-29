@@ -8,20 +8,12 @@
       "files": [
         {
           "path": "asr-model/encoder.int8.onnx",
-          "downloadPath": "encoder-epoch-99-avg-1.int8.onnx",
+          "downloadPath": "encoder-epoch-99-avg-1.int8.onnx.gz",
+          "gunzip": true,
+          "downloadSha256": "7f5acf8cc2f8073d1887f8bf6cceaa3b41effe3e180ad3d7bf8fae832af441be",
+          "downloadBytes": 91524142,
           "sha256": "SEE-DEV-MODELS",
-          "bytes": 0,
-          "archive": {
-            "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20-mobile.tar.bz2",
-            "bytes": 346965352,
-            "sha256": "45b8d04fe8faf5146397ff2e71d90ca8effdfcbe9adc30fdce769e92cabd6b03",
-            "entry": "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20-mobile/encoder-epoch-99-avg-1.int8.onnx",
-            "entryBytes": 105276499,
-            "entrySha256": "f559f422d970323e0c266aaa3c56cf6d1a3a4bc0c0822124727686c1e43e9447",
-            "sourceUrls": {
-              "hf_mirror": "https://gh-proxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20-mobile.tar.bz2"
-            }
-          }
+          "bytes": 0
         },
         {
           "path": "asr-model/decoder.onnx",
@@ -42,10 +34,11 @@
           "bytes": 0
         }
       ],
-      "urls": [
-        "https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/resolve/main/",
-        "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/resolve/main/"
-      ],
+      "sources": {
+        "gitee": "https://gitee.com/feelime/distribution/releases/download/asr-streaming-zh-en/",
+        "github": "https://github.com/feelime/distribution/releases/download/asr-streaming-zh-en/",
+        "ghproxy": "https://gh-proxy.com/https://github.com/feelime/distribution/releases/download/asr-streaming-zh-en/"
+      },
       "title": "流式语音识别（中英）"
     },
     {
@@ -66,10 +59,11 @@
           "bytes": 0
         }
       ],
-      "urls": [
-        "https://hf-mirror.com/csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09/resolve/main/",
-        "https://huggingface.co/csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09/resolve/main/"
-      ],
+      "sources": {
+        "gitee": "https://gitee.com/feelime/distribution/releases/download/asr-final-zh/",
+        "github": "https://github.com/feelime/distribution/releases/download/asr-final-zh/",
+        "ghproxy": "https://gh-proxy.com/https://github.com/feelime/distribution/releases/download/asr-final-zh/"
+      },
       "title": "整句纠错识别"
     },
     {
@@ -84,10 +78,11 @@
           "bytes": 75519198
         }
       ],
-      "urls": [
-        "https://hf-mirror.com/lorneluo/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8/resolve/main/",
-        "https://huggingface.co/lorneluo/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8/resolve/main/"
-      ],
+      "sources": {
+        "gitee": "https://gitee.com/feelime/distribution/releases/download/asr-punct-zh-en/",
+        "github": "https://github.com/feelime/distribution/releases/download/asr-punct-zh-en/",
+        "ghproxy": "https://gh-proxy.com/https://github.com/feelime/distribution/releases/download/asr-punct-zh-en/"
+      },
       "title": "中英标点恢复"
     },
     {
@@ -102,9 +97,11 @@
           "bytes": 6613389
         }
       ],
-      "urls": [
-        "https://gitee.com/feelime/models/releases/download/handwriting-v2/"
-      ],
+      "sources": {
+        "gitee": "https://gitee.com/feelime/distribution/releases/download/handwriting/",
+        "github": "https://github.com/feelime/distribution/releases/download/handwriting/",
+        "ghproxy": "https://gh-proxy.com/https://github.com/feelime/distribution/releases/download/handwriting/"
+      },
       "title": "手写识别（Melnyk-Net）"
     }
   ]

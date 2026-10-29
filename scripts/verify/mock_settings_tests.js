@@ -61,6 +61,7 @@ class MockSettingsNative {
     setDoublePinyinScheme(...a) { this._rec('setDoublePinyinScheme', a); }
     setModelBackend(...a) { this._rec('setModelBackend', a); }
     setModelDownloadSource(...a) { this._rec('setModelDownloadSource', a); }
+    testModelDownloadSpeed(...a) { this._rec('testModelDownloadSpeed', a); return true; }
     downloadModel(...a) { this._rec('downloadModel', a); }
     openModelDocument(...a) { this._rec('openModelDocument', a); }
     openKeyboardDocument(...a) { this._rec('openKeyboardDocument', a); }
@@ -356,20 +357,30 @@ test('model row renders state copy and the 下载/取消/删除 buttons hit the 
     equal(world.lastCall('deleteModel').args, ['m-stream', world.token], 'deleteModel args');
 });
 
-test('model source selector persists mirror/official/custom choices', () => {
+test('model source rows persist choices and render speed test results', () => {
     const world = new SettingsWorld();
-    world.push({ ...BASE_STATE, modelDownloadSource: { mode: 'hf_mirror', customBase: '' } });
-    equal(world.$('modelDownloadSource').value, 'hf_mirror', 'default model source');
-    world.$('modelDownloadSource').value = 'custom';
-    world.$('modelDownloadSource').listeners.find(listener => listener.type === 'change')
-        .handler({ target: world.$('modelDownloadSource') });
-    equal(world.$('modelDownloadCustom').hidden, false, 'custom source field visible');
-    world.$('modelDownloadCustom').value = 'https://models.example.test/hf';
-    world.$('modelDownloadArchive').value = 'https://models.example.test/streaming-mobile.tar.bz2';
-    world.$('btnSaveModelSource').click();
+    world.push({ ...BASE_STATE, modelDownloadSource: { mode: 'gitee', customBase: '' }, modelSourceSpeed: {} });
+    const rows = () => [...world.$('modelSourceRows').querySelectorAll('.source-row')];
+    equal(rows().length, 4, 'gitee/github/ghproxy/custom rows');
+    equal(rows()[0].className.includes('active'), true, 'gitee default active');
+    rows()[2].click();
+    equal(world.lastCall('setModelDownloadSource').args, ['ghproxy', '', world.token], 'row click saves');
+    rows()[3].click();
+    equal(world.$('modelSourceCustomBox').hidden, false, 'custom box visible on row click');
+    world.$('modelDownloadCustom').value = 'https://models.example.test/models/';
+    world.$('btnSaveCustomSource').click();
     equal(world.lastCall('setModelDownloadSource').args,
-        ['custom', 'https://models.example.test/hf',
-            'https://models.example.test/streaming-mobile.tar.bz2', world.token], 'custom source call');
+        ['custom', 'https://models.example.test/models/', world.token], 'custom source call');
+    world.push({ ...BASE_STATE, modelDownloadSource: { mode: 'gitee', customBase: '' },
+        modelSourceSpeed: { gitee: 120, github: 800, ghproxy: -1, running: false } });
+    equal(rows()[0].textContent.includes('120 ms'), true, 'ms shown');
+    equal(rows()[0].textContent.includes('最快 ✓'), true, 'fastest badge on min ms');
+    equal(rows()[2].textContent.includes('不可用'), true, 'fail label on negative');
+    world.$('btnSpeedTest').click();
+    equal(world.lastCall('testModelDownloadSpeed').args, [world.token], 'speed test call');
+    world.push({ ...BASE_STATE, modelDownloadSource: { mode: 'gitee', customBase: '' },
+        modelSourceSpeed: { gitee: 120, github: 800, ghproxy: -1, running: true } });
+    equal(world.$('btnSpeedTest').disabled, true, 'button disabled while running');
 });
 
 test('persistent model failure stays visible with detail and keeps retry/import actions', () => {

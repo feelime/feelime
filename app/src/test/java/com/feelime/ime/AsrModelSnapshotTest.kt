@@ -9,7 +9,7 @@ class AsrModelSnapshotTest {
     private fun manifest(version: String = "1", digest: String = "a".repeat(64)) = ModelManifest(
         AsrModelSnapshot.ROLES.map { role ->
             ModelSpec(role, role, role, version,
-                listOf(ModelFileSpec("$role/model.onnx", digest, 100)), emptyList())
+                listOf(ModelFileSpec("$role/model.onnx", digest, 100)), sources = emptyMap(), urls = emptyList())
         },
     )
 

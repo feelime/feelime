@@ -32,43 +32,25 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** One file of a model: path relative to the manifest (first segment is the
  * directory sherpa expects, e.g. "asr-model/encoder.int8.onnx"). */
-data class ModelArchiveSpec(
-    /** Official archive URL. Source-specific URLs must carry the same archive
-     * and are still verified against both archive and entry hashes. */
-    val url: String,
-    val bytes: Long,
-    val sha256: String,
-    /** Exact POSIX path inside the tar stream, including its model directory. */
-    val entry: String,
-    val entryBytes: Long,
-    val entrySha256: String,
-    /** Optional source-specific URLs.  HF repositories do not contain the
-     * mobile archive, so the default manifest may point its HF choice at a
-     * verified GitHub proxy while retaining [url] for the official source. */
-    val sourceUrls: Map<String, String> = emptyMap(),
-) {
-    val verified: Boolean
-        get() = url.isNotBlank() &&
-            bytes > 0 &&
-            sha256.length == 64 &&
-            entry.isNotBlank() &&
-            entryBytes > 0 &&
-            entrySha256.length == 64
-}
-
 data class ModelFileSpec(
     /** Path used by the engine and by the local full asset tree. */
     val path: String,
+    /** Digest of the final on-disk content (after any gunzip). */
     val sha256: String,
     val bytes: Long,
-    /** Upstream repository path. Model assets use stable local names while
-     * sherpa's public repositories include epoch/averaging suffixes. */
+    /** Remote file name in the distribution channel. Model assets use stable
+     * local names while upstream releases carry epoch/averaging suffixes. */
     val downloadPath: String = path,
-    /** Optional archive source. When present, this file is extracted from the
-     * verified archive and its ordinary URL is never attempted. */
-    val archive: ModelArchiveSpec? = null,
+    /** The served file is gzip-compressed: verify the wire bytes against
+     * [downloadSha256]/[downloadBytes], gunzip to [path] content. */
+    val gunzip: Boolean = false,
+    /** Wire-side digest when the served file differs from [sha256] (gzip). */
+    val downloadSha256: String? = null,
+    /** Wire-side byte count; also the progress denominator. */
+    val downloadBytesOverride: Long? = null,
 ) {
-    val downloadBytes: Long get() = archive?.bytes ?: bytes
+    val wireSha256: String get() = downloadSha256 ?: sha256
+    val downloadBytes: Long get() = downloadBytesOverride ?: bytes
 }
 
 data class ModelSpec(
@@ -77,20 +59,24 @@ data class ModelSpec(
     val role: String,
     val version: String,
     val files: List<ModelFileSpec>,
-    /** Manifest URL prefixes; ModelStore resolves these to the persisted
-     * source choice before starting a download. */
-    val urls: List<String>,
+    /** Download bases per source (distribution 频道直链，release 附件目录）。
+     * ModelStore resolves these to the persisted source choice before
+     * starting a download. */
+    val sources: Map<String, String> = emptyMap(),
+    /** Legacy mirror prefixes (dev-urls 注入目标）；no longer consulted for
+     * source selection - kept so a developer manifest still parses. */
+    val urls: List<String> = emptyList(),
 ) {
     val dir: String get() = files.first().path.substringBefore('/')
     val totalBytes: Long get() = files.sumOf { it.bytes }
-    /** Bytes transferred from the network. Archive-backed files count the
-     * compressed archive size so the UI does not promise 105 MB while it
-     * actually downloads 347 MB. */
+    /** Bytes transferred from the network. gzip-backed files count the
+     * compressed size so the UI does not promise 105 MB while it actually
+     * downloads 91 MB. */
     val totalDownloadBytes: Long get() = files.sumOf { it.downloadBytes }
     /** The repo manifest ships placeholder digests until dev-models.sh /
      * generateModelManifest fill them from a local verified copy. */
     val verified: Boolean get() = files.all {
-        it.sha256.length == 64 && it.bytes > 0 && (it.archive?.verified ?: true)
+        it.sha256.length == 64 && it.bytes > 0
     }
 }
 
@@ -98,21 +84,22 @@ data class ModelSpec(
  * separate from the model backend: the latter chooses APK assets versus a
  * downloaded copy, while this choice only controls the network endpoint. */
 enum class ModelDownloadSource(val value: String) {
-    HF_MIRROR("hf_mirror"),
-    OFFICIAL("official"),
-    CUSTOM("custom"),
-    // gitee release 资产直链（design/handwriting.md §5.3）：国内直连，
-    // 作为手写模型等新条目的默认第一源。
-    GITEE("gitee");
+    // gitee release 资产直链（feelime/distribution 镜像）：国内直连，默认源。
+    GITEE("gitee"),
+    GITHUB("github"),
+    GHPROXY("ghproxy"),
+    CUSTOM("custom");
 
     companion object {
         fun fromValue(value: String?): ModelDownloadSource = when (
             value?.lowercase(Locale.ROOT)
         ) {
-            OFFICIAL.value -> OFFICIAL
+            GITHUB.value -> GITHUB
+            GHPROXY.value -> GHPROXY
             CUSTOM.value -> CUSTOM
-            GITEE.value -> GITEE
-            else -> HF_MIRROR
+            // 遗留 hf_mirror/official 值与缺省一律回落 gitee：两端内容同源，
+            // 完整性由 manifest SHA-256 兜底，静默迁移安全。
+            else -> GITEE
         }
     }
 }
@@ -120,9 +107,6 @@ enum class ModelDownloadSource(val value: String) {
 data class ModelDownloadSourceConfig(
     val source: ModelDownloadSource,
     val customBase: String = "",
-    /** Complete URL for the verified mobile tar.bz2.  It is separate from
-     * the repository base because HF does not host that archive. */
-    val customArchiveUrl: String = "",
 )
 
 data class ModelDownloadError(
@@ -178,29 +162,14 @@ class ModelManifest(val models: List<ModelSpec>) {
                     // of the repo manifest are kept but read unverified.
                     val sha256 = (fileMap["sha256"] as? String).takeIf { !it.isNullOrEmpty() }
                         ?: return@mapNotNull null
-                    val archive = when (val rawArchive = fileMap["archive"]) {
-                        null -> null
-                        is Map<*, *> -> ModelArchiveSpec(
-                            url = rawArchive["url"] as? String ?: return@mapNotNull null,
-                            bytes = (rawArchive["bytes"] as? Number)?.toLong() ?: return@mapNotNull null,
-                            sha256 = rawArchive["sha256"] as? String ?: return@mapNotNull null,
-                            entry = rawArchive["entry"] as? String ?: return@mapNotNull null,
-                            entryBytes = (rawArchive["entryBytes"] as? Number)?.toLong()
-                                ?: return@mapNotNull null,
-                            entrySha256 = rawArchive["entrySha256"] as? String
-                                ?: return@mapNotNull null,
-                            sourceUrls = (rawArchive["sourceUrls"] as? Map<*, *>)
-                                ?.mapNotNull { (key, value) ->
-                                    val source = key as? String
-                                    val url = value as? String
-                                    if (source.isNullOrBlank() || url.isNullOrBlank()) null
-                                    else source to url
-                                }
-                                ?.toMap()
-                                .orEmpty(),
-                        )
-                        else -> return@mapNotNull null
-                    }
+                    val gunzip = fileMap["gunzip"] == true
+                    val wireSha = (fileMap["downloadSha256"] as? String)
+                        ?.takeIf { it.length == 64 }
+                    val wireBytes = (fileMap["downloadBytes"] as? Number)?.toLong()
+                        ?.takeIf { it > 0 }
+                    // gzip 存放必须带静态 wire 指纹（distribution 附件口径）；
+                    // 缺失 = 清单坏档，按不可用处理而不是下载必炸。
+                    if (gunzip && (wireSha == null || wireBytes == null)) return@mapNotNull null
                     ModelFileSpec(
                         path = path,
                         sha256 = sha256,
@@ -209,7 +178,9 @@ class ModelManifest(val models: List<ModelSpec>) {
                             ?.trim()
                             ?.takeIf { it.isNotEmpty() }
                             ?: path,
-                        archive = archive,
+                        gunzip = gunzip,
+                        downloadSha256 = wireSha,
+                        downloadBytesOverride = wireBytes,
                     )
                 }
                 if (files.size != rawFiles.size || files.isEmpty()) return@mapNotNull null
@@ -219,6 +190,15 @@ class ModelManifest(val models: List<ModelSpec>) {
                     role = map["role"] as? String ?: "",
                     version = map["version"] as? String ?: "",
                     files = files,
+                    sources = (map["sources"] as? Map<*, *>)
+                        ?.mapNotNull { (key, value) ->
+                            val source = key as? String
+                            val url = value as? String
+                            if (source.isNullOrBlank() || url.isNullOrBlank()) null
+                            else source to url
+                        }
+                        ?.toMap()
+                        .orEmpty(),
                     urls = (map["urls"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
                 )
             }.orEmpty()
@@ -252,6 +232,58 @@ interface ModelConnection {
     val responseCode: Int
     fun body(): InputStream
     fun disconnect()
+}
+
+/** feelime/distribution 仓库的源根目录（与 models/manifest.json 各条目的
+ * sources 值同源；ModelManifestTest 里有 pin 测试对账）。测速探针从这里拼。 */
+val MODEL_DISTRIBUTION_ROOTS: Map<String, String> = mapOf(
+    "gitee" to "https://gitee.com/feelime/distribution/releases/download/",
+    "github" to "https://github.com/feelime/distribution/releases/download/",
+    "ghproxy" to "https://gh-proxy.com/https://github.com/feelime/distribution/releases/download/",
+)
+
+/** 测速探针文件：handwriting 频道的 metainfo（几百字节、恒在、与其他频道
+ * 同 CDN）。custom 源回退探测 base 本身（LAN http.server 目录列表 200）。 */
+const val MODEL_SPEED_PROBE_FILE = "handwriting/handwriting-metainfo.json"
+
+/** Download-source latency probe（参考 podic speed_test）：GET 一个真实小
+ * 文件量总耗时（含连接、重定向、完整 body），失败返回 null。并发由调用方
+ * 编排；这里只负责单次探测。 */
+internal class ModelSourceSpeedTester(
+    private val connectionFactory: ModelConnectionFactory,
+    private val allowHttp: Boolean,
+) {
+    fun probe(base: String, probePath: String?): Long? {
+        if (!allowHttp && base.substringBefore(':').equals("http", ignoreCase = true)) return null
+        val url = base.trimEnd('/') + "/" + (probePath ?: "")
+        val start = System.nanoTime()
+        return try {
+            val connection = connectionFactory.open(URI.create(url), 0)
+            try {
+                if (connection.responseCode !in HTTP_OK..HTTP_NO_CONTENT) return null
+                connection.body().use { stream ->
+                    val buffer = ByteArray(16 * 1024)
+                    while (stream.read(buffer) >= 0) { /* drain */ }
+                }
+            } finally {
+                runCatching { connection.disconnect() }
+            }
+            (System.nanoTime() - start) / 1_000_000
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 固定三源走 metainfo 探针；custom 允许回退到 base 本身（目录列表）。 */
+    fun probeSource(base: String, isCustom: Boolean): Long? {
+        return probe(base, MODEL_SPEED_PROBE_FILE).takeIf { it != null || !isCustom }
+            ?: probe(base, null)
+    }
+
+    private companion object {
+        const val HTTP_OK = 200
+        const val HTTP_NO_CONTENT = 299
+    }
 }
 
 /** Production transport: GET with an optional Range header. Plain http is
@@ -343,6 +375,13 @@ class ModelStore(
     private val worker by lazy {
         Executors.newSingleThreadExecutor { task -> Thread(task, "feelime-models") }
     }
+    /** 测速探针并发池（gitee/github/ghproxy/custom 四源并发，podic 语义）。 */
+    private val speedWorker by lazy {
+        Executors.newFixedThreadPool(MODEL_DISTRIBUTION_ROOTS.size + 1) { task ->
+            Thread(task, "feelime-model-speed")
+        }
+    }
+    private val speedTestRunning = AtomicBoolean(false)
     private val cancelled = AtomicBoolean(false)
     /** Serializes the final import decision with deletion.  Extraction may
      * happen outside this lock, but the cancellation check and directory swap
@@ -376,36 +415,28 @@ class ModelStore(
             backendPreferences.getString(KEY_MODEL_DOWNLOAD_SOURCE, null),
         )
         val customBase = backendPreferences.getString(KEY_MODEL_DOWNLOAD_CUSTOM, "") ?: ""
-        val customArchiveUrl = backendPreferences
-            .getString(KEY_MODEL_DOWNLOAD_ARCHIVE, "") ?: ""
-        return if (source == ModelDownloadSource.CUSTOM &&
-            (!validSourceBase(customBase) || !validArchiveUrl(customArchiveUrl))
+        // customBase 留空是合法的 dev 形态（下载时回退 dev-urls 注入的 LAN
+        // 前缀）；只有显式填了非法地址才回落 gitee 默认。
+        if (source == ModelDownloadSource.CUSTOM &&
+            customBase.isNotBlank() && !validSourceBase(customBase)
         ) {
-            ModelDownloadSourceConfig(ModelDownloadSource.HF_MIRROR)
-        } else {
-            ModelDownloadSourceConfig(source, customBase, customArchiveUrl)
+            return ModelDownloadSourceConfig(ModelDownloadSource.GITEE)
         }
+        return ModelDownloadSourceConfig(source, customBase)
     }
 
     /** Persist only syntactically valid http(s) endpoints.  Plain http is
      * allowed because integrity rests on the manifest SHA-256 checks, not
-     * on transport.  A custom source includes both the ordinary repository
-     * base and the fixed mobile tar.bz2 mirror because that archive is not
-     * present in HF repositories. */
-    fun setModelDownloadSource(
-        source: ModelDownloadSource,
-        customBase: String,
-        customArchiveUrl: String,
-    ): Boolean {
+     * on transport.  An empty customBase is accepted: the download then
+     * falls back to the dev-urls LAN prefixes embedded by the build. */
+    fun setModelDownloadSource(source: ModelDownloadSource, customBase: String): Boolean {
         val normalized = customBase.trim().trimEnd('/')
-        val normalizedArchive = customArchiveUrl.trim()
         if (source == ModelDownloadSource.CUSTOM &&
-            (!validSourceBase(normalized) || !validArchiveUrl(normalizedArchive))
+            normalized.isNotBlank() && !validSourceBase(normalized)
         ) return false
         backendPreferences.edit()
             .putString(KEY_MODEL_DOWNLOAD_SOURCE, source.value)
             .putString(KEY_MODEL_DOWNLOAD_CUSTOM, normalized)
-            .putString(KEY_MODEL_DOWNLOAD_ARCHIVE, normalizedArchive)
             .commit()
         return true
     }
@@ -497,57 +528,23 @@ class ModelStore(
 
     private fun modelRoot(): File = File(context.filesDir, "models")
 
-    /** Resolve the selected source to the repository path recorded in the
-     * verified manifest.  This keeps a custom endpoint from changing the
+    /** Resolve the selected source to the distribution channel base recorded
+     * in the verified manifest.  This keeps any endpoint from changing the
      * model identity: every downloaded byte is still checked against the
      * embedded manifest. */
     private fun effectiveDownloadUrls(model: ModelSpec): List<String> {
         val config = modelDownloadSource()
-        // 用户没选过源：按 manifest urls 顺序直用（手写条目的第一位是
-        // gitee 镜像，国内直连，design/handwriting.md §5.3）。
-        if (!sourceChoiceStored()) return model.urls
-        // gitee 是 release 资产直链，没有 /resolve/ 仓库语义，按 host 取用。
-        if (config.source == ModelDownloadSource.GITEE) {
-            return model.urls.filter { isHost(it, "gitee.com") }
-        }
-        val repository = model.urls.asSequence()
-            .mapNotNull(::repositoryPath)
-            .firstOrNull()
         val base = when (config.source) {
-            ModelDownloadSource.HF_MIRROR -> HF_MIRROR_BASE
-            ModelDownloadSource.OFFICIAL -> OFFICIAL_HF_BASE
-            ModelDownloadSource.CUSTOM -> config.customBase
-            ModelDownloadSource.GITEE -> ""
+            // customBase 留空时回退 dev-urls 注入的 LAN 前缀（dev-models.sh
+            // -PfeelimeDevModels=true 工作流：选「自定义源」即可，无需手填）。
+            ModelDownloadSource.CUSTOM ->
+                config.customBase.ifBlank { model.urls.firstOrNull().orEmpty() }
+            // 遗留 manifest 没有 sources 条目时（老开发清单）直接无源可下，
+            // 报错引导换源，不做跨源回退（对齐 podic 的显式选择语义）。
+            else -> model.sources[config.source.value]
         }
-        if (repository != null && validSourceBase(base)) {
-            return listOf(sourceEndpoint(base, repository))
-        }
-        // Keep a developer manifest with a non-HuggingFace LAN prefix usable
-        // when its source has not been overridden yet.  Release manifests use
-        // the repository path branch above.
-        return when (config.source) {
-            ModelDownloadSource.HF_MIRROR -> model.urls.filter { isHost(it, "hf-mirror.com") }
-            ModelDownloadSource.OFFICIAL -> model.urls.filter { isHost(it, "huggingface.co") }
-            ModelDownloadSource.CUSTOM -> emptyList()
-            ModelDownloadSource.GITEE -> emptyList()
-        }
-    }
-
-    /** 源选择是否落过盘：区分「默认」与「明确选了 hf_mirror」。 */
-    private fun sourceChoiceStored(): Boolean =
-        backendPreferences.contains(KEY_MODEL_DOWNLOAD_SOURCE)
-
-    private fun repositoryPath(raw: String): String? = runCatching {
-        val path = URI.create(raw).path.trim('/')
-        val marker = "/resolve/"
-        val index = path.indexOf(marker)
-        path.takeIf { index > 0 }?.substring(0, index)
-            ?.takeIf { it.count { ch -> ch == '/' } >= 1 }
-    }.getOrNull()
-
-    private fun sourceEndpoint(base: String, repository: String): String {
-        val clean = base.trimEnd('/')
-        return if (clean.contains("/resolve/")) "$clean/" else "$clean/$repository/resolve/main/"
+        if (base == null || !validSourceBase(base)) return emptyList()
+        return listOf(base.trimEnd('/') + "/")
     }
 
     private fun validSourceBase(raw: String): Boolean = runCatching {
@@ -555,10 +552,6 @@ class ModelStore(
         val scheme = uri.scheme?.lowercase(Locale.ROOT)
         uri.host != null && uri.userInfo == null && uri.query == null && uri.fragment == null &&
             (scheme == "https" || scheme == "http")
-    }.getOrDefault(false)
-
-    private fun isHost(raw: String, host: String): Boolean = runCatching {
-        URI.create(raw).host.equals(host, ignoreCase = true)
     }.getOrDefault(false)
 
     /** Live status for the settings UI. */
@@ -693,6 +686,53 @@ class ModelStore(
         }
     }
 
+    /** 测速是否进行中（设置页防重入提示用）。 */
+    fun speedTestInFlight(): Boolean = speedTestRunning.get()
+
+    /** 并发探测所有下载源的延迟（毫秒；null = 不可用）。结果在回调里整批
+     * 交付；重复触发返回 false（in-flight 防重入）。8s 超时由 transport
+     * 的 connect/read 超时共同兜底。 */
+    fun speedTestSources(
+        transport: ModelConnectionFactory? = null,
+        onResult: (Map<String, Long?>) -> Unit,
+    ): Boolean {
+        if (closed || !speedTestRunning.compareAndSet(false, true)) return false
+        val config = modelDownloadSource()
+        val tester = ModelSourceSpeedTester(
+            connectionFactory = transport
+                ?: HttpModelConnectionFactory(
+                    connectTimeoutMs = SPEED_TEST_TIMEOUT_MS,
+                    readTimeoutMs = SPEED_TEST_TIMEOUT_MS,
+                    allowHttp = allowHttp,
+                ),
+            allowHttp = allowHttp,
+        )
+        val bases = mutableListOf<Pair<String, String>>()
+        for ((source, root) in MODEL_DISTRIBUTION_ROOTS) bases.add(source to root)
+        if (config.customBase.isNotBlank()) {
+            bases.add(ModelDownloadSource.CUSTOM.value to config.customBase)
+        }
+        if (bases.isEmpty()) {
+            speedTestRunning.set(false)
+            return false
+        }
+        val results = java.util.concurrent.ConcurrentHashMap<String, Long?>()
+        val latch = java.util.concurrent.CountDownLatch(bases.size)
+        for ((source, base) in bases) {
+            speedWorker.execute {
+                results[source] = runCatching { tester.probeSource(base, source == ModelDownloadSource.CUSTOM.value) }
+                    .getOrNull()
+                latch.countDown()
+            }
+        }
+        worker.execute {
+            latch.await()
+            speedTestRunning.set(false)
+            runCatching { onResult(results.toMap()) }
+        }
+        return true
+    }
+
     fun delete(model: ModelSpec) = synchronized(installLock) {
         if (activeId == model.id) cancelled.set(true)
         verifiedInstallCache.remove(model.id)
@@ -709,7 +749,9 @@ class ModelStore(
         synchronized(installLock) {
             cancelled.set(true)
         }
+        speedTestRunning.set(false)
         worker.shutdown()
+        speedWorker.shutdown()
     }
 
 
@@ -728,16 +770,8 @@ class ModelStore(
             isCancelled = { cancelled.get() },
             checkNetwork = checkNetwork,
         )
-        val archiveFetcher = ModelArchiveFetcher(
-            connectionFactory = activeTransport,
-            allowHttp = allowHttp,
-            isCancelled = { cancelled.get() },
-            checkNetwork = checkNetwork,
-        )
         check(model.verified) { "模型清单缺少 sha256 校验值，无法安全下载" }
-        check(model.files.all { it.archive != null } || sourceUrls.isNotEmpty()) {
-            "模型清单没有可用的下载地址"
-        }
+        check(sourceUrls.isNotEmpty()) { "模型清单没有可用的下载地址" }
         val networkModel = model.copy(urls = sourceUrls)
         verifiedInstallCache.remove(model.id)
         val root = File(modelRoot(), model.dir)
@@ -750,24 +784,7 @@ class ModelStore(
                 listener.onProgress(model.id, doneBytes, model.totalDownloadBytes)
                 continue
             }
-            if (fileSpec.archive != null) {
-                val selectedArchive = fileSpec.archive.copy(
-                    url = effectiveArchiveUrl(fileSpec.archive),
-                )
-                archiveFetcher.fetch(
-                    archive = selectedArchive,
-                    destination = dest,
-                    onProgress = { downloaded ->
-                        listener.onProgress(
-                            model.id,
-                            doneBytes + downloaded,
-                            model.totalDownloadBytes,
-                        )
-                    },
-                )
-            } else {
-                fetcher.fetch(networkModel, fileSpec, dest, listener, doneBytes)
-            }
+            fetcher.fetch(networkModel, fileSpec, dest, listener, doneBytes)
             if (sha256(dest) != fileSpec.sha256) {
                 dest.delete()
                 throw IOException("下载内容校验失败：${fileSpec.path}")
@@ -782,17 +799,6 @@ class ModelStore(
         synchronized(installLock) {
             if (cancelled.get()) throw ModelDownloadCancelled()
             writeInstallRecord(model, root)
-        }
-    }
-
-    private fun effectiveArchiveUrl(archive: ModelArchiveSpec): String {
-        val config = modelDownloadSource()
-        return when (config.source) {
-            ModelDownloadSource.HF_MIRROR, ModelDownloadSource.OFFICIAL ->
-                archive.sourceUrls[config.source.value]?.takeIf { it.isNotBlank() } ?: archive.url
-            ModelDownloadSource.CUSTOM -> config.customArchiveUrl
-            // gitee 只镜像散文件，大归档仍走官方地址。
-            ModelDownloadSource.GITEE -> archive.url
         }
     }
 
@@ -898,21 +904,12 @@ class ModelStore(
         const val KEY_MODEL_BACKEND = "model_backend"
         const val KEY_MODEL_DOWNLOAD_SOURCE = "model_download_source"
         const val KEY_MODEL_DOWNLOAD_CUSTOM = "model_download_custom"
-        const val KEY_MODEL_DOWNLOAD_ARCHIVE = "model_download_archive"
         const val ERROR_PREFIX = "model_download_error."
         const val MAX_ERROR_DETAIL = 240
-        const val HF_MIRROR_BASE = "https://hf-mirror.com"
-        const val OFFICIAL_HF_BASE = "https://huggingface.co"
+        /** podic speed_test 同款 8s 总超时（connect/read 双兜底）。 */
+        const val SPEED_TEST_TIMEOUT_MS = 8_000
 
         fun errorKey(modelId: String): String = "$ERROR_PREFIX$modelId"
-
-        fun validArchiveUrl(raw: String): Boolean = runCatching {
-            val uri = URI(raw)
-            val scheme = uri.scheme?.lowercase(Locale.ROOT)
-            val path = uri.path?.lowercase(Locale.ROOT).orEmpty()
-            uri.host != null && uri.userInfo == null && uri.fragment == null &&
-                (scheme == "https" || scheme == "http") && path.endsWith(".tar.bz2")
-        }.getOrDefault(false)
 
         fun sha256(file: File): String {
             val digest = MessageDigest.getInstance("SHA-256")
@@ -1105,8 +1102,10 @@ internal class ModelFileFetcher(
     private val isCancelled: () -> Boolean,
     private val checkNetwork: () -> Unit = {},
 ) {
-    /** Resumable single-file fetch: append to <dest>.part via Range, rename
-     * once the byte count matches. Mirrors fall through on 4xx/5xx/IO. */
+    /** Resumable single-file fetch: append to <dest>.part via Range, verify
+     * against the wire digest, then rename - or gunzip first when the file
+     * is gzip-backed (distribution 单附件上限压缩存放）。 Mirrors fall through
+     * on 4xx/5xx/IO. */
     fun fetch(
         model: ModelSpec,
         fileSpec: ModelFileSpec,
@@ -1115,8 +1114,9 @@ internal class ModelFileFetcher(
         doneBytesBefore: Long,
     ) {
         val part = File(dest.parentFile, "${dest.name}.part")
+        val wireBytes = fileSpec.downloadBytes
         var offset = if (part.isFile) part.length() else 0L
-        if (fileSpec.bytes > 0 && offset > fileSpec.bytes) {
+        if (wireBytes > 0 && offset > wireBytes) {
             part.delete()
             offset = 0
         }
@@ -1130,6 +1130,8 @@ internal class ModelFileFetcher(
                 try {
                     when (connection.responseCode) {
                         HTTP_PARTIAL -> writeStream(connection.body(), part, append = true, resumeOffset = offset, model = model, fileSpec = fileSpec, listener = listener, doneBytesBefore = doneBytesBefore)
+                        // A server that ignores Range answers 200 with the full
+                        // body (gitee 附件端点实测如此）：从 0 覆盖写，不报错。
                         HTTP_OK -> writeStream(connection.body(), part, append = false, resumeOffset = 0, model = model, fileSpec = fileSpec, listener = listener, doneBytesBefore = doneBytesBefore)
                         // Server lost the part (or never had it): restart clean on
                         // the next mirror with an empty part.
@@ -1143,9 +1145,9 @@ internal class ModelFileFetcher(
                 } finally {
                     runCatching { connection.disconnect() }
                 }
-                if (fileSpec.bytes > 0 && part.length() != fileSpec.bytes) {
-                    lastError = IOException("下载不完整：${fileSpec.path} (${part.length()}/${fileSpec.bytes})")
-                } else if (sha256(part) != fileSpec.sha256) {
+                if (wireBytes > 0 && part.length() != wireBytes) {
+                    lastError = IOException("下载不完整：${fileSpec.path} (${part.length()}/${wireBytes})")
+                } else if (sha256(part) != fileSpec.wireSha256) {
                     // A mirror can return a complete but corrupted object.
                     // Do not seal it or resume from its full length on the
                     // next mirror; restart that file from byte zero.
@@ -1153,8 +1155,7 @@ internal class ModelFileFetcher(
                     offset = 0
                     lastError = IOException("下载内容校验失败：${fileSpec.path}")
                 } else {
-                    if (dest.exists()) dest.delete()
-                    if (part.renameTo(dest)) return
+                    if (installVerifiedPart(fileSpec, part, dest, model, listener, doneBytesBefore)) return
                     lastError = IOException("重命名失败：${fileSpec.path}")
                 }
             } catch (e: ModelDownloadCancelled) {
@@ -1172,6 +1173,41 @@ internal class ModelFileFetcher(
             offset = if (part.isFile) part.length() else 0L
         }
         throw lastError ?: IOException("没有可用的下载地址：${fileSpec.path}")
+    }
+
+    /** A wire-verified part is installed: plain files rename into place,
+     * gzip-backed files stream through GZIPInputStream into the destination
+     * (the caller re-checks the raw digest afterwards).  Returns false only
+     * when the rename itself failed. */
+    private fun installVerifiedPart(
+        fileSpec: ModelFileSpec,
+        part: File,
+        dest: File,
+        model: ModelSpec,
+        listener: ModelStore.Listener,
+        doneBytesBefore: Long,
+    ): Boolean {
+        if (dest.exists()) dest.delete()
+        if (!fileSpec.gunzip) return part.renameTo(dest)
+        java.util.zip.GZIPInputStream(part.inputStream().buffered()).use { gunzip ->
+            java.io.FileOutputStream(dest).use { output ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    if (isCancelled()) {
+                        dest.delete()
+                        throw ModelDownloadCancelled()
+                    }
+                    val count = gunzip.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    // Uncompressed bytes are not network progress; keep the
+                    // bar pinned at the file's wire total while inflating.
+                    listener.onProgress(model.id, doneBytesBefore + fileSpec.downloadBytes, model.totalDownloadBytes)
+                }
+            }
+        }
+        part.delete()
+        return true
     }
 
     private fun writeStream(

@@ -2,11 +2,13 @@ package com.feelime.ime
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -231,6 +233,86 @@ class ModelStoreDownloadTest {
         fetcher(resumed).fetch(model, model.files.single(), dest(), listener, 0)
         assertEquals(partialBytes, resumed.opened.single().second)
         assertEquals(sha256(PAYLOAD), sha256(dest()))
+    }
+
+    private fun gzipFileSpec(): ModelFileSpec {
+        val gz = ByteArrayOutputStream().use { buffer ->
+            java.util.zip.GZIPOutputStream(buffer).use { it.write(PAYLOAD) }
+            buffer.toByteArray()
+        }
+        return ModelFileSpec(
+            path = "asr-model/encoder.int8.onnx",
+            sha256 = sha256(PAYLOAD),
+            bytes = PAYLOAD.size.toLong(),
+            downloadPath = "encoder-epoch-99-avg-1.int8.onnx.gz",
+            gunzip = true,
+            downloadSha256 = sha256(gz),
+            downloadBytesOverride = gz.size.toLong(),
+        )
+    }
+
+    @Test
+    fun `gzip-backed file verifies wire digest and gunzips to raw content`() {
+        val spec = gzipFileSpec()
+        val gz = ByteArrayOutputStream().use { buffer ->
+            java.util.zip.GZIPOutputStream(buffer).use { it.write(PAYLOAD) }
+            buffer.toByteArray()
+        }
+        val model = spec("https://a/").copy(files = listOf(spec))
+        fetcher(FakeFactory(mutableListOf(FakeResponse(200, gz))))
+            .fetch(model, spec, dest(), listener, 0)
+        assertEquals(sha256(PAYLOAD), sha256(dest()))
+        assertFalse(File(tmp.root, "file.bin.part").exists())
+    }
+
+    @Test
+    fun `corrupt gzip wire digest restarts from zero on the next mirror`() {
+        val spec = gzipFileSpec()
+        val goodGz = ByteArrayOutputStream().use { buffer ->
+            java.util.zip.GZIPOutputStream(buffer).use { it.write(PAYLOAD) }
+            buffer.toByteArray()
+        }
+        val corruptGz = goodGz.copyOf().also { it[2] = (it[2].toInt() xor 0x5a).toByte() }
+        val model = spec("https://bad/", "https://good/").copy(files = listOf(spec))
+        val factory = FakeFactory(mutableListOf(
+            FakeResponse(200, corruptGz),
+            FakeResponse(200, goodGz),
+        ))
+        fetcher(factory).fetch(model, spec, dest(), listener, 0)
+        assertEquals(
+            listOf(
+                "https://bad/${spec.downloadPath}" to 0L,
+                "https://good/${spec.downloadPath}" to 0L,
+            ),
+            factory.opened,
+        )
+        assertEquals(sha256(PAYLOAD), sha256(dest()))
+    }
+
+    @Test
+    fun `speed tester measures elapsed ms and maps failures to null`() {
+        class ScriptFactory(val code: Int, val boom: Boolean = false) : ModelConnectionFactory {
+            override fun open(url: URI, rangeFrom: Long): ModelConnection {
+                if (boom) throw IOException("connect failed")
+                return object : ModelConnection {
+                    override val responseCode get() = code
+                    override fun body(): InputStream = ByteArrayInputStream("{}".toByteArray())
+                    override fun disconnect() = Unit
+                }
+            }
+        }
+        val tester = ModelSourceSpeedTester(ScriptFactory(200), allowHttp = false)
+        assertTrue(tester.probe("https://fast/", MODEL_SPEED_PROBE_FILE)!! >= 0)
+        assertNull(ModelSourceSpeedTester(ScriptFactory(503), allowHttp = false)
+            .probe("https://slow/", MODEL_SPEED_PROBE_FILE))
+        assertNull(tester.probe("http://lan/", MODEL_SPEED_PROBE_FILE))
+        assertNull(ModelSourceSpeedTester(ScriptFactory(200, boom = true), allowHttp = false)
+            .probe("https://boom/", MODEL_SPEED_PROBE_FILE))
+        // custom 源允许回退探测 base 本身（metainfo 404 时目录列表 200）。
+        val custom = ModelSourceSpeedTester(ScriptFactory(200), allowHttp = true)
+        assertTrue(custom.probeSource("http://lan/models/", isCustom = true) != null)
+        assertNull(ModelSourceSpeedTester(ScriptFactory(404), allowHttp = false)
+            .probeSource("https://metainfo404/", isCustom = false))
     }
 
     private fun sha256(bytes: ByteArray): String =

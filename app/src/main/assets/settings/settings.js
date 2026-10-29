@@ -429,15 +429,18 @@ const I18N = {
         "voice.backend.remote": "使用下载模型",
         "voice.backend.hint": "切换后下次录音生效。选择下载模型后，请在下方补齐所需模型再录音。",
         "voice.downloadSource.label": "模型下载源",
-        "voice.downloadSource.gitee": "Gitee（国内推荐）",
-        "voice.downloadSource.hfMirror": "HF / GitHub 镜像（默认）",
-        "voice.downloadSource.official": "官方源（HF / GitHub）",
+        "voice.downloadSource.pick": "点选项即保存；「测速」比较各源延迟",
+        "voice.downloadSource.speedTest": "测速",
+        "voice.downloadSource.testing": "测速中…",
+        "voice.downloadSource.gitee": "Gitee 镜像（默认）",
+        "voice.downloadSource.github": "GitHub 直连",
+        "voice.downloadSource.ghproxy": "GitHub（gh-proxy 加速）",
+        "voice.downloadSource.fastest": "最快 ✓",
+        "voice.downloadSource.unavailable": "不可用",
         "voice.downloadSource.custom": "自定义源",
-        "voice.downloadSource.customPlaceholder": "例如：https://example.com/huggingface",
-        "voice.downloadSource.archive": "流式模型压缩包地址",
-        "voice.downloadSource.archivePlaceholder": "例如：https://example.com/model.tar.bz2",
-        "voice.downloadSource.save": "保存下载源",
-        "voice.downloadSource.hint": "下载后会校验文件完整性；压缩包地址只用于流式模型的大文件，自定义源需同时填写仓库地址和对应的 tar.bz2 地址。",
+        "voice.downloadSource.customPlaceholder": "例如：https://example.com/models/",
+        "voice.downloadSource.save": "保存自定义源",
+        "voice.downloadSource.hint": "下载后会校验文件完整性；默认走 Gitee 国内镜像，也可选 GitHub 直连或 gh-proxy 加速。",
         "voice.holdSpace": "长按空格",
         "voice.holdSpaceHint": "长按空格键触发的动作；「语音输入」显示麦克风，「关闭」则长按无响应。",
         "voice.hold.voice": "语音输入",
@@ -1225,15 +1228,18 @@ const I18N = {
         "voice.backend.remote": "Downloaded models",
         "voice.backend.hint": "Changes apply to the next recording. After selecting downloaded models, download any missing models below before recording.",
         "voice.downloadSource.label": "Model download source",
-        "voice.downloadSource.gitee": "Gitee (China-friendly)",
-        "voice.downloadSource.hfMirror": "HF / GitHub mirrors (default)",
-        "voice.downloadSource.official": "Official sources (HF / GitHub)",
+        "voice.downloadSource.pick": "Tap an option to save it; \"Speed test\" compares latency",
+        "voice.downloadSource.speedTest": "Speed test",
+        "voice.downloadSource.testing": "Testing…",
+        "voice.downloadSource.gitee": "Gitee mirror (default)",
+        "voice.downloadSource.github": "GitHub direct",
+        "voice.downloadSource.ghproxy": "GitHub (gh-proxy)",
+        "voice.downloadSource.fastest": "fastest ✓",
+        "voice.downloadSource.unavailable": "unavailable",
         "voice.downloadSource.custom": "Custom source",
-        "voice.downloadSource.customPlaceholder": "For example: https://example.com/huggingface",
-        "voice.downloadSource.archive": "Streaming model archive URL",
-        "voice.downloadSource.archivePlaceholder": "For example: https://example.com/model.tar.bz2",
-        "voice.downloadSource.save": "Save download source",
-        "voice.downloadSource.hint": "Downloads are checked for integrity. The archive URL is only for the streaming model's large file; a custom source must provide both the repository URL and its matching tar.bz2 URL.",
+        "voice.downloadSource.customPlaceholder": "For example: https://example.com/models/",
+        "voice.downloadSource.save": "Save custom source",
+        "voice.downloadSource.hint": "Downloads are verified after transfer. Defaults to the Gitee mirror; GitHub direct and gh-proxy accelerated sources are also available.",
         "voice.holdSpace": "Hold space",
         "voice.holdSpaceHint": "What a long-press on the space bar does; Voice shows the mic glyph, Off disables the hold.",
         "voice.hold.voice": "Voice input",
@@ -2718,20 +2724,11 @@ function renderVoice(state) {
         $("modelBackend").value = state.modelBackend === "remote" ? "remote" : "auto";
     }
     const source = state.modelDownloadSource || {};
-    if (document.activeElement !== $("modelDownloadSource")) {
-        $("modelDownloadSource").value = ["official", "custom", "gitee"].includes(source.mode) ? source.mode : "hf_mirror";
-    }
     if (document.activeElement !== $("modelDownloadCustom")) {
         $("modelDownloadCustom").value = source.customBase || "";
     }
-    if (document.activeElement !== $("modelDownloadArchive")) {
-        $("modelDownloadArchive").value = source.customArchiveUrl || "";
-    }
-    const customVisible = $("modelDownloadSource").value === "custom";
-    $("modelDownloadCustom").hidden = !customVisible;
-    $("modelDownloadCustomLabel").hidden = !customVisible;
-    $("modelDownloadArchive").hidden = !customVisible;
-    $("modelDownloadArchiveLabel").hidden = !customVisible;
+    renderModelSourceRows(source, state.modelSourceSpeed || {});
+    $("modelSourceCustomBox").hidden = source.mode !== "custom";
     const mic = state.mic || {};
     setLed("micRow", !!mic.granted);
     $("btnMic").hidden = !!mic.granted;
@@ -2749,6 +2746,67 @@ function renderVoice(state) {
         updateModelRow(node, model);
     });
     existing.forEach((node, id) => { if (!current.has(id)) node.remove(); });
+}
+
+/** 下载源单选行（podic UpdateSourcePicker 语义）：●/○ 选中、行内显示
+ * 测速结果（ms/不可用/最快✓），点行即保存；custom 行只展开输入框。 */
+function renderModelSourceRows(source, speed) {
+    const host = $("modelSourceRows");
+    if (!host) return;
+    const mode = ["gitee", "github", "ghproxy", "custom"].includes(source.mode) ? source.mode : "gitee";
+    const entries = Object.entries(speed).filter(([key]) => key !== "running");
+    const values = entries.map(([, value]) => value).filter(value => value > 0);
+    const fastest = values.length ? Math.min(...values) : null;
+    const button = $("btnSpeedTest");
+    if (button) {
+        button.disabled = !!speed.running;
+        button.textContent = speed.running ? t("voice.downloadSource.testing") : t("voice.downloadSource.speedTest");
+    }
+    host.querySelectorAll(".source-row").forEach(node => node.remove());
+    [
+        ["gitee", "voice.downloadSource.gitee"],
+        ["github", "voice.downloadSource.github"],
+        ["ghproxy", "voice.downloadSource.ghproxy"],
+        ["custom", "voice.downloadSource.custom"],
+    ].forEach(([value, labelKey]) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = `source-row${mode === value ? " active" : ""}`;
+        row.setAttribute("role", "radio");
+        row.setAttribute("aria-checked", mode === value ? "true" : "false");
+        const label = document.createElement("span");
+        label.className = "source-row-label";
+        const dot = document.createElement("i");
+        dot.className = "source-dot";
+        dot.textContent = mode === value ? "●" : "○";
+        label.append(dot);
+        const labelText = document.createElement("span");
+        labelText.textContent = t(labelKey);
+        label.append(labelText);
+        if (fastest !== null && speed[value] === fastest && value !== "custom") {
+            const badge = document.createElement("em");
+            badge.className = "source-fastest";
+            badge.textContent = t("voice.downloadSource.fastest");
+            label.append(badge);
+        }
+        row.append(label);
+        if (Object.prototype.hasOwnProperty.call(speed, value)) {
+            const result = document.createElement("span");
+            result.className = speed[value] > 0 ? "source-ms" : "source-fail";
+            result.textContent = speed[value] > 0 ? `${speed[value]} ms` : t("voice.downloadSource.unavailable");
+            row.append(result);
+        }
+        row.addEventListener("click", () => {
+            if (value === "custom") {
+                $("modelSourceCustomBox").hidden = false;
+                $("modelDownloadCustom").focus();
+                return;
+            }
+            call("setModelDownloadSource", value, $("modelDownloadCustom").value || "");
+            setNote("modelNote", t("note.saved"));
+        });
+        host.append(row);
+    });
 }
 
 function buildModelRow(model) {
@@ -4086,20 +4144,12 @@ $("doubleShiftLock").addEventListener("change", event => call("setDoubleShiftLoc
 $("popupSnap").addEventListener("change", submitFeelOptions);
 $("modelBackend").addEventListener("change", event => call("setModelBackend", event.target.value));
 $("spaceHoldEdit").addEventListener("click", openSpaceHoldEditor);
-$("modelDownloadSource").addEventListener("change", event => {
-    const visible = event.target.value === "custom";
-    $("modelDownloadCustom").hidden = !visible;
-    $("modelDownloadCustomLabel").hidden = !visible;
-    $("modelDownloadArchive").hidden = !visible;
-    $("modelDownloadArchiveLabel").hidden = !visible;
+$("btnSpeedTest").addEventListener("click", () => {
+    setNote("modelNote", "");
+    call("testModelDownloadSpeed");
 });
-$("btnSaveModelSource").addEventListener("click", () => {
-    call(
-        "setModelDownloadSource",
-        $("modelDownloadSource").value,
-        $("modelDownloadCustom").value || "",
-        $("modelDownloadArchive").value || "",
-    );
+$("btnSaveCustomSource").addEventListener("click", () => {
+    call("setModelDownloadSource", "custom", $("modelDownloadCustom").value || "");
     setNote("modelNote", t("note.saved"));
 });
 $("modelConsentCancel").addEventListener("click", () => {

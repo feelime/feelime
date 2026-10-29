@@ -550,6 +550,32 @@ textarea { resize: vertical; min-height: 96px; font-family: var(--mono); font-si
 .model-source-settings { margin-top: 10px; }
 .model-source-settings .field-label { margin-top: 10px; }
 .model-source-settings .actions { margin-top: 8px; }
+.source-head { gap: 10px; }
+.source-head .row-label small { display: block; margin-top: 2px; color: var(--card-sub); }
+.source-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    margin-top: 6px;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--panel);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.source-row.active { border-color: var(--accent-text); }
+.source-row-label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; }
+.source-dot { font-style: normal; color: var(--card-sub); }
+.source-row.active .source-dot { color: var(--accent-text); }
+.source-fastest { font-style: normal; font-size: 11px; color: var(--accent-text); }
+.source-ms { color: var(--card-sub); font: 11px var(--mono); white-space: nowrap; }
+.source-fail { color: var(--danger); font-size: 11px; white-space: nowrap; }
+#modelSourceCustomBox input { margin-top: 6px; }
 
 /* --- model rows ------------------------------------------------------- */
 
