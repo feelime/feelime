@@ -593,9 +593,16 @@ class ModelStore(
                     state = State.MISSING
                 } catch (failure: Exception) {
                     state = State.MISSING
-                    error = failure.message ?: failure.javaClass.simpleName
-                    recordDownloadError(model.id, "MODEL_DOWNLOAD_FAILED", error!!)
-                    Log.w(TAG, "model download failed: ${model.id}", failure)
+                    if (cancelled.get()) {
+                        // cancelDownload() 掐断 socket 时传输层抛的是普通
+                        // IOException（stream was reset: CANCEL）——归为用户
+                        // 取消，不落「下载失败」文案。
+                        Log.i(TAG, "model download cancelled: ${model.id}")
+                    } else {
+                        error = failure.message ?: failure.javaClass.simpleName
+                        recordDownloadError(model.id, "MODEL_DOWNLOAD_FAILED", error!!)
+                        Log.w(TAG, "model download failed: ${model.id}", failure)
+                    }
                 } finally {
                     activeId = null
                     activeOperation = null
@@ -689,12 +696,13 @@ class ModelStore(
     /** 测速是否进行中（设置页防重入提示用）。 */
     fun speedTestInFlight(): Boolean = speedTestRunning.get()
 
-    /** 并发探测所有下载源的延迟（毫秒；null = 不可用）。结果在回调里整批
-     * 交付；重复触发返回 false（in-flight 防重入）。8s 超时由 transport
-     * 的 connect/read 超时共同兜底。 */
+    /** 并发探测所有下载源的延迟（毫秒；**负值 = 不可用**，值可能是 null
+     * 的容器没法用 ConcurrentHashMap 承载）。结果在回调里整批交付；重复
+     * 触发返回 false（in-flight 防重入）。8s 超时由 transport 的
+     * connect/read 超时共同兜底。 */
     fun speedTestSources(
         transport: ModelConnectionFactory? = null,
-        onResult: (Map<String, Long?>) -> Unit,
+        onResult: (Map<String, Long>) -> Unit,
     ): Boolean {
         if (closed || !speedTestRunning.compareAndSet(false, true)) return false
         val config = modelDownloadSource()
@@ -716,12 +724,12 @@ class ModelStore(
             speedTestRunning.set(false)
             return false
         }
-        val results = java.util.concurrent.ConcurrentHashMap<String, Long?>()
+        val results = java.util.concurrent.ConcurrentHashMap<String, Long>()
         val latch = java.util.concurrent.CountDownLatch(bases.size)
         for ((source, base) in bases) {
             speedWorker.execute {
                 results[source] = runCatching { tester.probeSource(base, source == ModelDownloadSource.CUSTOM.value) }
-                    .getOrNull()
+                    .getOrNull() ?: -1L
                 latch.countDown()
             }
         }

@@ -1263,14 +1263,12 @@ class SettingsBridge(
     }
 
     /** Last speed-test result (source value -> ms, negative = failed). */
-    private var lastSourceSpeed: Map<String, Long?>? = null
+    private var lastSourceSpeed: Map<String, Long>? = null
 
     private fun speedState(): JSONObject = JSONObject().apply {
         val snapshot = synchronized(this@SettingsBridge) { lastSourceSpeed }
         put("running", modelStoreSpeedRunning())
-        snapshot?.forEach { (source, ms) ->
-            put(source, ms ?: -1L)
-        }
+        snapshot?.forEach { (source, ms) -> put(source, ms) }
     }
 
     private fun modelStoreSpeedRunning(): Boolean = modelStore.speedTestInFlight()
