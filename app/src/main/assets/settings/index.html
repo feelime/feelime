@@ -1067,6 +1067,18 @@
           <button class="btn primary" id="kbSigConsentConfirm" type="button" data-i18n="kbSig.confirm">仍要导入</button>
         </div>
       </div>
+      <!-- #80 大字体导入确认：20MB 是软上限，资源消耗提示后用户可选择继续 -->
+      <div class="consent" id="fontConsent" hidden role="dialog" aria-labelledby="fontConsentTitle" aria-describedby="fontConsentMessage">
+        <div class="section-heading">
+          <h3 id="fontConsentTitle" data-i18n="fontLarge.title">字体文件较大</h3>
+          <span class="eyebrow" data-i18n="fontLarge.badge">提示</span>
+        </div>
+        <p class="hint block" id="fontConsentMessage" data-i18n="fontLarge.message">这个字体文件超过 20MB。大字体会增加内存占用和加载时间，配置较低的设备可能出现卡顿。仍要导入吗？</p>
+        <div class="actions">
+          <button class="btn" id="fontConsentCancel" type="button" data-i18n="fontLarge.cancel">取消</button>
+          <button class="btn primary" id="fontConsentConfirm" type="button" data-i18n="fontLarge.confirm">仍要导入</button>
+        </div>
+      </div>
     </section>
   </main>
 </div>

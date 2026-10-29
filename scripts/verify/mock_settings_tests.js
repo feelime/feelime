@@ -94,6 +94,7 @@ class MockSettingsNative {
     setCandidateFont(...a) { this._rec('setCandidateFont', a); }
     setKeycapFont(...a) { this._rec('setKeycapFont', a); }
     requestUserFontImport(...a) { this._rec('requestUserFontImport', a); }
+    confirmLargeFontImport(...a) { this._rec('confirmLargeFontImport', a); }
     clearUserFont(...a) { this._rec('clearUserFont', a); }
     setInkDelay(...a) { this._rec('setInkDelay', a); }
     setFuzzyPinyinMask(...a) { this._rec('setFuzzyPinyinMask', a); }
@@ -1888,6 +1889,30 @@ test('keycap font and user font render from state and commit (#70)', () => {
     world.push({ ...BASE_STATE, userFont: { digest: '', name: '' } });
     equal(world.$('btnClearFont').hidden, true, 'clear button hidden without font');
     equal(world.$('userFontNote').textContent, '', 'no active-font note without font');
+});
+
+
+test('large font import asks consent, confirm retries via bridge (#80)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const s = world.FeelimeSettings();
+    // 超 20MB 软上限：先弹确认（bytes 换算成 MB 讲给用户）。
+    s.onEvent({ type: 'fontImportStatus', ok: false, code: 'CONFIRM_LARGE', bytes: 28626513 });
+    equal(world.$('fontConsent').hidden, false, 'consent dialog shown for large font');
+    assert(world.$('fontConsentMessage').textContent.includes('27.3'), 'message carries the file size');
+    // 取消：只收起，不重导。
+    world.$('fontConsentCancel').click();
+    equal(world.$('fontConsent').hidden, true, 'cancel hides the dialog');
+    equal(world.native.of('confirmLargeFontImport').length, 0, 'cancel does not retry');
+    // 再触发 → 确认：带 token 走桥重导，对话框收起。
+    s.onEvent({ type: 'fontImportStatus', ok: false, code: 'CONFIRM_LARGE', bytes: 28626513 });
+    world.$('fontConsentConfirm').click();
+    equal(world.$('fontConsent').hidden, true, 'confirm hides the dialog');
+    equal(world.lastCall('confirmLargeFontImport').args, [world.token], 'confirm retries via bridge + token');
+    // 其他导入结果把对话框收走，不残留到下一次操作。
+    s.onEvent({ type: 'fontImportStatus', ok: true, name: 'big.ttf' });
+    equal(world.$('fontConsent').hidden, true, 'success event dismisses the dialog');
+    assert(world.$('userFontNote').textContent.includes('big.ttf'), 'success note shown');
 });
 
 

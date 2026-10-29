@@ -11,8 +11,10 @@ import java.security.MessageDigest
 import org.json.JSONObject
 
 /**
- * 用户自定义键盘字体（issue #70）：单槽位。导入经魔数 + 大小上限 +
- * 平台 Typeface 解析三道校验后原子换入 filesDir/fonts/keyboard/。
+ * 用户自定义键盘字体（issue #70）：单槽位。导入经魔数 + 大小校验
+ * （#80 起 20MB 为软上限——超限回报 CONFIRM_LARGE 由用户确认后带
+ * allowLarge 重导，100MB 为绝对上限）+ 平台 Typeface 解析后原子换入
+ * filesDir/fonts/keyboard/。
  * 字体文件按摘要命名（font-<digest>.<ext>，不可变），meta.json 走
  * 临时文件 rename 原子替换、以它为提交标记——任一步失败都保住旧选择。
  *
@@ -29,7 +31,12 @@ import org.json.JSONObject
 object KeyboardFontStore {
     private const val DIR = "fonts/keyboard"
     private const val META = "meta.json"
-    private const val MAX_BYTES = 20 * 1024 * 1024
+
+    /** #80：20MB 只做软上限（确认后可继续——全量 CJK 字体普遍 20~40MB）；
+     * 100MB 是绝对上限，防误选巨型文件把导入进程的堆读爆（整个文件先
+     * 缓存在内存里再校验）。 */
+    private const val SOFT_BYTES = 20L * 1024 * 1024
+    private const val HARD_BYTES = 100L * 1024 * 1024
 
     /** digest 出现在 URL 路径段里，取前 16 位 hex 足够防撞+防猜测。 */
     private const val DIGEST_CHARS = 16
@@ -38,7 +45,10 @@ object KeyboardFontStore {
 
     sealed class ImportOutcome {
         class Ok(val font: UserFont) : ImportOutcome()
-        class Fail(val code: String) : ImportOutcome()
+
+        /** CONFIRM_LARGE 带 bytes：设置页把大小讲给用户听（资源消耗提示），
+         *  确认后带 allowLarge 重导。 */
+        class Fail(val code: String, val bytes: Long = 0) : ImportOutcome()
     }
 
     /** 导入并原子换入。所有入口共用一把锁：导入（worker 线程）、清除
@@ -51,10 +61,12 @@ object KeyboardFontStore {
         /** SAF DISPLAY_NAME（SetupActivity 查询后传入）；lastPathSegment
          *  在部分提供者上是 document id，只作兜底。 */
         displayName: String? = null,
+        /** 用户已在设置页确认「大字体资源消耗」提示（#80 软上限）。 */
+        allowLarge: Boolean = false,
     ): ImportOutcome {
         val resolver = context.contentResolver
         val bytes = ArrayList<ByteArray>()
-        var total = 0
+        var total = 0L
         runCatching {
             resolver.openInputStream(uri)?.use { input ->
                 val chunk = ByteArray(64 * 1024)
@@ -62,13 +74,16 @@ object KeyboardFontStore {
                     val read = input.read(chunk)
                     if (read < 0) break
                     total += read
-                    if (total > MAX_BYTES) return ImportOutcome.Fail("TOO_LARGE")
+                    if (total > HARD_BYTES) return ImportOutcome.Fail("TOO_LARGE")
                     bytes.add(chunk.copyOf(read))
                 }
             } ?: return ImportOutcome.Fail("IO_ERROR")
         }.onFailure { return ImportOutcome.Fail("IO_ERROR") }
-        if (total == 0) return ImportOutcome.Fail("IO_ERROR")
-        val data = ByteArray(total).also { out ->
+        if (total == 0L) return ImportOutcome.Fail("IO_ERROR")
+        if (total > SOFT_BYTES && !allowLarge) {
+            return ImportOutcome.Fail("CONFIRM_LARGE", total)
+        }
+        val data = ByteArray(total.toInt()).also { out ->
             var off = 0
             bytes.forEach { b -> b.copyInto(out, off); off += b.size }
         }

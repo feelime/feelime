@@ -2773,14 +2773,30 @@ class SettingsBridge(
 
     /** 设置页的 OpenDocument 回调：魔数+大小+平台解析校验后原子换入。
      *  结果走 fontImportStatus 事件；成功即广播键盘 prefs 变更（重推
-     *  hello 带新 digest，键盘页即时换装）。 */
+     *  hello 带新 digest，键盘页即时换装）。超软上限（#80）回报
+     *  CONFIRM_LARGE 带字节数，设置页确认后走 confirmLargeFontImport
+     *  重导（URI 记在 pendingLargeFont，被下一次选择覆盖）。 */
+    private var pendingLargeFont: Pair<Uri, String?>? = null
+
     fun importUserFontFromUri(uri: Uri, displayName: String?) {
+        importFont(uri, displayName, allowLarge = false)
+    }
+
+    /** #80 软上限确认后的重导入口（设置页 consent 对话框回调）。 */
+    @JavascriptInterface
+    fun confirmLargeFontImport(token: String) = guarded(token) {
+        val pending = pendingLargeFont ?: return@guarded
+        importFont(pending.first, pending.second, allowLarge = true)
+    }
+
+    private fun importFont(uri: Uri, displayName: String?, allowLarge: Boolean) {
         if (closed) return
         runCatching {
             worker.execute {
                 if (closed) return@execute
-                when (val outcome = KeyboardFontStore.importFromUri(context, uri, displayName)) {
+                when (val outcome = KeyboardFontStore.importFromUri(context, uri, displayName, allowLarge)) {
                     is KeyboardFontStore.ImportOutcome.Ok -> {
+                        pendingLargeFont = null
                         context.sendBroadcast(
                             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
                         )
@@ -2789,10 +2805,18 @@ class SettingsBridge(
                                 .put("ok", true).put("name", outcome.font.name),
                         )
                     }
-                    is KeyboardFontStore.ImportOutcome.Fail -> pushEvent(
-                        JSONObject().put("type", "fontImportStatus")
-                            .put("ok", false).put("code", outcome.code),
-                    )
+                    is KeyboardFontStore.ImportOutcome.Fail -> {
+                        if (outcome.code == "CONFIRM_LARGE") {
+                            pendingLargeFont = uri to displayName
+                        } else {
+                            pendingLargeFont = null
+                        }
+                        pushEvent(
+                            JSONObject().put("type", "fontImportStatus")
+                                .put("ok", false).put("code", outcome.code)
+                                .put("bytes", outcome.bytes),
+                        )
+                    }
                 }
                 pushState()
             }
