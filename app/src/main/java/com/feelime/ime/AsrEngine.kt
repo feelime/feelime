@@ -53,11 +53,11 @@ internal fun streamingRecognizerConfig(source: ModelSource, hotwordVocab: String
         enableEndpoint = true,
         decodingMethod = "modified_beam_search",
         // decoder 先选 top-k，再加入本次热词分，窄 beam 可能提前淘汰目标路径。
-        // #79 姚程样本在 beam=8 的 AVD 测试仍失败；host 八组扰动测试中
-        // beam=8 命中 2/8（另轮 4/8，均不稳定），beam=12 命中 8/8，
-        // 因此采用 12，score 保持 3。
-        maxActivePaths = 12,
-        hotwordsScore = 3.0f,
+        // #79 姚程样本：TTS 音频 beam=8 即临界（2/8~4/8），12 才 8/8；
+        // 用户真声（「程」发音近 chén，声学差距更大）12/score5 仍 6/8~7/8，
+        // 16/score5 达 8/8 且扰动矩阵稳定，误插入/回归面全绿，故采用。
+        maxActivePaths = 16,
+        hotwordsScore = 5.0f,
     )
 }
 
