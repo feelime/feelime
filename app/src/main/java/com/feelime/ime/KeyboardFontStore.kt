@@ -6,6 +6,7 @@ import android.net.Uri
 import android.webkit.WebResourceResponse
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.security.MessageDigest
 
 import org.json.JSONObject
@@ -65,51 +66,76 @@ object KeyboardFontStore {
         allowLarge: Boolean = false,
     ): ImportOutcome {
         val resolver = context.contentResolver
-        val bytes = ArrayList<ByteArray>()
+        val dir = File(context.filesDir, DIR).apply { mkdirs() }
+        val tmpFont = File(dir, ".import.tmp")
+        val tmpMeta = File(dir, ".meta.tmp")
         var total = 0L
+        val head = ByteArray(4)
+        val hasher = MessageDigest.getInstance("SHA-256")
+        // 流式分块写临时文件、边写边算摘要（#80 review P1：100MB 上限下
+        // 「分块列表 + 合并数组」双份同活峰值 ~200MB，低配设备直接 OOM；
+        // 全程只留一个 64KB chunk）。魔数取首块前 4 字节。
         runCatching {
             resolver.openInputStream(uri)?.use { input ->
-                val chunk = ByteArray(64 * 1024)
-                while (true) {
-                    val read = input.read(chunk)
-                    if (read < 0) break
-                    total += read
-                    if (total > HARD_BYTES) return ImportOutcome.Fail("TOO_LARGE")
-                    bytes.add(chunk.copyOf(read))
+                FileOutputStream(tmpFont).use { out ->
+                    val chunk = ByteArray(64 * 1024)
+                    while (true) {
+                        val read = input.read(chunk)
+                        if (read < 0) break
+                        total += read
+                        if (total > HARD_BYTES) {
+                            tmpFont.delete()
+                            return ImportOutcome.Fail("TOO_LARGE")
+                        }
+                        if (total == read.toLong()) {
+                            System.arraycopy(chunk, 0, head, 0, minOf(read, head.size))
+                        }
+                        hasher.update(chunk, 0, read)
+                        out.write(chunk, 0, read)
+                    }
                 }
-            } ?: return ImportOutcome.Fail("IO_ERROR")
-        }.onFailure { return ImportOutcome.Fail("IO_ERROR") }
-        if (total == 0L) return ImportOutcome.Fail("IO_ERROR")
+            } ?: run {
+                tmpFont.delete()
+                return ImportOutcome.Fail("IO_ERROR")
+            }
+        }.onFailure {
+            tmpFont.delete()
+            return ImportOutcome.Fail("IO_ERROR")
+        }
+        if (total == 0L) {
+            tmpFont.delete()
+            return ImportOutcome.Fail("IO_ERROR")
+        }
         if (total > SOFT_BYTES && !allowLarge) {
+            // 确认后重导会重新流式读一遍（SAF 临时授权仍在），不值得为
+            // 省一次读把待确认文件挂在盘上。
+            tmpFont.delete()
             return ImportOutcome.Fail("CONFIRM_LARGE", total)
         }
-        val data = ByteArray(total.toInt()).also { out ->
-            var off = 0
-            bytes.forEach { b -> b.copyInto(out, off); off += b.size }
-        }
-        val ext = when (detectFormat(data)) {
+        val ext = when (detectFormat(head)) {
             "ttf" -> "ttf"
             "otf" -> "otf"
-            else -> return ImportOutcome.Fail("BAD_MAGIC")
+            else -> {
+                tmpFont.delete()
+                return ImportOutcome.Fail("BAD_MAGIC")
+            }
         }
-        val digest = MessageDigest.getInstance("SHA-256").digest(data)
-            .joinToString("") { "%02x".format(it) }.take(DIGEST_CHARS)
+        val digest = hasher.digest().joinToString("") { "%02x".format(it) }.take(DIGEST_CHARS)
         // 展示名只进设置页 JSON，不进 CSS/HTML；截断防极端文件名。
         val name = (displayName ?: uri.lastPathSegment ?: "")
             .substringAfterLast('/')
             .take(64)
             .ifEmpty { "font.$ext" }
 
-        val dir = File(context.filesDir, DIR).apply { mkdirs() }
         val fontFile = File(dir, "font-$digest.$ext")
-        val tmpFont = File(dir, ".import.tmp")
-        val tmpMeta = File(dir, ".meta.tmp")
         runCatching {
-            // 先写临时文件并过平台解析器：魔数对但字形坏的文件在这里死掉，
-            // 不碰现有字体（review P2）。
-            tmpFont.writeBytes(data)
+            // 临时文件已写好，直接过平台解析器：魔数对但字形坏的文件在
+            // 这里死掉，不碰现有字体（review P2）。
             runCatching { Typeface.createFromFile(tmpFont) }
-                .onFailure { return ImportOutcome.Fail("BAD_FONT") }
+                .onFailure {
+                    tmpFont.delete()
+                    return ImportOutcome.Fail("BAD_FONT")
+                }
             if (!tmpFont.renameTo(fontFile)) {
                 // 同摘要重导（幂等）：目标已存在即可收货。
                 if (!(fontFile.isFile && digest == current(context)?.digest)) {

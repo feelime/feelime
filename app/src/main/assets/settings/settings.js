@@ -4060,10 +4060,12 @@ $("keycapFont").addEventListener("change", event => call("setKeycapFont", parseI
 let userFontNoteHold = null;
 $("btnImportFont").addEventListener("click", () => {
     userFontNoteHold = null;
+    $("fontConsent").hidden = true; // 新选择开始，旧确认不再有效
     call("requestUserFontImport");
 });
 $("btnClearFont").addEventListener("click", () => {
     userFontNoteHold = null;
+    $("fontConsent").hidden = true;
     call("clearUserFont");
 });
 $("preeditFont").addEventListener("change", event => call("setPreeditFont", parseInt(event.target.value, 10)));

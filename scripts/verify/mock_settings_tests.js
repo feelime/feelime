@@ -1896,10 +1896,20 @@ test('large font import asks consent, confirm retries via bridge (#80)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     const s = world.FeelimeSettings();
+    // 对话框必须住在字体行所在的 appearance 页里——跨页放会被祖先
+    // .page[hidden] 整个藏掉（codex review P1，首版放 update 页翻车）。
+    equal(world.$('fontConsent').closest('.page').dataset.page, 'appearance',
+        'consent dialog lives on the appearance page');
     // 超 20MB 软上限：先弹确认（bytes 换算成 MB 讲给用户）。
     s.onEvent({ type: 'fontImportStatus', ok: false, code: 'CONFIRM_LARGE', bytes: 28626513 });
     equal(world.$('fontConsent').hidden, false, 'consent dialog shown for large font');
     assert(world.$('fontConsentMessage').textContent.includes('27.3'), 'message carries the file size');
+    // 事件后必到的 state 回推不能把带参文案回写成裸 {mb} 模板
+    //（首版挂在 data-i18n 上被静态 i18n 播撒覆盖，AVD 实测 {mb} 裸奔）。
+    world.push({ ...BASE_STATE });
+    assert(world.$('fontConsentMessage').textContent.includes('27.3'),
+        'state re-render keeps the substituted size text');
+    equal(world.$('fontConsent').hidden, false, 'dialog stays up across the state push');
     // 取消：只收起，不重导。
     world.$('fontConsentCancel').click();
     equal(world.$('fontConsent').hidden, true, 'cancel hides the dialog');
@@ -1909,10 +1919,16 @@ test('large font import asks consent, confirm retries via bridge (#80)', () => {
     world.$('fontConsentConfirm').click();
     equal(world.$('fontConsent').hidden, true, 'confirm hides the dialog');
     equal(world.lastCall('confirmLargeFontImport').args, [world.token], 'confirm retries via bridge + token');
-    // 其他导入结果把对话框收走，不残留到下一次操作。
+    // 成功事件独立关框（不依赖确认点击先行）。
+    s.onEvent({ type: 'fontImportStatus', ok: false, code: 'CONFIRM_LARGE', bytes: 28626513 });
+    equal(world.$('fontConsent').hidden, false, 'dialog re-shown for another large pick');
     s.onEvent({ type: 'fontImportStatus', ok: true, name: 'big.ttf' });
     equal(world.$('fontConsent').hidden, true, 'success event dismisses the dialog');
     assert(world.$('userFontNote').textContent.includes('big.ttf'), 'success note shown');
+    // 新导入开始时收起残留对话框。
+    s.onEvent({ type: 'fontImportStatus', ok: false, code: 'CONFIRM_LARGE', bytes: 28626513 });
+    world.$('btnImportFont').click();
+    equal(world.$('fontConsent').hidden, true, 'starting a new import hides the dialog');
 });
 
 

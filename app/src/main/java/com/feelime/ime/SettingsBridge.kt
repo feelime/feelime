@@ -2765,9 +2765,12 @@ class SettingsBridge(
 
     // ---- 用户键盘字体（issue #70）：单槽位导入；二进制不进备份 ----
 
-    /** 设置页点「导入字体」：弹 SAF 选择器，回调接 importUserFontFromUri。 */
+    /** 设置页点「导入字体」：弹 SAF 选择器，回调接 importUserFontFromUri。
+     *  新选择开始即作废旧的大字体确认（#80 review P2：否则 A 待确认时
+     *  选 B，确认仍能拿旧 A 排在 B 后生效）。 */
     @JavascriptInterface
     fun requestUserFontImport(token: String) = guarded(token) {
+        pendingLargeFont = null
         host.openFontDocument()
     }
 
@@ -2782,10 +2785,12 @@ class SettingsBridge(
         importFont(uri, displayName, allowLarge = false)
     }
 
-    /** #80 软上限确认后的重导入口（设置页 consent 对话框回调）。 */
+    /** #80 软上限确认后的重导入口（设置页 consent 对话框回调）。
+     *  同步一次性取走 pending：重复点击/迟到点击不重放旧请求。 */
     @JavascriptInterface
     fun confirmLargeFontImport(token: String) = guarded(token) {
         val pending = pendingLargeFont ?: return@guarded
+        pendingLargeFont = null
         importFont(pending.first, pending.second, allowLarge = true)
     }
 
@@ -2825,6 +2830,7 @@ class SettingsBridge(
 
     @JavascriptInterface
     fun clearUserFont(token: String) = guarded(token) {
+        pendingLargeFont = null
         KeyboardFontStore.clear(context)
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
