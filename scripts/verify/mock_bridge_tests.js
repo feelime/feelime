@@ -552,6 +552,52 @@ test('symbol custom phrases reorder to slot 3; CJK entries keep engine order (is
     equal(bar(), JSON.stringify(['你', '妮']), 'plain pools untouched');
 });
 
+test('symbol candidates climb with use counts (issue #81)', {since: '3.73.61'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    const cells = () => [...world.$('candidates').querySelectorAll('.candidate')];
+    const bar = () => JSON.stringify(cells().map(node => node.textContent));
+    const feed = rev => world.engineState({ mode: 'pinyin', revision: rev,
+        composing: 'shang', rawInput: 'shang',
+        candidates: [
+            { id: 'p0', text: '↑' }, { id: 'p1', text: '★' },
+            { id: 'c1', text: '上' }, { id: 'c2', text: '商' }, { id: 'c3', text: '伤' },
+        ], hasNextPage: false });
+    const pick = text => {
+        const cell = cells().find(node => node.textContent === text);
+        assert(cell, `candidate ${text} visible`);
+        cell.click();
+    };
+
+    // 冷启动零计数：两符号都钉 index 2 起、组内保持引擎序（#17 原行为）。
+    feed(3);
+    equal(bar(), JSON.stringify(['上', '商', '↑', '★', '伤']),
+        'cold: both symbols ride slot 3+ in engine order');
+
+    // 选 ★ 3 次：未到养成阈值（5），仍不抢前两格；组内 ★ 计数领先排在 ↑ 前。
+    for (let i = 0; i < 3; i++) {
+        feed(10 + i);
+        pick('★');
+    }
+    feed(20);
+    equal(bar(), JSON.stringify(['上', '商', '★', '↑', '伤']),
+        '3 picks: not promoted (slot 3 kept), but ★ leads its group');
+
+    // 再选 ★ 2 次（总 5）：养成——升到池头，空格直选 ★。
+    for (let i = 0; i < 2; i++) {
+        feed(30 + i);
+        pick('★');
+    }
+    feed(40);
+    equal(bar(), JSON.stringify(['★', '上', '商', '↑', '伤']),
+        '5 picks: ★ promoted to the pool head');
+    world.tap(world.$('spaceKey'));
+    const pickCall = world.native.of('chooseCandidate').slice(-1)[0];
+    equal(pickCall.args[1], 'p1', 'space confirms the promoted symbol by id');
+
+    // ↑ 全程零选择：不受 ★ 养成影响，仍在正常候选之后（index 3）。
+    equal(cells().findIndex(node => node.textContent === '↑'), 3, 'unused symbol stays behind');
+});
+
 test('space face text shows for non-voice hold actions', {since: '3.73.40'}, () => {
     const world = fresh();
     world.hello({ spaceHoldTap: 'dsl:[panel:clipboard]', spaceHoldText: '📋' });

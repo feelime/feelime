@@ -312,7 +312,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.60';
+    const KEYBOARD_VERSION = '3.73.61';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -345,6 +345,31 @@
     function isSymbolicText(text) {
         if (!text) return false;
         return [...String(text)].every(ch => !/\p{L}/u.test(ch) && !/\p{N}/u.test(ch));
+    }
+
+    /** 符号词使用计数（issue #81）：符号词在引擎侧是 custom_phrase 附加
+     *  候选（不入 userdb，引擎不学习），渲染层此前把符号词无条件钉在
+     *  候选第 3 格——位置与使用频率完全脱钩。这里在键盘侧记每词被选
+     *  次数（localStorage 持久；换机/重装归零，与 userdb 词频同语义的
+     *  轻量版），injectFavoriteCandidates 按计数分层排序。 */
+    const SYMBOL_USE_KEY = 'symUse.v1';
+    /** 计数达到该值视为「养成」：符号词升到池头参与空格直选。 */
+    const SYMBOL_PROMOTE_AT = 5;
+
+    function readSymbolUseCounts() {
+        try {
+            const raw = localStorage.getItem(SYMBOL_USE_KEY);
+            const parsed = raw ? JSON.parse(raw) : {};
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (_) {
+            return {};
+        }
+    }
+
+    function writeSymbolUseCounts(counts) {
+        try {
+            localStorage.setItem(SYMBOL_USE_KEY, JSON.stringify(counts));
+        } catch (_) { /* 私有模式/配额：计数本就是尽力而为 */ }
     }
 
     /** 动态日期时间候选（issue #22 分层结论，rime date.lua 等价体验）：
@@ -9322,18 +9347,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 !String(candidate.id).startsWith('fav:') &&
                 !String(candidate.id).startsWith('dyn:') &&
                 !String(candidate.id).startsWith('alt:'));
-            // 符号词条重排（issue #17）先于 overlay 组装：custom_phrase 通道
-            // 的符号/emoji 词在引擎侧受 initial_quality 的 0/1 悬崖支配（第
-            // 1 位或沉底，weight 无法跨流微调），在 ENGINE 池内把纯符号词
-            // 挪到 index 2（两个正常候选保持在最前）。先排引擎序、后插
-            // overlay，常用语 rank 位次与空格确认的池头语义不被符号挪动
-            // 二次改写；中文自定义词（含汉字/字母）不动。bar/展开层/选词
-            // 通道共用同一池，天然一致。
+            // 符号词条重排（issue #17 → #81）先于 overlay 组装：custom_phrase
+            // 通道的符号/emoji 词在引擎侧受 initial_quality 的 0/1 悬崖支配
+            // （第 1 位或沉底，weight 无法跨流微调，且不入 userdb——引擎不
+            // 学习），位次完全由这里定。#81 起：按键盘侧使用计数分层——
+            // 计数 ≥ SYMBOL_PROMOTE_AT 的「养成」符号按计数序升到池头
+            // （空格直选，用户选得最多的符号就该一键上屏）；未养成的仍钉
+            // index 2（#17 折中：不抢正常候选的前两格），组内同样按计数
+            // 降序、同计数保持引擎序（稳定）。先排引擎序、后插 overlay，
+            // 常用语 rank 位次与空格确认的池头语义不被二次改写；中文自
+            // 定义词（含汉字/字母）不动。bar/展开层/选词通道共用同一池。
             const symbolic = rawEngine.filter(candidate => isSymbolicText(candidate.text));
             let engine = rawEngine;
             if (symbolic.length) {
+                const counts = readSymbolUseCounts();
+                const ranked = symbolic
+                    .map((candidate, index) => ({ candidate, index, uses: counts[candidate.text] || 0 }))
+                    .sort((a, b) => b.uses - a.uses || a.index - b.index)
+                    .map(entry => entry.candidate);
+                const promoted = ranked.filter(candidate => (counts[candidate.text] || 0) >= SYMBOL_PROMOTE_AT);
+                const plain = ranked.filter(candidate => (counts[candidate.text] || 0) < SYMBOL_PROMOTE_AT);
                 const rest = rawEngine.filter(candidate => !symbolic.includes(candidate));
-                engine = [...rest.slice(0, 2), ...symbolic, ...rest.slice(2)];
+                engine = [...promoted, ...rest.slice(0, 2), ...plain, ...rest.slice(2)];
             }
             // 笔画句子候选压后（issue #18）：词典 max_phrase_length=1，
             // 多字候选必来自 enable_sentence 造句（☯；comment 不在桥协议
@@ -9476,6 +9511,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // hw 路径：seq 随 hwChoose 发出即成为水位等待目标（标点
             // 两步流经此进入；space/enter 的直发桥在 hwRun 统一设）。
             if (hwSeq) this.hwWaitSeq = Math.max(this.hwWaitSeq || 0, hwSeq);
+            // #81 符号词使用计数：引擎不学习 custom_phrase 词条，键盘侧
+            // 记次数供 injectFavoriteCandidates 分层排序（点格/数字/空格
+            // /硬键盘都汇到这条引擎选择通道，一处计数全覆盖）。
+            if (candidate && isSymbolicText(candidate.text)) {
+                const counts = readSymbolUseCounts();
+                counts[candidate.text] = (counts[candidate.text] || 0) + 1;
+                writeSymbolUseCounts(counts);
+            }
             this.call(revision => (hwSeq && typeof Native.hwChoose === 'function')
                 ? Native.hwChoose(hwSeq, hwGen, revision, candidate.id, this.token)
                 : Native.chooseCandidate(revision, candidate.id, this.token));
