@@ -598,6 +598,36 @@ test('symbol candidates climb with use counts (issue #81)', {since: '3.73.61'}, 
     equal(cells().findIndex(node => node.textContent === '↑'), 3, 'unused symbol stays behind');
 });
 
+test('symbol use counts survive dirty storage (issue #81, review P2)', {since: '3.73.61'}, () => {
+    // 数组/标量整体作废；逐项坏值（字符串/负数/小数/对象）按不存在处理
+    // ——丢项会让符号从候选池消失、字符串会拼出 "41" 这类失真计数。
+    for (const [name, seed] of [
+        ['array', '["★"]'],
+        ['scalar', '5'],
+        ['string count', '{"★":"4"}'],
+        ['negative', '{"★":-3}'],
+        ['float', '{"★":1.5}'],
+        ['object value', '{"★":{}}'],
+    ]) {
+        const world = fresh({ mode: 'pinyin' });
+        world.storage.set('symUse.v1', seed);
+        world.engineState({ mode: 'pinyin', revision: 3,
+            composing: 'shang', rawInput: 'shang',
+            candidates: [
+                { id: 'p0', text: '↑' }, { id: 'p1', text: '★' },
+                { id: 'c1', text: '上' }, { id: 'c2', text: '商' }, { id: 'c3', text: '伤' },
+            ], hasNextPage: false });
+        const cells = [...world.$('candidates').querySelectorAll('.candidate')];
+        equal(JSON.stringify(cells.map(node => node.textContent)),
+            JSON.stringify(['上', '商', '↑', '★', '伤']),
+            `${name}: dirty seed degrades to the cold-start order`);
+        // 选一次 ★：计数必须从 1 起步（不是 "41" / NaN）。
+        cells.find(node => node.textContent === '★').click();
+        const stored = JSON.parse(world.storage.get('symUse.v1'));
+        equal(stored['★'], 1, `${name}: first pick counts from 1`);
+    }
+});
+
 test('space face text shows for non-voice hold actions', {since: '3.73.40'}, () => {
     const world = fresh();
     world.hello({ spaceHoldTap: 'dsl:[panel:clipboard]', spaceHoldText: '📋' });

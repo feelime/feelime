@@ -1021,7 +1021,7 @@ const I18N = {
         "input.phrases.title": "Symbol candidates",
         "input.phrases.badge": "Input",
         "input.phrases.enable": "Symbol / emoji candidates",
-        "input.phrases.hint": "Adds words like ↑ for shang and ✓ for dui near candidate #3; the more you pick one, the higher it climbs (5 picks put it first for space-bar entry); works in full and double Pinyin.",
+        "input.phrases.hint": "Adds words like ↑ for shang and ✓ for dui near candidate #3; the more you pick one, the higher it climbs (5 picks can move it to the front); works in full and double Pinyin.",
         "input.english.enable": "English word candidates",
         "input.english.hint": "Type english words like github, ios or android right inside Pinyin composing — no mode switch; works in full and double Pinyin.",
         "input.phrases.wxSlash": "wanxiang / feature guide",

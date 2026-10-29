@@ -349,14 +349,19 @@ update/），完整设置页在 `app/src/main/assets/settings/`。
   custom-phrase-codes.json，音节集合取 luna prism 第二列，424 个规范音节
   ——第一列混有简拼/纠错拼式，不能当音节）。跨方案码行字面共存=「别的
   按键序列也能打出该词」的附加候选，不会错词。
-- **第 3 格**：引擎侧 custom_phrase 组受 initial_quality 0/1 悬崖支配
-  （≥0.9 恒第 1、≤0.5 沉底，weight 不影响跨流位置），精确位次不可达。
-  位置控制在 keyboard.js `injectFavoriteCandidates` 的**引擎池内**先排
-  （纯符号词——无字母无数字——挪到 index 2），再走常用语/变体 overlay
-  组装：常用语 rank 位次与空格确认的池头语义不被符号挪动二次改写；中文
-  自定义词（含汉字/字母）保持引擎排位（quality=1 组第 1）。已渲染前缀
-  （max(expandRendered, 3) 项 id 签名）变化时展开层全量重绘——增量水位线
-  只认追加，不认前缀改写。
+- **第 3 格 → 按使用频率分层（issue #81）**：引擎侧 custom_phrase 组受
+  initial_quality 0/1 悬崖支配（≥0.9 恒第 1、≤0.5 沉底，weight 不影响跨
+  流位置），精确位次不可达；且 custom_phrase 词条不入 userdb——引擎不学
+  习，位次与使用频率天然脱钩。位置控制在 keyboard.js
+  `injectFavoriteCandidates` 的**引擎池内**先排：纯符号词（无字母无数
+  字）按键盘侧使用计数（localStorage `symUse.v1`，`choosePoolCandidate`
+  引擎分支计数——候选条/展开格/软硬空格覆盖；物理数字键选词走 hwKeyChar
+  数字通道暂不参与）分层——计数 <5 组内按计数降序钉 index 2（#17 折中：
+  不抢正常候选前两格），≥5 的「养成」符号按计数序升到池头参与空格直选。
+  再走常用语/变体 overlay 组装：常用语 rank 位次与空格确认的池头语义不
+  被符号挪动二次改写；中文自定义词（含汉字/字母）保持引擎排位（quality=1
+  组第 1）。已渲染前缀（max(expandRendered, 3) 项 id 签名）变化时展开层
+  全量重绘——增量水位线只认追加，不认前缀改写。
 - **热生效**：stabledb 只在引擎生命周期加载一次（切 schema 重建会话不重
   读）。任何词条/开关变更走 `RimeTextEngine.reloadGlobal`（finalize +
   重新 init，synchronized(gate) 串行；换代 epoch 防 closeNative 对悬垂

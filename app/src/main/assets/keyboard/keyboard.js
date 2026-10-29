@@ -359,8 +359,20 @@
     function readSymbolUseCounts() {
         try {
             const raw = localStorage.getItem(SYMBOL_USE_KEY);
-            const parsed = raw ? JSON.parse(raw) : {};
-            return parsed && typeof parsed === 'object' ? parsed : {};
+            const parsed = raw ? JSON.parse(raw) : null;
+            // 脏数据防御（review P2）：数组/标量整体作废；逐项只认非负
+            // 安全整数，坏值按 0 处理（丢项会让符号从候选池消失、字符串
+            // 会拼成 "41" 这类失真计数）。
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+            const clean = {};
+            Object.keys(parsed).forEach(key => {
+                const value = parsed[key];
+                if (Number.isInteger(value) && value >= 0
+                    && value <= Number.MAX_SAFE_INTEGER) {
+                    clean[key] = value;
+                }
+            });
+            return clean;
         } catch (_) {
             return {};
         }
@@ -9512,16 +9524,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 两步流经此进入；space/enter 的直发桥在 hwRun 统一设）。
             if (hwSeq) this.hwWaitSeq = Math.max(this.hwWaitSeq || 0, hwSeq);
             // #81 符号词使用计数：引擎不学习 custom_phrase 词条，键盘侧
-            // 记次数供 injectFavoriteCandidates 分层排序（点格/数字/空格
-            // /硬键盘都汇到这条引擎选择通道，一处计数全覆盖）。
-            if (candidate && isSymbolicText(candidate.text)) {
-                const counts = readSymbolUseCounts();
-                counts[candidate.text] = (counts[candidate.text] || 0) + 1;
-                writeSymbolUseCounts(counts);
-            }
-            this.call(revision => (hwSeq && typeof Native.hwChoose === 'function')
-                ? Native.hwChoose(hwSeq, hwGen, revision, candidate.id, this.token)
-                : Native.chooseCandidate(revision, candidate.id, this.token));
+            // 记次数供 injectFavoriteCandidates 分层排序。候选条点击/展开
+            // 格/空格（软+硬）都汇到这条通道；计数放在 call 回调内——
+            // 门闸拒绝（未 hello/token 失效）时不把失败的选择记成使用。
+            // 边界（review P2）：物理数字键选词走 hwKeyChar 数字通道，
+            // 不经这里，暂不参与学习。
+            const bumpSymbol = candidate && isSymbolicText(candidate.text)
+                ? (() => {
+                    const counts = readSymbolUseCounts();
+                    counts[candidate.text] = (counts[candidate.text] || 0) + 1;
+                    writeSymbolUseCounts(counts);
+                })
+                : null;
+            this.call(revision => {
+                if (bumpSymbol) bumpSymbol();
+                return (hwSeq && typeof Native.hwChoose === 'function')
+                    ? Native.hwChoose(hwSeq, hwGen, revision, candidate.id, this.token)
+                    : Native.chooseCandidate(revision, candidate.id, this.token);
+            });
         }
 
         /** Fresh composition: the filter tab returns to 词频 (word freq). */
