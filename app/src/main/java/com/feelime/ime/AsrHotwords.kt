@@ -14,11 +14,14 @@ object AsrHotwords {
     internal const val BPE_SHA256 = "d0b642f3a2eacd5fadefdeff9e0e1358cab729647cbb7fe58cf738e1f7407029"
     internal const val TOKENS_SHA256 = "a8e0e4ec53810e433789b54a5c0134a7eaa2ffca595a6334d54c00da858841d3"
 
+    /** Raw lines for the save path and encode(); filtering happens in
+     * parseHotwordLines so saved weighted entries like "姚程:15" survive
+     * the read (a whole-line length filter here would drop a 30-char word
+     * with a weight suffix that the save path accepted). */
     fun load(context: Context): List<String> =
         context.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
             .getString("hotwords", null).orEmpty().lines()
-            .map(String::trim).filter(String::isNotEmpty).distinct()
-            .take(MAX_LINES).filter { it.length <= MAX_CHARS_PER_LINE }
+
 
     /** JNI can exit the process on invalid configuration. Verify both files
      * before its constructor; the small BPE resource is in full AND thin APKs. */
@@ -65,12 +68,17 @@ object AsrHotwords {
     internal data class ParsedHotwordLine(val word: String, val weight: Double?, val displayIndex: Int)
 
     /** Syntax-level parsing shared by the settings save path (no model
-     * needed) and encode(). Rejects the whole list on the first bad line,
-     * reporting the original line number. */
+     * needed) and encode(). Takes raw lines: blank lines are skipped but
+     * original line numbers are preserved in errors, control characters are
+     * checked on the raw text, and the 50-line limit counts non-empty input
+     * lines before dedup. Rejects the whole list on the first bad line. */
     internal fun parseHotwordLines(raw: List<String>): List<ParsedHotwordLine> {
-        require(raw.size <= MAX_LINES) { "热词最多 $MAX_LINES 行" }
+        val nonEmpty = raw.filter { it.isNotBlank() }
+        require(nonEmpty.size <= MAX_LINES) { "热词最多 $MAX_LINES 行" }
         val weights = mutableMapOf<String, Double?>()
-        return raw.mapIndexed { index, value ->
+        val seen = mutableSetOf<String>()
+        return raw.mapIndexedNotNull { index, value ->
+            if (value.isBlank()) return@mapIndexedNotNull null
             require('：' !in value) { "第 ${index + 1} 行请使用英文冒号 :" }
             val colons = value.count { it == ':' }
             require(colons <= 1) { "第 ${index + 1} 行热词语法错误：冒号只用于「词:权重」" }
@@ -103,8 +111,9 @@ object AsrHotwords {
                 throw IllegalArgumentException("第 ${index + 1} 行与前面的「$normalized」权重不一致")
             }
             weights[normalized] = weight
+            if (!seen.add(normalized)) return@mapIndexedNotNull null
             ParsedHotwordLine(normalized, weight, index)
-        }.distinctBy { it.word to it.weight }
+        }
     }
 
     private fun formatWeight(weight: Double): String =

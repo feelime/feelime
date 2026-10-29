@@ -1023,7 +1023,7 @@
         </label>
       </div>
       <label class="field-label" for="hotwords" data-i18n="voice.asr.hotwordsLabel">热词（一行一个，可填中文或英文；识别优先考虑这些词）</label>
-      <small class="hint block" data-i18n="voice.asr.hotwordsWeightHint">某个词总识别错？在词后面加「:数字」加大纠正力度，如 姚程:10。范围 1~20，不填用默认力度；数字过大可能出现重复词，调小即可。</small>
+      <small class="hint block" data-i18n="voice.asr.hotwordsWeightHint">某个词总识别错？在词后面加「:数字」加大纠正力度，如 姚程:10。范围 1~20（最多一位小数），不填用默认力度；数字过大可能出现重复词或误识别其他词，调小即可。</small>
       <textarea id="hotwords" rows="4" data-i18n-placeholder="voice.asr.hotwordsPlaceholder" placeholder="例如：&#10;倪妮&#10;姚程:10 ← 总识别错时加权重&#10;GPU"></textarea>
       <div class="actions">
         <button class="btn primary" id="btnSaveAsr" type="button" data-i18n="action.saveAsr">保存识别设置</button>

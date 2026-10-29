@@ -3023,12 +3023,12 @@ class SettingsBridge(
 
     @JavascriptInterface
     fun saveAsrSettings(stripPeriod: Boolean, hotwords: String, token: String) = guarded(token) {
-        val lines = hotwords.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        // Syntax is validated before anything is written: one bad line
-        // ("姚程:0", a full-width colon, a 51st line) rejects the whole save
-        // and keeps the previous prefs. The old behavior silently dropped
-        // over-long/extra lines, which looked like input vanishing.
-        try {
+        // Raw lines go to the parser (original line numbers in errors, the
+        // 50-line limit counts non-empty lines before dedup) and to prefs
+        // verbatim: one bad line ("姚程:0", a full-width colon) rejects the
+        // whole save and keeps the previous prefs.
+        val lines = hotwords.lines()
+        val parsed = try {
             AsrHotwords.parseHotwordLines(lines)
         } catch (error: IllegalArgumentException) {
             pushEvent(
@@ -3040,7 +3040,9 @@ class SettingsBridge(
         }
         asrPrefs().edit()
             .putBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, stripPeriod)
-            .putString(AsrSettings.KEY_HOTWORDS, lines.joinToString("\n"))
+            .putString(AsrSettings.KEY_HOTWORDS, parsed.joinToString("\n") { line ->
+                line.word + (line.weight?.let { w -> ":${if (w % 1.0 == 0.0) w.toInt().toString() else w}" } ?: "")
+            })
             .commit()
         pushState()
     }

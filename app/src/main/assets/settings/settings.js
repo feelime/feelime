@@ -459,7 +459,7 @@ const I18N = {
         "voice.asr.stripPeriod": "去掉句尾句号",
         "voice.asr.stripHint": "问号、叹号保留；关闭后保留模型输出",
         "voice.asr.hotwordsLabel": "热词（一行一个，可填中文或英文；识别优先考虑这些词）",
-        "voice.asr.hotwordsWeightHint": "某个词总识别错？在词后面加「:数字」加大纠正力度，如 姚程:10。范围 1~20，不填用默认力度；数字过大可能出现重复词，调小即可。",
+        "voice.asr.hotwordsWeightHint": "某个词总识别错？在词后面加「:数字」加大纠正力度，如 姚程:10。范围 1~20（最多一位小数），不填用默认力度；数字过大可能出现重复词或误识别其他词，调小即可。",
         "voice.asr.hotwordsPlaceholder": "例如：\n倪妮\n姚程:10 ← 总识别错时加权重\nGPU",
         "action.saveAsr": "保存识别设置",
         "update.title": "键盘热更新",
@@ -1253,7 +1253,7 @@ const I18N = {
         "voice.asr.stripPeriod": "Remove final periods",
         "voice.asr.stripHint": "Question and exclamation marks stay; turn off to keep model output unchanged",
         "voice.asr.hotwordsLabel": "Hotwords (one per line; Chinese or English; recognition gives these words priority)",
-        "voice.asr.hotwordsWeightHint": "A word keeps being misrecognized? Append \":number\" for a stronger pull, e.g. 姚程:10. Range 1-20, omitted = default strength; too high may duplicate the word - lower it then.",
+        "voice.asr.hotwordsWeightHint": "A word keeps being misrecognized? Append \":number\" for a stronger pull, e.g. 姚程:10. Range 1-20 (one decimal at most), omitted = default strength; too high may duplicate the word or misrecognize others - lower it then.",
         "voice.asr.hotwordsPlaceholder": "For example:\n倪妮\n姚程:10 ← stronger pull when misrecognized\nGPU",
         "action.saveAsr": "Save recognition options",
         "update.title": "Keyboard updates",
@@ -2933,9 +2933,16 @@ function hideModelConsent() {
     if (consent) consent.hidden = true;
 }
 
+// Rejected saves must keep the draft: a later pushState (model download
+// finishing, another setting changing) would otherwise overwrite the
+// unsaved text with the old prefs while the error note still shows.
+let asrHotwordsDirty = false;
+
 function renderAsr(state) {
     const asr = state.asr || {};
-    if (document.activeElement !== $("hotwords")) $("hotwords").value = asr.hotwords || "";
+    const field = $("hotwords");
+    if ((asr.hotwords || "") === field.value) asrHotwordsDirty = false;
+    if (document.activeElement !== field && !asrHotwordsDirty) field.value = asr.hotwords || "";
     if (document.activeElement !== $("stripPeriod")) $("stripPeriod").checked = !!asr.stripPeriod;
 }
 
@@ -4100,6 +4107,7 @@ $("modelConsentConfirm").addEventListener("click", () => {
     call("confirmModelDownload", id, true);
 });
 
+$("hotwords").addEventListener("input", () => { asrHotwordsDirty = true; });
 $("btnSaveAsr").addEventListener("click", () => {
     call("saveAsrSettings", $("stripPeriod").checked, $("hotwords").value);
     setNote("asrNote", t("note.saved"));

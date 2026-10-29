@@ -91,4 +91,34 @@ class AsrHotwordsTest {
         }
         assertTrue(long.message!!.contains("第 1 行"))
     }
+
+    @Test fun parsePreservesOriginalLineNumbersAndLimits() {
+        // 空行跳过但行号保持：第 3 行的错报第 3 行
+        val e = assertThrows(IllegalArgumentException::class.java) {
+            AsrHotwords.parseHotwordLines(listOf("星期一", "", "姚程:0"))
+        }
+        assertTrue(e.message!!.contains("第 3 行"))
+        // 50 行上限按非空行计（去重前）
+        val many = (1..50).map { "词$it" }
+        AsrHotwords.parseHotwordLines(many)
+        val over = assertThrows(IllegalArgumentException::class.java) {
+            AsrHotwords.parseHotwordLines(many + listOf("", "第52个词"))
+        }
+        assertTrue(over.message!!.contains("最多"))
+        // 原始行首尾 tab 属于输入内容：控制字符检查在原始行上执行
+        val tabbed = assertThrows(IllegalArgumentException::class.java) {
+            AsrHotwords.parseHotwordLines(listOf("姚程\t:5"))
+        }
+        // \t 被 trim 掉后词合法——但 ISO control 检查应看原始行
+        // （本实现 value 原文检查，\t 是 ISO control → 拒绝）
+        assertTrue(tabbed.message!!.contains("分隔符"))
+    }
+
+    @Test fun weightedLongWordSurvivesTheReadPath() {
+        // 30 字词 + :15 保存合法；读取端不得按整行长度丢弃
+        val word = "a".repeat(30)
+        val parsed = AsrHotwords.parseHotwordLines(listOf("$word:15"))
+        assertEquals(word.uppercase(), parsed[0].word)  // 词规范化含大写化
+        assertEquals(15.0, parsed[0].weight)
+    }
 }
