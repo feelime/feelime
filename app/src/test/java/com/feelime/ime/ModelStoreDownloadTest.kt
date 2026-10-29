@@ -315,6 +315,22 @@ class ModelStoreDownloadTest {
             .probeSource("https://metainfo404/", isCustom = false))
     }
 
+    @Test
+    fun `complete wire part left by a cancelled gunzip is installed without network`() {
+        val spec = gzipFileSpec()
+        val gz = ByteArrayOutputStream().use { buffer ->
+            java.util.zip.GZIPOutputStream(buffer).use { it.write(PAYLOAD) }
+            buffer.toByteArray()
+        }
+        val model = spec("https://a/").copy(files = listOf(spec))
+        File(tmp.root, "file.bin.part").writeBytes(gz)
+        // 工厂没有任何脚本：任何网络请求都会抛 no script，经复用路径不该触网。
+        fetcher(FakeFactory(mutableListOf()))
+            .fetch(model, spec, dest(), listener, 0)
+        assertEquals(sha256(PAYLOAD), sha256(dest()))
+        assertFalse(File(tmp.root, "file.bin.part").exists())
+    }
+
     private fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes)
             .joinToString("") { "%02x".format(it) }

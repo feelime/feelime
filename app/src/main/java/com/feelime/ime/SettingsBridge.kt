@@ -1246,13 +1246,16 @@ class SettingsBridge(
      * modelSourceSpeed 状态推回；in-flight 时返回 false 由前端防重入。 */
     @JavascriptInterface
     fun testModelDownloadSpeed(token: String) = guarded(token) {
-        if (!modelStore.speedTestSources { results ->
-                synchronized(this@SettingsBridge) {
-                    lastSourceSpeed = results
-                }
-                pushState()
+        val started = modelStore.speedTestSources { results ->
+            synchronized(this@SettingsBridge) {
+                lastSourceSpeed = results
             }
-        ) {
+            pushState()
+        }
+        if (started) {
+            // 启动即推 running 态：按钮立刻显示「测速中…」并禁用。
+            pushState()
+        } else {
             pushEvent(
                 JSONObject()
                     .put("type", "modelSourceError")

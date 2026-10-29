@@ -263,7 +263,14 @@ internal class ModelSourceSpeedTester(
                 if (connection.responseCode !in HTTP_OK..HTTP_NO_CONTENT) return null
                 connection.body().use { stream ->
                     val buffer = ByteArray(16 * 1024)
-                    while (stream.read(buffer) >= 0) { /* drain */ }
+                    // connect/read 各 8s 不构成总期限：慢速细流的源会无限拖。
+                    // drain 循环里查总 deadline，超时即弃。
+                    while (true) {
+                        if (System.nanoTime() - start > PROBE_DEADLINE_NANOS) {
+                            throw IOException("probe deadline exceeded: $url")
+                        }
+                        if (stream.read(buffer) < 0) break
+                    }
                 }
             } finally {
                 runCatching { connection.disconnect() }
@@ -283,6 +290,7 @@ internal class ModelSourceSpeedTester(
     private companion object {
         const val HTTP_OK = 200
         const val HTTP_NO_CONTENT = 299
+        const val PROBE_DEADLINE_NANOS = 8_000_000_000L
     }
 }
 
@@ -380,6 +388,11 @@ class ModelStore(
         Executors.newFixedThreadPool(MODEL_DISTRIBUTION_ROOTS.size + 1) { task ->
             Thread(task, "feelime-model-speed")
         }
+    }
+    /** 测速结果汇总线程：独立于 worker（下载/导入队列），避免 latch.await
+     * 卡住模型操作或被其延迟。 */
+    private val speedAggregator by lazy {
+        Executors.newSingleThreadExecutor { task -> Thread(task, "feelime-model-speed-aggregate") }
     }
     private val speedTestRunning = AtomicBoolean(false)
     private val cancelled = AtomicBoolean(false)
@@ -733,7 +746,7 @@ class ModelStore(
                 latch.countDown()
             }
         }
-        worker.execute {
+        speedAggregator.execute {
             latch.await()
             speedTestRunning.set(false)
             runCatching { onResult(results.toMap()) }
@@ -760,6 +773,7 @@ class ModelStore(
         speedTestRunning.set(false)
         worker.shutdown()
         speedWorker.shutdown()
+        speedAggregator.shutdown()
     }
 
 
@@ -1127,6 +1141,12 @@ internal class ModelFileFetcher(
         if (wireBytes > 0 && offset > wireBytes) {
             part.delete()
             offset = 0
+        }
+        // 上轮取消可能发生在完整下载之后（比如解压阶段）：part 已是完整
+        // wire 内容，直接校验落盘，不再发 Range 请求（对 Range 不友好的
+        // 源会 416/200 整包重来）。
+        if (wireBytes > 0 && offset == wireBytes && sha256(part) == fileSpec.wireSha256) {
+            if (installVerifiedPart(fileSpec, part, dest, model, listener, doneBytesBefore)) return
         }
         var lastError: IOException? = null
         for (base in model.urls) {

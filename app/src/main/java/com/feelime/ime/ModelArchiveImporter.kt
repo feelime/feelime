@@ -198,8 +198,12 @@ internal class ModelArchiveImporter(
         val candidates = model.files.filter { spec ->
             val localName = spec.path.substringAfter('/')
             val upstreamName = spec.downloadPath.substringAfterLast('/')
-            name == spec.path || name == localName || name == upstreamName ||
-                name.endsWith("/$localName") || name.endsWith("/$upstreamName")
+            // gzip 存放的文件（downloadPath 以 .gz 结尾）在官方归档里的条目
+            // 仍是原始名：.gz 只是 distribution 附件口径，不改变上游 tar 布局。
+            val upstreamRaw = upstreamName.removeSuffix(".gz")
+            name == spec.path || name == localName || name == upstreamName || name == upstreamRaw ||
+                name.endsWith("/$localName") || name.endsWith("/$upstreamName") ||
+                name.endsWith("/$upstreamRaw")
         }
         return when {
             candidates.isEmpty() -> null

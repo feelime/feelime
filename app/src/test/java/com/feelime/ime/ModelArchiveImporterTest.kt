@@ -40,6 +40,36 @@ class ModelArchiveImporterTest {
     }
 
     @Test
+    fun `gzip-backed file matches the raw upstream entry name in official archives`() {
+        // distribution 以 .gz 存放（downloadPath 带 .gz 后缀），官方 tar.bz2
+        // 里的条目仍是原始名——本地导入必须仍能对上（上游内容即解压结果）。
+        val model = ModelSpec(
+            id = "gz-model",
+            title = "gz",
+            role = "test",
+            version = "1",
+            files = listOf(
+                ModelFileSpec(
+                    path = "asr-model/encoder.int8.onnx",
+                    sha256 = sha256(A),
+                    bytes = A.size.toLong(),
+                    downloadPath = "encoder-epoch-99-avg-1.int8.onnx.gz",
+                    gunzip = true,
+                    downloadSha256 = sha256(A),
+                    downloadBytesOverride = A.size.toLong(),
+                ),
+            ),
+            sources = mapOf("gitee" to "https://example.test/handwriting/"),
+        )
+        val archive = tarBz2(
+            "official-model/encoder-epoch-99-avg-1.int8.onnx" to A,
+        )
+        val staging = File(tmp.root, "model.import.part")
+        ModelArchiveImporter().importArchive(ByteArrayInputStream(archive), model, staging)
+        assertArrayEquals(A, File(staging, "encoder.int8.onnx").readBytes())
+    }
+
+    @Test
     fun `zip data descriptor import also accepts direct manifest paths`() {
         // ZipOutputStream writes DEFLATED entries with a data descriptor when
         // no size is supplied. Commons Compress reports entry.size == -1 for
