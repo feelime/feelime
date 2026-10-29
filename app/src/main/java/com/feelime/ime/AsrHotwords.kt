@@ -77,9 +77,10 @@ object AsrHotwords {
         require(nonEmpty.size <= MAX_LINES) { "热词最多 $MAX_LINES 行" }
         val weights = mutableMapOf<String, Double?>()
         val seen = mutableSetOf<String>()
-        return raw.mapIndexedNotNull { index, value ->
-            if (value.isBlank()) return@mapIndexedNotNull null
-            require('：' !in value) { "第 ${index + 1} 行请使用英文冒号 :" }
+        return raw.mapIndexedNotNull { index, rawLine ->
+            if (rawLine.isBlank()) return@mapIndexedNotNull null
+            // 防呆：全角冒号按权重分隔符识别；保存后规范化为英文冒号。
+            val value = rawLine.replace('：', ':')
             val colons = value.count { it == ':' }
             require(colons <= 1) { "第 ${index + 1} 行热词语法错误：冒号只用于「词:权重」" }
             var word = value

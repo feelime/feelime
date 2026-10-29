@@ -68,13 +68,20 @@ class AsrHotwordsTest {
     @Test fun hotweightSyntaxRejectsBadLines() {
         for (line in listOf("姚程:0", "姚程:21", "姚程:-1", "姚程:999", "姚程:", ":15",
                             "姚程:abc", "姚程:5:6", "姚程:1e1", "姚程:+5", "姚程:.5",
-                            "姚程:5abc", "姚程：15")) {
+                            "姚程:5abc", "姚程：5：6")) {
             assertThrows(IllegalArgumentException::class.java) {
                 AsrHotwords.parseHotwordLines(listOf(line))
             }
         }
         // 合法边界：1、20、一位小数
         AsrHotwords.parseHotwordLines(listOf("姚程:1", "星期一 :20", "GPU:7.5"))
+    }
+
+    @Test fun fullWidthColonIsAcceptedAsSeparator() {
+        // 防呆：全角冒号按权重分隔符识别，规范化为英文冒号
+        val parsed = AsrHotwords.parseHotwordLines(listOf("姚程：15", "星期一 ： 2.5"))
+        assertEquals(15.0, parsed[0].weight)
+        assertEquals(2.5, parsed[1].weight)
     }
 
     @Test fun hotweightConflictsAndLimitsReportOriginalLines() {
