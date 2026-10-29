@@ -225,6 +225,9 @@ class AsrEngine(
         // recognizer, even if the settings page changes during this recording.
         val source = checkNotNull(loadedModels?.sourceFor("asr-streaming")) { "语音模型未安装" }
         val hotwords = AsrHotwords.encode(context, source)
+        // Snapshot once per recording: the stream protocol string and the
+        // plain phrase list for final-pass preservation both come from the
+        // same parse, so settings edits mid-recording cannot desync them.
 
         val minBytes = AudioRecord.getMinBufferSize(
             SAMPLE_RATE,
@@ -252,7 +255,7 @@ class AsrEngine(
 
         recorder = activeRecorder
         // Raw phrases are encoded once by the configured native tokenizer.
-        val stream = checkNotNull(recognizer).createStream(hotwords)
+        val stream = checkNotNull(recognizer).createStream(hotwords.streamText)
         val queue = AsrAudioQueue(MAX_PENDING_CHUNKS)
         audioQueue = queue
         var captureThread: Thread? = null
@@ -349,7 +352,7 @@ class AsrEngine(
                     if (cancelRequested.get()) return
                     val endpointSamples = utterance.takeAndClear()
                     checkNotNull(recognizer).reset(stream)
-                    val refinedRaw = refine(endpointSamples, rawPartial, hotwords)
+                    val refinedRaw = refine(endpointSamples, rawPartial, hotwords.phrases)
                     val finalText = checkNotNull(postProcessor).final(refinedRaw)
                     Log.i(TAG, "endpoint")
                     transcriptLog(finalText.length) { "endpoint stream=[$rawPartial] refined=[$refinedRaw] final=[$finalText]" }
@@ -365,7 +368,7 @@ class AsrEngine(
             decodeReady(stream)
             val tail = checkNotNull(recognizer).getResult(stream).text.trim()
             val streamTail = tail.ifBlank { rawPartial }
-            val refinedRaw = refine(utterance.takeAndClear(), streamTail, hotwords)
+            val refinedRaw = refine(utterance.takeAndClear(), streamTail, hotwords.phrases)
             val finalText = checkNotNull(postProcessor).final(refinedRaw)
             Log.i(TAG, "stopped")
             transcriptLog(finalText.length) { "stopped stream=[$streamTail] refined=[$refinedRaw] final=[$finalText]" }
@@ -388,7 +391,7 @@ class AsrEngine(
         while (active.isReady(stream)) active.decode(stream)
     }
 
-    private fun refine(samples: FloatArray, streamingText: String, hotwords: String = ""): String {
+    private fun refine(samples: FloatArray, streamingText: String, phrases: List<String> = emptyList()): String {
         // Avoid repeatedly running the offline model on rule-1 endpoints while
         // the microphone is open in a quiet room.
         if (streamingText.isBlank()) return ""
@@ -403,7 +406,7 @@ class AsrEngine(
             .onFailure { Log.w(TAG, "Final-pass recognition failed; using streaming result", it) }
             .getOrNull()
             ?.text
-            ?.let { AsrHotwords.selectFinalText(streamingText, it, hotwords) }
+            ?.let { AsrHotwords.selectFinalText(streamingText, it, phrases) }
             ?: streamingText
     }
 

@@ -7,6 +7,7 @@ import java.util.Locale
 
 /** Raw phrases for sherpa's cjkchar+bpe encoder; never pre-tokenize twice. */
 object AsrHotwords {
+    const val MAX_WEIGHT = 20.0
     const val MAX_LINES = 50
     const val MAX_CHARS_PER_LINE = 30
     internal const val BPE_ASSET = "asr-hotwords/bpe.vocab"
@@ -41,8 +42,8 @@ object AsrHotwords {
         check(sha256(tokens) == TOKENS_SHA256) { "语音模型与热词词表不匹配，请重新下载语音模型" }
     }
 
-    fun encode(context: Context, source: ModelSource, words: List<String> = load(context)): String {
-        if (words.isEmpty()) return ""
+    fun encode(context: Context, source: ModelSource, words: List<String> = load(context)): EncodedHotwords {
+        if (words.isEmpty()) return EncodedHotwords("", emptyList())
         val tokens = readTokens(context, source)
         check(sha256(tokens) == TOKENS_SHA256) { "语音模型与热词词表不匹配，请重新下载语音模型" }
         val vocab = tokens.decodeToString().lineSequence()
@@ -50,33 +51,92 @@ object AsrHotwords {
         return encodeWords(words, vocab)
     }
 
-    /** CreateStream replaces '/' with a newline. Passing '/#/' adds a bogus
-     * '#' phrase. Colons inject boost scores, so reject protocol syntax and
-     * unsupported glyphs here rather than allowing native parsing failures. */
-    internal fun encodeWords(words: List<String>, vocab: Set<String>): String {
-        require(words.size <= MAX_LINES) { "热词最多 $MAX_LINES 行" }
-        return words.mapIndexed { index, value ->
-            val word = value.trim().replace(Regex("\\s+"), " ").uppercase(Locale.ROOT)
-            require(word.isNotEmpty() && word.length <= MAX_CHARS_PER_LINE) {
-                "第 ${index + 1} 行热词为空或过长"
+    /** Encoded hotwords: [streamText] goes to createStream (sherpa protocol:
+     * '/'-separated phrases, an explicit per-word boost as a trailing " :N");
+     * [phrases] is the plain word list for final-pass hotword preservation.
+     * Both must come from the same parse so a "姚程:15" entry keeps matching
+     * the plain "姚程" in selectFinalText. */
+    data class EncodedHotwords(val streamText: String, val phrases: List<String>)
+
+    /** One parsed input line: word normalized (trimmed, single spaces,
+     * uppercase); weight is the explicit per-word boost or null for the
+     * global default; displayIndex keeps the original line number for
+     * error messages after blank-line filtering. */
+    internal data class ParsedHotwordLine(val word: String, val weight: Double?, val displayIndex: Int)
+
+    /** Syntax-level parsing shared by the settings save path (no model
+     * needed) and encode(). Rejects the whole list on the first bad line,
+     * reporting the original line number. */
+    internal fun parseHotwordLines(raw: List<String>): List<ParsedHotwordLine> {
+        require(raw.size <= MAX_LINES) { "热词最多 $MAX_LINES 行" }
+        val weights = mutableMapOf<String, Double?>()
+        return raw.mapIndexed { index, value ->
+            require('：' !in value) { "第 ${index + 1} 行请使用英文冒号 :" }
+            val colons = value.count { it == ':' }
+            require(colons <= 1) { "第 ${index + 1} 行热词语法错误：冒号只用于「词:权重」" }
+            var word = value
+            var weight: Double? = null
+            if (colons == 1) {
+                val parts = value.split(':')
+                word = parts[0]
+                val literal = parts[1].trim()
+                // Native parses the score with std::stof without checking the
+                // full string ("5junk"→5, "nan", "1e3" all pass), so accept
+                // plain decimals here and re-serialize - never forward the
+                // user's literal.
+                require(Regex("^[0-9]+(\\.[0-9])?$").matches(literal)) {
+                    "第 ${index + 1} 行权重须为 1~${MAX_WEIGHT.toInt()} 的数字，最多一位小数"
+                }
+                weight = literal.toDouble()
+                require(weight in 1.0..MAX_WEIGHT) {
+                    "第 ${index + 1} 行权重须为 1~${MAX_WEIGHT.toInt()}"
+                }
             }
-            require(value.none { it == '/' || it == '#' || it == ':' || it == '<' || it == '>' || it.isISOControl() }) {
+            require(value.none { it == '/' || it == '#' || it == '<' || it == '>' || it.isISOControl() }) {
                 "第 ${index + 1} 行热词含不支持的分隔符，请只填写词语"
             }
-            require(word.codePoints().toArray().all { point ->
+            val normalized = word.trim().replace(Regex("\\s+"), " ").uppercase(Locale.ROOT)
+            require(normalized.isNotEmpty() && normalized.length <= MAX_CHARS_PER_LINE) {
+                "第 ${index + 1} 行热词为空或过长"
+            }
+            if (weights.containsKey(normalized) && weights[normalized] != weight) {
+                throw IllegalArgumentException("第 ${index + 1} 行与前面的「$normalized」权重不一致")
+            }
+            weights[normalized] = weight
+            ParsedHotwordLine(normalized, weight, index)
+        }.distinctBy { it.word to it.weight }
+    }
+
+    private fun formatWeight(weight: Double): String =
+        if (weight % 1.0 == 0.0) weight.toInt().toString()
+        else String.format(Locale.ROOT, "%.1f", weight)
+
+    /** CreateStream replaces '/' with a newline; a trailing " :N" injects a
+     * per-word boost that overrides the global score for that phrase only.
+     * Unsupported glyphs are rejected here rather than allowing native
+     * parsing failures (which silently drop whole hotword batches). */
+    internal fun encodeWords(words: List<String>, vocab: Set<String>): EncodedHotwords {
+        val parsed = parseHotwordLines(words)
+        parsed.forEach { line ->
+            require(line.word.codePoints().toArray().all { point ->
                 val glyph = String(Character.toChars(point))
                 point == 32 || glyph in vocab || "▁$glyph" in vocab
-            }) { "第 ${index + 1} 行热词含语音模型不支持的字符" }
-            word
-        }.distinct().joinToString("/")
+            }) { "第 ${line.displayIndex + 1} 行热词含语音模型不支持的字符" }
+        }
+        return EncodedHotwords(
+            streamText = parsed.joinToString("/") { line ->
+                line.word + (line.weight?.let { " :${formatWeight(it)}" } ?: "")
+            },
+            phrases = parsed.map { it.word },
+        )
     }
 
     /** Keep final-pass correction unless it removes a configured hotword
      * actually recognized in the stream. Match whole Latin words; tolerate
      * capitalization and model-inserted whitespace, including within Chinese. */
-    internal fun selectFinalText(streaming: String, final: String, hotwords: String): String {
+    internal fun selectFinalText(streaming: String, final: String, phrases: List<String>): String {
         if (final.isBlank()) return streaming
-        val lostHotword = hotwords.split('/').filter(String::isNotBlank).any { phrase ->
+        val lostHotword = phrases.filter(String::isNotBlank).any { phrase ->
             val glyphs = phrase.filterNot(Char::isWhitespace).codePoints().toArray()
             if (glyphs.isEmpty()) return@any false
             val pattern = buildString {

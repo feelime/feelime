@@ -3024,29 +3024,24 @@ class SettingsBridge(
     @JavascriptInterface
     fun saveAsrSettings(stripPeriod: Boolean, hotwords: String, token: String) = guarded(token) {
         val lines = hotwords.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        val kept = lines
-            .filter { it.length <= AsrHotwords.MAX_CHARS_PER_LINE }
-            .take(AsrHotwords.MAX_LINES)
-        asrPrefs().edit()
-            .putBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, stripPeriod)
-            .putString(AsrSettings.KEY_HOTWORDS, kept.joinToString("\n"))
-            .commit()
-        // Silently dropping over-long/extra lines looked like the
-        // user's input vanishing - name what was kept instead.
-        if (kept.size < lines.size) {
+        // Syntax is validated before anything is written: one bad line
+        // ("姚程:0", a full-width colon, a 51st line) rejects the whole save
+        // and keeps the previous prefs. The old behavior silently dropped
+        // over-long/extra lines, which looked like input vanishing.
+        try {
+            AsrHotwords.parseHotwordLines(lines)
+        } catch (error: IllegalArgumentException) {
             pushEvent(
                 JSONObject()
                     .put("type", "asrNote")
-                    .put(
-                        "message",
-                        t(
-                            context,
-                            "已保存，但超长/超量的 ${lines.size - kept.size} 行热词被忽略（上限 ${AsrHotwords.MAX_LINES} 行，每行 ${AsrHotwords.MAX_CHARS_PER_LINE} 字）",
-                            "Saved, but ${lines.size - kept.size} oversized or extra hotword lines were ignored (up to ${AsrHotwords.MAX_LINES} lines, ${AsrHotwords.MAX_CHARS_PER_LINE} characters per line)",
-                        ),
-                    )
+                    .put("message", error.message ?: "热词格式有误，未保存")
             )
+            return@guarded
         }
+        asrPrefs().edit()
+            .putBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, stripPeriod)
+            .putString(AsrSettings.KEY_HOTWORDS, lines.joinToString("\n"))
+            .commit()
         pushState()
     }
 
