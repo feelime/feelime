@@ -447,11 +447,28 @@ class ModelStore(
         if (source == ModelDownloadSource.CUSTOM &&
             normalized.isNotBlank() && !validSourceBase(normalized)
         ) return false
+        val previous = backendPreferences.getString(KEY_MODEL_DOWNLOAD_SOURCE, null)
+        val previousBase = backendPreferences.getString(KEY_MODEL_DOWNLOAD_CUSTOM, "").orEmpty()
+        val changed = previous != source.value || previousBase != normalized
         backendPreferences.edit()
             .putString(KEY_MODEL_DOWNLOAD_SOURCE, source.value)
             .putString(KEY_MODEL_DOWNLOAD_CUSTOM, normalized)
             .commit()
+        // 源变了，旧错误记录的是另一条链路的失败原因——留着只会误导
+        // （如 custom 指向的 LAN dev server 早没了，切到 gitee 后行上
+        // 还挂着「无法连接 10.196.0.11」）。
+        if (changed) clearAllDownloadErrors()
         return true
+    }
+
+    /** 清掉所有模型的持久化下载错误（切源用；单个模型的重试由
+     * download() 入口自行清理）。 */
+    fun clearAllDownloadErrors() {
+        val keys = backendPreferences.all.keys.filter { it.startsWith(ERROR_PREFIX) }
+        if (keys.isEmpty()) return
+        val edits = backendPreferences.edit()
+        keys.forEach(edits::remove)
+        edits.apply()
     }
 
     /** Stable state consumed by SettingsBridge so a failed request remains
