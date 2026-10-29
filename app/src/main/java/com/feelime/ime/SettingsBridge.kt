@@ -3038,12 +3038,23 @@ class SettingsBridge(
             )
             return@guarded
         }
+        val normalized = parsed.joinToString("\n") { line ->
+            line.word + (line.weight?.let { w -> ":${if (w % 1.0 == 0.0) w.toInt().toString() else w}" } ?: "")
+        }
         asrPrefs().edit()
             .putBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, stripPeriod)
-            .putString(AsrSettings.KEY_HOTWORDS, parsed.joinToString("\n") { line ->
-                line.word + (line.weight?.let { w -> ":${if (w % 1.0 == 0.0) w.toInt().toString() else w}" } ?: "")
-            })
+            .putString(AsrSettings.KEY_HOTWORDS, normalized)
             .commit()
+        // Success receipt with the normalized text: the JS side re-syncs the
+        // textarea and clears the draft-dirty flag only if the user has not
+        // edited since this save (normalization changes the text, so a plain
+        // value-equality check in renderAsr can never clear it).
+        pushEvent(
+            JSONObject()
+                .put("type", "asrNote")
+                .put("message", t(context, "已保存", "Saved"))
+                .put("hotwords", normalized)
+        )
         pushState()
     }
 

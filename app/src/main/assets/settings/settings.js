@@ -1948,6 +1948,14 @@ window.FeelimeSettings = {
                 $("userFontNote").textContent = userFontNoteHold;
                 break;
             case "asrNote":
+                if (typeof event.hotwords === "string"
+                    && asrHotwordsSubmitted !== null
+                    && $("hotwords").value === asrHotwordsSubmitted) {
+                    // 成功回执：用户未再编辑——回显规范化形态并解除草稿保护
+                    $("hotwords").value = event.hotwords;
+                    asrHotwordsDirty = false;
+                    asrHotwordsSubmitted = null;
+                }
                 setNote("asrNote", eventText(event, "note.saved", {
                     count: event.count, max: event.max || event.maxLines, chars: event.chars || event.maxChars,
                 }));
@@ -4107,8 +4115,10 @@ $("modelConsentConfirm").addEventListener("click", () => {
     call("confirmModelDownload", id, true);
 });
 
+let asrHotwordsSubmitted = null;
 $("hotwords").addEventListener("input", () => { asrHotwordsDirty = true; });
 $("btnSaveAsr").addEventListener("click", () => {
+    asrHotwordsSubmitted = $("hotwords").value;
     call("saveAsrSettings", $("stripPeriod").checked, $("hotwords").value);
     setNote("asrNote", t("note.saved"));
 });
