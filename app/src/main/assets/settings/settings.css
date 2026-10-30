@@ -726,8 +726,10 @@ details summary {
  * number spinner 在 WebView 里挤占文字空间，去掉。 */
 .phrase-form .input[type="number"]#phraseRank {
     flex: 0 0 84px;
-    appearance: textfield;
-    -webkit-appearance: textfield;
+    /* appearance 必须是 none：textfield 会唤回原生主题，
+     * 边框/背景/padding 全被 UA 绘制接管（实测 2px inset 矩形），.input 样式整体失效。 */
+    appearance: none;
+    -webkit-appearance: none;
 }
 .phrase-form .input[type="number"]#phraseRank::-webkit-outer-spin-button,
 .phrase-form .input[type="number"]#phraseRank::-webkit-inner-spin-button {

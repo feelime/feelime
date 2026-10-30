@@ -312,7 +312,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.64';
+    const KEYBOARD_VERSION = '3.73.65';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -11644,7 +11644,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The status strip takes the candidate bar's slot while visible:
             // both flex:1 side by side would squeeze each other and clip the
             // message instead (keyboard.css #engineStatus).
-            if (candidates) candidates.hidden = !!(this.warming || degradedActive);
+            // #82 让位与文案同门槛（showNow）：warming 短脉冲若立即 hidden
+            // 候选占位，flex:1 塌掉→右侧工具瞬间贴到左侧再弹回（切换输入法
+            // 时肉眼可见的整排 icon 抖动）。门槛内布局纹丝不动。
+            if (candidates) candidates.hidden = showNow;
             if (this.warming) {
                 el.textContent = t("正在准备语言数据…");
                 if (showNow) {

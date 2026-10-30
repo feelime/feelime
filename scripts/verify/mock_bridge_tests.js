@@ -5176,18 +5176,23 @@ test('warming strip waits out the sub-second flicker, then shows until ready (#8
     const world = fresh();
     world.engineState({phase: 'LOADING', revision: 1, mode: 'pinyin', composing: ''});
     assert(world.$('engineStatus').hidden, 'sub-second flicker: strip stays hidden');
+    // 候选占位不塌：flex:1 一 hidden 右侧工具整排贴到左边再弹回（#82 实机抖动）。
+    assert(!world.$('candidates').hidden, 'sub-second flicker: candidates slot stays put');
     world.clock.advance(850);
     assert(!world.$('engineStatus').hidden, 'sustained warming: strip visible');
     assert(world.$('engineStatus').textContent.includes('准备'), 'preparing copy');
+    assert(world.$('candidates').hidden, 'sustained warming: strip takes over the slot');
     // The warmup-success READY lands with the engine's initial EMPTY state.
     world.engineState({phase: 'READY', revision: 2, mode: 'pinyin', composing: ''});
     assert(world.$('engineStatus').hidden, 'strip hidden once ready');
+    assert(!world.$('candidates').hidden, 'candidates slot restored once ready');
     // 闪现内 READY：从未显示，也正确收尾。
     const world2 = fresh();
     world2.engineState({phase: 'LOADING', revision: 1, mode: 'pinyin', composing: ''});
     world2.clock.advance(300);
     world2.engineState({phase: 'READY', revision: 2, mode: 'pinyin', composing: ''});
     assert(world2.$('engineStatus').hidden, 'quick warmup never flashes the strip');
+    assert(!world2.$('candidates').hidden, 'quick warmup never collapses the slot');
 });
 
 test('bottom pad rides hello into the CSS budget and is excluded from content', {since: '3.30.0'}, () => {
