@@ -722,12 +722,29 @@ details summary {
     margin-top: 12px;
 }
 .phrase-form .input { flex: 1 1 140px; min-width: 0; }
+/* #81 位置输入：窄定宽列（词条/输入码是弹性宽，位置只需 2 位数字），
+ * number spinner 在 WebView 里挤占文字空间，去掉。 */
+.phrase-form .input[type="number"]#phraseRank {
+    flex: 0 0 84px;
+    appearance: textfield;
+    -webkit-appearance: textfield;
+}
+.phrase-form .input[type="number"]#phraseRank::-webkit-outer-spin-button,
+.phrase-form .input[type="number"]#phraseRank::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
 .phrase-form .actions { display: flex; gap: 8px; }
 
 .phrase-list {
     list-style: none;
     margin: 0;
     padding: 0;
+}
+/* #81 位置徽标「（候选#n）」：muted 小字，语义一眼可读。 */
+.phrase-rank {
+    color: var(--muted, #7a8195);
+    font-size: 12px;
 }
 .phrase-row {
     display: flex;
