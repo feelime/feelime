@@ -312,7 +312,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.63';
+    const KEYBOARD_VERSION = '3.73.66';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -11560,7 +11560,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * but never toasts (degradedActive absent); each degrade transition
          * carries a fresh seq so a retry that fails again toasts again. */
         applyEngineLifecycle(payload) {
-            if (payload.warming !== undefined) this.warming = !!payload.warming;
+            if (payload.warming !== undefined
+                && this.warming !== !!payload.warming) {
+                // #82 验收：记录 warming 起始时刻，状态条 800ms 闪现门槛用。
+                this.warming = !!payload.warming;
+                this.warmingSince = this.warming ? Date.now() : 0;
+            }
             if (payload.degraded) {
                 const seq = Number(payload.degradeSeq) || 0;
                 const failedMode = payload.failedMode || '';
@@ -11620,21 +11625,40 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** Warming wins over degraded: while language data is still
-         * preparing (including a user-initiated retry of the failed mode),
-         * that is the actionable state — the degrade text would keep telling
-         * the user to retry a retry already running. */
+         *  preparing (including a user-initiated retry of the failed mode),
+         *  that is the actionable state — the degrade text would keep telling
+         *  the user to retry a retry already running.
+         *  #82 验收：模式切换触发的 warming 是亚秒级闪现，状态条跟着闪
+         *  一下没有任何信息量（用户验收吐槽）。延迟 800ms 显示：闪过的不
+         *  出现，首装/换基底词库的真编译（持续数秒以上）照常给解释——
+         *  那是唯一能说明「键盘为什么没词」的状态。 */
         updateEngineStatus() {
             const el = document.getElementById('engineStatus');
             if (!el) return;
             const degradedActive = !!(this.degrade && this.degrade.active);
             const candidates = document.getElementById('candidates');
+            clearTimeout(this.warmingShowTimer);
+            this.warmingShowTimer = null;
+            const showNow = degradedActive
+                || (!!this.warming && Date.now() - (this.warmingSince || 0) >= 800);
             // The status strip takes the candidate bar's slot while visible:
             // both flex:1 side by side would squeeze each other and clip the
             // message instead (keyboard.css #engineStatus).
-            if (candidates) candidates.hidden = !!(this.warming || degradedActive);
+            // #82 让位与文案同门槛（showNow）：warming 短脉冲若立即 hidden
+            // 候选占位，flex:1 塌掉→右侧工具瞬间贴到左侧再弹回（切换输入法
+            // 时肉眼可见的整排 icon 抖动）。门槛内布局纹丝不动。
+            if (candidates) candidates.hidden = showNow;
             if (this.warming) {
                 el.textContent = t("正在准备语言数据…");
-                el.hidden = false;
+                if (showNow) {
+                    el.hidden = false;
+                } else {
+                    // 闪现门槛内：先藏住；800ms 后仍在 warming 再亮出。
+                    el.hidden = true;
+                    this.warmingShowTimer = setTimeout(() => {
+                        if (this.warming) this.updateEngineStatus();
+                    }, Math.max(0, 800 - (Date.now() - (this.warmingSince || 0))));
+                }
             } else if (degradedActive) {
                 const modeName = MODES[this.degrade.failedMode]
                     ? t(MODES[this.degrade.failedMode].title) : this.degrade.failedMode;
@@ -11678,8 +11702,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Engine lifecycle (warming / degraded) is consumed BEFORE the
             // variantReplaying early-return below — a replay in flight must
             // never swallow a degrade or recovery notice (mode-fallback §2.3).
-            if (payload.phase === 'LOADING') this.warming = true;
-            if (payload.phase === 'READY' && !payload.composing) this.warming = false;
+            if (payload.phase === 'LOADING' && !this.warming) {
+                this.warming = true;
+                this.warmingSince = Date.now();
+            }
+            if (payload.phase === 'READY' && !payload.composing) {
+                this.warming = false;
+                this.warmingSince = 0;
+            }
             if (payload.degraded !== undefined) this.applyEngineLifecycle(payload);
             else if (payload.phase === 'LOADING' || payload.phase === 'READY' || this.degrade) {
                 this.updateEngineStatus();

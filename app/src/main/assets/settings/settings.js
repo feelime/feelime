@@ -234,7 +234,7 @@ const I18N = {
         "phrases.list.note": "输入码用全拼（单个音节自动适配双拼按键）；位置 1-9 指定该词固定排在候选第几位，留空默认第 3 位；点词条可修改，✕ 删除。改动即时生效。",
         "phrases.rank.aria": "固定在第 {0} 位",
         "phrases.form.text": "词条（如 ↑ 或 你好）",
-        "phrases.form.rank": "位置 1-9",
+        "phrases.form.rank": "候选位置",
         "phrases.form.code": "输入码（如 shang）",
         "phrases.form.add": "添加",
         "phrases.form.save": "保存修改",
@@ -1044,7 +1044,7 @@ const I18N = {
         "phrases.list.empty": "No entries yet — add one below.",
         "phrases.list.note": "Codes use full Pinyin (single-syllable entries also match double-pinyin keys); tap an entry to edit, ✕ to delete. Changes apply immediately.",
         "phrases.form.text": "Text (e.g. ↑ or a word)",
-        "phrases.form.rank": "Position 1-9",
+        "phrases.form.rank": "Slot",
         "phrases.form.code": "Code (e.g. shang)",
         "phrases.form.add": "Add",
         "phrases.form.save": "Save changes",
@@ -3503,7 +3503,7 @@ function renderPhraseList() {
         if (item.rank >= 1 && item.rank <= 9) {
             const rank = document.createElement("code");
             rank.className = "phrase-rank";
-            rank.textContent = "#" + item.rank;
+            rank.textContent = "（候选#" + item.rank + "）";
             rank.setAttribute("aria-label", t("phrases.rank.aria", [item.rank]));
             label.append(rank);
         }

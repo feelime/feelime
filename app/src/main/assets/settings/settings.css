@@ -427,7 +427,7 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
     color: var(--muted);
 }
 
-input[type="url"], input[type="text"], input[type="password"], textarea, .select {
+input[type="url"], input[type="text"], input[type="password"], input[type="number"], textarea, .select {
     width: 100%;
     margin-top: 6px;
     padding: 10px 12px;
@@ -722,12 +722,32 @@ details summary {
     margin-top: 12px;
 }
 .phrase-form .input { flex: 1 1 140px; min-width: 0; }
+/* #81 位置输入：窄定宽列（词条/输入码是弹性宽，位置只需 2 位数字），
+ * number spinner 在 WebView 里挤占文字空间，去掉。 */
+.phrase-form .input[type="number"]#phraseRank {
+    flex: 0 0 84px;
+    /* 基础外观由上方公共输入框规则统一（appearance 不清 UA 的
+     * 2px inset 边框声明，必须靠选择器命中）；此处关原生装饰，
+     * 下方伪元素规则去 spinner。 */
+    appearance: none;
+    -webkit-appearance: none;
+}
+.phrase-form .input[type="number"]#phraseRank::-webkit-outer-spin-button,
+.phrase-form .input[type="number"]#phraseRank::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
 .phrase-form .actions { display: flex; gap: 8px; }
 
 .phrase-list {
     list-style: none;
     margin: 0;
     padding: 0;
+}
+/* #81 位置徽标「（候选#n）」：muted 小字，语义一眼可读。 */
+.phrase-rank {
+    color: var(--muted, #7a8195);
+    font-size: 12px;
 }
 .phrase-row {
     display: flex;

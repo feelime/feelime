@@ -5170,14 +5170,29 @@ test('degraded short-press retries the failed mode instead of the pair', {since:
         'healthy toggle follows current-keyboard-to-English');
 });
 
-test('warming shows the preparing strip until the engine is ready', {since: '3.30.0'}, () => {
+test('warming strip waits out the sub-second flicker, then shows until ready (#82 acceptance)', {since: '3.73.64'}, () => {
+    // 模式切换触发的 warming 亚秒即过，状态条跟着闪没有信息量——800ms
+    // 内不显示；首装/换基底词库的真编译（持续数秒）照常给解释。
     const world = fresh();
     world.engineState({phase: 'LOADING', revision: 1, mode: 'pinyin', composing: ''});
-    assert(!world.$('engineStatus').hidden, 'warming strip visible');
+    assert(world.$('engineStatus').hidden, 'sub-second flicker: strip stays hidden');
+    // 候选占位不塌：flex:1 一 hidden 右侧工具整排贴到左边再弹回（#82 实机抖动）。
+    assert(!world.$('candidates').hidden, 'sub-second flicker: candidates slot stays put');
+    world.clock.advance(850);
+    assert(!world.$('engineStatus').hidden, 'sustained warming: strip visible');
     assert(world.$('engineStatus').textContent.includes('准备'), 'preparing copy');
+    assert(world.$('candidates').hidden, 'sustained warming: strip takes over the slot');
     // The warmup-success READY lands with the engine's initial EMPTY state.
     world.engineState({phase: 'READY', revision: 2, mode: 'pinyin', composing: ''});
     assert(world.$('engineStatus').hidden, 'strip hidden once ready');
+    assert(!world.$('candidates').hidden, 'candidates slot restored once ready');
+    // 闪现内 READY：从未显示，也正确收尾。
+    const world2 = fresh();
+    world2.engineState({phase: 'LOADING', revision: 1, mode: 'pinyin', composing: ''});
+    world2.clock.advance(300);
+    world2.engineState({phase: 'READY', revision: 2, mode: 'pinyin', composing: ''});
+    assert(world2.$('engineStatus').hidden, 'quick warmup never flashes the strip');
+    assert(!world2.$('candidates').hidden, 'quick warmup never collapses the slot');
 });
 
 test('bottom pad rides hello into the CSS budget and is excluded from content', {since: '3.30.0'}, () => {
