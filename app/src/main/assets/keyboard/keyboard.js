@@ -312,7 +312,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.60';
+    const KEYBOARD_VERSION = '3.73.62';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1658,7 +1658,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.quickReturnMode = 'pinyin';
             // 切换成功 toast 的意图回执窗（quickSwitchTarget 发出后等
             // 权威 mode 回声，回声匹配才提示——不乐观弹）。
-            this.quickSwitchPendingToast = null;
             try {
                 const speed = parseInt(localStorage.getItem('feelime_scrub_speed') || '3', 10);
                 if (speed >= 1 && speed <= 5) this.scrubSpeed = speed;
@@ -3712,7 +3711,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.showToast(t("该键盘还在准备中"));
                 return;
             }
-            this.quickSwitchPendingToast = { to: target, at: Date.now() };
             this.call(() => Native.selectMode(target, this.token));
         }
 
@@ -7003,22 +7001,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * candidates=候选条预算、ctrl=控制行预算、full=完整键盘高度。
          * 状态取自标志位（时序无关 DOM），native 侧只在 hwkb 形态
          * 分支消费该值，其余形态自然忽略。 */
-        /** #H 切换成功回执（codex 二轮 §3）：模式切换会先触发 hello
-         *  重推（hello 里就更新 this.mode）再推 state 事件——回执必须
-         *  在两条通道的 mode 到达点都检查，只挂 onEngineState 会被
-         *  hello 抢先更新 this.mode 后跳过（AVD 实测定罪）。仅匹配
-         *  quickSwitchPendingToast 意图窗内的目标才弹。 */
-        quickSwitchAck(newMode) {
-            const pend = this.quickSwitchPendingToast;
-            if (!pend || pend.to !== newMode || Date.now() - pend.at >= 3000) return;
-            this.quickSwitchPendingToast = null;
-            const names = {
-                pinyin: t("全拼"), 'double-pinyin': t("双拼"), flypy: t("鹤形"),
-                french: t("法语"), russian: t("俄语"), japanese: t("日语"),
-            };
-            this.showToast(t("已切换：") + (names[newMode] || t("英文")));
-        }
-
         /** #H 候选条形态的模式短标签文案（codex 二轮 §3）：两字全名
          *  可辨（只写「中」分不出全拼/双拼——用户事故的可见性根源）。
          *  显隐由 CSS（body.hwkb）管，这里只刷文案。 */
@@ -11291,8 +11273,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const nextMode = MODES[payload.mode] ? payload.mode : 'direct';
             const modeChanged = nextMode !== this.mode;
             this.mode = nextMode;
-            // #H 切换回执通道一（hello 重推先于 state 到达时在这里兑现）。
-            this.quickSwitchAck(nextMode);
             // #H：hello 带硬键盘状态与形态档位（design §5/§7）。
             this.hardwareKeyboard = !!payload.hardwareKeyboard;
             this.hwkbForm = payload.hwkbForm || 'candidates';
@@ -11604,7 +11584,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.adoptQuickPairForHandwriting(payload.mode);
                 this.renderMode();
                 this.updateHwModeTag();
-                this.quickSwitchAck(payload.mode);
             }
             this.updateComposing(payload, payload.rawInput || payload.composing || '');
             // ONE accumulated pool feeds both the candidate bar and
