@@ -2508,6 +2508,16 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             // 在途、新页首条又分到 101」的复用，旧回声伪解除新页屏障。
             .put("hwSeqBase", coordinator.hwSeqCeiling)
             .put("mode", coordinator.currentMode.wireName)
+            // #81 符号词手动位次（词面→1-9）与词频排序总开关：真相源
+            // CustomPhraseStore json，rank 不进引擎 txt（引擎侧 quality
+            // 悬崖，位置只能渲染层控制），随 hello 下发键盘页。
+            .apply {
+                val phraseState = com.feelime.ime.engine.CustomPhraseStore.load(this@FeelimeService)
+                put("symbolRanks", org.json.JSONObject().apply {
+                    phraseState.symbolRanks.forEach { (text, rank) -> put(text, rank) }
+                })
+                put("symbolFreqSort", phraseState.symbolFreqSort)
+            }
             .put("dpScheme", com.feelime.ime.engine.DoublePinyinScheme.resolve(this))
             // Degraded-engine state survives WebView rebuilds via hello
             // (mode-fallback §2.1); hello NEVER fires the toast itself.

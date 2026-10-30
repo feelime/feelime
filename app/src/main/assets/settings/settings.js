@@ -119,7 +119,7 @@ const I18N = {
         "dict.badge": "叠加",
         "dict.import.title": "导入词库",
         "dict.import.enable": "rime 词库文件（.dict.yaml）",
-        "dict.import.note": "词<TAB>码 逐行导入，上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。",
+        "dict.import.note": "词<TAB>码<TAB>位置 逐行导入（第三列可选，1-9 指定候选位次，不填默认第 3 位），上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。",
         "dict.userwords.title": "自造词",
         "dict.userwords.enable": "手动维护的常用词",
         "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，输入码命中即出这个词；适合名字、缩写、行话。改动即时生效，重启保留。",
@@ -218,7 +218,9 @@ const I18N = {
         "input.phrases.title": "候选符号词",
         "input.phrases.badge": "输入",
         "input.phrases.enable": "附加符号/emoji 候选",
-        "input.phrases.hint": "打 shang 出 ↑、dui 出 ✓ 这类符号词，默认排在候选第 3 位附近，选过的次数越多位置越靠前（5 次后可到首位，空格直选）；全拼和双拼通用。",
+        "input.phrases.hint": "打 shang 出 ↑、dui 出 ✓ 这类符号词，默认排在候选第 3 位，可在「管理词条」里逐词指定位置；全拼和双拼通用。",
+        "input.phrases.freqSort": "基于词频排序",
+        "input.phrases.freqSortHint": "未指定位置的符号词随使用次数前移（5 次后可升到首位，空格直选）；关闭时一律固定在第 3 位附近。手动指定的位置不受此开关影响。",
         "input.phrases.manage": "管理词条",
         "input.phrases.importHint": "rime 词库文件的词条叠加进候选（不替换内置词库、不带原词频）。再次导入会替换上一次的导入表。",
         "input.phrases.importBtn": "选择文件导入",
@@ -229,8 +231,10 @@ const I18N = {
         "nav.backInput": "返回键盘与输入",
         "phrases.list.title": "词条",
         "phrases.list.empty": "还没有词条，在下方添加。",
-        "phrases.list.note": "输入码用全拼（单个音节自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效。",
+        "phrases.list.note": "输入码用全拼（单个音节自动适配双拼按键）；位置 1-9 指定该词固定排在候选第几位，留空默认第 3 位；点词条可修改，✕ 删除。改动即时生效。",
+        "phrases.rank.aria": "固定在第 {0} 位",
         "phrases.form.text": "词条（如 ↑ 或 你好）",
+        "phrases.form.rank": "位置 1-9",
         "phrases.form.code": "输入码（如 shang）",
         "phrases.form.add": "添加",
         "phrases.form.save": "保存修改",
@@ -1021,7 +1025,9 @@ const I18N = {
         "input.phrases.title": "Symbol candidates",
         "input.phrases.badge": "Input",
         "input.phrases.enable": "Symbol / emoji candidates",
-        "input.phrases.hint": "Adds words like ↑ for shang and ✓ for dui near candidate #3; the more you pick one, the higher it climbs (5 picks can move it to the front); works in full and double Pinyin.",
+        "input.phrases.hint": "Adds words like ↑ for shang and ✓ for dui; they sit near candidate #3 by default and each word can get an explicit position under Manage entries; works in full and double Pinyin.",
+        "input.phrases.freqSort": "Rank by use frequency",
+        "input.phrases.freqSortHint": "Words without an explicit position climb as you pick them (5 picks can move one to the front for space-bar entry); off keeps them near slot #3. Explicit positions ignore this switch.",
         "input.english.enable": "English word candidates",
         "input.english.hint": "Type english words like github, ios or android right inside Pinyin composing — no mode switch; works in full and double Pinyin.",
         "input.phrases.wxSlash": "wanxiang / feature guide",
@@ -1038,6 +1044,7 @@ const I18N = {
         "phrases.list.empty": "No entries yet — add one below.",
         "phrases.list.note": "Codes use full Pinyin (single-syllable entries also match double-pinyin keys); tap an entry to edit, ✕ to delete. Changes apply immediately.",
         "phrases.form.text": "Text (e.g. ↑ or a word)",
+        "phrases.form.rank": "Position 1-9",
         "phrases.form.code": "Code (e.g. shang)",
         "phrases.form.add": "Add",
         "phrases.form.save": "Save changes",
@@ -3426,10 +3433,17 @@ function saveKeyboardSelectionFromUi() {
 function renderCustomPhrases(state) {
     const phrases = state.customPhrases;
     if (phrases) {
+        const ranks = phrases.symbolRanks && typeof phrases.symbolRanks === 'object'
+            ? phrases.symbolRanks : {};
         phraseItems = (phrases.items || []).map(item => ({
             text: String(item.text || ""), code: String(item.code || ""),
+            rank: Number(ranks[item.text] || 0) || 0,
         }));
         if (document.activeElement !== $("phrasesOn")) $("phrasesOn").checked = !!phrases.enabled;
+        const freqSort = $("symbolFreqSort");
+        if (freqSort && document.activeElement !== freqSort) {
+            freqSort.checked = phrases.symbolFreqSort === true;
+        }
         if (document.activeElement !== $("englishWordsOn")) $("englishWordsOn").checked = phrases.englishEnabled !== false;
         const posSel = $("englishPos");
         if (posSel) {
@@ -3486,6 +3500,13 @@ function renderPhraseList() {
         const code = document.createElement("code");
         code.textContent = item.code;
         label.append(text, code);
+        if (item.rank >= 1 && item.rank <= 9) {
+            const rank = document.createElement("code");
+            rank.className = "phrase-rank";
+            rank.textContent = "#" + item.rank;
+            rank.setAttribute("aria-label", t("phrases.rank.aria", [item.rank]));
+            label.append(rank);
+        }
         label.addEventListener("click", () => startPhraseEdit(index));
         const del = document.createElement("button");
         del.type = "button";
@@ -3510,6 +3531,7 @@ function startPhraseEdit(index) {
     phraseEditing = index;
     $("phraseText").value = phraseItems[index].text;
     $("phraseCode").value = phraseItems[index].code;
+    $("phraseRank").value = phraseItems[index].rank >= 1 ? phraseItems[index].rank : "";
     $("btnSavePhrase").textContent = t("phrases.form.save");
     $("btnCancelPhraseEdit").hidden = false;
 }
@@ -3518,21 +3540,32 @@ function resetPhraseForm() {
     phraseEditing = -1;
     $("phraseText").value = "";
     $("phraseCode").value = "";
+    $("phraseRank").value = "";
     $("btnSavePhrase").textContent = t("phrases.form.add");
     $("btnCancelPhraseEdit").hidden = true;
 }
 
 function savePhrases() {
-    const payload = phraseItems.map(item => ({ text: item.text, code: item.code }));
+    const payload = phraseItems.map(item => ({
+        text: item.text, code: item.code,
+        rank: item.rank >= 1 && item.rank <= 9 ? item.rank : 0,
+    }));
     call("saveCustomPhrases", JSON.stringify(payload), phraseState().enabled);
 }
 
 $("phrasesOn").addEventListener("change", event => {
     if (!phraseStateReady()) return;
     call("saveCustomPhrases",
-        JSON.stringify(phraseItems.map(item => ({ text: item.text, code: item.code }))),
+        JSON.stringify(phraseItems.map(item => ({
+            text: item.text, code: item.code,
+            rank: item.rank >= 1 && item.rank <= 9 ? item.rank : 0,
+        }))),
         event.target.checked);
     setNote("phrasesNote", t("phrases.note.saved"));
+});
+// #81 词频排序总开关（默认关）：只影响未指定位置的符号词。
+$("symbolFreqSort").addEventListener("change", event => {
+    call("setSymbolFreqSort", event.target.checked);
 });
 
 // #29-3 英文词直出：内置词表整体开关（词表不进增删 UI）。
@@ -3755,8 +3788,11 @@ $("btnSavePhrase").addEventListener("click", () => {
         setNote("phrasesNote", t("phrases.form.code"));
         return;
     }
+    // #81 位置：1-9 指定候选位次；空/越界按未指定（渲染层默认第 3 位）。
+    const rankInput = parseInt($("phraseRank").value, 10);
+    const rank = rankInput >= 1 && rankInput <= 9 ? rankInput : 0;
     if (phraseEditing >= 0) {
-        phraseItems[phraseEditing] = { text, code };
+        phraseItems[phraseEditing] = { text, code, rank };
     } else {
         if (phraseItems.some(item => item.code === code)) {
             setNote("phrasesNote", t("phrases.err.duplicate"));
@@ -3768,7 +3804,7 @@ $("btnSavePhrase").addEventListener("click", () => {
             setNote("phrasesNote", t("phrases.err.limit"));
             return;
         }
-        phraseItems.push({ text, code });
+        phraseItems.push({ text, code, rank });
     }
     savePhrases();
     resetPhraseForm();

@@ -312,7 +312,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.61';
+    const KEYBOARD_VERSION = '3.73.63';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -9362,25 +9362,47 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 符号词条重排（issue #17 → #81）先于 overlay 组装：custom_phrase
             // 通道的符号/emoji 词在引擎侧受 initial_quality 的 0/1 悬崖支配
             // （第 1 位或沉底，weight 无法跨流微调，且不入 userdb——引擎不
-            // 学习），位次完全由这里定。#81 起：按键盘侧使用计数分层——
-            // 计数 ≥ SYMBOL_PROMOTE_AT 的「养成」符号按计数序升到池头
-            // （空格直选，用户选得最多的符号就该一键上屏）；未养成的仍钉
-            // index 2（#17 折中：不抢正常候选的前两格），组内同样按计数
-            // 降序、同计数保持引擎序（稳定）。先排引擎序、后插 overlay，
-            // 常用语 rank 位次与空格确认的池头语义不被二次改写；中文自
-            // 定义词（含汉字/字母）不动。bar/展开层/选词通道共用同一池。
+            // 学习），位次完全由这里定。#81 三层：
+            //  ① 显式 rank（hello.symbolRanks，1-9，手管表单或导入表第三
+            //     列）永远优先——从池内取出，池组装后按 rank splice 到
+            //     第 N 可见位（与常用语 exact rank 同语义）；
+            //  ② 未指定 rank 的默认钉 index 2（#17 折中：不抢正常候选的
+            //     前两格，避免影响正常输入）；
+            //  ③ 「基于词频排序」开关（默认关）开时，未指定的按键盘侧
+            //     使用计数分层——≥SYMBOL_PROMOTE_AT 的按计数序升到池头
+            //     （空格直选），组内按计数降序稳定排；关时保持引擎序。
+            // 先排引擎序、后插 overlay，常用语 rank 位次与空格确认的池头
+            // 语义不被二次改写；中文自定义词（含汉字/字母）不动。bar/展
+            // 开层/选词通道共用同一池。
+            const ranks = this.symbolRanks || {};
+            const freqOn = this.symbolFreqSort === true;
             const symbolic = rawEngine.filter(candidate => isSymbolicText(candidate.text));
             let engine = rawEngine;
+            this.symbolSlotPending = null;
             if (symbolic.length) {
-                const counts = readSymbolUseCounts();
-                const ranked = symbolic
-                    .map((candidate, index) => ({ candidate, index, uses: counts[candidate.text] || 0 }))
-                    .sort((a, b) => b.uses - a.uses || a.index - b.index)
-                    .map(entry => entry.candidate);
-                const promoted = ranked.filter(candidate => (counts[candidate.text] || 0) >= SYMBOL_PROMOTE_AT);
-                const plain = ranked.filter(candidate => (counts[candidate.text] || 0) < SYMBOL_PROMOTE_AT);
+                const slotted = symbolic.filter(candidate => {
+                    const rank = Number(ranks[candidate.text]);
+                    return Number.isInteger(rank) && rank >= 1 && rank <= 9;
+                });
+                const auto = symbolic.filter(candidate => !slotted.includes(candidate));
+                let autos = auto;
+                if (freqOn && auto.length) {
+                    const counts = readSymbolUseCounts();
+                    autos = auto
+                        .map((candidate, index) => ({ candidate, index, uses: counts[candidate.text] || 0 }))
+                        .sort((a, b) => b.uses - a.uses || a.index - b.index)
+                        .map(entry => entry.candidate);
+                }
                 const rest = rawEngine.filter(candidate => !symbolic.includes(candidate));
-                engine = [...promoted, ...rest.slice(0, 2), ...plain, ...rest.slice(2)];
+                if (freqOn) {
+                    const counts = readSymbolUseCounts();
+                    const promoted = autos.filter(candidate => (counts[candidate.text] || 0) >= SYMBOL_PROMOTE_AT);
+                    const plain = autos.filter(candidate => (counts[candidate.text] || 0) < SYMBOL_PROMOTE_AT);
+                    engine = [...promoted, ...rest.slice(0, 2), ...plain, ...rest.slice(2)];
+                } else {
+                    engine = [...rest.slice(0, 2), ...autos, ...rest.slice(2)];
+                }
+                if (slotted.length) this.symbolSlotPending = slotted;
             }
             // 笔画句子候选压后（issue #18）：词典 max_phrase_length=1，
             // 多字候选必来自 enable_sentence 造句（☯；comment 不在桥协议
@@ -9454,6 +9476,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ...prefix,
                 ...engine.slice(1),
             ];
+            // #81 显式 rank 的符号词插到第 N 可见位（rank 升序依次 splice，
+            // 与常用语 exact rank 同语义；放在常用语 splice 之前，同位时
+            // 常用语排在符号后一位）。
+            if (this.symbolSlotPending && this.symbolSlotPending.length) {
+                this.symbolSlotPending
+                    .slice()
+                    .sort((a, b) => Number(ranks[a.text]) - Number(ranks[b.text]))
+                    .forEach(candidate => {
+                        const at = Math.min(Number(ranks[candidate.text]) - 1, pool.length);
+                        pool.splice(at, 0, candidate);
+                    });
+                this.symbolSlotPending = null;
+            }
             let prevRank = 0;
             let prevIndex = -1;
             exact
@@ -11358,6 +11393,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.quickSwitchAck(nextMode);
             // #H：hello 带硬键盘状态与形态档位（design §5/§7）。
             this.hardwareKeyboard = !!payload.hardwareKeyboard;
+            // #81 符号词手动位次与词频排序开关（hello 随开关变更重推）。
+            this.symbolRanks = payload.symbolRanks && typeof payload.symbolRanks === 'object'
+                ? payload.symbolRanks : {};
+            this.symbolFreqSort = payload.symbolFreqSort === true;
             this.hwkbForm = payload.hwkbForm || 'candidates';
             // #H 快捷切换策略/返回记忆快照（native 是真相源）。hello 未
             // 带 policy 字段（旧壳或首载迁移未完成）时按迁移表从存量

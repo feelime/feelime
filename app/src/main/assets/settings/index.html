@@ -886,7 +886,7 @@
         <button class="btn ghost-btn" id="btnClearImportedDict" type="button" hidden data-i18n="input.phrases.clearBtn">清空导入词</button>
         <span class="save-note" id="dictImportNote" role="status" aria-live="polite"></span>
       </div>
-      <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码 逐行导入，上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。</p>
+      <p class="hint" data-i18n="dict.import.note">词&lt;TAB&gt;码&lt;TAB&gt;位置 逐行导入（第三列可选，1-9 指定候选位次，不填默认第 3 位），上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。</p>
     </section>
 
     <!-- #54（2026-10-09 用户裁定·简化版）：候选符号词从输入页归位到
@@ -894,8 +894,13 @@
     <section class="card" id="sec-dict-phrases" aria-labelledby="dictPhrasesTitle">
       <div class="section-heading"><h2 id="dictPhrasesTitle" data-keywords="符号 emoji 候选 symbol" data-i18n="input.phrases.title">候选符号词</h2><span class="eyebrow" data-i18n="dict.badge">叠加</span></div>
       <label class="row switch-row no-rule" for="phrasesOn">
-        <span class="row-label"><span data-i18n="input.phrases.enable">附加符号/emoji 候选</span><small data-i18n="input.phrases.hint">打 shang 出 ↑、dui 出 ✓ 这类符号词，排在候选第 3 位附近；全拼和双拼通用。</small></span>
+        <span class="row-label"><span data-i18n="input.phrases.enable">附加符号/emoji 候选</span><small data-i18n="input.phrases.hint">打 shang 出 ↑、dui 出 ✓ 这类符号词，默认排在候选第 3 位，可在「管理词条」里逐词指定位置；全拼和双拼通用。</small></span>
         <input type="checkbox" id="phrasesOn" data-keywords="符号 emoji 候选 symbol" class="toggle">
+      </label>
+      <!-- #81 词频排序总开关（默认关）：未指定位置的符号词是否随使用次数前移 -->
+      <label class="row switch-row no-rule" for="symbolFreqSort">
+        <span class="row-label"><span data-i18n="input.phrases.freqSort">基于词频排序</span><small data-i18n="input.phrases.freqSortHint">未指定位置的符号词随使用次数前移（5 次后可升到首位，空格直选）；关闭时一律固定在第 3 位附近。手动指定的位置不受此开关影响。</small></span>
+        <input type="checkbox" id="symbolFreqSort" data-keywords="词频 排序 频率 symbol freq" class="toggle">
       </label>
       <button class="btn" id="btnManagePhrases" type="button" data-i18n="input.phrases.manage">管理词条</button>
     </section>
@@ -955,12 +960,13 @@
       <div class="phrase-form">
         <input id="phraseText" class="input" type="text" maxlength="20" data-i18n-placeholder="phrases.form.text" placeholder="词条（如 ↑ 或 你好）">
         <input id="phraseCode" class="input" type="text" maxlength="16" data-i18n-placeholder="phrases.form.code" placeholder="输入码（如 shang）">
+        <input id="phraseRank" class="input" type="number" min="1" max="9" inputmode="numeric" data-i18n-placeholder="phrases.form.rank" placeholder="位置 1-9">
         <div class="actions">
           <button class="btn primary" id="btnSavePhrase" type="button" data-i18n="phrases.form.add">添加</button>
           <button class="btn" id="btnCancelPhraseEdit" type="button" data-i18n="phrases.form.cancel" hidden>取消</button>
         </div>
       </div>
-      <p class="hint" data-i18n="phrases.list.note">输入码用全拼（单个音节自动适配双拼按键）；点词条可修改，✕ 删除。改动即时生效。</p>
+      <p class="hint" data-i18n="phrases.list.note">输入码用全拼（单个音节自动适配双拼按键）；位置 1-9 指定该词固定排在候选第几位，留空默认第 3 位；点词条可修改，✕ 删除。改动即时生效。</p>
       <span class="save-note" id="phrasesNote" role="status" aria-live="polite"></span>
     </section>
   </main>

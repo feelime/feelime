@@ -871,6 +871,10 @@ class SettingsBridge(
                     }
                 })
                 put("importedCount", state.imported.size)
+                put("symbolRanks", JSONObject().apply {
+                    state.symbolRanks.forEach { (text, rank) -> put(text, rank) }
+                })
+                put("symbolFreqSort", state.symbolFreqSort)
             })
             .put("userWords", JSONArray().apply {
                 com.feelime.ime.engine.CustomPhraseStore.load(context).user.forEach { (text, code) ->
@@ -2002,6 +2006,8 @@ class SettingsBridge(
     @JavascriptInterface
     fun saveCustomPhrases(itemsJson: String, enabled: Boolean, token: String) = guarded(token) {
         val items = ArrayList<Pair<String, String>>()
+        // #81 手动位次：表单可带 rank（1-9；缺失/0=清除该词位次）。
+        val formRanks = LinkedHashMap<String, Int>()
         val parseError = try {
             val array = JSONArray(itemsJson)
             for (i in 0 until array.length()) {
@@ -2019,6 +2025,8 @@ class SettingsBridge(
                     return@guarded
                 }
                 items.add(text to code)
+                val rank = item.optInt("rank", 0)
+                if (rank in 1..9) formRanks[text] = rank
             }
             false
         } catch (_: Exception) {
@@ -2033,11 +2041,31 @@ class SettingsBridge(
             )
             return@guarded
         }
-        // 手管 items 全量重发不触碰导入段（imported 由导入/清空入口专管）。
+        // 手管 items 全量重发不触碰导入段（imported 由导入/清空入口专管）；
+        // #81 rank 同理：手管词的 rank 以表单为准，导入词的 rank 原样保留。
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+        val importedTexts = state.imported.map { it.first }.toSet()
+        val ranks = state.symbolRanks.filterKeys { it in importedTexts } + formRanks
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, enabled, items, imported = state.imported, user = state.user,
             englishEnabled = state.englishEnabled,
+            symbolRanks = ranks, symbolFreqSort = state.symbolFreqSort,
+        )
+        context.sendBroadcast(
+            Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** #81 总开关：未指定位置的符号词按使用词频排序（默认关）。 */
+    @JavascriptInterface
+    fun setSymbolFreqSort(enabled: Boolean, token: String) = guarded(token) {
+        val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+        if (state.symbolFreqSort == enabled) return@guarded
+        com.feelime.ime.engine.CustomPhraseStore.save(
+            context, state.enabled, state.items, imported = state.imported, user = state.user,
+            englishEnabled = state.englishEnabled,
+            symbolRanks = state.symbolRanks, symbolFreqSort = enabled,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2153,9 +2181,14 @@ class SettingsBridge(
                 return@execute
             }
             val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
+            // #81 位置列：导入是替换式换表——旧导入词的 rank 随表清掉，
+            // 手管词（items 表单）的 rank 保留，新表的 ranks 覆盖并入。
+            val managedTexts = state.items.map { it.first }.toSet()
+            val ranks = state.symbolRanks.filterKeys { it in managedTexts } + result.ranks
             com.feelime.ime.engine.CustomPhraseStore.save(
                 context, state.enabled, state.items, imported = result.items, user = state.user,
                 englishEnabled = state.englishEnabled,
+                symbolRanks = ranks, symbolFreqSort = state.symbolFreqSort,
             )
             context.sendBroadcast(
                 Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),

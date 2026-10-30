@@ -94,6 +94,7 @@ class MockSettingsNative {
     setCandidateFont(...a) { this._rec('setCandidateFont', a); }
     setKeycapFont(...a) { this._rec('setKeycapFont', a); }
     requestUserFontImport(...a) { this._rec('requestUserFontImport', a); }
+    setSymbolFreqSort(...a) { this._rec('setSymbolFreqSort', a); }
     confirmLargeFontImport(...a) { this._rec('confirmLargeFontImport', a); }
     clearUserFont(...a) { this._rec('clearUserFont', a); }
     setInkDelay(...a) { this._rec('setInkDelay', a); }
@@ -1468,7 +1469,8 @@ test('custom phrases: state renders the list; CRUD resends the full payload with
     equal(args.length, 3, 'items + enabled + token');
     equal(args[2], world.token, 'token');
     equal(JSON.parse(args[0]).length, 3, 'full list resent');
-    equal(JSON.parse(args[0])[2], { text: '🐱', code: 'mao' }, 'code normalized to lowercase');
+    // #81 起契约带 rank（0=未指定，渲染层默认第 3 位）。
+    equal(JSON.parse(args[0])[2], { text: '🐱', code: 'mao', rank: 0 }, 'code normalized to lowercase');
     equal(args[1], true, 'enabled carried through');
 
     // 重复码拒绝、且不发桥调用。
@@ -1488,7 +1490,7 @@ test('custom phrases: state renders the list; CRUD resends the full payload with
     world.$('phraseText').value = '✔';
     world.$('btnSavePhrase').click();
     const edited = JSON.parse(world.lastCall('saveCustomPhrases').args[0]);
-    equal(edited[1], { text: '✔', code: 'dui' }, 'edit rewrites the row');
+    equal(edited[1], { text: '✔', code: 'dui', rank: 0 }, 'edit rewrites the row');
 
     // 删除：行内 ✕ 立即重发剩余表。
     world.push({ ...BASE_STATE, customPhrases: {
@@ -1931,6 +1933,42 @@ test('large font import asks consent, confirm retries via bridge (#80)', () => {
     equal(world.$('fontConsent').hidden, true, 'starting a new import hides the dialog');
 });
 
+
+test('symbol freq switch and per-word rank round-trip (issue #81)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, customPhrases: {
+        enabled: true, englishEnabled: true,
+        items: [{ text: '↑', code: 'shang' }, { text: '★', code: 'xing' }],
+        importedCount: 0,
+        symbolRanks: { '↑': 2 },
+        symbolFreqSort: false,
+    } });
+    // 开关回显 + 接线：change 走桥带 token。
+    equal(world.$('symbolFreqSort').checked, false, 'freq switch defaults off from state');
+    const freqBox = world.$('symbolFreqSort');
+    freqBox.checked = true;
+    freqBox.listeners.find(l => l.type === 'change').handler({ target: freqBox });
+    equal(world.lastCall('setSymbolFreqSort').args, [true, world.token], 'freq switch commits + token');
+    // rank 徽标渲染 + 编辑回填 + 保存携带。
+    const rowText = world.$('phraseList').textContent;
+    assert(rowText.includes('#2'), 'rank badge rendered on the entry');
+    world.$('phraseList').querySelector('.phrase-edit').click();
+    equal(String(world.$('phraseRank').value), '2', 'edit form pre-fills the rank');
+    world.$('phraseRank').value = '5';
+    world.$('phraseText').value = '↑';
+    world.$('phraseCode').value = 'shang';
+    world.$('btnSavePhrase').click();
+    const saved = JSON.parse(world.lastCall('saveCustomPhrases').args[0]);
+    equal(saved[0], { text: '↑', code: 'shang', rank: 5 }, 'edited rank rides the CRUD payload');
+    // 越界输入按未指定（rank 0）。
+    world.$('phraseList').querySelectorAll('.phrase-edit')[1].click();
+    world.$('phraseRank').value = '42';
+    world.$('phraseText').value = '★';
+    world.$('phraseCode').value = 'xing';
+    world.$('btnSavePhrase').click();
+    const saved2 = JSON.parse(world.lastCall('saveCustomPhrases').args[0]);
+    equal(saved2[1], { text: '★', code: 'xing', rank: 0 }, 'out-of-range rank degrades to unspecified');
+});
 
 test('feel card defaults when state omits the values and never adopts off-whitelist ones', () => {
     const world = new SettingsWorld();

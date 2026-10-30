@@ -554,6 +554,8 @@ test('symbol custom phrases reorder to slot 3; CJK entries keep engine order (is
 
 test('symbol candidates climb with use counts (issue #81)', {since: '3.73.61'}, () => {
     const world = fresh({ mode: 'pinyin' });
+    // #81 二轮：词频排序是总开关（默认关）——开着才有爬升行为。
+    world.hello({ mode: 'pinyin', symbolFreqSort: true });
     const cells = () => [...world.$('candidates').querySelectorAll('.candidate')];
     const bar = () => JSON.stringify(cells().map(node => node.textContent));
     const feed = rev => world.engineState({ mode: 'pinyin', revision: rev,
@@ -596,6 +598,50 @@ test('symbol candidates climb with use counts (issue #81)', {since: '3.73.61'}, 
 
     // ↑ 全程零选择：不受 ★ 养成影响，仍在正常候选之后（index 3）。
     equal(cells().findIndex(node => node.textContent === '↑'), 3, 'unused symbol stays behind');
+});
+
+test('symbol ranks pin explicit slots; freq switch off keeps default order (issue #81)', {since: '3.73.63'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    const cells = () => [...world.$('candidates').querySelectorAll('.candidate')];
+    const bar = () => JSON.stringify(cells().map(node => node.textContent));
+    const feed = rev => world.engineState({ mode: 'pinyin', revision: rev,
+        composing: 'shang', rawInput: 'shang',
+        candidates: [
+            { id: 'p0', text: '↑' }, { id: 'p1', text: '★' },
+            { id: 'c1', text: '上' }, { id: 'c2', text: '商' }, { id: 'c3', text: '伤' },
+        ], hasNextPage: false });
+    const pick = text => {
+        const cell = cells().find(node => node.textContent === text);
+        assert(cell, `candidate ${text} visible`);
+        cell.click();
+    };
+
+    // 开关关（默认）：连选 ★ 6 次位次纹丝不动（词频完全不参与）。
+    feed(3);
+    equal(bar(), JSON.stringify(['上', '商', '↑', '★', '伤']), 'default: symbols ride slot 3+ in engine order');
+    for (let i = 0; i < 6; i++) {
+        feed(10 + i);
+        pick('★');
+    }
+    feed(20);
+    equal(bar(), JSON.stringify(['上', '商', '↑', '★', '伤']),
+        'freq switch off: picks never reorder (engine order kept)');
+
+    // 显式 rank 永远优先（开关仍关）：★=1 顶到池头参与空格直选。
+    world.hello({ mode: 'pinyin', symbolRanks: { '★': 1, '↑': 4 } });
+    feed(30);
+    equal(bar(), JSON.stringify(['★', '上', '商', '↑', '伤']),
+        'explicit ranks pin slots regardless of the freq switch');
+    world.tap(world.$('spaceKey'));
+    const pickCall = world.native.of('chooseCandidate').slice(-1)[0];
+    equal(pickCall.args[1], 'p1', 'space confirms the rank-1 symbol by id');
+
+    // 开关开 + rank 并存：rank 仍优先，未指定的按词频爬升。
+    world.hello({ mode: 'pinyin', symbolFreqSort: true, symbolRanks: { '★': 1, '↑': 4 } });
+    feed(40);
+    // ↑ 零计数但 rank 4 钉第 4 位；引擎序变化不再挪动已钉位符号。
+    equal(bar(), JSON.stringify(['★', '上', '商', '↑', '伤']),
+        'ranked symbols hold their slots under freq sorting too');
 });
 
 test('symbol use counts survive dirty storage (issue #81, review P2)', {since: '3.73.61'}, () => {

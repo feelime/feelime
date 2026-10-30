@@ -232,7 +232,28 @@ object CustomPhraseStore {
          *  通道派生（码列=字母序列字面，全拼/双拼通吃），独立开关，
          *  不进词库管理的增删 UI（内置表，后续再开用户自定义）。 */
         val englishEnabled: Boolean = true,
+        /** #81 手动位次：词面 → 候选位（1-9；缺省=未指定，渲染层钉第
+         *  3 位）。手管词（表单）与导入词（.dict.yaml 第三列）共用此表；
+         *  rank 不进引擎 txt（引擎侧 quality 悬崖，位置只能渲染层控制），
+         *  只随 hello/state 下发键盘页。 */
+        val symbolRanks: Map<String, Int> = emptyMap(),
+        /** #81 总开关（默认关）：未指定位置的符号词按键盘侧使用词频排序
+         *  （越用越前，5 次后可升首位）。关=未指定一律钉第 3 位（不影响
+         *  正常输入），显式 rank 不受开关影响。 */
+        val symbolFreqSort: Boolean = false,
     )
+
+    /** #81 symbolRanks json 段读取：{词面: 1-9}；坏值（越界/非整数）
+     *  丢弃——rank 只认 1..9。 */
+    private fun readSymbolRanks(root: JSONObject): Map<String, Int> {
+        val obj = root.optJSONObject("symbolRanks") ?: return emptyMap()
+        val out = LinkedHashMap<String, Int>()
+        for (key in obj.keys()) {
+            val rank = obj.optInt(key, 0)
+            if (rank in 1..9) out[key] = rank
+        }
+        return out
+    }
 
     /** 读取真相源；json 不存在时（首装）种子写入默认表并派生 txt；
      *  已存在但派生版本落后时按当前规则重派生（升级路径，见
@@ -273,10 +294,12 @@ object CustomPhraseStore {
                 if (text.isNotEmpty() && code.isNotEmpty()) user.add(text to code)
             }
             val state = State(root.optBoolean("enabled", true), items, imported, user,
-                root.optBoolean("englishEnabled", true))
+                root.optBoolean("englishEnabled", true),
+                readSymbolRanks(root), root.optBoolean("symbolFreqSort", false))
             if (root.optInt("derive", 1) != DERIVE_VERSION) {
                 save(context, state.enabled, state.items, state.imported, state.user,
-                    englishEnabled = state.englishEnabled)
+                    englishEnabled = state.englishEnabled,
+                    symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort)
                 // 迁移改写了 txt：已在跑的 IME 引擎还挂着旧 txt，广播让它
                 // 整引擎重载（stabledb 生命周期绑定引擎）。迁移只发生一次
                 // （版本戳落定），不会刷屏。
@@ -306,6 +329,8 @@ object CustomPhraseStore {
         user: List<Pair<String, String>> = emptyList(),
         seed: Boolean = false,
         englishEnabled: Boolean = true,
+        symbolRanks: Map<String, Int> = emptyMap(),
+        symbolFreqSort: Boolean = false,
     ) {
         val root = JSONObject()
             .put("version", 1)
@@ -321,6 +346,10 @@ object CustomPhraseStore {
             .put("user", JSONArray().apply {
                 user.forEach { (text, code) -> put(JSONObject().put("text", text).put("code", code)) }
             })
+            .put("symbolRanks", JSONObject().apply {
+                symbolRanks.forEach { (text, rank) -> put(text, rank) }
+            })
+            .put("symbolFreqSort", symbolFreqSort)
         val dir = jsonFile(context).parentFile
         dir?.mkdirs()
         deriveTxt(context, enabled, items, imported, user, englishEnabled)
