@@ -897,9 +897,10 @@ test('quick switch: follow returns to the last keyboard from English', {since: '
         'English returns to the remembered keyboard, not pinyin');
 });
 
-test('quick switch: success toast fires once across hello and state echoes', {since: '3.73.56'}, () => {
-    // 模式切换会先触发 hello 重推（hello 先更新 mode）再推 state——
-    // 回执两条通道都检查但只兑现一次（AVD 实测曾因 hello 抢先而不弹）。
+test('quick switch: no switch toast (removed, issue #82)', {since: '3.73.62'}, () => {
+    // #82 定案删除「已切换：xxx」toast：软键盘切换键走同一 quickSwitch
+    // 通道，键帽状态本身就是反馈，toast 只遮挡第一排字母（硬件键盘形态
+    // 有候选条上的模式标签 hwModeTag 提供反馈）。负断言锁定不再回弹。
     const world = touchWorld({ mode: 'double-pinyin', quickSwitchPolicy: 'follow', quickReturnMode: 'double-pinyin' });
     const kb = world.context.testKeyboard;
     let toasts = 0;
@@ -907,13 +908,10 @@ test('quick switch: success toast fires once across hello and state echoes', {si
     kb.showToast = msg => { toasts++; origToast(msg); };
     world.context.window.Feelime.quickPairToggle();
     world.hello({ mode: 'direct' });
-    equal(toasts, 1, 'toast fired once on the hello echo');
-    assert(/英文/.test(world.$('toast').textContent), 'toast names the target keyboard');
     world.engineState({ phase: 'READY', revision: 2, mode: 'direct', composing: '', candidates: [] });
-    equal(toasts, 1, 'state echo does not fire a second toast');
-    // 非意图模式事件（无 pending 窗）不弹。
-    world.hello({ mode: 'pinyin' });
-    equal(toasts, 1, 'unrelated mode changes never toast');
+    equal(toasts, 0, 'mode switch fires no toast');
+    equal(world.$('toast').hidden !== false || !world.$('toast').textContent, true,
+        'toast element stays empty');
 });
 
 test('quick switch: fixed keeps the pair semantics', {since: '3.73.55'}, () => {
