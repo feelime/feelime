@@ -573,6 +573,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                         applicationContext, state.enabled, state.items,
                         imported = state.imported, user = state.user,
                         englishEnabled = state.englishEnabled,
+                        // #81 review P1：恢复重派生透传位次与开关，否则
+                        // 刚恢复的配置被这次 save 清掉。
+                        symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
                     )
                 }
                 sendBroadcast(

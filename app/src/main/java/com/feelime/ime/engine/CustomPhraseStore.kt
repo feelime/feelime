@@ -249,8 +249,11 @@ object CustomPhraseStore {
         val obj = root.optJSONObject("symbolRanks") ?: return emptyMap()
         val out = LinkedHashMap<String, Int>()
         for (key in obj.keys()) {
-            val rank = obj.optInt(key, 0)
-            if (rank in 1..9) out[key] = rank
+            // 严格整数（review P2）：optInt 会把 2.5 截成 2。
+            val raw = obj.optDouble(key, 0.0)
+            if (raw == Math.floor(raw) && !raw.isInfinite() && raw.toInt() in 1..9) {
+                out[key] = raw.toInt()
+            }
         }
         return out
     }

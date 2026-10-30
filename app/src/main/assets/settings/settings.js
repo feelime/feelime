@@ -119,7 +119,7 @@ const I18N = {
         "dict.badge": "叠加",
         "dict.import.title": "导入词库",
         "dict.import.enable": "rime 词库文件（.dict.yaml）",
-        "dict.import.note": "词<TAB>码<TAB>位置 逐行导入（第三列可选，1-9 指定候选位次，不填默认第 3 位），上限 5000 条；适合把 rime-ice 等社区词库里的自选词补进来。",
+        "dict.import.note": "词<TAB>码<TAB>位置 逐行导入，上限 5000 条。第三列只对纯符号词生效（1-9 指定候选位次，不填默认第 3 位）；注意 rime 词库的第三列原本是权重——会被当作位置解释，超过 9 按 9 处理，建议导入前删掉或改写该列。",
         "dict.userwords.title": "自造词",
         "dict.userwords.enable": "手动维护的常用词",
         "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，输入码命中即出这个词；适合名字、缩写、行话。改动即时生效，重启保留。",
@@ -3789,8 +3789,8 @@ $("btnSavePhrase").addEventListener("click", () => {
         return;
     }
     // #81 位置：1-9 指定候选位次；空/越界按未指定（渲染层默认第 3 位）。
-    const rankInput = parseInt($("phraseRank").value, 10);
-    const rank = rankInput >= 1 && rankInput <= 9 ? rankInput : 0;
+    const rankInput = Number($("phraseRank").value);
+    const rank = Number.isInteger(rankInput) && rankInput >= 1 && rankInput <= 9 ? rankInput : 0;
     if (phraseEditing >= 0) {
         phraseItems[phraseEditing] = { text, code, rank };
     } else {

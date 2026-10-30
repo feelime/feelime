@@ -2025,8 +2025,12 @@ class SettingsBridge(
                     return@guarded
                 }
                 items.add(text to code)
-                val rank = item.optInt("rank", 0)
-                if (rank in 1..9) formRanks[text] = rank
+                // 严格整数：optInt 会把 2.5 截成 2、1e1 当 1（review P2）。
+                val rankRaw = item.optDouble("rank", 0.0)
+                if (rankRaw == Math.floor(rankRaw) && !rankRaw.isInfinite()
+                    && rankRaw.toInt() in 1..9) {
+                    formRanks[text] = rankRaw.toInt()
+                }
             }
             false
         } catch (_: Exception) {
@@ -2042,7 +2046,10 @@ class SettingsBridge(
             return@guarded
         }
         // 手管 items 全量重发不触碰导入段（imported 由导入/清空入口专管）；
-        // #81 rank 同理：手管词的 rank 以表单为准，导入词的 rank 原样保留。
+        // #81 rank 按词面分桶：手管表单决定手管词的 rank，导入词原样保留。
+        // 边界（review P2-4 定档）：同词面双表（手管与导入同词不同码）时
+        // 表单清位清不掉导入侧的 rank、重导入会覆盖手管侧——「每词一个
+        // 位置」以最后一次显式动作（导入）为准，边缘场景接受。
         val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
         val importedTexts = state.imported.map { it.first }.toSet()
         val ranks = state.symbolRanks.filterKeys { it in importedTexts } + formRanks
@@ -2082,6 +2089,7 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = state.imported, user = state.user,
             englishEnabled = enabled,
+            symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2151,6 +2159,7 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = state.imported, user = items,
             englishEnabled = state.englishEnabled,
+            symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2224,6 +2233,7 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = emptyList(), user = state.user,
             englishEnabled = state.englishEnabled,
+            symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),

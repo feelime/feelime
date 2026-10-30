@@ -9384,10 +9384,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     return Number.isInteger(rank) && rank >= 1 && rank <= 9;
                 };
                 const auto = symbolic.filter(candidate => !slotted(candidate));
-                // 钉位符号（显式 rank）与正常词保持引擎序进池——位次由
-                // englishOrderedPool（显示序裁决层）统一回插，避免「rank
-                // splice 落原始池、英文重排又插队挤位」的二次改写（AVD
-                // probe 定罪：rank=3 的 ⊙ 显示在 index 1）。
+                // 钉位符号（显式 rank）放池尾——位次由 englishOrderedPool
+                // （显示序裁决层）统一回插，避免「rank splice 落原始池、
+                // 英文重排又插队挤位」的二次改写（AVD probe 定罪：rank=3
+                // 的 ⊙ 显示在 index 1）。放尾而非引擎原位：原位会占用下方
+                // slice(0,2) 的「前两格保留」名额，钉位符号被抽走后名额
+                // 落到未指定符号头上，未指定的 ★ 反而顶到首位（codex
+                // review P2-2 Node 复现）。
+                const pinnedSyms = symbolic.filter(candidate => slotted(candidate));
                 let autos = auto;
                 if (freqOn && auto.length) {
                     const counts = readSymbolUseCounts();
@@ -9396,14 +9400,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         .sort((a, b) => b.uses - a.uses || a.index - b.index)
                         .map(entry => entry.candidate);
                 }
-                const restAll = rawEngine.filter(candidate => !auto.includes(candidate));
+                // 排除全部符号（含钉位——钉位只在尾部 pinnedSyms 出现一次，
+                // filter 只排 auto 会让钉位符号在 restAll 与尾部各一份）。
+                const restAll = rawEngine.filter(candidate => !symbolic.includes(candidate));
                 if (freqOn) {
                     const counts = readSymbolUseCounts();
                     const promoted = autos.filter(candidate => (counts[candidate.text] || 0) >= SYMBOL_PROMOTE_AT);
                     const plain = autos.filter(candidate => (counts[candidate.text] || 0) < SYMBOL_PROMOTE_AT);
-                    engine = [...promoted, ...restAll.slice(0, 2), ...plain, ...restAll.slice(2)];
+                    engine = [...promoted, ...restAll.slice(0, 2), ...plain, ...restAll.slice(2), ...pinnedSyms];
                 } else {
-                    engine = [...restAll.slice(0, 2), ...autos, ...restAll.slice(2)];
+                    engine = [...restAll.slice(0, 2), ...autos, ...restAll.slice(2), ...pinnedSyms];
                 }
             }
             // 笔画句子候选压后（issue #18）：词典 max_phrase_length=1，
@@ -9877,6 +9883,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 与英文插队），其余按既有规则重排（英文插 target 位），最后
             // 钉位符号按 rank 升序回插到第 N 可见位——「指定第 3 位」就
             // 是用户看到的第 3 位，英文自动位给它让路。
+            // 已知边界（review P2-3）：钉位符号在池尾、常用语 exact rank
+            // splice 在头段，正常互不干扰；仅当常用语 rank 钳到池尾（排在
+            // 钉位符号之后）时，尾部抽取会让它左移一位——两功能叠加的边
+            // 缘场景，接受。
             const ranks = this.symbolRanks || {};
             const pinOf = item => {
                 const rank = Number(ranks[item && item.text]);

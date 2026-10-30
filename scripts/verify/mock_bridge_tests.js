@@ -661,6 +661,23 @@ test('symbol rank survives the English-candidate insertion (issue #81, AVD probe
         'ranked symbol keeps its visible slot; English yields');
 });
 
+test('pinned symbols do not leak their slot into the unpinned head (issue #81, review P2-2)', {since: '3.73.63'}, () => {
+    // Node 复现形态：引擎池 [↑,↓,★,上,商,伤]，↑=8/↓=9 钉位。钉位符号
+    // 不得占用「前两格保留」名额——否则被显示层抽走后，未指定的 ★ 顶到
+    // 首位抢空格确认位（违反「未指定默认第 3 位」）。
+    const world = fresh({ mode: 'pinyin' });
+    world.hello({ mode: 'pinyin', symbolRanks: { '↑': 8, '↓': 9 } });
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'shang', rawInput: 'shang',
+        candidates: [
+            { id: 'p0', text: '↑' }, { id: 'p1', text: '↓' }, { id: 'p2', text: '★' },
+            { id: 'c1', text: '上' }, { id: 'c2', text: '商' }, { id: 'c3', text: '伤' },
+        ], hasNextPage: false });
+    const bar = () => JSON.stringify([...world.$('candidates').querySelectorAll('.candidate')]
+        .map(node => node.textContent));
+    equal(bar(), JSON.stringify(['上', '商', '★', '伤', '↑', '↓']),
+        'unpinned symbol keeps slot 3; pinned ones ride the tail then pin 8/9');
+});
+
 test('symbol use counts survive dirty storage (issue #81, review P2)', {since: '3.73.61'}, () => {
     // 数组/标量整体作废；逐项坏值（字符串/负数/小数/对象）按不存在处理
     // ——丢项会让符号从候选池消失、字符串会拼出 "41" 这类失真计数。
