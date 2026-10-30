@@ -552,6 +552,162 @@ test('symbol custom phrases reorder to slot 3; CJK entries keep engine order (is
     equal(bar(), JSON.stringify(['你', '妮']), 'plain pools untouched');
 });
 
+test('symbol candidates climb with use counts (issue #81)', {since: '3.73.61'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    // #81 二轮：词频排序是总开关（默认关）——开着才有爬升行为。
+    world.hello({ mode: 'pinyin', symbolFreqSort: true });
+    const cells = () => [...world.$('candidates').querySelectorAll('.candidate')];
+    const bar = () => JSON.stringify(cells().map(node => node.textContent));
+    const feed = rev => world.engineState({ mode: 'pinyin', revision: rev,
+        composing: 'shang', rawInput: 'shang',
+        candidates: [
+            { id: 'p0', text: '↑' }, { id: 'p1', text: '★' },
+            { id: 'c1', text: '上' }, { id: 'c2', text: '商' }, { id: 'c3', text: '伤' },
+        ], hasNextPage: false });
+    const pick = text => {
+        const cell = cells().find(node => node.textContent === text);
+        assert(cell, `candidate ${text} visible`);
+        cell.click();
+    };
+
+    // 冷启动零计数：两符号都钉 index 2 起、组内保持引擎序（#17 原行为）。
+    feed(3);
+    equal(bar(), JSON.stringify(['上', '商', '↑', '★', '伤']),
+        'cold: both symbols ride slot 3+ in engine order');
+
+    // 选 ★ 3 次：未到养成阈值（5），仍不抢前两格；组内 ★ 计数领先排在 ↑ 前。
+    for (let i = 0; i < 3; i++) {
+        feed(10 + i);
+        pick('★');
+    }
+    feed(20);
+    equal(bar(), JSON.stringify(['上', '商', '★', '↑', '伤']),
+        '3 picks: not promoted (slot 3 kept), but ★ leads its group');
+
+    // 再选 ★ 2 次（总 5）：养成——升到池头，空格直选 ★。
+    for (let i = 0; i < 2; i++) {
+        feed(30 + i);
+        pick('★');
+    }
+    feed(40);
+    equal(bar(), JSON.stringify(['★', '上', '商', '↑', '伤']),
+        '5 picks: ★ promoted to the pool head');
+    world.tap(world.$('spaceKey'));
+    const pickCall = world.native.of('chooseCandidate').slice(-1)[0];
+    equal(pickCall.args[1], 'p1', 'space confirms the promoted symbol by id');
+
+    // ↑ 全程零选择：不受 ★ 养成影响，仍在正常候选之后（index 3）。
+    equal(cells().findIndex(node => node.textContent === '↑'), 3, 'unused symbol stays behind');
+});
+
+test('symbol ranks pin explicit slots; freq switch off keeps default order (issue #81)', {since: '3.73.63'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    const cells = () => [...world.$('candidates').querySelectorAll('.candidate')];
+    const bar = () => JSON.stringify(cells().map(node => node.textContent));
+    const feed = rev => world.engineState({ mode: 'pinyin', revision: rev,
+        composing: 'shang', rawInput: 'shang',
+        candidates: [
+            { id: 'p0', text: '↑' }, { id: 'p1', text: '★' },
+            { id: 'c1', text: '上' }, { id: 'c2', text: '商' }, { id: 'c3', text: '伤' },
+        ], hasNextPage: false });
+    const pick = text => {
+        const cell = cells().find(node => node.textContent === text);
+        assert(cell, `candidate ${text} visible`);
+        cell.click();
+    };
+
+    // 开关关（默认）：连选 ★ 6 次位次纹丝不动（词频完全不参与）。
+    feed(3);
+    equal(bar(), JSON.stringify(['上', '商', '↑', '★', '伤']), 'default: symbols ride slot 3+ in engine order');
+    for (let i = 0; i < 6; i++) {
+        feed(10 + i);
+        pick('★');
+    }
+    feed(20);
+    equal(bar(), JSON.stringify(['上', '商', '↑', '★', '伤']),
+        'freq switch off: picks never reorder (engine order kept)');
+
+    // 显式 rank 永远优先（开关仍关）：★=1 顶到池头参与空格直选。
+    world.hello({ mode: 'pinyin', symbolRanks: { '★': 1, '↑': 4 } });
+    feed(30);
+    equal(bar(), JSON.stringify(['★', '上', '商', '↑', '伤']),
+        'explicit ranks pin slots regardless of the freq switch');
+    world.tap(world.$('spaceKey'));
+    const pickCall = world.native.of('chooseCandidate').slice(-1)[0];
+    equal(pickCall.args[1], 'p1', 'space confirms the rank-1 symbol by id');
+
+    // 开关开 + rank 并存：rank 仍优先，未指定的按词频爬升。
+    world.hello({ mode: 'pinyin', symbolFreqSort: true, symbolRanks: { '★': 1, '↑': 4 } });
+    feed(40);
+    // ↑ 零计数但 rank 4 钉第 4 位；引擎序变化不再挪动已钉位符号。
+    equal(bar(), JSON.stringify(['★', '上', '商', '↑', '伤']),
+        'ranked symbols hold their slots under freq sorting too');
+});
+
+test('symbol rank survives the English-candidate insertion (issue #81, AVD probe)', {since: '3.73.63'}, () => {
+    // AVD 定罪场景：rank=3 的 ⊙ splice 进原始池 index 2 后，英文词 pan
+    // 被 englishOrderedPool 插到显示序 index 2，把 ⊙ 挤到 1。钉位必须做
+    // 在显示序裁决层（英文插完再回插），「第 3 位」就是用户看到的第 3 位。
+    const world = fresh({ mode: 'pinyin' });
+    world.hello({ mode: 'pinyin', symbolRanks: { '⊙': 3 } });
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'pan', rawInput: 'pan',
+        candidates: [
+            { id: 'e0', text: 'pan' }, { id: 'p0', text: '⊙' },
+            { id: 'c1', text: '盘' }, { id: 'c2', text: '判' }, { id: 'c3', text: '潘' },
+        ], hasNextPage: false });
+    const bar = () => JSON.stringify([...world.$('candidates').querySelectorAll('.candidate')]
+        .map(node => node.textContent));
+    equal(bar(), JSON.stringify(['盘', '判', '⊙', 'pan', '潘']),
+        'ranked symbol keeps its visible slot; English yields');
+});
+
+test('pinned symbols do not leak their slot into the unpinned head (issue #81, review P2-2)', {since: '3.73.63'}, () => {
+    // Node 复现形态：引擎池 [↑,↓,★,上,商,伤]，↑=8/↓=9 钉位。钉位符号
+    // 不得占用「前两格保留」名额——否则被显示层抽走后，未指定的 ★ 顶到
+    // 首位抢空格确认位（违反「未指定默认第 3 位」）。
+    const world = fresh({ mode: 'pinyin' });
+    world.hello({ mode: 'pinyin', symbolRanks: { '↑': 8, '↓': 9 } });
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'shang', rawInput: 'shang',
+        candidates: [
+            { id: 'p0', text: '↑' }, { id: 'p1', text: '↓' }, { id: 'p2', text: '★' },
+            { id: 'c1', text: '上' }, { id: 'c2', text: '商' }, { id: 'c3', text: '伤' },
+        ], hasNextPage: false });
+    const bar = () => JSON.stringify([...world.$('candidates').querySelectorAll('.candidate')]
+        .map(node => node.textContent));
+    equal(bar(), JSON.stringify(['上', '商', '★', '伤', '↑', '↓']),
+        'unpinned symbol keeps slot 3; pinned ones ride the tail then pin 8/9');
+});
+
+test('symbol use counts survive dirty storage (issue #81, review P2)', {since: '3.73.61'}, () => {
+    // 数组/标量整体作废；逐项坏值（字符串/负数/小数/对象）按不存在处理
+    // ——丢项会让符号从候选池消失、字符串会拼出 "41" 这类失真计数。
+    for (const [name, seed] of [
+        ['array', '["★"]'],
+        ['scalar', '5'],
+        ['string count', '{"★":"4"}'],
+        ['negative', '{"★":-3}'],
+        ['float', '{"★":1.5}'],
+        ['object value', '{"★":{}}'],
+    ]) {
+        const world = fresh({ mode: 'pinyin' });
+        world.storage.set('symUse.v1', seed);
+        world.engineState({ mode: 'pinyin', revision: 3,
+            composing: 'shang', rawInput: 'shang',
+            candidates: [
+                { id: 'p0', text: '↑' }, { id: 'p1', text: '★' },
+                { id: 'c1', text: '上' }, { id: 'c2', text: '商' }, { id: 'c3', text: '伤' },
+            ], hasNextPage: false });
+        const cells = [...world.$('candidates').querySelectorAll('.candidate')];
+        equal(JSON.stringify(cells.map(node => node.textContent)),
+            JSON.stringify(['上', '商', '↑', '★', '伤']),
+            `${name}: dirty seed degrades to the cold-start order`);
+        // 选一次 ★：计数必须从 1 起步（不是 "41" / NaN）。
+        cells.find(node => node.textContent === '★').click();
+        const stored = JSON.parse(world.storage.get('symUse.v1'));
+        equal(stored['★'], 1, `${name}: first pick counts from 1`);
+    }
+});
+
 test('space face text shows for non-voice hold actions', {since: '3.73.40'}, () => {
     const world = fresh();
     world.hello({ spaceHoldTap: 'dsl:[panel:clipboard]', spaceHoldText: '📋' });

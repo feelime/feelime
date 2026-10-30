@@ -26,6 +26,10 @@ object DictYamlImporter {
     data class Result(
         /** 解析成功的词条（已去重、截断到上限）。 */
         val items: List<Pair<String, String>>,
+        /** #81 第三列「位置」：词面 → 候选位（1-9；列缺失/坏值=未指定）。
+         *  rime 生态此列本是权重——大数字会被钳到 9，语义以导入 hint
+         *  文案为准（第三列=位置 1-9）。 */
+        val ranks: Map<String, Int> = emptyMap(),
         /** 跳过的正文行数（坏行/超限行）。 */
         val skipped: Int,
         /** 因上限截断丢弃的条数。 */
@@ -34,6 +38,7 @@ object DictYamlImporter {
 
     fun parse(reader: Reader, existing: Set<Pair<String, String>> = emptySet()): Result {
         val items = LinkedHashMap<Pair<String, String>, Unit>()
+        val ranks = LinkedHashMap<String, Int>()
         var skipped = 0
         var truncated = 0
         BufferedReader(reader).useLines { lines ->
@@ -42,7 +47,7 @@ object DictYamlImporter {
                 if (line.isEmpty()) continue
                 if (line.startsWith("#")) continue
                 // rime 头部（--- 到 ... 之间的 name:/version: 等键值行）
-                // 无 TAB；词条行「词<TAB>码[<TAB>权重]」必有 TAB。按
+                // 无 TAB；词条行「词<TAB>码[<TAB>位置]」必有 TAB。按
                 // TAB 认词条：标准文件与无头的裸词表（用户自制）都成立。
                 if (!line.contains('\t')) continue
                 val columns = line.split('\t')
@@ -69,8 +74,14 @@ object DictYamlImporter {
                     continue
                 }
                 items[entry] = Unit
+                // #81 位置列：1-9 整数（越界钳到边界，非数字忽略）。
+                if (columns.size >= 3) {
+                    columns[2].trim().toIntOrNull()?.let { rank ->
+                        if (rank >= 1) ranks[text] = rank.coerceAtMost(9)
+                    }
+                }
             }
         }
-        return Result(items.keys.toList(), skipped, truncated)
+        return Result(items.keys.toList(), ranks, skipped, truncated)
     }
 }
