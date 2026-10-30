@@ -644,6 +644,23 @@ test('symbol ranks pin explicit slots; freq switch off keeps default order (issu
         'ranked symbols hold their slots under freq sorting too');
 });
 
+test('symbol rank survives the English-candidate insertion (issue #81, AVD probe)', {since: '3.73.63'}, () => {
+    // AVD 定罪场景：rank=3 的 ⊙ splice 进原始池 index 2 后，英文词 pan
+    // 被 englishOrderedPool 插到显示序 index 2，把 ⊙ 挤到 1。钉位必须做
+    // 在显示序裁决层（英文插完再回插），「第 3 位」就是用户看到的第 3 位。
+    const world = fresh({ mode: 'pinyin' });
+    world.hello({ mode: 'pinyin', symbolRanks: { '⊙': 3 } });
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'pan', rawInput: 'pan',
+        candidates: [
+            { id: 'e0', text: 'pan' }, { id: 'p0', text: '⊙' },
+            { id: 'c1', text: '盘' }, { id: 'c2', text: '判' }, { id: 'c3', text: '潘' },
+        ], hasNextPage: false });
+    const bar = () => JSON.stringify([...world.$('candidates').querySelectorAll('.candidate')]
+        .map(node => node.textContent));
+    equal(bar(), JSON.stringify(['盘', '判', '⊙', 'pan', '潘']),
+        'ranked symbol keeps its visible slot; English yields');
+});
+
 test('symbol use counts survive dirty storage (issue #81, review P2)', {since: '3.73.61'}, () => {
     // 数组/标量整体作废；逐项坏值（字符串/负数/小数/对象）按不存在处理
     // ——丢项会让符号从候选池消失、字符串会拼出 "41" 这类失真计数。

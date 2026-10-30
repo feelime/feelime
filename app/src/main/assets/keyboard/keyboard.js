@@ -9378,13 +9378,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const freqOn = this.symbolFreqSort === true;
             const symbolic = rawEngine.filter(candidate => isSymbolicText(candidate.text));
             let engine = rawEngine;
-            this.symbolSlotPending = null;
             if (symbolic.length) {
-                const slotted = symbolic.filter(candidate => {
+                const slotted = candidate => {
                     const rank = Number(ranks[candidate.text]);
                     return Number.isInteger(rank) && rank >= 1 && rank <= 9;
-                });
-                const auto = symbolic.filter(candidate => !slotted.includes(candidate));
+                };
+                const auto = symbolic.filter(candidate => !slotted(candidate));
+                // 钉位符号（显式 rank）与正常词保持引擎序进池——位次由
+                // englishOrderedPool（显示序裁决层）统一回插，避免「rank
+                // splice 落原始池、英文重排又插队挤位」的二次改写（AVD
+                // probe 定罪：rank=3 的 ⊙ 显示在 index 1）。
                 let autos = auto;
                 if (freqOn && auto.length) {
                     const counts = readSymbolUseCounts();
@@ -9393,16 +9396,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         .sort((a, b) => b.uses - a.uses || a.index - b.index)
                         .map(entry => entry.candidate);
                 }
-                const rest = rawEngine.filter(candidate => !symbolic.includes(candidate));
+                const restAll = rawEngine.filter(candidate => !auto.includes(candidate));
                 if (freqOn) {
                     const counts = readSymbolUseCounts();
                     const promoted = autos.filter(candidate => (counts[candidate.text] || 0) >= SYMBOL_PROMOTE_AT);
                     const plain = autos.filter(candidate => (counts[candidate.text] || 0) < SYMBOL_PROMOTE_AT);
-                    engine = [...promoted, ...rest.slice(0, 2), ...plain, ...rest.slice(2)];
+                    engine = [...promoted, ...restAll.slice(0, 2), ...plain, ...restAll.slice(2)];
                 } else {
-                    engine = [...rest.slice(0, 2), ...autos, ...rest.slice(2)];
+                    engine = [...restAll.slice(0, 2), ...autos, ...restAll.slice(2)];
                 }
-                if (slotted.length) this.symbolSlotPending = slotted;
             }
             // 笔画句子候选压后（issue #18）：词典 max_phrase_length=1，
             // 多字候选必来自 enable_sentence 造句（☯；comment 不在桥协议
@@ -9476,19 +9478,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 ...prefix,
                 ...engine.slice(1),
             ];
-            // #81 显式 rank 的符号词插到第 N 可见位（rank 升序依次 splice，
-            // 与常用语 exact rank 同语义；放在常用语 splice 之前，同位时
-            // 常用语排在符号后一位）。
-            if (this.symbolSlotPending && this.symbolSlotPending.length) {
-                this.symbolSlotPending
-                    .slice()
-                    .sort((a, b) => Number(ranks[a.text]) - Number(ranks[b.text]))
-                    .forEach(candidate => {
-                        const at = Math.min(Number(ranks[candidate.text]) - 1, pool.length);
-                        pool.splice(at, 0, candidate);
-                    });
-                this.symbolSlotPending = null;
-            }
             let prevRank = 0;
             let prevIndex = -1;
             exact
@@ -9884,6 +9873,33 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          *  英文占了第一位；各双拼方案映射不同，音节表预判永远追不平，
          *  引擎真值天然适配全拼/双拼/模糊音/自造词）。 */
         englishOrderedPool(pool) {
+            // #81 显式 rank 的钉位符号是显示序的最高优先级：先抽出（不参
+            // 与英文插队），其余按既有规则重排（英文插 target 位），最后
+            // 钉位符号按 rank 升序回插到第 N 可见位——「指定第 3 位」就
+            // 是用户看到的第 3 位，英文自动位给它让路。
+            const ranks = this.symbolRanks || {};
+            const pinOf = item => {
+                const rank = Number(ranks[item && item.text]);
+                return Number.isInteger(rank) && rank >= 1 && rank <= 9
+                    && isSymbolicText(item && item.text) ? rank : 0;
+            };
+            const pinned = [];
+            const plain = [];
+            (Array.isArray(pool) ? pool : []).forEach(item =>
+                (pinOf(item) ? pinned : plain).push(item));
+            const merged = this.englishOrderedPoolInner(plain);
+            if (!pinned.length) return merged;
+            pinned
+                .slice()
+                .sort((a, b) => pinOf(a) - pinOf(b))
+                .forEach(item => {
+                    const at = Math.min(pinOf(item) - 1, merged.length);
+                    merged.splice(at, 0, item);
+                });
+            return merged;
+        }
+
+        englishOrderedPoolInner(pool) {
             const pos = Number(this.englishPos);
             if (!Array.isArray(pool) || !pool.length || pos === 0) return pool;
             // 只在中文输入模式重排：法语/俄语的 accent 变体池头是 ASCII
