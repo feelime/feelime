@@ -427,7 +427,7 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
     color: var(--muted);
 }
 
-input[type="url"], input[type="text"], input[type="password"], textarea, .select {
+input[type="url"], input[type="text"], input[type="password"], input[type="number"], textarea, .select {
     width: 100%;
     margin-top: 6px;
     padding: 10px 12px;
@@ -726,8 +726,9 @@ details summary {
  * number spinner 在 WebView 里挤占文字空间，去掉。 */
 .phrase-form .input[type="number"]#phraseRank {
     flex: 0 0 84px;
-    /* appearance 必须是 none：textfield 会唤回原生主题，
-     * 边框/背景/padding 全被 UA 绘制接管（实测 2px inset 矩形），.input 样式整体失效。 */
+    /* 基础外观由上方公共输入框规则统一（appearance 不清 UA 的
+     * 2px inset 边框声明，必须靠选择器命中）；此处关原生装饰，
+     * 下方伪元素规则去 spinner。 */
     appearance: none;
     -webkit-appearance: none;
 }
