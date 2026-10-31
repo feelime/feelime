@@ -49,7 +49,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
     private val cursorQueryExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private lateinit var engine: AsrEngine
     /** 手写识别（design/handwriting.md）：独立于 EngineCoordinator，见 §5.1。 */
-    private var handwritingEngine: HandwritingEngine? = null
+    private var handwritingEngine: InkEngine? = null
     private lateinit var editorPort: InputConnectionEditorPort
     private lateinit var coordinator: TextInputCoordinator
     private lateinit var clipboardStore: com.feelime.ime.panel.ClipboardStore
@@ -779,7 +779,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         engine = AsrEngine(applicationContext, this)
         // 手写（design/handwriting.md §5.1）：独立引擎，onCreate 建实例、
         // 模型在首次识别时后台懒加载。
-        handwritingEngine = HandwritingEngine(applicationContext, this)
+        // 手写引擎 A/B（issue #84）：debug 构建 ink_engine=ochwpro 时换
+        // OchwproEngine，其余一律 Melnyk（生产路径不变）。
+        handwritingEngine = OchwproEngine.forCurrentPref(applicationContext, this)
         editorPort = InputConnectionEditorPort(this)
         clipboardStore = com.feelime.ime.panel.ClipboardStore(applicationContext)
         favoritesStore = com.feelime.ime.panel.FavoritesStore(applicationContext)

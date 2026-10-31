@@ -37,7 +37,7 @@ import kotlin.math.round
 class HandwritingEngine(
     private val context: Context,
     private val listener: Listener,
-) {
+) : InkEngine {
     interface Listener {
         /** 后台线程回调。[error] 为 null 时 [candidates] 有效（可为空）；
          * "unavailable"=模型未落地，"failed"=payload/推理异常。 */
@@ -61,9 +61,9 @@ class HandwritingEngine(
     private var inputName: String? = null
     @Volatile private var released = false
 
-    fun isModelAvailable(): Boolean = modelStore.sourceFor(MODEL_ROLE) != null
+    override fun isModelAvailable(): Boolean = modelStore.sourceFor(MODEL_ROLE) != null
 
-    fun recognizeInk(reqId: Int, payload: String, pageToken: String) {
+    override fun recognizeInk(reqId: Int, payload: String, pageToken: String) {
         if (released) return
         val arrived = android.os.SystemClock.elapsedRealtime()
         // 主线程只入队；worker 在任何业务 native 调用前同步标记。
@@ -87,7 +87,7 @@ class HandwritingEngine(
         }
     }
 
-    fun release() {
+    override fun release() {
         released = true
         worker.close { closeSession() }
     }
