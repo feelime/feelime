@@ -312,7 +312,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.66';
+    const KEYBOARD_VERSION = '3.73.67';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1926,6 +1926,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             document.querySelector('[data-action="letters"]').addEventListener('click', () => this.showLetters());
             this.renderSymbolCats();
             document.getElementById('setupButton').addEventListener('click', () => this.toggleSettingsPanel());
+            // #H 候选条形态快捷切换键（#87 顺带优化）：点按翻快捷对、
+            // 长按完整模式菜单（软键盘 modeToggle 同交互）。菜单收起的
+            // 落点点击由 modeMenuAnchor 的 _suppressClick 机制吞掉。
+            {
+                const hwTag = document.getElementById('hwModeTag');
+                if (hwTag) {
+                    hwTag.dataset.lp = 'mode-menu';
+                    hwTag.addEventListener('click', () => {
+                        if (hwTag._suppressClick) {
+                            hwTag._suppressClick = false;
+                            return;
+                        }
+                        this.toggleChineseEnglish();
+                    });
+                    this.bindTouch(hwTag);
+                }
+            }
             // #39-6（手写容易退出，诊断定罪）：工具栏就在书写区正上方，
             // 书写划上去的笔迹若落笔抬笔都在按钮上（如齿轮），会合成
             // click 直达 openSetup——设置页顶掉键盘，用户看到的就是
@@ -5464,6 +5481,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 shift.querySelector('svg path').setAttribute('d', this.caps ? ICON_PATHS.caps : ICON_PATHS.shift);
             }
             this.updateToggleLabels();
+            // #87：候选条形态的快捷切换键与软键盘 modeToggle 同步刷新，
+            // 不依赖形态切换（applyHwForm 早退会漏掉纯模式切换）。
+            this.updateHwModeTag();
             this.updateEnterLabel();
             // An armed Fn relabels the twelve F-keys last.
             this.renderFnLabels();
@@ -7038,20 +7058,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * candidates=候选条预算、ctrl=控制行预算、full=完整键盘高度。
          * 状态取自标志位（时序无关 DOM），native 侧只在 hwkb 形态
          * 分支消费该值，其余形态自然忽略。 */
-        /** #H 候选条形态的模式短标签文案（codex 二轮 §3）：两字全名
-         *  可辨（只写「中」分不出全拼/双拼——用户事故的可见性根源）。
-         *  显隐由 CSS（body.hwkb）管，这里只刷文案。 */
+        /** #H 候选条形态快捷切换键（#87 顺带优化）：modeToggle 的紧凑
+         *  形态——cn-main=当前模式简称、cn-sub=快捷对目标简称（看清「在
+         *  哪」与「下一站是谁」，比单行两字全名更可辨）；点按翻对、长按
+         *  完整模式菜单（软键盘切换键同交互）。
+         *
+         *  #87 定案：标签刷新不得挂在 applyHwForm 的形态早退下——形态
+         *  未变的纯模式切换（如 双拼→形码）会被短路滞留旧名（用户实录
+         *  + AVD 复现）。现挂三处确定性刷新：updateLabels / hello（
+         *  adoptQuickPair 之后）/ 引擎态模式变更分支。显隐由这里管
+         *  （CSS [hidden] 兜底），非文本模式随形态隐藏。 */
         updateHwModeTag() {
             const el = document.getElementById('hwModeTag');
             if (!el) return;
-            const names = {
-                pinyin: t("全拼"), 'double-pinyin': t("双拼"), flypy: t("鹤形"),
-                french: t("法语"), russian: t("俄语"), japanese: t("日语"),
-            };
-            el.textContent = names[this.mode] || '';
-            // 显隐由这里管（CSS [hidden] 只做兜底）：候选条形态且有可辨
-            // 全名时摘 hidden；Direct/手写等非文本模式随形态自然隐藏。
-            el.hidden = !(document.body.classList.contains('hwkb') && names[this.mode]);
+            const active = document.body.classList.contains('hwkb') && HW_TEXT_MODES.has(this.mode);
+            el.hidden = !active;
+            if (!active) return;
+            el.querySelector('.cn-main').textContent = modeLabel(this.mode);
+            el.querySelector('.cn-sub').textContent = modeLabel(this.quickSwitchTarget());
         }
 
         hwPanelHeightState() {
@@ -8245,8 +8269,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             menu.style.maxHeight = 'none'; // measure the natural height first
             // 锚点 = 调用方传入的触发键（round-4：手写竖屏键面没有
             // #modeToggle 了，菜单必须能锚在任意触发键上），缺省仍是
-            // 中英切换键。
-            const anchorEl = anchor || document.getElementById('modeToggle');
+            // 中英切换键；候选条形态（#87）下菜单由工具栏的快捷切换键
+            // 触发，锚它。
+            const anchorEl = anchor ||
+                (document.body.classList.contains('hwkb') &&
+                    document.getElementById('hwModeTag')) ||
+                document.getElementById('modeToggle');
             if (!anchorEl) return;
             this.modeMenuAnchor = anchorEl;
             const toggle = anchorEl.getBoundingClientRect();
@@ -11471,6 +11499,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const nextKbLayout = payload.kbLayout === '14' ? '14' : '26';
             const kbLayoutChanged = nextKbLayout !== this.kbLayout;
             this.kbLayout = nextKbLayout;
+            // #87：hello 是 selectMode（工具栏面板/快捷对翻对/设置页）的
+            // 统一回推路径——这里确定性刷新候选条形态的快捷切换键，
+            // adoptQuickPair 之后的 quickPair 已是新对（cn-sub 目标准确）。
+            this.updateHwModeTag();
             if (modeChanged) this.renderMode();
             else if (kbLayoutChanged && MERGEABLE_14.has(this.mode)) {
                 this.renderMode();
