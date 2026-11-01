@@ -9701,24 +9701,46 @@ test('handwriting: the mode rides the unified height and leaving keeps it (round
     const world = fresh();
     world.context.window.innerHeight = 900; // 放开钳制，量目标值
     world.hello({});
-    const before = world.native.of('setKeyboardHeight').length;
     world.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });
     // 高度体系统一（用户拍板「统一到矮的」）：未设置高度 → 统一 272
-    // （hello heightDefault），手写仅保内容下限。进入手写+显式重推
-    // （applyHeightNow = 重唤键盘的通道）都不再出现 1.6:1 面板预算
-    // （371 那种大值）——目标值与初始一致时幂等零桥，即「切换不跳」。
+    // （hello heightDefault）；手写内容地板（#86）改走 Transient 桥——
+    // 落盘通道 setKeyboardHeight 永远收不到面板预算值（qwerty 的 pref
+    // 不被手写地板污染），临时抬升只改运行时窗高。
     world.context.window.Feelime.applyHeightNow();
     const all = world.native.of('setKeyboardHeight');
     all.forEach(call => {
-        assert(call.args[0] <= 272, 'no panel-budget height pushed: ' + call.args[0]);
+        assert(call.args[0] <= 272, 'persisting bridge never gets panel budget: ' + call.args[0]);
     });
+    const lifts = world.native.of('setKeyboardHeightTransient');
+    assert(lifts.length > 0, 'content floor lifts via the transient bridge');
+    lifts.forEach(call => {
+        assert(call.args[0] > 272, 'transient lift carries the panel budget: ' + call.args[0]);
+    });
+    const liftTop = lifts[lifts.length - 1].args[0];
     world.hello({ mode: 'direct', engineDataReady: HANDWRITING_READY });
     world.context.window.Feelime.applyHeightNow();
     const restored = world.native.of('setKeyboardHeight');
-    // 同一统一值：离开手写也不推离 272。
+    // 同一统一值：离开手写也不推离 272；临时窗高经 Transient(base) 回落。
     restored.forEach(call => {
         assert(call.args[0] <= 272, 'leaving keeps the unified height: ' + call.args[0]);
     });
+    const drops = world.native.of('setKeyboardHeightTransient').slice(lifts.length);
+    assert(drops.some(call => call.args[0] <= 272),
+        'leaving drops the transient window back to base: ' + JSON.stringify(drops.map(c => c.args[0])));
+    assert(liftTop > 272, 'sanity: lift was above base');
+});
+
+test('handwriting content floor on shells without the transient bridge falls back to the persisting path (#86)', {since: '3.73.70'}, () => {
+    const world = fresh();
+    // fake 的桥方法在原型上，delete 实例属性删不掉——用 undefined 覆盖
+    world.native.setKeyboardHeightTransient = undefined;
+    world.context.window.innerHeight = 900;
+    world.hello({});
+    world.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });
+    world.context.window.Feelime.applyHeightNow();
+    const all = world.native.of('setKeyboardHeight');
+    assert(all.some(call => call.args[0] > 272),
+        'old shell: floor lift rides the persisting bridge (behaviour not worse than the 96 floor era)');
 });
 
 // ---- round-3（issue #28 三轮）：wetype 布局（右窄列+底行）、标点上滑
