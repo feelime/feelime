@@ -252,7 +252,9 @@ body.hwkb #candidateBar { margin: 0; }
 #hwModeTag[hidden] { display: none; }
 body.hwkb #hwModeTag { display: inline-block; }
 body.hwkb #hwModeTag[hidden] { display: none; }
-#hwModeTag .cn-main { font-size: min(17px, calc(var(--kb-row-h, 44px) * 0.4)); font-weight: 500; }
+/* 只在 hwkb 候选条形态显示，与软键盘行高无关；横屏行高钳制可到 1px，
+   绑 --kb-row-h 会把模式字缩没了（codex review MAJOR） */
+#hwModeTag .cn-main { font-size: 16px; font-weight: 500; }
 #hwModeTag .cn-sub {
     position: absolute;
     right: 3px;
