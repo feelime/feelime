@@ -719,11 +719,6 @@ class MockNative {
     setKeyboardHeight(totalCssPx, token) {
         this._record('setKeyboardHeight', [totalCssPx, token]);
     }
-    // #86：手写内容地板的临时抬升通道（不落盘），与落盘的
-    // setKeyboardHeight 分开记录，测试分别断言两条通道。
-    setKeyboardHeightTransient(totalCssPx, token) {
-        this._record('setKeyboardHeightTransient', [totalCssPx, token]);
-    }
     // design §15: the settings page's native table mirror.
     customKeys(token) {
         this._record('customKeys', [token]);

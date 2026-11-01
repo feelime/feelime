@@ -3789,42 +3789,25 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         fun setKeyboardHeightNow(heightCssPx: Int, token: String) =
             guarded(token, limited = false) { setKeyboardHeightInternal(heightCssPx, immediate = true) }
 
-        /** #86 手写内容地板的临时抬升通道：只改运行时窗高，不落盘。
-         *  JS 回推是回声（applyKbHeightLocal 同纪律）：用户没显式编辑过
-         *  高度时，手写地板把窗抬到内容需要值，pref 保持空——qwerty 不被
-         *  手写地板污染（「统一到矮的」约束）。老壳无本方法时 JS 回退。 */
-        @JavascriptInterface
-        fun setKeyboardHeightTransient(heightCssPx: Int, token: String) =
-            guarded(token, limited = false) {
-                setKeyboardHeightInternal(heightCssPx, immediate = false, persist = false)
-            }
-
-        private fun setKeyboardHeightInternal(heightCssPx: Int, immediate: Boolean, persist: Boolean = true) {
+        private fun setKeyboardHeightInternal(heightCssPx: Int, immediate: Boolean) {
             val landscape =
                 resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
             if (heightCssPx == 0) {
                 // Reset this orientation; do not let a queued drag save put
                 // the old value back after the user restores the default.
-                // transient（persist=false）不碰写盘调度（codex #86 评审
-                // point5）：拖动 pending 是用户编辑，临时通道无权取消。
-                if (persist && pendingHeightLandscape == landscape) {
+                if (pendingHeightLandscape == landscape) {
                     main.removeCallbacks(flushHeightPref)
                     pendingHeightWrite = 0
                 }
-                if (persist) {
-                    val resetOk = getSharedPreferences("feelime_keyboard", MODE_PRIVATE).edit()
-                        .remove(if (landscape) "keyboard_height_landscape" else "keyboard_height_portrait")
-                        .commit()
-                    if (immediate) {
-                        evaluate("window.Feelime && window.Feelime.onHeightSaved && window.Feelime.onHeightSaved($resetOk)")
-                    }
+                val resetOk = getSharedPreferences("feelime_keyboard", MODE_PRIVATE).edit()
+                    .remove(if (landscape) "keyboard_height_landscape" else "keyboard_height_portrait")
+                    .commit()
+                if (immediate) {
+                    evaluate("window.Feelime && window.Feelime.onHeightSaved && window.Feelime.onHeightSaved($resetOk)")
                 }
-                // hello 必须在 override 清零之后推（codex 终审 MAJOR）：提前
-                // 推会让 payload 按旧高度算 band/预算。transient 重置不推
-                // hello（pref 没动，JS 无需重学）。
                 keyboardHeightOverride = 0
                 (keyboardView?.parent as? View)?.requestLayout()
-                if (persist) pushBridgeHello()
+                pushBridgeHello()
                 return
             }
             val metrics = resources.displayMetrics
@@ -3851,16 +3834,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             }
             // A: the drag flushes one call per frame - commit the
             // pref on a debounce so the flash never rides a disk write.
-            // transient（persist=false）只动运行时窗高，pref 与 pending
-            // 一概不碰：手写地板不产生落盘（#86），也不取消 drag 的 pending。
-            if (persist) {
-                pendingHeightWrite = clamped
-                pendingHeightLandscape = landscape
-                main.removeCallbacks(flushHeightPref)
-                if (immediate) flushHeightPrefCommit(notify = true)
-                else main.postDelayed(flushHeightPref, HEIGHT_PREF_DEBOUNCE_MS)
-            }
-            android.util.Log.i("FeelimeBridge", "setKeyboardHeight css=$heightCssPx px=$clamped orientation=${if (landscape) "landscape" else "portrait"}${if (!persist) " transient" else ""}")
+            pendingHeightWrite = clamped
+            pendingHeightLandscape = landscape
+            main.removeCallbacks(flushHeightPref)
+            if (immediate) flushHeightPrefCommit(notify = true)
+            else main.postDelayed(flushHeightPref, HEIGHT_PREF_DEBOUNCE_MS)
+            android.util.Log.i("FeelimeBridge", "setKeyboardHeight css=$heightCssPx px=$clamped orientation=${if (landscape) "landscape" else "portrait"}")
         }
 
         /** #27 手势条区域跟主题色：键盘页把当前主题底色（或背景图模式

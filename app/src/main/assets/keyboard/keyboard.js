@@ -298,8 +298,7 @@
         "键盘设置": "Quick settings",
         // 手写键面（issue #28）。空书写区提示三行（round-5）。
         "在此手写": "Write here",
-        "模型能力有限": "Model has limits",
-        "避免连笔以提高识别率": "Avoid cursive strokes for better results",
+        "如未识别，请减少连笔": "If not recognized, try less cursive",
         "已清空笔迹": "Ink cleared",
         "手写模型未就绪": "Handwriting model not ready",
         "手写识别失败": "Handwriting recognition failed",
@@ -322,7 +321,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.72';
+    const KEYBOARD_VERSION = '3.73.73';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1167,9 +1166,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // 右列滚动符号列（round-6）：T9/数字面板左列同款形态——常驻滚动
     // 列表，视口露出前三格（，。？），上滑滚出更多，点按直上屏。
     const INK_SIDE_SYMBOLS = ['，', '。', '？', '！', '：', '；', '、', '～', '……', '·', '＃', '＠'];
-    // 空书写区的三行提示（round-5，用户反馈）：首行是动作，后两行是
-    // 预期管理——模型能力有限、连笔拖识别率。双语走 UI_EN。
-    const INK_HINT_LINES = ['在此手写', '模型能力有限', '避免连笔以提高识别率'];
+    // 空书写区的两行提示：首行是动作，次行兜底建议。原「模型能力
+    // 有限、避免连笔以提高识别率」按用户反馈弱化（2026-11-01，模型
+    // v2 后能力提升，训诫式文案不再合适）。双语走 UI_EN。
+    const INK_HINT_LINES = ['在此手写', '如未识别，请减少连笔'];
     // 手写停笔→识别的触发延时档位（设置页「手写」区块，hello 下发）。
     // 实时识别（模型 v2 后推理毫秒级，issue #32）：每笔 touchend 立即识别，
     // 候选随笔画刷新（wetype 同款体验）。识别时机不再可配（停顿档已被
@@ -3015,16 +3015,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 item.item.classList.toggle('sel', item === this.popup.selected));
         }
 
-        /** 手写模式的高度预算（竖屏）：面板宽高比钉在 2:1。原 1.6:1
-         * （wetype 实测 984×590 口径）把总高顶到 45% 上限的 94%（ace
-         * 371/395css），「恢复默认」后手写重弹观感即最大高度（验收
-         * 2026-11-01 不通过项）；2:1 让默认落在上限 81%（ace 321），
-         * 面板仍 ~193css（≈19mm）可写。横屏不改总高（native 钳半屏，
-         * 预算本就见底，面板改左右布局竖向铺满——见 .ink-layout 的
-         * 横屏分支）。 */
+        /** 手写模式的高度预算（竖屏）：面板宽高比钉在 1.6:1（wetype
+         * 实测 984×590 口径），键盘总高 = 顶部 chrome + 控制行 + 面板。
+         * 横屏不改总高（native 钳半屏，预算本就见底，面板改左右布局
+         * 竖向铺满——见 .ink-layout 的横屏分支）。 */
         inkPanelTarget() {
             const width = Math.max(0, (window.innerWidth || 0) - 8);
-            return Math.round(width / 2);
+            return Math.round(width / 1.6);
         }
 
         /** 手写键面的固定纵向开销：拼音带 + 候选条槽 + 控制行 + 底部
@@ -3063,20 +3060,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!this.helloSeen) return;
             const stored = this.storedKbHeight();
             const base = stored > 0 ? stored : (this.heightDefaultCss || 272);
-            const transientOk = typeof Native.setKeyboardHeightTransient === 'function';
             if (this.landscape || this.mode !== 'handwriting') {
-                // 有 Transient 桥就每次对账发送（#86，codex 评审 point3/d）：
-                // native 按钳制后值去重，同值零 layout；临时抬升的回落不靠
-                // JS 记账——pref 清除/旋转/页面重建会重置 native override，
-                // JS 记账会失真。老壳没有抬升通道，也从来没有抬升。
-                if (transientOk) {
-                    this.call(() => Native.setKeyboardHeightTransient(base, this.token));
-                    if (this.kbHeight !== base) {
-                        this.kbHeight = Math.round(base);
-                        this.applyHeight();
-                    }
-                    return;
-                }
                 if (this.kbHeight !== base) this.applyKbHeightLocal(base);
                 return;
             }
@@ -3084,20 +3068,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 期间设置页把 native 高度改低于手写下限时，kbHeight 旧值仍
             // 等于 desired → 永不发桥 → 面板可写高度不足。以「JS 认知与
             // native 权威值取大」为基准，任一低于下限就重推。
-            // #86：地板从 chrome+96 换成内容口径 inkDesiredHeight()——96
-            // 连 fresh 默认 272 都兜不住（pad 只剩 ~146，写不了字）。
-            const desired = Math.max(base, this.inkDesiredHeight());
-            if (transientOk) {
-                // 手写内容目标走 Transient 对账：每次发送、native 去重；
-                // 抬升值永不落盘（applyKbHeight 会持久化，手写地板会把
-                // qwerty 的 pref 一并污染——「统一到矮的」约束）。
-                this.call(() => Native.setKeyboardHeightTransient(desired, this.token));
-                if (this.kbHeight !== desired) {
-                    this.kbHeight = Math.round(desired);
-                    this.applyHeight();
-                }
-                return;
-            }
+            // 2026-11-01 用户裁决：内容地板（inkDesiredHeight 顶格感）撤
+            // 销，恢复 chrome+96 压塌底线——恢复默认=272 对所有模式一致，
+            // 手写不做自动抬升（「统一到矮的」回归本义）。
+            const desired = Math.max(base, this.inkChromeHeight() + 96);
             const authoritative = Math.max(this.kbHeight, base);
             if (authoritative !== desired) {
                 this.applyKbHeight(desired);
@@ -5654,7 +5628,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Review P3: a mid-drag height edit must not survive the reset -
             // cancel semantics (restore the pre-drag height), like 取消.
             if (document.getElementById('heightCard').classList.contains('open')) {
-                this.restoreHeightEdit();
+                if (this.heightEditedLive) this.applyKbHeight(this.heightEditSaved);
+                this.exitHeightEdit();
             }
             this.setControlView(false);
             this.setExpanded(false);
@@ -8136,32 +8111,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.maybeResumeCtrlView();
         }
 
-        /** 高度卡取消/hello 中断的还原（codex #86 评审 point4）：抬升态下
-         *  heightEditSaved 是含手写地板的显示值，直接 applyKbHeight 会把
-         *  抬升值写进 pref 污染 qwerty（「统一到矮的」）。pref 用
-         *  setKeyboardHeight 回用户真值（顺带覆盖 drag 帧 pending 的落盘
-         *  队列），显示值经 Transient 恢复、永不落盘。非抬升态保持原
-         *  applyKbHeight(saved) 语义（覆盖 drag pending 的持久化还原）。 */
-        restoreHeightEdit() {
-            if (!this.heightEditedLive) {
-                this.exitHeightEdit();
-                return;
-            }
-            const saved = this.heightEditSaved;
-            const stored = this.storedKbHeight();
-            const base = stored > 0 ? stored : (this.heightDefaultCss || 272);
-            if (typeof Native.setKeyboardHeightTransient === 'function' &&
-                this.mode === 'handwriting' && !this.landscape && saved > base) {
-                this.call(() => Native.setKeyboardHeight(base, this.token));
-                this.call(() => Native.setKeyboardHeightTransient(saved, this.token));
-                this.kbHeight = Math.round(saved);
-                this.applyHeight();
-            } else {
-                this.applyKbHeight(saved);
-            }
-            this.exitHeightEdit();
-        }
-
         renderHeightCard() {
             const bounds = this.heightBounds();
             const content = Math.round(this.heightPreview);
@@ -8257,7 +8206,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             track.addEventListener('touchcancel', () => { dragging = false; });
             document.getElementById('heightCardCancel').addEventListener('click', () => {
-                this.restoreHeightEdit();
+                if (this.heightEditedLive) this.applyKbHeight(this.heightEditSaved);
+                this.exitHeightEdit();
             });
             document.getElementById('heightCardReset').addEventListener('click', () => {
                 this.heightResetPending = true;
