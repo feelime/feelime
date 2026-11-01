@@ -5,6 +5,14 @@
  * dictionary. User text, URLs, JSON, model titles, and device names are
  * always rendered as received. */
 "use strict";
+// Chrome 86 才有 replaceChildren；Android 11 出厂 WebView 83 上设置页同样
+// 整页渲染中断（#88 同根因）。guard 版 polyfill 对新 WebView 零影响。
+if (typeof Element !== 'undefined' && !Element.prototype.replaceChildren) {
+    Element.prototype.replaceChildren = function (...nodes) {
+        this.textContent = '';
+        for (const n of nodes) this.append(n);
+    };
+}
 let keySoundVolumeTimer = 0;
 
 const BRIDGE = window.Native || { ready() {} };

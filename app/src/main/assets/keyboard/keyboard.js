@@ -7,6 +7,16 @@
 (() => {
     'use strict';
 
+    // Chrome 86 才有 replaceChildren；Android 11 出厂 WebView 是 83，setup
+    // 首次 renderMode 就 TypeError，整个键盘 DOM 建不出来（#88 白屏根因）。
+    // guard 版 polyfill 对新 WebView 零影响。
+    if (typeof Element !== 'undefined' && !Element.prototype.replaceChildren) {
+        Element.prototype.replaceChildren = function (...nodes) {
+            this.textContent = '';
+            for (const n of nodes) this.append(n);
+        };
+    }
+
     // 首帧几何（native 经 URL query 注入的物理 px）：在 hello 之前先把
     // --band/--safe-bottom 落到根元素。CSS 的 fallback 是 0，不设的话
     // 首帧 #softKeyboard 画满整个 IME 窗口（含 200dp 弹层带），hello 到
@@ -312,7 +322,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.67';
+    const KEYBOARD_VERSION = '3.73.68';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
