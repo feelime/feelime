@@ -257,8 +257,13 @@ object OchwproInk {
                 continue
             }
             val picked = ArrayList<HandwritingInk.InkPoint>(keep)
+            // keep==1（短笔画被抽到单点，真实书写「藏」等多笔字的点/提
+            // 正中此分支）时索引分母为 0——ArithmeticException 让整次识
+            // 别回 error（验收实录 2026-11-01）。保首点：坐标语义上短笔
+            // 两端近乎重合，pen_down=1 的起笔标记不丢。
+            val indexSpan = (keep - 1).coerceAtLeast(1)
             for (j in 0 until keep) {
-                val index = (j.toLong() * (stroke.size - 1).toLong() / (keep - 1).toLong()).toInt()
+                val index = (j.toLong() * (stroke.size - 1).toLong() / indexSpan).toInt()
                 picked.add(stroke[index])
             }
             out.add(picked)

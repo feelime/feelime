@@ -81,4 +81,22 @@ class OchwproInkTest {
         val strokes = listOf(listOf(HandwritingInk.InkPoint(1f, 2f)))
         assertEquals(strokes, OchwproInk.decimate(strokes, 512))
     }
+
+    @Test
+    fun `decimate keeps single point for short strokes of multi-stroke glyphs`() {
+        // 验收实录（2026-11-01 藏字）：笔画多的字总点数远超 cap，点/提
+        // 等 2-3 点短笔画被抽到 keep==1——索引分母 (keep-1)=0 除零，整
+        // 次识别回 error。size>=2 且 keep==1 不在 1 点笔画的 continue
+        // 分支里，此前没有任何用例踩到。
+        val long = List(190) { HandwritingInk.InkPoint(it.toFloat(), 0f) }
+        val dots = List(15) { listOf(HandwritingInk.InkPoint(1f, 1f), HandwritingInk.InkPoint(2f, 2f)) }
+        val strokes = listOf(long) + dots
+        val out = OchwproInk.decimate(strokes, 48)
+        // 算法按笔取整，总和不严格等于 cap；这里只断言收敛与短笔画存活
+        assertTrue(out.sumOf { it.size } < strokes.sumOf { it.size })
+        dots.forEachIndexed { i, dot ->
+            assertEquals(1, out[1 + i].size)
+            assertEquals(dot.first(), out[1 + i].single())
+        }
+    }
 }

@@ -322,7 +322,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.71';
+    const KEYBOARD_VERSION = '3.73.72';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3015,13 +3015,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 item.item.classList.toggle('sel', item === this.popup.selected));
         }
 
-        /** 手写模式的高度预算（竖屏）：面板宽高比钉在 1.6:1（wetype
-         * 实测 984×590 口径），键盘总高 = 顶部 chrome + 控制行 + 面板。
-         * 横屏不改总高（native 钳半屏，预算本就见底，面板改左右布局
-         * 竖向铺满——见 .ink-layout 的横屏分支）。 */
+        /** 手写模式的高度预算（竖屏）：面板宽高比钉在 2:1。原 1.6:1
+         * （wetype 实测 984×590 口径）把总高顶到 45% 上限的 94%（ace
+         * 371/395css），「恢复默认」后手写重弹观感即最大高度（验收
+         * 2026-11-01 不通过项）；2:1 让默认落在上限 81%（ace 321），
+         * 面板仍 ~193css（≈19mm）可写。横屏不改总高（native 钳半屏，
+         * 预算本就见底，面板改左右布局竖向铺满——见 .ink-layout 的
+         * 横屏分支）。 */
         inkPanelTarget() {
             const width = Math.max(0, (window.innerWidth || 0) - 8);
-            return Math.round(width / 1.6);
+            return Math.round(width / 2);
         }
 
         /** 手写键面的固定纵向开销：拼音带 + 候选条槽 + 控制行 + 底部
