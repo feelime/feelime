@@ -3818,10 +3818,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
                     if (immediate) {
                         evaluate("window.Feelime && window.Feelime.onHeightSaved && window.Feelime.onHeightSaved($resetOk)")
                     }
-                    pushBridgeHello()
                 }
+                // hello 必须在 override 清零之后推（codex 终审 MAJOR）：提前
+                // 推会让 payload 按旧高度算 band/预算。transient 重置不推
+                // hello（pref 没动，JS 无需重学）。
                 keyboardHeightOverride = 0
                 (keyboardView?.parent as? View)?.requestLayout()
+                if (persist) pushBridgeHello()
                 return
             }
             val metrics = resources.displayMetrics

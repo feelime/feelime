@@ -322,7 +322,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.70';
+    const KEYBOARD_VERSION = '3.73.71';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -8272,6 +8272,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 持久化走 native（applyKbHeight → setKeyboardHeight →
                 // pref，debounce 落盘）；重置=0 走 native 的清键语义。
                 this.applyKbHeight(this.heightResetPending ? 0 : content, true);
+                // codex 终审 MAJOR：hello 的 storedKbHeight 快照不会因保存
+                // 自动刷新——不同步的话，后续 applyModeHeight 按旧快照
+                // transient 回推，把刚保存的运行时高度压回旧值（探针实录
+                // 保存 276 → 回推 272）。重置=清 pref，快照归零。
+                this.nativeStoredHeightCss = this.heightResetPending ? 0 : content;
                 // 「已保存」只在 native commit 回执后出现（onHeightSaved）。
                 // 兜底按能力分流（codex 二轮 P2-5）：新壳（height-ack-v1）
                 // 超时如实提示未确认、不谎报成功；旧壳无回执能力，800ms
