@@ -642,12 +642,14 @@ class TextInputCoordinator(
     fun deleteAllBeforeCursor() {
         invalidateWordUndo()
         var rounds = 0
-        while (rounds < 5) {
-            val len = editor.textBeforeCursor(10000) ?: return
+        // 单轮 1000 码点：大 limit 的 IC 查询是同步 binder，部分宿主对
+        // 10000 级别的请求阻塞秒级（验收实录「卡两秒」）。10 轮覆盖万级。
+        while (rounds < 10) {
+            val len = editor.textBeforeCursor(1000) ?: return
             if (len <= 0) return
             if (!editor.deleteSurroundingCodePoints(len)) return
             rounds += 1
-            if (len < 10000) return
+            if (len < 1000) return
         }
     }
 

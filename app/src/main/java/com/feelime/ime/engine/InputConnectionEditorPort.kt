@@ -47,7 +47,12 @@ class InputConnectionEditorPort(private val service: InputMethodService) : Edito
      * Kept as an explicit fallback primitive. */
     override fun deleteSurroundingCodePoints(count: Int): Boolean {
         val connection = service.currentInputConnection ?: return false
-        return connection.deleteSurroundingTextInCodePoints(count, 0)
+        // API34+ 的 code-points 版要求宿主 IC 覆写——自定义 IC 常停在
+        // default 实现（直接 false），验收实录（#85 上滑静默无效）。
+        // 回退字符版：emoji 边界小概率劈半，换取功能可用。
+        if (runCatching { connection.deleteSurroundingTextInCodePoints(count, 0) }
+                .getOrDefault(false)) return true
+        return connection.deleteSurroundingText(count, 0)
     }
 
     override fun textBeforeCursor(limit: Int): Int? {
