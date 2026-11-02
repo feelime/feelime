@@ -3104,6 +3104,25 @@ test('custom keys: bad JSON in the advanced box is rejected without touching the
 
 // failed 快照必须在【全部】test() 之后（曾放在文件中部 runner 注释
 // 处：此后追加的测试失败不进统计、exit 0 假绿——2026-10-12 新增尾部
+test('focusin scroll: toggles stay put, editable inputs center (#83)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const docListeners = world.sandbox.document.listeners;
+    const focusin = docListeners.find(l => l.type === 'focusin').handler;
+    const cb = world.$('associationOn');
+    cb._scrollIntoView = null;
+    focusin({ target: cb });
+    assert(cb._scrollIntoView === null, 'checkbox focus must not scroll the page');
+    const input = world.$('settingsSearch');
+    input._scrollIntoView = null;
+    focusin({ target: input });
+    assert(input._scrollIntoView, 'editable input still centers for IME avoidance');
+    input.readOnly = true;
+    input._scrollIntoView = null;
+    focusin({ target: input });
+    assert(input._scrollIntoView === null, 'readonly inputs do not scroll');
+});
+
 // 测试时暴露）。
 const failed = RESULTS.filter(([, ok]) => !ok);
 

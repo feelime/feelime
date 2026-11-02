@@ -321,7 +321,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.73';
+    const KEYBOARD_VERSION = '3.73.74';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -4733,14 +4733,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.delRetry = false;
                     this.call(() => Native.backspaceGestureEnd(this.token));
                 }
-                // #34 垂直手势在松手派发（方向已在跨越时锁定）。上=全选
-                // 删：独立桥 clearEditorText（先作废词撤销再全选再 DEL——
-                // 复用普通 backspace 会踩法/俄「退格重开上一词」，codex
-                // 评审 P1-3）；旧壳无该桥回落 selectAll+backspace。
-                // 下=Ctrl+Z。
+                // #34 垂直手势在松手派发（方向已在跨越时锁定）。上=删光
+                // 标前全部（#85 改通道：原 selectAll+DEL 连光标后内容一起
+                // 清，光标在中间时误伤；独立桥 deleteBeforeCursor 按 IC
+                // 字符数删，词撤销照旧作废）——旧壳回落 clearEditorText
+                // 全选删，再旧回落 selectAll+backspace（法/俄「退格重开
+                // 上一词」的 P1-3 教训仍在回退链注释里）。下=Ctrl+Z。
                 if (!cancelled && origin && this.bsVertical) {
                     if (this.bsVertical < 0) {
-                        if (typeof Native.clearEditorText === 'function') {
+                        if (typeof Native.deleteBeforeCursor === 'function') {
+                            this.call(() => Native.deleteBeforeCursor(this.token));
+                        } else if (typeof Native.clearEditorText === 'function') {
                             this.call(() => Native.clearEditorText(this.token));
                         } else {
                             this.call(() => Native.editorAction('selectAll', this.token));

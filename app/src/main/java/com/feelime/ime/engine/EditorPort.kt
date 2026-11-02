@@ -14,6 +14,9 @@ interface EditorPort {
     fun selectedText(): String?
     /** Returns false when the editor cannot delete by code points. */
     fun deleteSurroundingCodePoints(count: Int): Boolean
+    /** #85: length of the text before the cursor, null when the host does
+     *  not answer IC text queries (xterm-style buffers). */
+    fun textBeforeCursor(limit: Int): Int? = null
     fun sendDeleteKey()
     fun performEditorAction()
 }

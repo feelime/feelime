@@ -632,6 +632,25 @@ class TextInputCoordinator(
         repeat(count) { editor.sendDeleteKey() }
     }
 
+    /** #85 上滑删光标前全部：deleteSurrounding 码点路线（不发键事件，
+     *  法/俄「退格重开上一词」语义天然不触发）——selectALL+DEL 会连光
+     *  标后内容一起清。xterm 类宿主不回应 IC 文本查询（见
+     *  InputConnectionEditorPort.deleteSurroundingCodePoints 注释），
+     *  textBeforeCursor null/0 时静默不动，比误删好。组合态已在键盘侧
+     *  门闸排除。单轮 IC 查询上限 10000 码点，满轮续删（5 轮封顶防异
+     *  常宿主死循环）。 */
+    fun deleteAllBeforeCursor() {
+        invalidateWordUndo()
+        var rounds = 0
+        while (rounds < 5) {
+            val len = editor.textBeforeCursor(10000) ?: return
+            if (len <= 0) return
+            if (!editor.deleteSurroundingCodePoints(len)) return
+            rounds += 1
+            if (len < 10000) return
+        }
+    }
+
     /** #34 回滑恢复：把会话缓冲里最后删掉的一个字符弹回编辑器。
      *  onExternalEditorMutation 先作废选择预测与词撤销——commit 会移动
      *  光标，残留的撤销记录按代际校验必须失效。 */

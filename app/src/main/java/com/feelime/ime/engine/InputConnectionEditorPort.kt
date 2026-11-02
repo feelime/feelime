@@ -50,6 +50,11 @@ class InputConnectionEditorPort(private val service: InputMethodService) : Edito
         return connection.deleteSurroundingTextInCodePoints(count, 0)
     }
 
+    override fun textBeforeCursor(limit: Int): Int? {
+        val connection = service.currentInputConnection ?: return null
+        return runCatching { connection.getTextBeforeCursor(limit, 0)?.length }.getOrNull()
+    }
+
     override fun sendDeleteKey() {
         val connection = service.currentInputConnection ?: return
         connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))

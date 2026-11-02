@@ -6343,9 +6343,19 @@ applyLocale();
 // #60：软键盘遮挡输入框——edge-to-edge 下 adjustResize 失效，键盘高度
 // 由 native 注入 --app-ime-bottom（body 底 padding 抬高），获焦元素滚
 // 进可视区（fixed 弹层内的输入靠 sheet 上移 + 容器自身滚动）。
+// #83：只对会弹键盘的文字控件滚动——checkbox/radio 等获焦不弹键盘，
+// 之前被当成输入框居中滚动（点开关页面跳到开关居中的实录）。白名单
+// 与 SetupActivity 注入尾部的重滚过滤保持同源（两份规则别再分叉）。
+const FOCUS_SCROLL_INPUT_TYPES = new Set([
+    "text", "search", "url", "password", "number", "email", "tel",
+]);
 document.addEventListener("focusin", (event) => {
     const el = event.target;
-    if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return;
+    if (el && el.tagName === "INPUT") {
+        if (!FOCUS_SCROLL_INPUT_TYPES.has(el.type) || el.readOnly) return;
+    } else if (!el || el.tagName !== "TEXTAREA" || el.readOnly) {
+        return;
+    }
     if (typeof el.scrollIntoView !== "function") return;
     // 同步滚一次即可：insets 落定后的补滚由 native 注入脚本尾部承担
     // （SetupActivity 的 ime 去抖注入里带 activeElement 重滚）。这里

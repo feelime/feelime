@@ -3126,6 +3126,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
             }
         }
 
+        /** #85 上滑删光标前全部：走 coordinator/editor port（码点删不发
+         *  键事件，词撤销作废、终端宿主降级语义集中在
+         *  TextInputCoordinator.deleteAllBeforeCursor）。 */
+        @JavascriptInterface
+        fun deleteBeforeCursor(token: String) = guarded(token, limited = false) {
+            onMain { coordinator.deleteAllBeforeCursor() }
+        }
+
         @JavascriptInterface
         fun setComposition(keys: String, token: String) = guarded(token, limited = false) {
             // Variant parses are short key sequences ('xc'an').  Unicode

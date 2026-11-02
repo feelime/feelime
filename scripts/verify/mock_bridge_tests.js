@@ -289,15 +289,28 @@ test('delete gesture: down swipe releases Ctrl+Z keyEvent', {since: '3.68.0'}, (
 // codex 评审 P1-3：上滑改走独立桥 clearEditorText（先作废词撤销再全选
 // 再 DEL），不再复用带语言编辑语义的 backspace；旧壳（无该桥）回落
 // selectAll+backspace——mock 里桥存在，走新路径。
-test('delete gesture: up swipe uses the dedicated clearEditorText channel', {since: '3.68.0'}, () => {
+test('delete gesture: up swipe deletes text before the cursor (#85)', {since: '3.73.74'}, () => {
     const world = fresh();
     const bs = bsKey(world);
     world.touchDown(bs, 100, 20);
     world.move(bs, 100, -50); // dy=-70 纵向主导向上
     world.touchUp(bs, 100, -50);
-    equal(world.native.of('clearEditorText').length, 1, 'dedicated channel called once');
+    equal(world.native.of('deleteBeforeCursor').length, 1, 'before-cursor delete called once');
+    equal(world.native.of('clearEditorText').length, 0,
+        'selectAll+DEL would also clear text AFTER the cursor');
     equal(world.native.of('editorAction').length, 0, 'no legacy selectAll');
     equal(world.native.of('backspace').length, 0, 'no plain backspace (fr/ru word reopen)');
+});
+
+test('delete gesture: up swipe on shells without the new bridge falls back to clearEditorText (#85)', {since: '3.73.74'}, () => {
+    const world = fresh();
+    world.native.deleteBeforeCursor = undefined;
+    const bs = bsKey(world);
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 100, -50);
+    world.touchUp(bs, 100, -50);
+    equal(world.native.of('clearEditorText').length, 1, 'legacy full-clear fallback');
+    equal(world.native.of('editorAction').length, 0, 'no legacy selectAll');
 });
 
 // codex 评审 P1-1 回执协议：restoreOne 返回 false（无账可弹/基线未结算/

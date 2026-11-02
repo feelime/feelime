@@ -323,8 +323,11 @@ class SetupActivity : AppCompatActivity() {
                 // 窗口 timer 冻结整批丢。注入是 native 侧 evaluate，执行
                 // 不依赖页面 timer——在这里重滚一次即可到位。
                 append("var a=document.activeElement;")
-                append("if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')")
-                append("&&a.scrollIntoView)a.scrollIntoView({block:'center',behavior:'instant'});")
+                // #83：重滚只认会弹键盘的文字控件（与 settings.js focusin
+                // 的白名单同源）——checkbox 获焦不弹键盘，居中滚动会把
+                // 页面跳到开关处（用户实录）。
+                append("var ok=a&&((a.tagName==='TEXTAREA'&&!a.readOnly)||(a.tagName==='INPUT'&&!a.readOnly&&['text','search','url','password','number','email','tel'].indexOf(a.type)>=0));")
+                append("if(ok&&a.scrollIntoView)a.scrollIntoView({block:'center',behavior:'instant'});")
             }
             // ime 动画帧只重排去抖窗口，不注入（见 imeInsetHandler 注释）。
             imeInsetRunnable?.let { imeInsetHandler.removeCallbacks(it) }

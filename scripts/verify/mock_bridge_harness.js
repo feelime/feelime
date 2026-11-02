@@ -150,6 +150,15 @@ class FakeElement {
     get className() {
         return this.attributes.class || '';
     }
+    // HTML IDL 默认值：真实 DOM 里 input.type 缺省恒为 'text'（#83 用例
+    // 的白名单判断依赖它），fake 不做全量 IDL 映射，只补这一个高频项。
+    get type() {
+        if (this.tagName !== 'INPUT') return undefined;
+        return this.attributes.type || 'text';
+    }
+    set type(value) {
+        this.attributes.type = value;
+    }
     set className(value) {
         this.attributes.class = value;
         this.classList.set = new Set(value.split(/\s+/).filter(Boolean));
@@ -715,6 +724,10 @@ class MockNative {
     hwCommit(text, gen, token) { this._record('hwCommit', [text, gen, token]); }
     commitAssoc(text, token) {
         this._record('commitAssoc', [text, token]);
+    }
+    // #85 上滑删光标前全部的独立桥（与 clearEditorText 全选删分开记录）。
+    deleteBeforeCursor(token) {
+        this._record('deleteBeforeCursor', [token]);
     }
     setKeyboardHeight(totalCssPx, token) {
         this._record('setKeyboardHeight', [totalCssPx, token]);
