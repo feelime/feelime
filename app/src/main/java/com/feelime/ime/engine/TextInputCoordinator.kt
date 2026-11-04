@@ -217,6 +217,15 @@ class TextInputCoordinator(
         invalidateWordUndo()
     }
 
+    /** 已成功应用的自身选区操作，与异步宿主回调分开结算。 */
+    fun onEditorSelectionApplied(start: Int, end: Int) {
+        onExternalEditorMutation()
+        // setSelection 已成功，后续写入立即使用新坐标；回调只确认自身操作，不算新输入。
+        predictedSelectionStart = start
+        predictedSelectionEnd = end
+        expectedSelections.addLast(start to end)
+    }
+
     private fun invalidateWordUndo() {
         editorMutationGeneration += 1
         lastWordCommit = null
@@ -243,9 +252,12 @@ class TextInputCoordinator(
         mode == InputMode.PINYIN || mode == InputMode.DOUBLE_PINYIN || mode == InputMode.T9 ||
             mode == InputMode.STROKE
 
+    // 光标预测与实际镜像必须共用规则，否则自家拼音组合的替换回调会被当成外部编辑。
+    private fun mirrorsComposing(): Boolean = !isPinyinFamily(mode) || ownAppEditor()
+
     private fun expectReplacement(length: Int) {
         if (predictedSelectionStart < 0 || predictedSelectionEnd < 0) return
-        val start = if (composingActive && !isPinyinFamily(mode)) predictedSelectionEnd - composingRaw.length
+        val start = if (composingActive && mirrorsComposing()) predictedSelectionEnd - composingRaw.length
             else minOf(predictedSelectionStart, predictedSelectionEnd)
         val target = (start + length).coerceAtLeast(0)
         predictedSelectionStart = target
@@ -525,6 +537,7 @@ class TextInputCoordinator(
 
         val raw = composingRaw.replace(" ", "")
         val rawMode = isPinyinFamily(mode)
+        if (rawMode && raw.isNotEmpty()) expectReplacement(raw.length)
         composingActive = false
         composingRaw = ""
         val ack = dispatchLive(EngineCommand.Reset)
@@ -612,6 +625,8 @@ class TextInputCoordinator(
         userInputGeneration++
         asrGuard()
         invalidateWordUndo()
+        // Reset 回声可能延后；先登记下面同步清理 span 产生的光标回调。
+        expectReplacement(0)
         dispatch(EngineCommand.Reset)
         editor.setComposing("")
         editor.finishComposing()
@@ -676,6 +691,7 @@ class TextInputCoordinator(
      *  光标，残留的撤销记录按代际校验必须失效。 */
     fun gestureRestore(text: String) {
         onExternalEditorMutation()
+        expectReplacement(text.length)
         editor.commitText(text)
     }
 
@@ -796,6 +812,7 @@ class TextInputCoordinator(
     fun clearComposing(scrubEditor: Boolean = true): DispatchAck {
         userInputGeneration++
         invalidateWordUndo()
+        if (scrubEditor) expectReplacement(0)
         val ack = dispatch(EngineCommand.Reset)
         if (scrubEditor) {
             editor.setComposing("")
@@ -1046,7 +1063,10 @@ class TextInputCoordinator(
         if (composingActive) {
             if (isPinyinFamily(mode)) {
                 val raw = composingRaw.replace(" ", "")
-                if (raw.isNotEmpty()) editor.commitText(raw)
+                if (raw.isNotEmpty()) {
+                    expectReplacement(raw.length)
+                    editor.commitText(raw)
+                }
             } else {
                 editor.finishComposing()
             }
@@ -1350,6 +1370,9 @@ class TextInputCoordinator(
                     editorMutationGeneration += 1
                     lastWordCommit = null
                     expectReplacement(committed.length)
+                    // 同一事件还可能补交未消费的硬键；旧组合已被本次 commit 替换，不能再扣一次。
+                    composingActive = false
+                    composingRaw = ""
                     editor.commitText(committed)
                     editor.finishComposing()
                     armWordUndo(committed, automaticSpace = command is EngineCommand.Choose)
@@ -1363,8 +1386,7 @@ class TextInputCoordinator(
                     // editors' own composing spans keep the classic span.
                     // Own-app editors (settings textareas) mirror the span:
                     // invisible composition there reads as a dead keyboard.
-                    val mirrorComposing = !isPinyinFamily(mode) || ownAppEditor()
-                    if (mirrorComposing) {
+                    if (mirrorsComposing()) {
                         expectReplacement(event.state.composing.length)
                         editor.setComposing(event.state.composing)
                     }
@@ -1376,9 +1398,12 @@ class TextInputCoordinator(
                     // that span first so the final character is not orphaned
                     // into the editor as a literal prefix.
                     if (composingActive) {
-                        if (!isPinyinFamily(mode) || ownAppEditor()) expectReplacement(0)
+                        if (mirrorsComposing()) expectReplacement(0)
                         editor.setComposing("")
                         editor.finishComposing()
+                        // 后面的硬键补交是新插入，旧 span 的长度已在清理时扣除。
+                        composingActive = false
+                        composingRaw = ""
                     }
                 }
                 if (!event.consumed && event.code == EngineCode.EMPTY_COMPOSING) {
@@ -1392,7 +1417,9 @@ class TextInputCoordinator(
                 // 其 commit 在本事件已落地，追加字符天然排其后。
                 if (!event.consumed && event.code == EngineCode.OK &&
                     command is EngineCommand.Key && command.hw) {
-                    editor.commitText(String(Character.toChars(command.unicodeScalar)))
+                    val text = String(Character.toChars(command.unicodeScalar))
+                    expectReplacement(text.length)
+                    editor.commitText(text)
                 }
                 composingActive = event.state.commit == null && event.state.composing.isNotEmpty()
                 composingRaw = if (composingActive) event.state.composing else ""

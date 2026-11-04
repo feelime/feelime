@@ -2041,7 +2041,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                                 // position we just requested immediately.
                                 hostSelectionStart = target
                                 hostSelectionEnd = target
-                                coordinator.onExternalEditorMutation()
+                                coordinator.onEditorSelectionApplied(target, target)
                                 applied = true
                             }
                         } else {

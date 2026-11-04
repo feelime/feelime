@@ -8096,6 +8096,35 @@ test('panel composition replaces spans and saves only after native flush', {sinc
     equal(input.value, '', 'old card callbacks cannot write the reopened card');
 });
 
+test('panel own composing and commit callbacks do not report an external selection', {since: '3.22.0'}, () => {
+    const world = fresh();
+    world.tap(world.$('favoritesButton'));
+    world.tap(world.$('panelManage'));
+    const input = world.$('phraseCardInput');
+    const api = world.context.Feelime;
+    world.document.activeElement = input;
+    input.setSelectionRange = (start, end) => { input.selectionStart = start; input.selectionEnd = end; };
+    for (const listener of input.listeners.filter(l => l.type === 'focus')) listener.handler({target: input});
+    const before = world.native.of('panelSelection').length;
+    const session = world.native.of('panelSelection').slice(-1)[0].args[2];
+    const reportSelection = () => {
+        for (const listener of input.listeners.filter(l => l.type === 'select')) listener.handler({target: input});
+    };
+    for (const text of ['n', 'nihao']) {
+        api.onPanelComposing({session, text});
+        reportSelection();
+        equal(world.native.of('panelSelection').length, before, 'own span replacement stays in its session');
+    }
+    api.onPanelCommit({session, text: '你好'});
+    api.onPanelFinishComposing({session});
+    reportSelection();
+    equal(world.native.of('panelSelection').length, before, 'own candidate commit does not reset native input');
+    equal(input.value, '你好', 'candidate replaces the raw span');
+    input.setSelectionRange(0, 0);
+    reportSelection();
+    equal(world.native.of('panelSelection').length, before + 1, 'a real caret edit still reaches native');
+});
+
 test('panel candidate undo keeps punctuation outside the replay span', {since: '3.22.0'}, () => {
     const world = fresh();
     world.tap(world.$('favoritesButton'));

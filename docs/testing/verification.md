@@ -93,6 +93,12 @@ ANDROID_HOME=… ./gradlew testDebugUnitTest   # 应用 JVM 套件（direct/play
   同跑，钉精确的 passed/failed/skipped 计数——harness 变更导致旧形态
   用例腐烂时在这里暴露。2026-09 起 baseline 只锁 failed=0 与通过数下限，
   让 skip 计数随 `since:` 门自然浮动（精确 pin 变成了每批次的复盘仪式）。
+- **联想与自身选区回调**：`AssociationSelectionIntegrationTest` 用真实
+  coordinator/cache、可控引擎与编辑器写入回调，分别排队回调和联想投递。
+  覆盖自家/外部编辑器、暖/冷缓存、拼音族与法语组合替换、候选上屏、
+  组合控制、降级落字、硬键补交及原生选区操作；真实选区变化和面板切换必须
+  作废旧结果。
+  面板自身写入的 JS 回调过滤另由键盘 mock 验证。
 - **滚动模型**：mock harness 对滚动容器有 clientWidth/scrollWidth/
   scrollLeft 模型与 `world.drag()`（preventDefault 即 cancelled）——
   「拖到底弹回最左」「横滑被 touchstart 杀掉」这类缺陷在本地可复现。
