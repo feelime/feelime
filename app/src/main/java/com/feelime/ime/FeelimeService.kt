@@ -41,7 +41,7 @@ import java.util.ArrayDeque
 import org.json.JSONArray
 import org.json.JSONObject
 
-class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngine.Listener {
+class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListener {
     private val main = Handler(Looper.getMainLooper())
     private val background = java.util.concurrent.Executors.newSingleThreadExecutor()
     /** getExtractedText is a synchronous editor RPC. Keep it off the IME
@@ -779,9 +779,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         engine = AsrEngine(applicationContext, this)
         // 手写（design/handwriting.md §5.1）：独立引擎，onCreate 建实例、
         // 模型在首次识别时后台懒加载。
-        // 手写引擎 A/B（issue #84）：debug 构建 ink_engine=ochwpro 时换
-        // OchwproEngine，其余一律 Melnyk（生产路径不变）。
-        handwritingEngine = OchwproEngine.forCurrentPref(applicationContext, this)
+        // 手写引擎统一为 ochwpro（issue #84：Melnyk-Net 2026-11-04 退役）。
+        handwritingEngine = OchwproEngine(applicationContext, this)
         editorPort = InputConnectionEditorPort(this)
         clipboardStore = com.feelime.ime.panel.ClipboardStore(applicationContext)
         favoritesStore = com.feelime.ime.panel.FavoritesStore(applicationContext)
@@ -3761,7 +3760,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, HandwritingEngi
         @JavascriptInterface
         fun recognizeInk(reqId: Int, payload: String, token: String) =
             guarded(token, limited = false) {
-                if (reqId < 0 || payload.length > HandwritingEngine.MAX_PAYLOAD_CHARS) {
+                if (reqId < 0 || payload.length > HandwritingInk.MAX_PAYLOAD_CHARS) {
                     rejectedCalls += 1
                     Diagnostics.log("inkReject", "req=$reqId chars=${payload.length} reason=budget-or-id")
                     if (reqId >= 0) onInkResult(reqId, emptyList(), "failed", token)

@@ -1088,7 +1088,7 @@ class TextInputCoordinator(
 
     /** 这些模式同步起跑引擎、不进 Direct-first warmup（无语言数据装载）。
      * DIRECT 之外只有手写：其 Direct 引擎只承载控制键，笔迹识别走独立的
-     * HandwritingEngine（design/handwriting.md §1）——挂进 warmup 只会让
+     * 手写引擎（design/handwriting.md §1）——挂进 warmup 只会让
      * 切换平白多一个 LOADING 相位。 */
     private fun servesDirectly(mode: InputMode): Boolean =
         mode == InputMode.DIRECT || mode == InputMode.HANDWRITING

@@ -14,27 +14,33 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-/** 手写引擎公共面：Melnyk（[HandwritingEngine]）与 ochwpro（[OchwproEngine]）
- * 的 A/B 选择缝（issue #84）。回调契约沿用 [HandwritingEngine.Listener]。 */
+/** 手写引擎公共面（issue #84：引擎已统一为 ochwpro，Melnyk-Net 于
+ * 2026-11-04 退役删除）。 */
 interface InkEngine {
     fun isModelAvailable(): Boolean
     fun recognizeInk(reqId: Int, payload: String, pageToken: String)
     fun release()
 }
 
+/** 手写识别回调契约（原 HandwritingEngine.Listener，类删后提升顶层）。 */
+interface InkEngineListener {
+    /** 后台线程回调。[error] 为 null 时 [candidates] 有效（可为空）；
+     * "unavailable"=模型未落地，"failed"=payload/推理异常。 */
+    fun onInkResult(reqId: Int, candidates: List<InkCandidate>, error: String?, pageToken: String)
+}
+
 /** ochwpro（曦码开源手写引擎，MIT，issue #84）轨迹原生识别。
  *
  * 输入不栅格化：墨迹点列按 `preprocessing.rs` 的口径转 5 维特征
  * （x,y 各自 bbox 归一化、dx,dy 增量、每笔末点 pen_down=0），喂
- * StrokeTransformer int8（7356 类，2.1MB）。POC 阶段模型只进 debug
- * 资产（`app/src/debug/assets/ochwpro/`），真机 A/B 过 Melnyk 后再定
- * 分发（distribution `handwriting` 频道新版本）。
+ * StrokeTransformer int8（7356 类，2.1MB）。模型内置生产资产
+ * （`app/src/main/assets/ochwpro/`，2026-11-04 整体切换后）。
  *
  * 预处理必须与上游逐值同构，否则精度不可比：纯函数在 [OchwproInk]，
  * JVM 单测拿 Python 镜像生成的 fixtures 逐值核对。 */
 class OchwproEngine(
     private val context: Context,
-    private val listener: HandwritingEngine.Listener,
+    private val listener: InkEngineListener,
 ) : InkEngine {
     private val engineId = engineIds.incrementAndGet()
     private val worker = InkWorkQueue { task ->
@@ -182,20 +188,6 @@ class OchwproEngine(
         const val DENSITY_CAP = 48
         const val TOP_K = 8
 
-        /** debug-only A/B 选择（issue #84）：`ink_engine`=ochwpro 时走本引擎，
-         * 其余值/生产构建一律 Melnyk。偏好键放 feelime_asr（run-as 可改，
-         * 与模型下载源同一 prefs）。 */
-        fun forCurrentPref(context: Context, listener: HandwritingEngine.Listener): InkEngine {
-            if (!BuildConfig.DEBUG) return HandwritingEngine(context, listener)
-            val pref = context.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
-                .getString("ink_engine", "melnyk").orEmpty()
-            return if (pref == "ochwpro") {
-                Log.i(TAG, "ink engine = ochwpro (A/B)")
-                OchwproEngine(context, listener)
-            } else {
-                HandwritingEngine(context, listener)
-            }
-        }
     }
 }
 

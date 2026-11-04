@@ -42,7 +42,7 @@ object EngineFactory {
         InputMode.RUSSIAN -> HunspellTextEngine(context, "ru_RU", "ёлка")
         InputMode.JAPANESE -> MozcTextEngine(context)
         // 手写（design/handwriting.md §1）：笔迹识别在独立的
-        // HandwritingEngine，不实现 TextEngine。这里的 Direct 只承载
+        // 手写引擎（OchwproEngine）不实现 TextEngine。这里的 Direct 只承载
         // 手写键面的控制键（退格/空格/回车）——同步起跑、无 warmup。
         InputMode.HANDWRITING -> DirectTextEngine()
     }
