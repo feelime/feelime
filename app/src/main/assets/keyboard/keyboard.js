@@ -321,7 +321,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.74';
+    const KEYBOARD_VERSION = '3.73.75';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1424,6 +1424,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     const DP_KEYMAP = {"ziranma":{"q":"iu","w":"ua/ia","e":null,"r":"uan/er","t":"ue/ve","y":"ing/uai","u":"sh","i":"ch","o":"uo","p":"un","a":null,"s":"ong/iong","d":"iang/uang","f":"en","g":"eng","h":"ang","j":"an","k":"ao","l":"ai","z":"ei","x":"ie","c":"iao","v":"zh/ui ü","b":"ou","n":"in","m":"ian"},"flypy":{"q":"iu","w":"ei","e":null,"r":"uan/er","t":"ue/ve","y":"un","u":"sh","i":"ch","o":"uo","p":"ie","a":null,"s":"ong/iong","d":"ai","f":"en","g":"eng","h":"ang","j":"an","k":"ing/uai","l":"iang/uang","z":"ou","x":"ua/ia","c":"ao","v":"zh/ui ü","b":"in","n":"iao","m":"ian"},"sogou":{"q":"iu","w":"ua/ia","e":null,"r":"uan/er","t":"ue/ve","y":"uai","u":"sh","i":"ch","o":"uo","p":"un","a":null,"s":"ong/iong","d":"iang/uang","f":"en","g":"eng","h":"ang","j":"an","k":"ao","l":"ai","z":"ei","x":"ie","c":"iao","v":"zh/ui","b":"ou","n":"in","m":"ian"},"ziguang":{"q":"ao","w":"en","e":null,"r":"an","t":"eng","y":"uai/in","u":"zh","i":"sh","o":"uo","p":"ai","a":"ch","s":"ang","d":"ie","f":"ian","g":"iang/uang","h":"ong/iong","j":"iu/er","k":"ei","l":"uan","z":"ou","x":"ua/ia","v":null,"b":"iao","n":"ui üe","m":"un"}};
     // END GENERATED SCHEMA_MAP
 
+    // 与 OchwproInk.decimate 保持 Float 舍入口径；原始点数供 native
+    // 校验，逐笔取整超出 48 时也不再抽一次，确保模型拿到同一组点。
+    function decimateInkStrokes(strokes, maxPoints = 48) {
+        const total = strokes.reduce((n, stroke) => n + stroke.length, 0);
+        if (total <= maxPoints) return strokes;
+        const scale = Math.fround(maxPoints / Math.fround(total));
+        return strokes.map(stroke => {
+            const keep = Math.max(1, Math.min(stroke.length,
+                Math.round(Math.fround(stroke.length * scale))));
+            if (keep >= stroke.length) return stroke;
+            const span = Math.max(1, keep - 1);
+            return Array.from({ length: keep }, (_, j) =>
+                stroke[Math.floor(j * (stroke.length - 1) / span)]);
+        });
+    }
+
     class FeelimeKeyboard {
         constructor() {
             this.token = '';
@@ -1753,17 +1769,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 侧 touchCancel 行（屏幕坐标+手势条距离）双通道对账。
             this._diagCancel = 0;
             if (window.FeelimeNative && typeof window.setInterval === 'function') {
-                if (typeof requestAnimationFrame === 'function') {
-                    const diagRafLoop = () => {
-                        this._diagRafAt = Date.now();
-                        requestAnimationFrame(diagRafLoop);
-                    };
-                    requestAnimationFrame(diagRafLoop);
-                }
+                this._diagRaf = null;
+                this._diagInterval = null;
                 window.addEventListener(
-                    'pointerdown', () => { this._diagTouch += 1; },
+                    'pointerdown', () => { if (this.touchDiagnostics) this._diagTouch += 1; },
                     { capture: true, passive: true });
-                const onDiagCancel = () => { this._diagCancel += 1; };
+                const onDiagCancel = () => { if (this.touchDiagnostics) this._diagCancel += 1; };
                 window.addEventListener('touchcancel', onDiagCancel, { capture: true, passive: true });
                 window.addEventListener('pointercancel', onDiagCancel, { capture: true, passive: true });
                 // rAF 探针盲区修正（codex 六期 review）：2600ms 窗口会被
@@ -1772,8 +1783,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 document.addEventListener('visibilitychange', () => {
                     if (!document.hidden) this._diagRafAt = 0;
                 });
-                window.setInterval(() => {
-                    if (!this.token || typeof Native.diagEvent !== 'function') return;
+                this._diagHeartbeat = () => {
+                    if (!this.touchDiagnostics || !this.token || typeof Native.diagEvent !== 'function') return;
                     const rafAlive = Date.now() - this._diagRafAt < 2600;
                     // #12 复发取证：touch=触摸到达数；blocked=call 门闸
                     // 拒绝；noClick=swipe滑动手势/pop弹层/long长按各吞掉的
@@ -1807,8 +1818,28 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this._diagCallBlocked = 0;
                     this._diagNoClick = { swipe: 0, pop: 0, long: 0 };
                     window.__diagStates = 0;
-                }, 2500);
+                };
             }
+        }
+
+        syncDiagnosticProbe() {
+            if (!this.touchDiagnostics) {
+                if (this._diagRaf != null) cancelAnimationFrame(this._diagRaf);
+                if (this._diagInterval != null) window.clearInterval(this._diagInterval);
+                this._diagRaf = this._diagInterval = null;
+                this._diagRafAt = 0;
+                return;
+            }
+            if (!this._diagHeartbeat || this._diagInterval != null) return;
+            this._diagTouch = this._diagCancel = this._diagCallBlocked = 0;
+            this._diagNoClick = { swipe: 0, pop: 0, long: 0 };
+            const tick = () => {
+                if (!this.touchDiagnostics) return;
+                this._diagRafAt = Date.now();
+                this._diagRaf = requestAnimationFrame(tick);
+            };
+            if (typeof requestAnimationFrame === 'function') this._diagRaf = requestAnimationFrame(tick);
+            this._diagInterval = window.setInterval(this._diagHeartbeat, 2500);
         }
 
         setup() {
@@ -3225,6 +3256,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const ratio = typeof window !== 'undefined' &&
                 typeof window.devicePixelRatio === 'number' && window.devicePixelRatio > 0
                 ? window.devicePixelRatio : 1;
+            this._inkRatio = ratio;
+            this._inkColor = this.inkColor();
             if (canvas.width === width * ratio && canvas.height === height * ratio) return;
             canvas.width = width * ratio;
             canvas.height = height * ratio;
@@ -3260,16 +3293,27 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const pad = document.getElementById('inkPad');
             if (pad) pad.classList.toggle('writing',
                 this.inkStrokes.length > 0 || (this.inkCurrent || []).length > 0);
+            if (this._inkFrame != null) return;
+            if (typeof requestAnimationFrame !== 'function') {
+                this.inkPaintFrame();
+                return;
+            }
+            this._inkFrame = requestAnimationFrame(() => {
+                this._inkFrame = null;
+                this.inkPaintFrame();
+            });
+        }
+
+        inkPaintFrame() {
             const context = this.inkContext();
             if (!context || typeof context.scale !== 'function') return;
             const canvas = document.getElementById('inkCanvas');
-            const ratio = canvas.width && canvas.clientWidth
-                ? canvas.width / canvas.clientWidth : 1;
+            const ratio = this._inkRatio || 1;
             context.clearRect(0, 0, canvas.width, canvas.height);
             context.lineWidth = 3.2 * ratio;
             context.lineCap = 'round';
             context.lineJoin = 'round';
-            context.strokeStyle = this.inkColor();
+            context.strokeStyle = this._inkColor || (this._inkColor = this.inkColor());
             context.beginPath();
             const all = this.inkCurrent && this.inkCurrent.length
                 ? this.inkStrokes.concat([this.inkCurrent])
@@ -3313,12 +3357,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const rect = canvas && typeof canvas.getBoundingClientRect === 'function'
                 ? canvas.getBoundingClientRect() : { width: 320, height: 132 };
             const round1 = value => Math.round(value * 10) / 10;
+            const strokes = this.inkStrokes.map(stroke =>
+                smoothInkStroke(stroke).map(point => [round1(point.x), round1(point.y)]));
             const payload = JSON.stringify({
                 w: Math.round(rect.width || 320),
                 h: Math.round(rect.height || 132),
-                strokes: this.inkStrokes.map(stroke =>
-                    smoothInkStroke(stroke).map(point => [round1(point.x), round1(point.y)])),
+                strokes: this.inkPredecimated ? decimateInkStrokes(strokes) : strokes,
+                originalStrokeSizes: this.inkPredecimated ? strokes.map(stroke => stroke.length) : undefined,
             });
+            // 与 native 门闸同预算，超限时不发送必被拒绝的请求。
+            if (payload.length > 4096) return;
             this.inkReqId += 1;
             this.call(() => Native.recognizeInk(this.inkReqId, payload, this.token));
         }
@@ -7302,7 +7350,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 该组无图必须清掉残留——不清会把另一组的图带到当前
                 // 主题（真机：暗色主题铺着亮色组的老图）。
                 layer.style.backgroundImage =
-                    image ? `url("data:image/jpeg;base64,${image}")` : '';
+                    image ? `url("${image.startsWith('/keyboard/background/') || image.startsWith('https://feelime.local/keyboard/background/')
+                        ? image : 'data:image/jpeg;base64,' + image}")` : '';
             }
             document.body.dataset.bgImage = image ? 'on' : 'off';
             this.pushChromeColor();
@@ -9367,7 +9416,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 重置与 DOM 清空）。
             if (this.symbolicPrefixChanged) {
                 this.symbolicPrefixChanged = false;
-                this.renderExpanded();
+                if (this.expanded) this.renderExpanded();
             }
         }
 
@@ -9535,22 +9584,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     prevIndex = at;
                 });
             this.expandCandidates = pool;
-            // 池前缀 id 签名变了 → 展开区增量水位线与新顺序错位（会漏项/
-            // 重复），标记让 accumulateCandidates 全量重绘。签名必须覆盖
-            // 「已渲染」的整段前缀（取 max(expandRendered, 3)）——句子压后
-            // 发生在池中部时只看前 3 项发现不了（codex 评审 P1 复现：翻页
-            // 后「二」漏绘、「才丿」重复）；纯追加不动已有顺序时不触发，
-            // 保留拖动预载的增量渲染。签名按最终展示序（英文位置重排后）
-            // 计算：重排改写展示前缀时同样必须触发全量重绘（codex R2-P1
-            // 复现：追加页带来英文，候选条第 1 位是英文、展开区却漏英文
-            // 重复中文——旧签名读原始引擎序，感知不到重排变化）。
-            const ordered = this.englishOrderedPool(pool);
-            const prefixSig = ordered.slice(0, Math.max(this.expandRendered, 3))
-                .map(candidate => candidate.id).join('|');
-            if (prefixSig !== this.symbolicPrefixSig) {
-                this.symbolicPrefixSig = prefixSig;
-                this.symbolicPrefixChanged = true;
-            }
+            // 比较同一段已有前缀，不能拿上一页的短签名与本页长签名
+            // 比较；追加本身不应触发重绘。展开区关闭时留到打开再建节点。
+            const signatures = this.englishOrderedPool(pool)
+                .map(candidate => candidate.id + '\0' + candidate.text);
+            const previous = this.symbolicPrefixIds || [];
+            this.symbolicPrefixChanged = previous.length > signatures.length ||
+                previous.slice(0, Math.max(this.expandRendered || 0, 3))
+                    .some((signature, i) => signature !== signatures[i]);
+            this.symbolicPrefixIds = signatures;
         }
 
         /** Single pick funnel for pool entries: engine ids ride the engine
@@ -10031,7 +10073,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // exact bar-side version of the grid bug appendExpandedCandidates
             // exists for. Hold and restore across the rebuild.
             const held = bar.scrollLeft || 0;
-            bar.replaceChildren();
+            const ordered = this.englishOrderedPool(this.expandCandidates || []);
+            const labels = ordered.map(candidate =>
+                this.mode === 'french' && this.caseMode && state.composing
+                    ? this.caseifyText(candidate.text) : candidate.text);
+            const existing = Array.from(bar.children);
+            const appendOnly = existing.length <= ordered.length && existing.every((button, i) =>
+                button._poolCandidate === ordered[i] && button.textContent === labels[i]);
+            if (!appendOnly) bar.replaceChildren();
             // 中文联想（docs/design/association.md）：组合为空且无引擎候选时，
             // 候选条展示上屏词的后继联想；组合开始即让位（assocWords 已清）。
             if (!(this.expandCandidates || []).length &&
@@ -10051,11 +10100,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // the expanded grid scrolls) - native paging must not cap it at
             // one page, and swiping the bar reveals the rest. The first pool
             // entry keeps the highlighted pill.
-            this.englishOrderedPool(this.expandCandidates || []).forEach((candidate, index) => {
+            ordered.forEach((candidate, index) => {
+                if (appendOnly && index < existing.length) return;
                 const button = document.createElement('button');
                 button.className = index === 0 ? 'candidate first' : 'candidate';
-                button.textContent = this.mode === 'french' && this.caseMode && state.composing
-                    ? this.caseifyText(candidate.text) : candidate.text;
+                button.textContent = labels[index];
+                button._poolCandidate = candidate;
                 let longPressed = false;
                 button.addEventListener('click', () => {
                     // A long-press opens the delete menu; the
@@ -11091,6 +11141,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (payload.nativeApiVersion < MIN_NATIVE_API) return;
             const provided = payload.capabilities || [];
             if (!REQUIRED_CAPABILITIES.every(cap => provided.includes(cap))) return;
+            this.inkPredecimated = provided.includes('ink-predecimated-v1');
             // 高度回写覆盖（真机实录 2026-09-27 ace）：弹出早期 hello 未达
             // 时，applyModeHeight 拿不到 native 存值、按默认 272 回推
             // setKeyboardHeight 桥，debounce 把默认值写回 pref——用户刚保存
@@ -11316,6 +11367,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.applyToolbarLayout();
             this.associationOn = !!payload.associationOn;
             this.touchDiagnostics = payload.touchDiagnostics === true;
+            this.syncDiagnosticProbe();
             if (!this.associationOn) this.assocWords = [];
             // 联想让位态退格清联想（issue #46）。
             this.backspaceAssocOn = !!payload.backspaceAssocOn;
@@ -11906,6 +11958,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
         }
 
+        onVoiceLevel(level) {
+            document.querySelector('#levelBar i').style.transform = `scaleX(${Math.max(0, Math.min(1, level || 0))})`;
+        }
+
         onNativeState(payload) {
             this.voiceState = payload.state || 'idle';
             if (this.voiceState === 'idle' || this.voiceState === 'error') {
@@ -11938,7 +11994,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 document.getElementById('voiceStatus').textContent = payload.message;
             }
             document.getElementById('partialText').textContent = payload.partial || '';
-            document.querySelector('#levelBar i').style.transform = `scaleX(${Math.max(0, Math.min(1, payload.level || 0))})`;
+            this.onVoiceLevel(payload.level);
             const mic = document.getElementById('mic');
             // the mic is a fixed SVG icon; only classes/colours change.
             if (mic) mic.className = 'tool' + (this.voiceState === 'idle' ? '' : ' ' + this.voiceState);
@@ -12060,6 +12116,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         try {
             keyboard.swapThemeGlyph(theme);
             keyboard.applyBackground();
+            keyboard._inkColor = keyboard.inkColor();
+            keyboard.inkPaint();
         } catch (_) { /* pre-init */ }
     }
     function cycleTheme() {
@@ -12123,6 +12181,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         },
         onAssoc: payload => keyboard.onAssoc(payload),
         onNativeState: payload => keyboard.onNativeState(payload),
+        onVoiceLevel: level => keyboard.onVoiceLevel(level),
         onInkCandidates: payload => keyboard.onInkCandidates(payload),
         onEditorInfo: payload => keyboard.onEditorInfo(payload),
         cancelTouches: () => keyboard.cancelTouches(),
@@ -12240,6 +12299,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // Suite/preview hook (issue #28 round-2): the ink delay setting and
         // the recognition-path smoother, for unit tests and preview probes.
         inkSmooth: points => smoothInkStroke(points),
+        inkDecimate: strokes => decimateInkStrokes(strokes),
         // Preview/suite hook (issue #8): switch the preedit font level
         // without a native hello round-trip.
         setPreeditFont: level => {

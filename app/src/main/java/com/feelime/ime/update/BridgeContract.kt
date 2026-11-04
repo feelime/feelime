@@ -43,6 +43,8 @@ object BridgeContract {
         "keyboard-height-reset-v1",
         // 手写识别（design/handwriting.md §3）：recognizeInk + onInkCandidates。
         "handwriting-v1",
+        // JS 预抽稀携带原始笔画点数，native 校验后不做第二轮抽稀。
+        "ink-predecimated-v1",
     )
 
     fun isCompatible(minNativeApi: Long, requiredCapabilities: Collection<String>): Boolean =

@@ -23,6 +23,7 @@ object HandwritingInk {
         val width: Float,
         val height: Float,
         val strokes: List<List<InkPoint>>,
+        val originalStrokeSizes: List<Int>? = null,
     )
 
     /** payload 解析（§3）：{"w":..,"h":..,"strokes":[[[x,y],..],..]}。
@@ -47,7 +48,13 @@ object HandwritingInk {
                 InkPoint(x, y)
             }
         }
-        InkRequest(width, height, strokes)
+        val originalSizes = root.optJSONArray("originalStrokeSizes")?.let { sizes ->
+            if (sizes.length() != strokes.size) return null
+            (0 until sizes.length()).map { i ->
+                sizes.optInt(i).takeIf { it in strokes[i].size..1_000_000 } ?: return null
+            }
+        }
+        InkRequest(width, height, strokes, originalSizes)
     }.getOrNull()
 
     /** §4.1：内容 bbox → 画布等比映射（长边撑满、短边居中）。 */

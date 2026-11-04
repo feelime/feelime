@@ -1061,6 +1061,7 @@ class KeyboardWorld {
                     'text-input-v1',
                     'voice-session-v1',
                     'voice-cancel-v1',
+                    'ink-predecimated-v1',
                 ],
                 pageGenerationToken: this.tokenValue,
                 mode: 'direct',

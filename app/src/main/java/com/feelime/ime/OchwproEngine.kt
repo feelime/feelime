@@ -93,7 +93,7 @@ class OchwproEngine(
         }
         val activeSession = ensureSession() ?: return OchwproResult(reqId, emptyList(), "unavailable")
         val vocab = ensureVocabulary() ?: return OchwproResult(reqId, emptyList(), "unavailable")
-        val decimated = OchwproInk.decimate(request.strokes, DENSITY_CAP)
+        val decimated = OchwproInk.decimate(request.strokes, DENSITY_CAP, request.originalStrokeSizes)
         val features = OchwproInk.strokesToSequence(decimated)
         val t = features.size / FEATURE_DIM
         val env = checkNotNull(environment)
@@ -236,7 +236,22 @@ object OchwproInk {
 
     /** 总点数超 [maxPoints] 时按笔画等比抽稀：每笔保首末点（末点承载
      * pen_down=0 语义），不足保 1 点。不超时原样返回。 */
-    fun decimate(strokes: List<List<HandwritingInk.InkPoint>>, maxPoints: Int): List<List<HandwritingInk.InkPoint>> {
+    fun decimate(
+        strokes: List<List<HandwritingInk.InkPoint>>,
+        maxPoints: Int,
+        originalStrokeSizes: List<Int>? = null,
+    ): List<List<HandwritingInk.InkPoint>> {
+        if (originalStrokeSizes != null) {
+            require(originalStrokeSizes.size == strokes.size)
+            val total = originalStrokeSizes.sum()
+            val scale = maxPoints.toFloat() / total
+            require(strokes.indices.all { i ->
+                val original = originalStrokeSizes[i]
+                original > 0 && strokes[i].size == if (total <= maxPoints) original
+                    else (original * scale).roundToInt().coerceIn(1, original)
+            }) { "invalid pre-decimated stroke sizes" }
+            return strokes
+        }
         val total = strokes.sumOf { it.size }
         if (total <= maxPoints) return strokes
         val scale = maxPoints.toFloat() / total

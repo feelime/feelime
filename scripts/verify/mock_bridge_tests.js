@@ -1432,7 +1432,7 @@ test('touch trace records ownership and faults without key or editor contents', 
 });
 
 test('heartbeat actually crosses the native diagnostic length gate', {since: '3.73.40'}, () => {
-    const world = touchWorld();
+    const world = touchWorld({ touchDiagnostics: true });
     world.context.__diagErr = 'TypeError: popup state finalization failed';
     world.clock.advance(2500);
     const line = world.native.of('diagEvent').find(c => c.args[0].startsWith('heartbeat '))?.args[0];
@@ -10384,6 +10384,123 @@ test('KEYBOARD_VERSION constant matches the VERSION file (dual-bump discipline)'
     assert(m, 'KEYBOARD_VERSION constant found');
     equal(m[1], KEYBOARD_VERSION,
         `KEYBOARD_VERSION constant (${m[1]}) must match the VERSION file (${KEYBOARD_VERSION}) - bump both or neither`);
+});
+
+test('performance: diagnostic probes stop completely and restart once', {since: '3.73.75'}, () => {
+    const world = touchWorld(), kb = world.context.testKeyboard;
+    let frames = 0;
+    world.context.requestAnimationFrame = callback => world.clock.setTimeout(() => { frames++; callback(); }, 16);
+    world.context.cancelAnimationFrame = id => world.clock.clearTimeout(id);
+    world.clock.advance(10_000);
+    equal(world.native.of('diagEvent').length, 0, 'disabled has no heartbeat');
+    equal(frames, 0, 'disabled has no rAF');
+    world.hello({ touchDiagnostics: true });
+    world.hello({ touchDiagnostics: true });
+    world.clock.advance(5000);
+    equal(world.native.of('diagEvent').filter(c => c.args[0].startsWith('heartbeat ')).length, 2, 'single loop');
+    world.hello({ touchDiagnostics: false });
+    world.clock.advance(32); // drain the one-shot ink redraw from hello/theme
+    const stopped = frames;
+    world.clock.advance(10_000);
+    equal(frames, stopped, 'disabled no longer resubscribes frames');
+    equal(kb._diagInterval, null, 'timer cancelled');
+    equal(kb._diagRaf, null, 'frame cancelled');
+    world.hello({ touchDiagnostics: true });
+    world.clock.advance(2500);
+    equal(world.native.of('diagEvent').filter(c => c.args[0].startsWith('heartbeat ')).length, 3, 'restart once');
+});
+
+test('performance: twenty candidate pages only create one hundred strip buttons', {since: '3.73.75'}, () => {
+    const world = touchWorld({ mode: 'pinyin' });
+    const bar = world.$('candidates');
+    let buttons = 0;
+    const create = world.document.createElement.bind(world.document);
+    world.document.createElement = name => { if (name === 'button') buttons++; return create(name); };
+    let first;
+    for (let page = 0; page < 20; page++) {
+        world.engineState({ mode: 'pinyin', revision: page + 1, composing: 'ni', rawInput: 'ni',
+            candidates: Array.from({ length: 5 }, (_, i) => ({ id: `id${page * 5 + i}`, text: `候${page * 5 + i}` })),
+            hasNextPage: page < 19 });
+        if (!first) first = bar.children[0];
+        equal(bar.children[0], first, 'first node retained');
+        bar.scrollLeft = 37;
+    }
+    equal(bar.children.length, 100, 'whole accumulated pool');
+    equal(buttons, 100, 'only new candidates create buttons');
+    equal(bar.scrollLeft, 37, 'scroll preserved');
+    world.tap(bar.children[72]);
+    equal(world.native.of('chooseCandidate').slice(-1)[0].args[1], 'id72', 'deep candidate selects by id');
+    world.engineState({ mode: 'pinyin', revision: 21, composing: 'hao', rawInput: 'hao',
+        candidates: [{ id: 'new', text: '好' }], hasNextPage: false });
+    equal(bar.children.length, 1, 'new composition replaces pool');
+    assert(bar.children[0] !== first, 'old node discarded');
+});
+
+test('performance: handwriting batches moves per frame and flushes reset state', {since: '3.73.75'}, () => {
+    const world = touchWorld({ mode: 'handwriting' }), kb = world.context.testKeyboard;
+    world.context.requestAnimationFrame = callback => world.clock.setTimeout(callback, 16);
+    world.context.cancelAnimationFrame = id => world.clock.clearTimeout(id);
+    let paints = 0;
+    const context = { scale() {}, clearRect() { paints++; }, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {} };
+    kb.inkContext = () => context;
+    kb.inkStrokes = [[{ x: 1, y: 2 }, { x: 3, y: 4 }]];
+    for (let n = 0; n < 120; n++) kb.inkPaint();
+    equal(paints, 0, 'defer to frame');
+    world.clock.advance(16);
+    equal(paints, 1, 'one paint for burst');
+    kb.inkReset();
+    world.clock.advance(16);
+    equal(paints, 2, 'reset redraws final empty state');
+    assert(!world.$('inkPad').classList.contains('writing'), 'reset clears writing chrome');
+});
+
+test('performance: six dense handwriting strokes fit bridge budget', {since: '3.73.75'}, () => {
+    const world = touchWorld({ mode: 'handwriting' }), kb = world.context.testKeyboard;
+    kb.inkStrokes = Array.from({ length: 6 }, (_, s) =>
+        Array.from({ length: 84 }, (_, i) => ({ x: i * 3, y: s * 15 })));
+    kb.inkRecognize();
+    const payload = world.native.of('recognizeInk').slice(-1)[0].args[1];
+    assert(payload.length <= 4096, 'reduced payload passes native gate');
+    const ink = JSON.parse(payload);
+    equal(ink.strokes.reduce((n, stroke) => n + stroke.length, 0), 48, 'density cap');
+    equal(kb.inkStrokes[0].length, 84, 'drawing data is intact');
+    const before = world.native.of('recognizeInk').length;
+    kb.inkStrokes = Array.from({ length: 256 }, (_, s) => [{ x: 1e20 + s, y: 1e20 }]);
+    kb.inkRecognize();
+    equal(world.native.of('recognizeInk').length, before, 'oversized serialized payload is not sent');
+});
+
+test('performance: voice level changes only update the meter', {since: '3.73.75'}, () => {
+    const world = fresh();
+    world.context.Feelime.onNativeState({ state: 'listening', partial: '你好', level: 0 });
+    const partial = world.$('partialText').textContent;
+    world.context.Feelime.onVoiceLevel(0.75);
+    equal(world.$('partialText').textContent, partial, 'partial unchanged');
+    equal(world.document.querySelector('#levelBar i').style.transform, 'scaleX(0.75)', 'meter updated');
+});
+
+test('performance: background URLs remain URLs across hello and theme changes', {since: '3.73.75'}, () => {
+    const url = 'https://feelime.local/keyboard/background/dark/version.jpg';
+    const world = fresh({ bgImageDark: url, themeMode: 'dark' });
+    world.document.documentElement.className = 'theme-dark';
+    world.context.Feelime.refreshBackground();
+    equal(world.$('bgImage').style.backgroundImage, `url("${url}")`, 'no base64 prefix');
+});
+
+test('performance: old native receives original handwriting points without reduction metadata', {since: '3.73.75'}, () => {
+    const world = touchWorld({ mode: 'handwriting' }), kb = world.context.testKeyboard;
+    const caps = [
+        'candidate-revision-v1', 'clipboard-v1', 'commit-text-v1', 'compose-control-v1',
+        'cursor-repeat-v1', 'cursor-delta-v1', 'unicode-compose-v1', 'panel-compose-v1',
+        'keyboard-height-reset-v1', 'favorites-v2', 'ime-control-v1', 'key-event-v1',
+        'keyboard-update-status-v1', 'text-input-v1', 'voice-session-v1', 'voice-cancel-v1',
+    ];
+    world.hello({ mode: 'handwriting', capabilities: caps });
+    kb.inkStrokes = [Array.from({ length: 84 }, (_, i) => ({ x: i * 3, y: 10 }))];
+    kb.inkRecognize();
+    const payload = JSON.parse(world.native.of('recognizeInk').slice(-1)[0].args[1]);
+    assert(!payload.originalStrokeSizes, 'old host lacks reduction protocol');
+    assert(payload.strokes[0].length > 48, 'native performs the only reduction');
 });
 
 // runner 收尾：统计必须跑在【全部】test() 之后（曾在文件中部：其后
