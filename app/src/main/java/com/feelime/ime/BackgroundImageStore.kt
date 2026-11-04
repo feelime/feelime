@@ -58,8 +58,7 @@ internal object BackgroundImageStore {
         val size = importSize(width, height)
         val rawWidth = if (rotated) size.second else size.first
         val rawHeight = if (rotated) size.first else size.second
-        var sample = 1
-        while (maxOf(1, bounds.outWidth / (sample * 2)) >= rawWidth && maxOf(1, bounds.outHeight / (sample * 2)) >= rawHeight) sample *= 2
+        val sample = importSample(bounds.outWidth, bounds.outHeight, rawWidth, rawHeight)
         val decoded = checkNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
             BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }))
         var oriented: Bitmap? = null
@@ -87,6 +86,18 @@ internal object BackgroundImageStore {
             oriented?.takeIf { it !== decoded }?.recycle()
             decoded.recycle()
         }
+    }
+
+    internal fun importSample(width: Int, height: Int, targetWidth: Int, targetHeight: Int): Int {
+        require(width > 0 && height > 0 && targetWidth > 0 && targetHeight > 0)
+        var sample = 1
+        // 用真实商判断停止；钳到 1 会让单像素边永远通过，倍增最终溢出。
+        while (sample <= Int.MAX_VALUE / 2) {
+            val next = sample * 2
+            if (width / next < targetWidth || height / next < targetHeight) break
+            sample = next
+        }
+        return sample
     }
 
     internal fun importSize(width: Int, height: Int): Pair<Int, Int> {

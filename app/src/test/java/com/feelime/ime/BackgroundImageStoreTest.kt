@@ -17,4 +17,12 @@ class BackgroundImageStoreTest {
             } catch (_: IllegalArgumentException) { }
         }
     }
+    @Test fun `single pixel edges terminate sampling without overflow`() {
+        for ((w, h) in listOf(1 to 1, 1 to 4096, 4096 to 1)) {
+            val target = BackgroundImageStore.importSize(w, h)
+            assertEquals(1, BackgroundImageStore.importSample(w, h, target.first, target.second))
+        }
+        assertEquals(8, BackgroundImageStore.importSample(6000, 4000, 720, 480))
+        assertEquals(1 shl 30, BackgroundImageStore.importSample(Int.MAX_VALUE, Int.MAX_VALUE, 1, 1))
+    }
 }
