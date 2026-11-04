@@ -16,6 +16,7 @@ class AssociationCommitIntegrationTest {
         var editorGeneration = 0L
         var panelGeneration = 0L
         var enabled = true
+        val queries = mutableListOf<String>()
         val delivered = mutableListOf<List<String>>()
         val coordinator = TextInputCoordinator(editor, { generation++ }, { FakeEngine() },
             mainPoster = { main.addLast(it) })
@@ -31,13 +32,16 @@ class AssociationCommitIntegrationTest {
             val context = ++contextGeneration
             val editorAtClick = editorGeneration
             val panelAtClick = panelGeneration
-            coordinator.pasteExternal(text) {
-                if (context != contextGeneration || editorAtClick != editorGeneration ||
+            coordinator.pasteExternal(text) { input ->
+                if (input != coordinator.userInputGeneration || context != contextGeneration ||
+                    editorAtClick != editorGeneration ||
                     panelAtClick != panelGeneration || !enabled) return@pasteExternal
                 val request = ++generation
+                queries.add(text)
                 cache.query(text) { words ->
                     main.addLast {
-                        if (request == generation && editorAtClick == editorGeneration &&
+                        if (request == generation && input == coordinator.userInputGeneration &&
+                            editorAtClick == editorGeneration &&
                             panelAtClick == panelGeneration && enabled) delivered.add(words)
                     }
                 }
@@ -78,6 +82,51 @@ class AssociationCommitIntegrationTest {
         assertEquals("你好中国人民", h.editor.text)
     }
 
+    @Test fun `warm result queued before backspace echo is invalidated when backspace is accepted`() {
+        for (queuedPaste in listOf(false, true)) {
+            val h = Harness()
+            h.load()
+            h.loads.removeFirst().run()
+            if (queuedPaste) h.coordinator.key('x'.code)
+            h.choose("你好")
+            if (queuedPaste) h.main.removeFirst()() // key 回声启动排队粘贴，留下 Reset 回声。
+            h.main.addLast { h.coordinator.backspace() }
+            h.main.removeFirst()() // Reset 回声将暖缓存结果排在退格桥调用之后。
+            h.main.removeFirst()() // 退格已接受，但退格回声排在联想结果之后。
+            assertEquals(2, h.main.size)
+            h.main.removeFirst()() // 先尝试投递联想，不能等待退格回声才作废。
+            assertTrue("queuedPaste=$queuedPaste before backspace echo", h.delivered.isEmpty())
+            h.drain()
+            assertTrue("queuedPaste=$queuedPaste after backspace echo", h.delivered.isEmpty())
+            assertTrue(h.editor.operations.contains("sendDeleteKey"))
+        }
+    }
+
+    @Test fun `input accepted before own reset prevents association completion from starting a query`() {
+        for (queuedPaste in listOf(false, true)) {
+            for (input in listOf("key", "backspace", "paste", "space", "enter", "gesture", "restore", "cursor")) {
+                val h = Harness()
+                h.load()
+                h.loads.removeFirst().run()
+                if (queuedPaste) h.coordinator.key('x'.code)
+                h.choose("你好")
+                when (input) {
+                    "key" -> h.coordinator.key('y'.code)
+                    "backspace" -> h.coordinator.backspace()
+                    "paste" -> h.coordinator.pasteExternal("后续")
+                    "space" -> h.coordinator.space()
+                    "enter" -> h.coordinator.enterRaw()
+                    "gesture" -> h.coordinator.gestureBackspace(1)
+                    "restore" -> h.coordinator.gestureRestore("字")
+                    "cursor" -> h.coordinator.onExternalEditorMutation()
+                }
+                h.drain()
+                assertTrue("$input queuedPaste=$queuedPaste started stale query", h.queries.isEmpty())
+                assertTrue("$input queuedPaste=$queuedPaste", h.delivered.isEmpty())
+            }
+        }
+    }
+
     @Test fun `new input editor panel hide and disabled setting invalidate pending delivery`() {
         for (change in listOf("key", "editor", "panel", "hide", "off")) {
             for (beforeReset in listOf(false, true)) {
@@ -111,7 +160,8 @@ class AssociationCommitIntegrationTest {
             // 异步回声时，第二次粘贴会排在这条 key 后面。
             c.key('x'.code)
             var completed = 0
-            c.pasteExternal("中国") {
+            c.pasteExternal("中国") { input ->
+                assertEquals(input, c.userInputGeneration)
                 assertTrue(editor.text.endsWith("中国"))
                 completed++
             }

@@ -2695,12 +2695,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     /** 推送/清空联想词（docs/design/association.md §3）。 */
     private fun requestAssociation(committed: String) {
         val request = ++associationGeneration
+        val input = coordinator.userInputGeneration
         val editor = inputConnectionGeneration
         val panel = panelRouteGeneration
         cancelAssociation?.invoke()
         cancelAssociation = com.feelime.ime.engine.AssociationStore.nextAsync(applicationContext, committed) { words ->
             main.post {
-                if (request == associationGeneration && editor == inputConnectionGeneration &&
+                if (request == associationGeneration && input == coordinator.userInputGeneration &&
+                    editor == inputConnectionGeneration &&
                     panel == panelRouteGeneration && readAssociation(applicationContext) &&
                     !panelInputActive && keyboardView != null
                 ) pushAssoc(words)
@@ -4106,10 +4108,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 val context = ++associationContextGeneration
                 val editor = inputConnectionGeneration
                 val panel = panelRouteGeneration
-                coordinator.pasteExternal(text) {
+                coordinator.pasteExternal(text) { input ->
                     // 自己的 Reset 也会推进结果代际；先等它落地，再创建后继请求。
                     // 等待期间收起/切编辑器/切面板的点击，不能在新上下文里重启联想。
-                    if (context == associationContextGeneration && editor == inputConnectionGeneration &&
+                    if (input == coordinator.userInputGeneration && context == associationContextGeneration &&
+                        editor == inputConnectionGeneration &&
                         panel == panelRouteGeneration && !panelInputActive && readAssociation(applicationContext)
                     ) requestAssociation(text)
                 }

@@ -60,6 +60,7 @@ internal object BackgroundImageStore {
         val rawWidth = if (rotated) size.second else size.first
         val rawHeight = if (rotated) size.first else size.second
         val sample = importSample(bounds.outWidth, bounds.outHeight, rawWidth, rawHeight)
+        checkImportDecodeBudget(bounds.outWidth, bounds.outHeight, sample)
         val decoded = checkNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
             BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }))
         var oriented: Bitmap? = null
@@ -92,13 +93,24 @@ internal object BackgroundImageStore {
     internal fun importSample(width: Int, height: Int, targetWidth: Int, targetHeight: Int): Int {
         require(width > 0 && height > 0 && targetWidth > 0 && targetHeight > 0)
         var sample = 1
-        // 用真实商判断停止；钳到 1 会让单像素边永远通过，倍增最终溢出。
-        while (sample <= Int.MAX_VALUE / 2) {
+        // 解码短边最少为一像素，不能挡住长边采样；已达到目标后停止，避免无效倍增。
+        while (sample <= Int.MAX_VALUE / 2 && (width / sample > targetWidth || height / sample > targetHeight)) {
             val next = sample * 2
-            if (width / next < targetWidth || height / next < targetHeight) break
+            if (maxOf(1, width / next) < targetWidth || maxOf(1, height / next) < targetHeight) break
             sample = next
         }
         return sample
+    }
+
+    internal fun checkImportDecodeBudget(width: Int, height: Int, sample: Int) {
+        require(width > 0 && height > 0 && sample > 0)
+        // 向上取整覆盖解码器的余数像素；二次幂采样允许目标各边不足两倍的中间图。
+        // 必须在分配前检查，不能只检查最终缩放后的尺寸。
+        val decodedWidth = (width.toLong() + sample - 1) / sample
+        val decodedHeight = (height.toLong() + sample - 1) / sample
+        require(maxOf(decodedWidth, decodedHeight) <= 8192 && decodedWidth * decodedHeight <= 12_000_000) {
+            "image exceeds decode pixel budget"
+        }
     }
 
     internal fun importSize(width: Int, height: Int): Pair<Int, Int> {

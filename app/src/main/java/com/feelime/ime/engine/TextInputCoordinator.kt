@@ -44,6 +44,10 @@ class TextInputCoordinator(
     }
 
     private var editorGeneration = 0L
+    // 联想必须在接受后续输入时失效；等回声会让暖缓存结果抢先投递。
+    // 只在公开输入入口推进，内部 Reset 与队列回放沿用原输入代际。
+    var userInputGeneration = 0L
+        private set
     private var engineSessionGeneration = 0L
     /** 诊断用：当前 startEngine 的打点（warmup 耗时 = READY - start）。 */
     private var engineStartAt = 0L
@@ -208,6 +212,7 @@ class TextInputCoordinator(
 
     /** A host mutation invalidates both word ownership and pending predictions. */
     fun onExternalEditorMutation() {
+        userInputGeneration++
         expectedSelections.clear()
         invalidateWordUndo()
     }
@@ -591,6 +596,7 @@ class TextInputCoordinator(
     }
 
     fun key(unicodeScalar: Int, hw: Boolean = false): DispatchAck {
+        userInputGeneration++
         if (!isWordPunctuation(unicodeScalar)) invalidateWordUndo()
         return dispatch(EngineCommand.Key(unicodeScalar, 0, hw))
     }
@@ -603,6 +609,7 @@ class TextInputCoordinator(
      * user never sees the delete-and-retype.
      */
     fun setComposition(keys: String): DispatchAck {
+        userInputGeneration++
         asrGuard()
         invalidateWordUndo()
         dispatch(EngineCommand.Reset)
@@ -618,11 +625,13 @@ class TextInputCoordinator(
     }
 
     fun space(): DispatchAck {
+        userInputGeneration++
         invalidateWordUndo()
         return dispatch(EngineCommand.Space)
     }
 
     fun backspace(): DispatchAck {
+        userInputGeneration++
         val undo = lastWordCommit
         if (!replaying && undo != null && canReopen(undo)) return reopenLastWord(undo)
         invalidateWordUndo()
@@ -635,6 +644,7 @@ class TextInputCoordinator(
      *  键事件）。顺手作废词撤销：法/俄的「退格重开上一词」不该被滑删
      *  误触。面板编辑器经 editor 端口的改道规则自然路由到 panelDelete。 */
     fun gestureBackspace(count: Int) {
+        userInputGeneration++
         invalidateWordUndo()
         repeat(count) { editor.sendDeleteKey() }
     }
@@ -647,6 +657,7 @@ class TextInputCoordinator(
      *  门闸排除。单轮 IC 查询上限 10000 码点，满轮续删（5 轮封顶防异
      *  常宿主死循环）。 */
     fun deleteAllBeforeCursor() {
+        userInputGeneration++
         invalidateWordUndo()
         var rounds = 0
         // 单轮 1000 码点：大 limit 的 IC 查询是同步 binder，部分宿主对
@@ -669,37 +680,44 @@ class TextInputCoordinator(
     }
 
     fun enterRaw(): DispatchAck {
+        userInputGeneration++
         invalidateWordUndo()
         lastEnterConsumedComposing = false
         return dispatch(EngineCommand.EnterRaw)
     }
 
     fun choose(expectedRevision: Long, candidateId: String): DispatchAck {
+        userInputGeneration++
         invalidateWordUndo()
         return dispatch(EngineCommand.Choose(expectedRevision, candidateId))
     }
 
     /** 删除当前高亮候选（librime Shift+Delete 通道）。 */
     fun deleteHighlighted(): DispatchAck {
+        userInputGeneration++
         invalidateWordUndo()
         return dispatch(EngineCommand.DeleteHighlighted)
     }
 
     /** 删除任意候选（seek 到所在页 + Down 移高亮 + Shift+Delete）。 */
     fun deleteCandidate(candidateId: String): DispatchAck {
+        userInputGeneration++
         invalidateWordUndo()
         return dispatch(EngineCommand.DeleteCandidate(candidateId))
     }
 
     fun pageNext(expectedRevision: Long): DispatchAck {
+        userInputGeneration++
         return dispatch(EngineCommand.PageNext(expectedRevision))
     }
 
     fun pagePrevious(expectedRevision: Long): DispatchAck {
+        userInputGeneration++
         return dispatch(EngineCommand.PagePrevious(expectedRevision))
     }
 
     fun reset(): DispatchAck {
+        userInputGeneration++
         invalidateWordUndo()
         return dispatch(EngineCommand.Reset)
     }
@@ -712,12 +730,15 @@ class TextInputCoordinator(
      * finishComposing+commit would leave the engine's old buffer alive and
      * the next keystroke would open a second preedit over the pasted text.
      */
-    fun pasteExternal(text: String, countStats: Boolean = true, onComplete: () -> Unit = {}): DispatchAck {
+    fun pasteExternal(text: String, countStats: Boolean = true, onComplete: (Long) -> Unit = {}): DispatchAck {
+        val input = ++userInputGeneration
+        // 完成回调携带接受时的代际；排队期间的新输入不能被 Reset 回声掩盖。
+        val after = { onComplete(input) }
         asrGuard()
         if (pendingEngine != null || replaying) {
-            return enqueueQueued(QueuedInput.Literal(text, countStats, onComplete))
+            return enqueueQueued(QueuedInput.Literal(text, countStats, after))
         }
-        return pasteExternalNow(text, countStats, onComplete)
+        return pasteExternalNow(text, countStats, after)
     }
 
     private fun pasteExternalNow(text: String, countStats: Boolean = true, onComplete: () -> Unit = {}): DispatchAck {
@@ -773,6 +794,7 @@ class TextInputCoordinator(
      * path or the next keystroke would resurrect the old preedit.
      */
     fun clearComposing(scrubEditor: Boolean = true): DispatchAck {
+        userInputGeneration++
         invalidateWordUndo()
         val ack = dispatch(EngineCommand.Reset)
         if (scrubEditor) {

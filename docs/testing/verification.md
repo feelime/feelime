@@ -17,7 +17,9 @@
 - `mock_settings_tests.js`：ASR 空闲开关默认关、带 token 回写及双语回显。
 - `:app:testDirectDebugUnitTest`：前缀查询访问次数有界、候选 ID 字节不变、
   预热超时取消、诊断慢 fsync 的入队/同步完成语义、联想冷加载重试、
-  ASR 空闲任务失效；手写的 JVM 测试会调用 Node 跑真实 JS 抽稀，校验
+  ASR 空闲任务失效；联想用暖缓存与排队粘贴覆盖「Reset 回声 → 后续输入
+  → 旧结果 → 输入回声」的真实 FIFO 顺序，单像素窄图覆盖采样和解码前预算；
+  手写的 JVM 测试会调用 Node 跑真实 JS 抽稀，校验
   native 最终点列与模型特征不变。
 - 改键盘或 mock 入口仍须双 bump、CSS lint 和完整 baseline；以上是
   主机侧正确性验证，实际内存、启动延迟、触摸截图仍需获准后设备验证。
