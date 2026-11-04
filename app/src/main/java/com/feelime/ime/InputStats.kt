@@ -34,7 +34,29 @@ object InputStats {
     )
 
     @Volatile private var cache: Cache? = null
-    private var pendingKeystrokes = 0L
+    private var dirty = false
+    private var writeGeneration = 0L
+    private val writer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { task ->
+        Thread(task, "feelime-stats").apply { isDaemon = true }
+    }
+    private var pendingWrite: java.util.concurrent.ScheduledFuture<*>? = null
+
+    private fun schedulePersist(context: Context) {
+        dirty = true
+        if (pendingWrite != null) return
+        val appContext = context.applicationContext
+        val generation = writeGeneration
+        pendingWrite = writer.schedule({
+            synchronized(this) {
+                if (generation != writeGeneration) return@synchronized
+                pendingWrite = null
+                if (dirty) {
+                    persist(appContext)
+                    dirty = false
+                }
+            }
+        }, 1, java.util.concurrent.TimeUnit.SECONDS)
+    }
 
     private fun load(context: Context): Cache {
         cache?.let { return it }
@@ -111,32 +133,28 @@ object InputStats {
             c.total += count
             c.daily[today.toString()] = (c.daily[today.toString()] ?: 0L) + count
             trimDaily(c, today)
-            pendingKeystrokes = 0L
-            persist(context)
+            schedulePersist(context)
         }
     }
 
-    /** 击键计数：内存累加，落盘搭 record/快照/onDestroy 的便车（统计允许
-     *  崩溃窗口丢一点，不值得每键写盘）。 */
+    /** 击键与字符共享一秒合并窗口，持续输入也每秒落盘一次。 */
     fun recordKeystroke(context: Context, n: Int = 1) {
         synchronized(this) {
             val c = load(context)
             c.keystrokes += n
-            pendingKeystrokes += n
-            if (pendingKeystrokes >= 64) {
-                pendingKeystrokes = 0L
-                persist(context)
-            }
+            schedulePersist(context)
         }
     }
 
-    /** IME 生命周期收尾：把内存击键刷进盘。 */
+    /** 收起、销毁、备份前刷出内存计数；异常退出最多丢约一秒。 */
     fun flush(context: Context) {
-        val c = cache ?: return
         synchronized(this) {
-            if (pendingKeystrokes > 0L) {
-                pendingKeystrokes = 0L
+            writeGeneration += 1
+            pendingWrite?.cancel(false)
+            pendingWrite = null
+            if (dirty) {
                 persist(context)
+                dirty = false
             }
         }
     }
@@ -189,7 +207,10 @@ object InputStats {
                     .putString(KEY_JSON, json).commit()
             } finally {
                 cache = null
-                pendingKeystrokes = 0L
+                writeGeneration += 1
+                pendingWrite?.cancel(false)
+                pendingWrite = null
+                dirty = false
             }
         }
     }
@@ -224,14 +245,5 @@ object InputStats {
             .toString()
     }
 
-    private fun flushIfPending(context: Context) {
-        if (pendingKeystrokes > 0L) {
-            synchronized(this) {
-                if (pendingKeystrokes > 0L) {
-                    pendingKeystrokes = 0L
-                    persist(context)
-                }
-            }
-        }
-    }
+    private fun flushIfPending(context: Context) = flush(context)
 }

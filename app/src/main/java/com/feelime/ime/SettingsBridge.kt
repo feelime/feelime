@@ -2714,6 +2714,7 @@ class SettingsBridge(
             worker.execute {
                 if (closed) return@execute
                 runCatching {
+                    InputStats.flush(context)
                     val json = UserdataBackup(AndroidPrefs(context), context.filesDir, appVersion())
                         .export()
                     context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
@@ -2944,6 +2945,7 @@ class SettingsBridge(
                 || name.contains('/') || name.contains(Regex("[\\s+]")) || name.length > 128) {
                 return@webdavRun WebDavBackup.Outcome.Fail("BAD_NAME")
             }
+            InputStats.flush(context)
             val json = UserdataBackup(AndroidPrefs(context), context.filesDir, appVersion()).export()
             WebDavBackup.put(config, name, json.toString().toByteArray(Charsets.UTF_8), overwrite)
         }

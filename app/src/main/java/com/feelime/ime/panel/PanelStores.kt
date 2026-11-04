@@ -46,11 +46,17 @@ class ClipSuppressPolicy(private val onMarkerChanged: (String?) -> Unit = {}) {
         onMarkerChanged(marker)
     }
 
+    private var lastCapturedFingerprint: String? = null
+
     fun shouldSuppress(fingerprint: String): Boolean =
         marker != null && fingerprint.isNotEmpty() && fingerprint == marker
 
+    fun unchangedFocus(fingerprint: String, fromFocus: Boolean): Boolean =
+        fromFocus && fingerprint == lastCapturedFingerprint
+
     /** Any recorded entry is a real capture — the marker has served its purpose. */
-    fun onRecorded() {
+    fun onRecorded(fingerprint: String? = null) {
+        if (fingerprint != null) lastCapturedFingerprint = fingerprint
         if (marker == null) return
         marker = null
         onMarkerChanged(null)
@@ -109,8 +115,10 @@ class ClipboardStore(private val context: Context) {
         if (text.isEmpty()) return
         val fingerprint = fingerprintOf(text)
         if (suppress.shouldSuppress(fingerprint)) return
+        // 焦点补采只填隐藏期间的新内容；真实复制事件仍刷新排序与时间。
+        if (suppress.unchangedFocus(fingerprint, fromFocus)) return
         record(text)
-        suppress.onRecorded()
+        suppress.onRecorded(fingerprint)
     }
 
     private var registered = false

@@ -1198,6 +1198,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
     override fun onWindowHidden() {
         super.onWindowHidden()
+        InputStats.flush(applicationContext)
         // 键盘收起取证（录屏 13s 收起 3 次）：hide 不是孤立事件，归因看
         // 它前面紧贴着什么——收起前 <1s 有 touchCancel = 系统手势条
         // 抢断触摸流（返回/主页手势）；只有 touchUp = 正常收笔后收起

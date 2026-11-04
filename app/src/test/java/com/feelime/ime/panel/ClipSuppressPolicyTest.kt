@@ -60,4 +60,18 @@ class ClipSuppressPolicyTest {
         revived.restore(persisted.last())
         assertTrue(revived.shouldSuppress("fp-A"))
     }
+    @Test
+    fun focusRecaptureSkipsUnchangedButRealCopyStillReorders() {
+        val policy = ClipSuppressPolicy()
+        assertFalse(policy.unchangedFocus("A", true))
+        policy.onRecorded("A")
+        assertTrue(policy.unchangedFocus("A", true))
+        assertFalse(policy.unchangedFocus("A", false))
+        assertFalse(policy.unchangedFocus("B", true))
+        policy.snapshot("A")
+        assertTrue(policy.shouldSuppress("A"))
+        policy.onRecorded("B")
+        assertNull(policy.marker)
+        assertTrue(policy.unchangedFocus("B", true))
+    }
 }

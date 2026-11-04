@@ -5,8 +5,6 @@ import android.os.SystemClock
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
 
 /**
  * 诊断记录（用户报告：双拼下按键字母直接上屏，A/B 聊天窗口可复现）。
@@ -67,6 +65,7 @@ object Diagnostics {
     private var sink: DiagSink? = null
     private var touchIncidentFile: File? = null
     private var touchIncident: List<String> = emptyList()
+    private var incidentGeneration = 0L
     private val incidentWriter = Executors.newSingleThreadExecutor { r ->
         Thread(r, "feelime-touch-incident").apply { isDaemon = true }
     }
@@ -105,12 +104,12 @@ object Diagnostics {
                 // 个死进程的退因（REASON_CRASH_NATIVE 的 description 自
                 // 带 signal + native 回溯头），同步落盘进导出。
             }
-            if (recording) {
-                logExitReasonsLocked(context)
-                installCrashHandlerLocked(context)
-            }
+            if (recording) installCrashHandlerLocked(context)
         }
+        if (recording) synchronized(exitLock) { logExitReasons(context) }
     }
+
+    private val exitLock = Any()
 
     /** 已见的最近一次进程退因时间戳（去重：多次 refresh 不重扫）。 */
     private var lastExitTs = 0L
@@ -122,7 +121,7 @@ object Diagnostics {
      *  CRASH_JAVA/ANR/SIGNALED 再抽 traceInputStream（系统 tombstone
      *  全文）的关键行——罪魁 .so 与帧号只在 trace 里，description 只有
      *  死因类别；status（signal 号）一并入档。 */
-    private fun logExitReasonsLocked(context: Context) {
+    private fun logExitReasons(context: Context) {
         if (android.os.Build.VERSION.SDK_INT < 30) return
         val am = context.getSystemService(android.app.ActivityManager::class.java) ?: return
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -132,7 +131,7 @@ object Diagnostics {
         for (info in infos.sortedBy { it.timestamp }) {
             if (info.timestamp <= lastExitTs) continue
             lastExitTs = info.timestamp
-            logSyncLocked("exit",
+            logCritical("exit",
                 "reason=${exitReasonName(info.reason)}(${info.reason}) " +
                     "sig=${info.status} pid=${info.pid} t=${wallClock(info.timestamp)}")
             // 描述（native 回溯/abort message）分段续行——单行 220 上限
@@ -140,7 +139,7 @@ object Diagnostics {
             val desc = (info.description?.toString() ?: "").replace(Regex("\\s+"), " ").trim()
             if (desc.isNotEmpty()) {
                 desc.chunked(170).take(8).forEachIndexed { i, chunk ->
-                    logSyncLocked("exit+", "[$i] $chunk")
+                    logCritical("exit+", "[$i] $chunk")
                 }
             }
             if (info.reason in TRACE_WORTHY_REASONS) {
@@ -149,9 +148,9 @@ object Diagnostics {
                 }
                 val trace = read.getOrNull()
                 if (read.isFailure) {
-                    logSyncLocked("exitTrace", "read failed ${read.exceptionOrNull()?.javaClass?.simpleName}")
+                    logCritical("exitTrace", "read failed ${read.exceptionOrNull()?.javaClass?.simpleName}")
                 } else if (trace == null || trace.bytes.isEmpty()) {
-                    logSyncLocked("exitTrace", "trace unavailable or empty pid=${info.pid}")
+                    logCritical("exitTrace", "trace unavailable or empty pid=${info.pid}")
                 } else {
                     // Android 12+ native trace 明确为 protobuf；其他 trace 也
                     // 先保存原始字节，文本摘录不再决定是否保全证据。
@@ -162,11 +161,11 @@ object Diagnostics {
                     }
                     val format = if (info.reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE &&
                         android.os.Build.VERSION.SDK_INT >= 31) "protobuf" else "raw"
-                    logSyncLocked("exitTrace", "format=$format bytes=${trace.bytes.size} truncated=${trace.truncated} " +
+                    logCritical("exitTrace", "format=$format bytes=${trace.bytes.size} truncated=${trace.truncated} " +
                         "saved=${saved.getOrNull()} error=${saved.exceptionOrNull()?.javaClass?.simpleName ?: "none"}")
                     if (format != "protobuf") {
                         extractTraceLines(trace.bytes.decodeToString()).forEachIndexed { i, line ->
-                            logSyncLocked("exitTrace", "[$i] $line")
+                            logCritical("exitTrace", "[$i] $line")
                         }
                     }
                 }
@@ -215,21 +214,11 @@ object Diagnostics {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             runCatching {
-                synchronized(lock) {
-                    if (recording) {
-                        logSyncLocked("javaCrash",
-                            "thread=${thread.name} ${throwable.javaClass.name}: " +
-                                "${(throwable.message ?: "").take(120)}")
-                    }
-                }
-            }
-            runCatching {
-                synchronized(lock) {
-                    if (recording) {
-                        throwable.stackTrace.take(14).forEach {
-                            logSyncLocked("javaCrash+", "at ${it.toString().take(150)}")
-                        }
-                    }
+                logCritical("javaCrash",
+                    "thread=${thread.name} ${throwable.javaClass.name}: " +
+                        "${(throwable.message ?: "").take(120)}")
+                throwable.stackTrace.take(14).forEach {
+                    logCritical("javaCrash+", "at ${it.toString().take(150)}")
                 }
             }
             previous?.uncaughtException(thread, throwable)
@@ -238,17 +227,16 @@ object Diagnostics {
 
     private var crashHandlerInstalled = false
 
-    /** 同步落盘（绕过 DiagSink 异步队列）：崩溃路径/进程退因专用——
-     *  fsync 保证硬崩前字节已到盘。 */
-    private fun logSyncLocked(tag: String, detail: String) {
+    /** 只在事件锁内分配顺序与入队；磁盘等待由调用方出锁后完成。 */
+    private fun criticalLocked(tag: String, detail: String): java.util.concurrent.CountDownLatch? {
         seq += 1
         val seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000.0
         var line = String.format(java.util.Locale.US, "%.3f #%d %s %s",
             seconds, seq, tag, detail).trim()
         if (line.length > MAX_EVENT_CHARS) line = line.take(MAX_EVENT_CHARS - 1) + "…"
-        events.addLast(line)
         if (events.size >= MAX_EVENTS) events.removeFirst()
-        sink?.appendSync(line)
+        events.addLast(line)
+        return sink?.appendCritical(line)
     }
 
     private fun wallClock(millis: Long): String =
@@ -281,10 +269,10 @@ object Diagnostics {
             if (on) {
                 // 开关可能在进程已启动、甚至 IME 尚未创建时开启。
                 // 此时也要初始化落盘、读取退出记录并安装 Java 栈采集。
-                refresh(context)
                 logLocked("diag", "recording started pid=${android.os.Process.myPid()}")
             }
         }
+        if (on) refresh(context)
     }
 
     fun log(tag: String, detail: String = "") {
@@ -307,43 +295,55 @@ object Diagnostics {
             jsEventParts(line).forEachIndexed { index, part ->
                 logLocked(if (index == 0) "js" else "js+", part)
             }
-            if (line.startsWith("touchFault ")) captureTouchIncidentLocked("js-touch-fault")
         }
+        if (line.startsWith("touchFault ")) captureTouchIncident("js-touch-fault")
     }
 
     /** Keep the last incident separately so subsequent typing and opening the
      * export page cannot rotate away the causal touch sequence. */
     fun captureTouchIncident(reason: String) {
-        synchronized(lock) {
-            if (recording) captureTouchIncidentLocked(reason)
+        val request = synchronized(lock) {
+            if (!recording) return
+            ++incidentGeneration
         }
-    }
-
-    private fun captureTouchIncidentLocked(reason: String) {
-        logLocked("touchIncident", "capture reason=$reason wall=${wallClock()}")
-        val live = events.toList()
-        val liveSet = live.toHashSet()
+        // 先读文件再截内存尾，避免 fsync 期间的新事件倒排到旧内存快照前面。
         val persisted = runCatching { sink?.readTail(EXPORT_FILE_TAIL).orEmpty() }.getOrDefault(emptyList())
-        touchIncident = (persisted.filterNot { it in liveSet } + live)
-            .takeLast(EXPORT_FILE_TAIL)
-        val file = touchIncidentFile ?: return
-        val text = touchIncident.joinToString("\n")
-        // Persist off the input/UI thread; serialize writes so an older capture
-        // cannot overwrite a newer one. The memory copy is immediately ready.
-        incidentWriter.execute {
-            runCatching {
-                val temp = File(file.parentFile, "${file.name}.tmp")
-                temp.writeText(text)
-                check(temp.renameTo(file)) { "incident rename failed" }
-            }.onFailure { log("touchIncident", "persist failed ${it.javaClass.simpleName}") }
+        synchronized(lock) {
+            if (!recording || request != incidentGeneration) return
+            logLocked("touchIncident", "capture reason=$reason wall=${wallClock()}")
+            val live = events.toList()
+            val liveSet = live.toHashSet()
+            touchIncident = (persisted.filterNot { it in liveSet } + live).takeLast(EXPORT_FILE_TAIL)
+            val file = touchIncidentFile ?: return
+            val text = touchIncident.joinToString("\n")
+            // 在同一事件锁内排好保存顺序，文件工作仍由独立线程完成。
+            incidentWriter.execute {
+                runCatching {
+                    val temp = File(file.parentFile, "${file.name}.tmp")
+                    temp.writeText(text)
+                    check(temp.renameTo(file)) { "incident rename failed" }
+                }.onFailure { log("touchIncident", "persist failed ${it.javaClass.simpleName}") }
+            }
         }
     }
 
-    /** 关键取证行（硬崩前的最后一跳）：同步写盘 + fsync，绕过异步
-     *  队列——崩溃瞬间队尾必丢（1.3.7 手写连环死亡实录：inkInfer
-     *  begin 无一存活）。手写标记在 worker 上执行，图形路径按笔分段。 */
+    /** 关键行与普通日志按事件顺序落盘；返回前等到 fsync 完成，
+     *  崩溃调用方不能把证据留在待写队列里。磁盘等待不持事件锁。 */
     fun logCritical(tag: String, detail: String) {
-        synchronized(lock) { if (recording) logSyncLocked(tag, detail) }
+        val written = synchronized(lock) {
+            if (recording) criticalLocked(tag, detail) else null
+        }
+        // 崩溃调用方必须等到 fsync 完成；普通输入日志只入队，不等磁盘。
+        var interrupted = false
+        while (written != null) {
+            try {
+                written.await()
+                break
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt()
     }
 
     /** 调用方已持 [lock]。 */
@@ -375,16 +375,16 @@ object Diagnostics {
      *  KEEP 条（收尾证据）+ 中间计数行（带被折叠的 seq 区间，导出里的
      *  编号空洞对得上号）——心跳「持续存在」由计数与最后一条的时间戳
      *  共同证明，卡死现场则是心跳行戛然而止。 */
-    fun snapshot(): List<String> = synchronized(lock) {
-        val live = events.toList()
+    fun snapshot(): List<String> {
+        val tail = sink?.readTail(EXPORT_FILE_TAIL).orEmpty()
+        val (live, savedIncident) = synchronized(lock) { events.toList() to touchIncident }
         val liveSet = live.toHashSet()
-        val persisted = sink?.readTail(EXPORT_FILE_TAIL).orEmpty()
-            .filterNot { it in liveSet }
+        val persisted = tail.filterNot { it in liveSet }
         val recent = foldBeats(if (persisted.isEmpty()) live else persisted + live)
-        val incident = touchIncident.ifEmpty {
+        val incident = savedIncident.ifEmpty {
             runCatching { touchIncidentFile?.readLines()?.takeLast(EXPORT_FILE_TAIL) }.getOrNull().orEmpty()
         }
-        if (incident.isEmpty()) recent else recent +
+        return if (incident.isEmpty()) recent else recent +
             listOf("--- last touch incident (frozen, may repeat recent events) ---") + incident +
             listOf("--- end touch incident ---")
     }
@@ -456,80 +456,73 @@ object Diagnostics {
 
     /**
      * 落盘镜像：单线程串行追加，逐行 flush（进程被杀时最后一条已完整
-     * 到内核即不丢）。队列有界，积压溢出静默丢——诊断写盘永不允许
-     * 反压主线程。超量旋转：保留尾部 [FILE_TRIM_TO] 行重写。
+     * 到内核即不丢）。普通日志最多积压 512 行，溢出丢弃且不反压输入；
+     * 关键日志不丢，调用方等到 fsync。超量保留尾部 [FILE_TRIM_TO] 行。
      */
-    private class DiagSink(private val file: File) {
-        private val executor = Executors.newSingleThreadExecutor { r ->
-            Thread(r, "feelime-diag").apply { isDaemon = true }
-        }
-        private val queue = LinkedBlockingQueue<String>(512)
-        // 文件互斥（写/裁剪/导出读）：见 writeBatch 注释。
+    internal class DiagSink(
+        private val file: File,
+        private val sync: (FileOutputStream) -> Unit = { it.fd.sync() },
+    ) {
+        private data class Entry(val line: String, val written: java.util.concurrent.CountDownLatch? = null)
+        private val queue = java.util.concurrent.LinkedBlockingQueue<Entry>()
+        private val ordinaryCount = java.util.concurrent.atomic.AtomicInteger()
         private val fileLock = java.util.concurrent.locks.ReentrantLock()
-        @Volatile private var lines = -1 // -1 = 未统计（懒计数）
-        private var started = false
+        private var lines = -1
+
+        private val started = java.util.concurrent.atomic.AtomicBoolean()
+
+        private fun ensureStarted() {
+            if (started.compareAndSet(false, true)) {
+                Thread({ drainLoop() }, "feelime-diag").apply { isDaemon = true }.start()
+            }
+        }
 
         fun append(line: String) {
-            if (!started) {
-                started = true
-                executor.execute { drainLoop() }
+            if (ordinaryCount.incrementAndGet() > 512) {
+                ordinaryCount.decrementAndGet()
+                return
             }
-            queue.offer(line) // 满即丢：见类注释的反压策略
+            ensureStarted()
+            queue.add(Entry(line))
         }
 
-        /** 同步追加（崩溃/退因取证路径）：直接写盘 + fd.sync，绕过
-         *  异步队列——硬崩时队尾必丢，这里保证字节已到介质。 */
-        fun appendSync(line: String) {
-            fileLock.lock()
-            try {
-                file.parentFile?.mkdirs()
-                FileOutputStream(file, true).use { out ->
-                    out.write((line + "\n").toByteArray())
-                    out.flush()
-                    out.fd.sync()
-                }
-                if (lines >= 0) lines += 1
-            } catch (_: java.io.IOException) {
-                // 取证尽力而为：盘满等 IO 异常不允许反噬崩溃路径。
-            } finally {
-                fileLock.unlock()
-            }
+        fun appendCritical(line: String): java.util.concurrent.CountDownLatch {
+            val written = java.util.concurrent.CountDownLatch(1)
+            ensureStarted()
+            queue.add(Entry(line, written))
+            return written
         }
 
         private fun drainLoop() {
             while (true) {
-                // 首行阻塞等待，随后一把抓走积压（至多 64 条）合并一次写盘
-                val first = try {
-                    queue.poll(5, TimeUnit.SECONDS)
-                } catch (e: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    return
-                } ?: continue
-                val batch = ArrayList<String>(32).apply {
+                val first = try { queue.take() } catch (_: InterruptedException) { return }
+                val batch = ArrayList<Entry>().apply {
                     add(first)
                     queue.drainTo(this, 64)
                 }
-                runCatching { writeBatch(batch) }
-            }
-        }
-
-        private fun writeBatch(batch: List<String>) {
-            // 目录创建与既有行数统计都在 executor 线程做（append 的调用方
-            // 是主线程，只入队不碰盘）。文件读写（写/裁剪/导出读）一律持
-            // fileLock：导出读不能撞上半截写入或裁剪重写（codex 评审 P2
-            // 的并发读撕裂）。
-            fileLock.lock()
-            try {
-                file.parentFile?.mkdirs()
-                if (lines < 0) lines = if (file.exists()) file.readLines().size else 0
-                FileOutputStream(file, true).use { out ->
-                    out.write(batch.joinToString("\n", postfix = "\n").toByteArray())
-                    out.flush()
+                ordinaryCount.addAndGet(-batch.count { it.written == null })
+                try {
+                    fileLock.lock()
+                    try {
+                        file.parentFile?.mkdirs()
+                        if (lines < 0) lines = if (file.exists()) file.readLines().size else 0
+                        FileOutputStream(file, true).use { out ->
+                            out.write(batch.joinToString("\n", postfix = "\n") { it.line }.toByteArray())
+                            out.flush()
+                        }
+                        lines += batch.size
+                        if (lines > MAX_FILE_LINES) trimLocked()
+                        if (batch.any { it.written != null }) {
+                            FileOutputStream(file, true).use { sync(it) }
+                        }
+                    } finally {
+                        fileLock.unlock()
+                    }
+                } catch (_: Throwable) {
+                    // 写线程不能因异常退出再递归进入崩溃日志等待，IO 故障仍尽力取证。
+                } finally {
+                    batch.forEach { it.written?.countDown() }
                 }
-                lines += batch.size
-                if (lines > MAX_FILE_LINES) trimLocked()
-            } finally {
-                fileLock.unlock()
             }
         }
 
