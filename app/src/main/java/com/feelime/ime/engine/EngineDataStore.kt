@@ -226,16 +226,20 @@ object EngineDataStore {
         }
     }
 
-    private data class ParsedManifest(val version: String, val files: Map<String, Entry>) {
+    internal data class ParsedManifest(val version: String, val files: Map<String, Entry>) {
         data class Entry(val sha256: String, val bytes: Long)
     }
 
     @Volatile private var cachedManifest: ParsedManifest? = null
+    // 首次查询只等清单解析，不能被 ensure 持有的部署锁拖到复制/fsync 结束。
+    private val manifestLock = Any()
 
-    private fun manifest(context: Context): ParsedManifest? {
+    private fun manifest(context: Context): ParsedManifest? = manifest { readManifest(context) }
+
+    internal fun manifest(read: () -> ParsedManifest?): ParsedManifest? {
         cachedManifest?.let { return it }
-        return synchronized(this) {
-            cachedManifest ?: readManifest(context)?.also { cachedManifest = it }
+        return synchronized(manifestLock) {
+            cachedManifest ?: read()?.also { cachedManifest = it }
         }
     }
 
