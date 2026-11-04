@@ -452,11 +452,6 @@ fun isValidBgVariant(variant: String): Boolean = variant == "light" || variant =
 fun bgImageFile(context: Context, variant: String): File =
     File(context.filesDir, "bg_image_$variant.jpg")
 
-fun readBgImageBase64(context: Context, variant: String): String =
-    bgImageFile(context, variant).takeIf { it.exists() }
-        ?.readBytes()
-        ?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: ""
-
 fun readBgImageSource(context: Context, variant: String): String =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getString("bg_image_${variant}_src", "") ?: ""
@@ -909,8 +904,8 @@ class SettingsBridge(
             .put("oneHandPad", readOneHandPad(context))
             .put("oneHandSide", readOneHandSide(context))
             .put("sideContent", readSideContent(context))
-            .put("bgImageLight", readBgImageBase64(context, "light"))
-            .put("bgImageDark", readBgImageBase64(context, "dark"))
+            .put("bgImageLight", BackgroundImageStore.url(context, "light"))
+            .put("bgImageDark", BackgroundImageStore.url(context, "dark"))
             .put("bgImageLightSource", readBgImageSource(context, "light"))
             .put("bgImageDarkSource", readBgImageSource(context, "dark"))
             .put("keyOpacity", readKeyOpacity(context))
@@ -1671,31 +1666,57 @@ class SettingsBridge(
         pushState()
     }
 
+    /** 原图只经桥一次；在 worker 的解码阶段采样并拒绝超预算长图。 */
+    @JavascriptInterface
+    fun importBgImage(variant: String, base64: String, token: String) = guarded(token) {
+        if (!isValidBgVariant(variant) || base64.length > 23_000_000) return@guarded
+        worker.execute {
+            if (closed) return@execute
+            runCatching {
+                val bytes = BackgroundImageStore.decodeImport(Base64.decode(base64, Base64.NO_WRAP))
+                BackgroundImageStore.install(context, variant, bytes)
+                context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
+                    .putString("bg_image_${variant}_src", "custom").commit()
+                context.sendBroadcast(Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName))
+            }.onFailure {
+                pushEvent(JSONObject().put("type", "bgImageError").put("code", "BAD_BG_IMAGE")
+                    .put("message", t(context, "图片过大或无法读取，请先缩小图片后重试", "Image is too large or unreadable. Resize it and try again.")))
+            }
+            pushState()
+        }
+    }
+
     /** 背景图片（variant=light/dark）：设置页压缩到 ≤720px 宽的 JPEG
      *  base64，落盘 + 记录来源，广播让键盘重拉 hello。 */
     @JavascriptInterface
     fun setBgImage(variant: String, base64: String, token: String) = guarded(token) {
         if (!isValidBgVariant(variant)) return@guarded
-        try {
-            val bytes = Base64.decode(base64, Base64.NO_WRAP)
-            if (bytes.isEmpty()) throw IllegalArgumentException("empty image")
-            bgImageFile(context, variant).writeBytes(bytes)
-        } catch (error: Exception) {
-            pushEvent(
-                JSONObject()
-                    .put("type", "bgImageError")
-                    .put("code", "BAD_BG_IMAGE")
-                    .put("message", t(context, "图片保存失败", "Failed to save the image")),
+        worker.execute {
+            if (closed) return@execute
+            try {
+                val bytes = Base64.decode(base64, Base64.NO_WRAP)
+                if (bytes.isEmpty() || bytes.size > 16 * 1024 * 1024) throw IllegalArgumentException("invalid image size")
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                require(BackgroundImageStore.importSize(bounds.outWidth, bounds.outHeight) == (bounds.outWidth to bounds.outHeight))
+                BackgroundImageStore.install(context, variant, bytes)
+            } catch (error: Exception) {
+                pushEvent(
+                    JSONObject()
+                        .put("type", "bgImageError")
+                        .put("code", "BAD_BG_IMAGE")
+                        .put("message", t(context, "图片保存失败", "Failed to save the image")),
+                )
+                pushState()
+                return@execute
+            }
+            context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+                .edit().putString("bg_image_" + variant + "_src", "custom").commit()
+            context.sendBroadcast(
+                Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
             )
             pushState()
-            return@guarded
         }
-        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putString("bg_image_" + variant + "_src", "custom").commit()
-        context.sendBroadcast(
-            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-        )
-        pushState()
     }
 
     /** 色彩模式（外观页）：写 theme_mode pref + 广播，键盘 hello 读回
@@ -1906,13 +1927,16 @@ class SettingsBridge(
     @JavascriptInterface
     fun clearBgImage(variant: String, token: String) = guarded(token) {
         if (!isValidBgVariant(variant)) return@guarded
-        bgImageFile(context, variant).delete()
-        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().remove("bg_image_" + variant + "_src").commit()
-        context.sendBroadcast(
-            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-        )
-        pushState()
+        worker.execute {
+            if (closed) return@execute
+            bgImageFile(context, variant).delete()
+            context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+                .edit().remove("bg_image_" + variant + "_src").commit()
+            context.sendBroadcast(
+                Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+            )
+            pushState()
+        }
     }
 
     /** 内置背景图（随包 assets，设置页直接选用）：从 assets 拷贝到该组
@@ -1928,27 +1952,28 @@ class SettingsBridge(
             )
             return@guarded
         }
-        try {
-            context.assets.open("settings/bg-$variant.jpg").use { input ->
-                bgImageFile(context, variant).outputStream().use { output ->
-                    input.copyTo(output)
+        worker.execute {
+            if (closed) return@execute
+            try {
+                context.assets.open("settings/bg-$variant.jpg").use { input ->
+                    BackgroundImageStore.install(context, variant, input.readBytes())
                 }
+            } catch (error: Exception) {
+                pushEvent(
+                    JSONObject()
+                        .put("type", "bgImageError")
+                        .put("code", "BAD_BG_IMAGE")
+                        .put("message", t(context, "图片保存失败", "Failed to save the image")),
+                )
+                return@execute
             }
-        } catch (error: Exception) {
-            pushEvent(
-                JSONObject()
-                    .put("type", "bgImageError")
-                    .put("code", "BAD_BG_IMAGE")
-                    .put("message", t(context, "图片保存失败", "Failed to save the image")),
+            context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+                .edit().putString("bg_image_" + variant + "_src", "builtin").commit()
+            context.sendBroadcast(
+                Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
             )
-            return@guarded
+            pushState()
         }
-        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-            .edit().putString("bg_image_" + variant + "_src", "builtin").commit()
-        context.sendBroadcast(
-            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-        )
-        pushState()
     }
 
 

@@ -736,6 +736,7 @@ const I18N = {
         "input.feel.sideContent": "侧边条内容",
         "input.feel.sideContentHint": "单手模式下空出区域的内容。",
         "input.feel.bgImageLight": "亮色背景",
+        "error.BAD_BG_IMAGE": "图片过大或无法读取，请先缩小图片后重试",
         "input.feel.bgImageDark": "暗色背景",
         "input.feel.themeMode": "色彩模式",
         "input.feel.themePreset": "键盘色调",
@@ -1543,6 +1544,7 @@ const I18N = {
         "input.feel.sideContent": "Side strip content",
         "input.feel.sideContentHint": "What fills the freed strip in one-handed mode.",
         "input.feel.bgImageLight": "Light background",
+        "error.BAD_BG_IMAGE": "Image is too large or unreadable. Resize it and try again.",
         "input.feel.bgImageDark": "Dark background",
         "input.feel.themeMode": "Color mode",
         "input.feel.themePreset": "Keyboard tint",
@@ -1928,6 +1930,10 @@ window.FeelimeSettings = {
                 break;
             case "customPhrasesError":
                 setNote("phrasesNote", eventText(event, "error.BAD_PHRASES_PAYLOAD"));
+                break;
+            case "bgImageError":
+                setNote("bgImageNote", eventText(event, "error.BAD_BG_IMAGE"));
+                $("bgImageNote").hidden = false;
                 break;
             case "keySoundError":
                 // #30-2：音效文件不可用（超限/损坏）——提示后 state 回推
@@ -2601,7 +2607,8 @@ function renderFeel(state) {
         opacity.value = String(opPct);
     }
     const pvBg = (imgKey, srcKey) => (state[srcKey] && state[srcKey] !== "none" && state[imgKey])
-        ? `url(data:image/jpeg;base64,${state[imgKey]})` : "none";
+        ? `url("${state[imgKey].startsWith('https://feelime.local/keyboard/background/')
+            ? state[imgKey] : 'data:image/jpeg;base64,' + state[imgKey]}")` : "none";
     pvBgLightImg = pvBg("bgImageLight", "bgImageLightSource");
     pvBgDarkImg = pvBg("bgImageDark", "bgImageDarkSource");
     updateThemePreview();
@@ -4160,11 +4167,13 @@ $("kbHeightReset").addEventListener("click", () => {
 // 背景图两组（亮/暗）：「选择图片…」打开文件选择器，选完压到 720px 宽
 // JPEG 走桥；「无 / 内置」直接桥调用。选中自定义图后 select 挂「自定义」
 // 回显；pick 项本身永不作为状态（取消选择时回退原值）。
+const bgPickGeneration = { light: 0, dark: 0 };
 [["bgImageLight", "light"], ["bgImageDark", "dark"]].forEach(([id, variant]) => {
     const sel = $(id);
     sel.dataset.prev = "none";
     sel.addEventListener("change", () => {
         const v = sel.value;
+        bgPickGeneration[variant] += 1;
         if (v === "none") { call("clearBgImage", variant); sel.dataset.prev = "none"; }
         else if (v === "builtin") { call("setBuiltinBgImage", variant); sel.dataset.prev = "builtin"; }
         else if (v === "custom") { sel.value = sel.dataset.prev; }
@@ -4187,24 +4196,25 @@ function markBgCustom(variant) {
     sel.dataset.prev = "custom";
 }
 function pickBgImage(variant) {
+    const generation = ++bgPickGeneration[variant];
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     input.addEventListener("change", () => {
         const file = input.files && input.files[0];
         if (!file) return;
-        const img = new Image();
-        img.onload = () => {
-            const scale = Math.min(1, 720 / img.naturalWidth);
-            const canvas = document.createElement("canvas");
-            canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
-            canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
-            canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-            call("setBgImage", variant, canvas.toDataURL("image/jpeg", 0.72).split(",")[1]);
-            markBgCustom(variant);
-            URL.revokeObjectURL(img.src);
+        $("bgImageNote").hidden = true;
+        if (file.size > 16 * 1024 * 1024) {
+            setNote("bgImageNote", t("error.BAD_BG_IMAGE"));
+            $("bgImageNote").hidden = false;
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            if (generation !== bgPickGeneration[variant]) return;
+            call("importBgImage", variant, String(reader.result).split(",")[1] || "");
         };
-        img.src = URL.createObjectURL(file);
+        reader.readAsDataURL(file);
     });
     input.click();
 }

@@ -1090,6 +1090,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     // 一律 404——WebView 对 @font-face 404 的行为就是逐字回退
                     // 字体栈，键盘功能不受影响。
                     val path = url.path.orEmpty()
+                    if (path.startsWith(BackgroundImageStore.PREFIX)) {
+                        return BackgroundImageStore.response(this@FeelimeService, path) ?: blocked()
+                    }
                     if (path.startsWith("/keyboard/fonts/")) {
                         return KeyboardFontStore.response(this@FeelimeService, path) ?: blocked()
                     }
@@ -2562,8 +2565,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("oneHandPad", readOneHandPad(this))
             .put("oneHandSide", readOneHandSide(this))
             .put("sideContent", readSideContent(this))
-            .put("bgImageLight", readBgImageBase64(this, "light"))
-            .put("bgImageDark", readBgImageBase64(this, "dark"))
+            .put("bgImageLight", BackgroundImageStore.url(this, "light"))
+            .put("bgImageDark", BackgroundImageStore.url(this, "dark"))
             .put("bgImageLightSource", readBgImageSource(this, "light"))
             .put("bgImageDarkSource", readBgImageSource(this, "dark"))
             .put("keyOpacity", readKeyOpacity(this))

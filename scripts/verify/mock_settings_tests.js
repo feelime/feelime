@@ -82,6 +82,8 @@ class MockSettingsNative {
     cancelModelDownload(...a) { this._rec('cancelModelDownload', a); }
     deleteModel(...a) { this._rec('deleteModel', a); }
     saveAsrSettings(...a) { this._rec('saveAsrSettings', a); }
+    setAsrIdleUnload(...a) { this._rec('setAsrIdleUnload', a); }
+    importBgImage(...a) { this._rec('importBgImage', a); }
     saveCustom(...a) { this._rec('saveCustom', a); }
     checkUpdate(...a) { this._rec('checkUpdate', a); }
     installZip(...a) { this._rec('installZip', a); }
@@ -2722,7 +2724,7 @@ test('preview duo boards render and carry opacity + background image vars', () =
     });
     equal(pv.style.getPropertyValue('--pv-key-alpha'), '0.6', 'key opacity feeds the preview');
     equal(pv.style.getPropertyValue('--pv-bg-img-light'),
-        'url(data:image/jpeg;base64,QUJD)', 'light background image rides into the preview');
+        'url("data:image/jpeg;base64,QUJD")', 'light background image rides into the preview');
     equal(pv.style.getPropertyValue('--pv-bg-img-dark'), 'none', 'dark board stays imageless');
     // 不透明度拖动实时更新预览（不落盘，松手才提交）。
     const slider = world.$('keyOpacity');
@@ -3121,6 +3123,66 @@ test('focusin scroll: toggles stay put, editable inputs center (#83)', () => {
     input._scrollIntoView = null;
     focusin({ target: input });
     assert(input._scrollIntoView === null, 'readonly inputs do not scroll');
+});
+
+test('ASR idle unloading defaults off and is controlled by native state', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, asr: {} });
+    const toggle = world.$('asrIdleUnload');
+    assert(!toggle.checked, 'default off');
+    toggle.checked = true;
+    toggle.listeners.find(listener => listener.type === 'change').handler({ target: toggle });
+    equal(world.lastCall('setAsrIdleUnload').args, [true, world.token], 'bridge token and value');
+    world.push({ ...BASE_STATE, asr: { idleUnload: false } });
+    assert(!toggle.checked, 'native value wins');
+    world.push({ ...BASE_STATE, uiLanguage: 'en', uiLocale: 'en', asr: { idleUnload: true } });
+    assert(toggle.checked, 'native enabled');
+    assert(world.doc.querySelector('[data-i18n="voice.asr.idleUnloadHint"]').textContent.includes('5 idle minutes'), 'English hint');
+});
+
+test('background resource URLs feed preview directly and errors are visible', () => {
+    const world = new SettingsWorld();
+    const url = 'https://feelime.local/keyboard/background/light/new-version.jpg';
+    world.push({ ...BASE_STATE, bgImageLightSource: 'custom', bgImageLight: url });
+    equal(world.$('themePreview').style.getPropertyValue('--pv-bg-img-light'), `url("${url}")`, 'versioned local URL');
+    world.FeelimeSettings().onEvent({ type: 'bgImageError', code: 'BAD_BG_IMAGE' });
+    assert(!world.$('bgImageNote').hidden, 'failed import is visible');
+    assert(world.$('bgImageNote').textContent.includes('图片过大'), 'actionable size hint');
+});
+
+test('background picker sends undecoded bytes and discards stale file reads', () => {
+    const world = new SettingsWorld();
+    const readers = [];
+    world.sandbox.FileReader = class {
+        readAsDataURL(file) { this.file = file; this.result = 'data:image/png;base64,YWJj'; readers.push(this); }
+    };
+    world.sandbox.Image = class { constructor() { throw new Error('full image must not decode in JS'); } };
+    const create = world.doc.createElement.bind(world.doc);
+    let fileInput;
+    world.doc.createElement = tag => {
+        const element = create(tag);
+        if (tag === 'input') fileInput = element;
+        return element;
+    };
+    const select = world.$('bgImageLight');
+    const choose = value => {
+        select.value = value;
+        select.listeners.find(listener => listener.type === 'change').handler({ target: select });
+    };
+    const picked = size => {
+        fileInput.files = [{ size }];
+        fileInput.listeners.find(listener => listener.type === 'change').handler({ target: fileInput });
+    };
+    choose('pick'); picked(100);
+    choose('builtin');
+    readers[0].onload();
+    equal(world.native.of('importBgImage').length, 0, 'stale read cannot overwrite newer choice');
+    choose('pick'); picked(100);
+    readers[1].onload();
+    equal(world.lastCall('importBgImage').args, ['light', 'YWJj', world.token], 'raw bytes use native decode path');
+    choose('pick'); picked(16 * 1024 * 1024 + 1);
+    equal(readers.length, 2, 'oversized source is rejected before read/decode');
+    assert(!world.$('bgImageNote').hidden, 'size error visible');
 });
 
 // 测试时暴露）。

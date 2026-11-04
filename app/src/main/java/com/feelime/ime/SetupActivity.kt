@@ -361,6 +361,17 @@ class SetupActivity : AppCompatActivity() {
             settings.allowFileAccess = true
             settings.allowFileAccessFromFileURLs = false
             webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(
+                    view: WebView?, request: android.webkit.WebResourceRequest?,
+                ): android.webkit.WebResourceResponse? {
+                    val url = request?.url ?: return null
+                    if (url.scheme == "https" && url.host == BackgroundImageStore.HOST &&
+                        url.path.orEmpty().startsWith(BackgroundImageStore.PREFIX)
+                    ) return BackgroundImageStore.response(this@SetupActivity, url.path.orEmpty())
+                        ?: android.webkit.WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
+                            emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
+                    return null
+                }
                 // 外观预览的键盘 iframe（?preview=1）是唯一放行的子 frame；
                 // 其余一切导航（主 frame 含内）全部拒绝，设置页不允许漂移。
                 // 例外（许可三级页）：http(s) 链接转系统浏览器打开，页面
