@@ -5,7 +5,7 @@ import java.io.File
 
 /**
  * 中文联想表（docs/design/association.md）：commit 的词 → 高频后继词。
- * 表随引擎数据部署（MANIFEST 哈希校验），首次查询同步解析一次常驻内存；
+ * 表随引擎数据部署（MANIFEST 哈希校验），后台解析后常驻内存；
  * 查询取上屏文本的最长可用后缀（4→1 字），不需要分词器。
  * 表缺失/解析失败一律返回空——联想是增强，绝不阻塞输入主链路。
  *
@@ -15,52 +15,29 @@ import java.io.File
  */
 object AssociationStore {
     private const val TABLE_PATH = "assoc/zh_bigram.tsv"
-    private const val MAX_SUFFIX = 4
     private const val MAX_HOPS = 8
 
-    @Volatile private var table: Map<String, List<String>>? = null
-    private val prewarming = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val cache = AssociationCache()
+    private val loader = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "feelime-assoc").apply { isDaemon = true }
+    }
 
     /** 联想表文件（随引擎数据版本部署）；未部署返回 null。 */
-    fun tableFile(context: Context): File? =
-        EngineDataStore.readyFile(context, TABLE_PATH)
+    fun tableFile(context: Context): File? = EngineDataStore.readyFile(context, TABLE_PATH)
 
-    /** 后台预热：服务起来/开关打开时就把表解析好，让首次 commit 的查询
-     * 命中暖缓存，主线程不用付整表解析的代价（codex round-1 P2-4）。 */
     fun prewarm(context: Context) {
-        if (table != null) return
-        if (!prewarming.compareAndSet(false, true)) return
-        Thread { loadIntoCache(context) }.apply { isDaemon = true }.start()
+        val appContext = context.applicationContext
+        cache.load(loader) { tableFile(appContext)?.let { parse(it) } }
     }
 
-    private fun loadIntoCache(context: Context) {
-        synchronized(this) {
-            if (table != null) return
-            table = runCatching { parse(tableFile(context)) }.getOrNull().orEmpty()
-        }
+    /** 冷查询不等解析；加载完成后补送，调用方校验编辑器与提交代际。 */
+    fun nextAsync(context: Context, committed: String, deliver: (List<String>) -> Unit): () -> Unit {
+        val cancel = cache.query(committed, deliver)
+        prewarm(context)
+        return cancel
     }
 
-    /** [committed] 的最长后缀命中；返回后继词（可能为空）。
-     *
-     * 表没就绪时**同步**解析兜底（双检锁，一次性 ~0.5s）：prewarm 覆盖
-     * 不到的场景（开启联想后立刻 commit）用它保证正确性——之前异步起
-     * 线程后紧跟查询，首次 commit 读到的永远是空表（2026-09-13 实录）。
-     * 解析失败缓存空表——联想是增强，不值得每次 commit 重读。 */
-    fun next(context: Context, committed: String): List<String> {
-        val map = table ?: synchronized(this) {
-            table ?: runCatching { parse(tableFile(context)) }.getOrNull().orEmpty().also {
-                table = it
-            }
-        }
-        for (length in minOf(MAX_SUFFIX, committed.length) downTo 1) {
-            val hops = map[committed.substring(committed.length - length)]
-            if (!hops.isNullOrEmpty()) return hops
-        }
-        return emptyList()
-    }
-
-    private fun parse(file: File?): Map<String, List<String>> {
-        if (file == null) return emptyMap()
+    private fun parse(file: File): Map<String, List<String>> {
         val map = HashMap<String, MutableList<String>>()
         file.forEachLine { line ->
             val parts = line.split('\t')
@@ -73,5 +50,58 @@ object AssociationStore {
             }
         }
         return map
+    }
+}
+
+/** 未就绪/加载中/已完成分开；文件缺失与解析失败都允许下次部署或查询重试。 */
+internal class AssociationCache {
+    private enum class State { NOT_READY, LOADING, READY }
+    private var state = State.NOT_READY
+    private var table: Map<String, List<String>> = emptyMap()
+    // 只保留最后一次冷查询，旧提交的联想已无补送价值。
+    private var pending: Pair<String, (List<String>) -> Unit>? = null
+
+    fun query(committed: String, deliver: (List<String>) -> Unit): () -> Unit {
+        val result = synchronized(this) {
+            if (state == State.READY) lookup(table, committed) else {
+                pending = committed to deliver
+                null
+            }
+        }
+        if (result != null) deliver(result)
+        return {
+            synchronized(this) {
+                if (pending?.second === deliver) pending = null
+            }
+        }
+    }
+
+    fun load(executor: java.util.concurrent.Executor, parse: () -> Map<String, List<String>>?) {
+        synchronized(this) {
+            if (state != State.NOT_READY) return
+            state = State.LOADING
+        }
+        executor.execute {
+            val parsed = runCatching { parse() }.getOrNull()
+            val delivery = synchronized(this) {
+                if (parsed == null) {
+                    state = State.NOT_READY
+                    null
+                } else {
+                    table = parsed
+                    state = State.READY
+                    pending.also { pending = null }
+                }
+            }
+            if (delivery != null) delivery.second(lookup(checkNotNull(parsed), delivery.first))
+        }
+    }
+
+    private fun lookup(map: Map<String, List<String>>, committed: String): List<String> {
+        for (length in minOf(4, committed.length) downTo 1) {
+            val hops = map[committed.takeLast(length)]
+            if (!hops.isNullOrEmpty()) return hops
+        }
+        return emptyList()
     }
 }

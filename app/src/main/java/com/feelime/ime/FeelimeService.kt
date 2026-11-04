@@ -55,6 +55,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     private lateinit var clipboardStore: com.feelime.ime.panel.ClipboardStore
     private lateinit var favoritesStore: com.feelime.ime.panel.FavoritesStore
     private val favoritesListener: () -> Unit = { main.post { pushFavorites() } }
+    private var associationGeneration = 0L
+    private var cancelAssociation: (() -> Unit)? = null
     private var keyboardView: WebView? = null
     /** 按键音（issue #5 问题 2）合成器：实例化开销高，懒加载复用，
      *  onDestroy 释放。 */
@@ -904,6 +906,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 }
             },
             listener = { event ->
+                associationGeneration += 1
                 val payload = JSONObject()
                     .put("phase", event.phase.name)
                     .put("revision", event.revision)
@@ -991,7 +994,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                             event.stamp.mode == com.feelime.ime.engine.InputMode.STROKE
                         )
                 ) {
-                    pushAssoc(com.feelime.ime.engine.AssociationStore.next(applicationContext, committed))
+                    requestAssociation(committed)
                 }
             },
             engineFactory = { mode ->
@@ -1549,6 +1552,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     }
 
     override fun onDestroy() {
+        associationGeneration += 1
+        cancelAssociation?.invoke()
+        cancelAssociation = null
         com.feelime.ime.panel.PanelStoreSignals.favorites.remove(favoritesListener)
         // 收起取证：service 销毁落一行——导出里「onDestroy 之后又见
         // process start」= 进程被系统回收/重启（环形缓冲清空的元凶）。
@@ -2682,12 +2688,32 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     }
 
     /** 推送/清空联想词（docs/design/association.md §3）。 */
+    private fun requestAssociation(committed: String) {
+        val request = ++associationGeneration
+        val editor = inputConnectionGeneration
+        val panel = panelRouteGeneration
+        cancelAssociation?.invoke()
+        cancelAssociation = com.feelime.ime.engine.AssociationStore.nextAsync(applicationContext, committed) { words ->
+            main.post {
+                if (request == associationGeneration && editor == inputConnectionGeneration &&
+                    panel == panelRouteGeneration && readAssociation(applicationContext) &&
+                    !panelInputActive && keyboardView != null
+                ) pushAssoc(words)
+            }
+        }
+    }
+
     private fun pushAssoc(words: List<String>) {
         val payload = JSONObject().put("words", JSONArray(words))
         evaluate("window.Feelime && window.Feelime.onAssoc && window.Feelime.onAssoc($payload)")
     }
 
-    private fun clearAssociation() = pushAssoc(emptyList())
+    private fun clearAssociation() {
+        associationGeneration += 1
+        cancelAssociation?.invoke()
+        cancelAssociation = null
+        pushAssoc(emptyList())
+    }
 
     /** Redirect editor writes into the focused panel input . */
     private fun panelCommit(text: String) {
@@ -4073,8 +4099,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 if (panelInputActive) return@onMain
                 coordinator.pasteExternal(text)
                 if (readAssociation(applicationContext)) {
-                    // 表在 commit 路径已预热，这里是暖读
-                    pushAssoc(com.feelime.ime.engine.AssociationStore.next(applicationContext, text))
+                    requestAssociation(text)
                 }
             }
         }
