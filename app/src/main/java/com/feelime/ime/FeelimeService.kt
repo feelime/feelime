@@ -56,6 +56,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     private lateinit var favoritesStore: com.feelime.ime.panel.FavoritesStore
     private val favoritesListener: () -> Unit = { main.post { pushFavorites() } }
     private var associationGeneration = 0L
+    private var associationContextGeneration = 0L
     private var cancelAssociation: (() -> Unit)? = null
     private var keyboardView: WebView? = null
     /** 按键音（issue #5 问题 2）合成器：实例化开销高，懒加载复用，
@@ -1555,6 +1556,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     }
 
     override fun onDestroy() {
+        associationContextGeneration += 1
         associationGeneration += 1
         cancelAssociation?.invoke()
         cancelAssociation = null
@@ -2712,6 +2714,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     }
 
     private fun clearAssociation() {
+        associationContextGeneration += 1
         associationGeneration += 1
         cancelAssociation?.invoke()
         cancelAssociation = null
@@ -4100,9 +4103,15 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             if (text.isEmpty() || text.length > 32) return@guarded
             onMain {
                 if (panelInputActive) return@onMain
-                coordinator.pasteExternal(text)
-                if (readAssociation(applicationContext)) {
-                    requestAssociation(text)
+                val context = ++associationContextGeneration
+                val editor = inputConnectionGeneration
+                val panel = panelRouteGeneration
+                coordinator.pasteExternal(text) {
+                    // 自己的 Reset 也会推进结果代际；先等它落地，再创建后继请求。
+                    // 等待期间收起/切编辑器/切面板的点击，不能在新上下文里重启联想。
+                    if (context == associationContextGeneration && editor == inputConnectionGeneration &&
+                        panel == panelRouteGeneration && !panelInputActive && readAssociation(applicationContext)
+                    ) requestAssociation(text)
                 }
             }
         }

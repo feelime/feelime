@@ -111,7 +111,7 @@ class TextInputCoordinator(
         data class Command(val value: EngineCommand) : QueuedInput
         data class Mode(val value: InputMode) : QueuedInput
         data class Accept(val after: () -> Unit) : QueuedInput
-        data class Literal(val text: String, val countStats: Boolean = true) : QueuedInput
+        data class Literal(val text: String, val countStats: Boolean, val after: () -> Unit) : QueuedInput
     }
     private val warmupQueue = ArrayDeque<QueuedInput>()
     private var warmupReplayGeneration = 0L
@@ -712,15 +712,15 @@ class TextInputCoordinator(
      * finishComposing+commit would leave the engine's old buffer alive and
      * the next keystroke would open a second preedit over the pasted text.
      */
-    fun pasteExternal(text: String, countStats: Boolean = true): DispatchAck {
+    fun pasteExternal(text: String, countStats: Boolean = true, onComplete: () -> Unit = {}): DispatchAck {
         asrGuard()
         if (pendingEngine != null || replaying) {
-            return enqueueQueued(QueuedInput.Literal(text, countStats))
+            return enqueueQueued(QueuedInput.Literal(text, countStats, onComplete))
         }
-        return pasteExternalNow(text, countStats)
+        return pasteExternalNow(text, countStats, onComplete)
     }
 
-    private fun pasteExternalNow(text: String, countStats: Boolean = true): DispatchAck {
+    private fun pasteExternalNow(text: String, countStats: Boolean = true, onComplete: () -> Unit = {}): DispatchAck {
         removeAutomaticSpaceBefore(text)
         invalidateWordUndo()
         // A live composition must LAND before the literal -
@@ -743,11 +743,26 @@ class TextInputCoordinator(
             composingRaw = ""
             composingActive = false
         }
-        val ack = dispatchLive(EngineCommand.Reset)
+        var resetApplied = false
+        var committed = false
+        var completed = false
+        fun complete() {
+            if (!completed && resetApplied && committed) {
+                completed = true
+                onComplete()
+            }
+        }
+        // Reset 回声可以同步或延后到达；后继联想必须等回声和文字提交都完成。
+        val ack = dispatchLive(EngineCommand.Reset) {
+            resetApplied = true
+            complete()
+        }
         expectReplacement(text.length)
         // 粘贴通道（issue #44）不进 #41 统计；用户键出的 raw 预提交
         // 仍计数。
         if (countStats) editor.commitText(text) else editor.commitTextUntracked(text)
+        committed = true
+        complete()
         return ack
     }
 
@@ -962,8 +977,10 @@ class TextInputCoordinator(
                     else dispatchLive(item.value, ::next)
                 }
                 is QueuedInput.Literal -> {
-                    pasteExternalNow(item.text, item.countStats)
-                    if (generation == warmupReplayGeneration) next()
+                    pasteExternalNow(item.text, item.countStats) {
+                        item.after()
+                        if (generation == warmupReplayGeneration) next()
+                    }
                 }
                 is QueuedInput.Accept -> {
                     acceptCurrentCompositionNow()
