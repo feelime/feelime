@@ -660,6 +660,7 @@ class SettingsBridge(
     private val modelStore = ModelStore(context)
     private val customKeysStore = CustomKeysStore(context)
     private val worker = Executors.newSingleThreadExecutor { task -> Thread(task, "feelime-settings") }
+    private val backgroundImages = BackgroundImageStore.requests.session()
     private val uiPreferences = UiLanguage.preferences(context)
     private val modelDownloadGate = ModelDownloadConsentGate()
 
@@ -759,6 +760,7 @@ class SettingsBridge(
 
     fun release() = synchronized(lifecycleLock) {
         if (closed) return
+        backgroundImages.close()
         closed = true
         uiPreferences.unregisterOnSharedPreferenceChangeListener(uiLanguageListener)
         runCatching { context.unregisterReceiver(customPhrasesListener) }
@@ -1670,19 +1672,17 @@ class SettingsBridge(
     @JavascriptInterface
     fun importBgImage(variant: String, base64: String, token: String) = guarded(token) {
         if (!isValidBgVariant(variant) || base64.length > 23_000_000) return@guarded
-        worker.execute {
-            if (closed) return@execute
+        enqueueBgImage(variant) { request ->
             runCatching {
                 val bytes = BackgroundImageStore.decodeImport(Base64.decode(base64, Base64.NO_WRAP))
-                BackgroundImageStore.install(context, variant, bytes)
-                context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
-                    .putString("bg_image_${variant}_src", "custom").commit()
-                context.sendBroadcast(Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName))
+                if (request.applyIfCurrent { installBgImage(variant, bytes, "custom") }) pushState()
             }.onFailure {
-                pushEvent(JSONObject().put("type", "bgImageError").put("code", "BAD_BG_IMAGE")
-                    .put("message", t(context, "图片过大或无法读取，请先缩小图片后重试", "Image is too large or unreadable. Resize it and try again.")))
+                request.applyIfCurrent {
+                    pushEvent(JSONObject().put("type", "bgImageError").put("code", "BAD_BG_IMAGE")
+                        .put("message", t(context, "图片过大或无法读取，请先缩小图片后重试", "Image is too large or unreadable. Resize it and try again.")))
+                    pushState()
+                }
             }
-            pushState()
         }
     }
 
@@ -1691,32 +1691,40 @@ class SettingsBridge(
     @JavascriptInterface
     fun setBgImage(variant: String, base64: String, token: String) = guarded(token) {
         if (!isValidBgVariant(variant)) return@guarded
-        worker.execute {
-            if (closed) return@execute
+        enqueueBgImage(variant) { request ->
             try {
                 val bytes = Base64.decode(base64, Base64.NO_WRAP)
                 if (bytes.isEmpty() || bytes.size > 16 * 1024 * 1024) throw IllegalArgumentException("invalid image size")
                 val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                 require(BackgroundImageStore.importSize(bounds.outWidth, bounds.outHeight) == (bounds.outWidth to bounds.outHeight))
-                BackgroundImageStore.install(context, variant, bytes)
+                if (request.applyIfCurrent { installBgImage(variant, bytes, "custom") }) pushState()
             } catch (error: Exception) {
-                pushEvent(
-                    JSONObject()
-                        .put("type", "bgImageError")
-                        .put("code", "BAD_BG_IMAGE")
-                        .put("message", t(context, "图片保存失败", "Failed to save the image")),
-                )
-                pushState()
-                return@execute
+                request.applyIfCurrent {
+                    pushEvent(
+                        JSONObject()
+                            .put("type", "bgImageError")
+                            .put("code", "BAD_BG_IMAGE")
+                            .put("message", t(context, "图片保存失败", "Failed to save the image")),
+                    )
+                    pushState()
+                }
             }
-            context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-                .edit().putString("bg_image_" + variant + "_src", "custom").commit()
-            context.sendBroadcast(
-                Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-            )
-            pushState()
         }
+    }
+
+    private fun enqueueBgImage(variant: String, action: (BackgroundImageRequests.Session.Request) -> Unit) = synchronized(lifecycleLock) {
+        if (closed) return
+        val request = backgroundImages.begin(variant) ?: return
+        // 入队与 release 共用生命周期锁，避免检查后 worker 已关闭的窗口。
+        worker.execute { if (!closed) action(request) }
+    }
+
+    private fun installBgImage(variant: String, bytes: ByteArray, source: String) {
+        BackgroundImageStore.install(context, variant, bytes)
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE).edit()
+            .putString("bg_image_${variant}_src", source).commit()
+        context.sendBroadcast(Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName))
     }
 
     /** 色彩模式（外观页）：写 theme_mode pref + 广播，键盘 hello 读回
@@ -1927,15 +1935,15 @@ class SettingsBridge(
     @JavascriptInterface
     fun clearBgImage(variant: String, token: String) = guarded(token) {
         if (!isValidBgVariant(variant)) return@guarded
-        worker.execute {
-            if (closed) return@execute
-            bgImageFile(context, variant).delete()
-            context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-                .edit().remove("bg_image_" + variant + "_src").commit()
-            context.sendBroadcast(
-                Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-            )
-            pushState()
+        enqueueBgImage(variant) { request ->
+            if (request.applyIfCurrent {
+                bgImageFile(context, variant).delete()
+                context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+                    .edit().remove("bg_image_" + variant + "_src").commit()
+                context.sendBroadcast(
+                    Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+                )
+            }) pushState()
         }
     }
 
@@ -1952,27 +1960,20 @@ class SettingsBridge(
             )
             return@guarded
         }
-        worker.execute {
-            if (closed) return@execute
+        enqueueBgImage(variant) { request ->
             try {
-                context.assets.open("settings/bg-$variant.jpg").use { input ->
-                    BackgroundImageStore.install(context, variant, input.readBytes())
-                }
+                val bytes = context.assets.open("settings/bg-$variant.jpg").use { it.readBytes() }
+                if (request.applyIfCurrent { installBgImage(variant, bytes, "builtin") }) pushState()
             } catch (error: Exception) {
-                pushEvent(
-                    JSONObject()
-                        .put("type", "bgImageError")
-                        .put("code", "BAD_BG_IMAGE")
-                        .put("message", t(context, "图片保存失败", "Failed to save the image")),
-                )
-                return@execute
+                request.applyIfCurrent {
+                    pushEvent(
+                        JSONObject()
+                            .put("type", "bgImageError")
+                            .put("code", "BAD_BG_IMAGE")
+                            .put("message", t(context, "图片保存失败", "Failed to save the image")),
+                    )
+                }
             }
-            context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-                .edit().putString("bg_image_" + variant + "_src", "builtin").commit()
-            context.sendBroadcast(
-                Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
-            )
-            pushState()
         }
     }
 

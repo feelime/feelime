@@ -14,6 +14,7 @@ import java.io.File
 internal object BackgroundImageStore {
     const val PREFIX = "/keyboard/background/"
     const val HOST = "feelime.local"
+    val requests = BackgroundImageRequests()
 
     @Synchronized fun url(context: Context, variant: String): String {
         val file = bgImageFile(context, variant)
