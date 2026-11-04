@@ -42,11 +42,17 @@ class ClipSuppressPolicy(private val onMarkerChanged: (String?) -> Unit = {}) {
     /** clear()/remove(): snapshot the fingerprint of the clip the system
      *  still holds (null = nothing usable to suppress). */
     fun snapshot(currentFingerprint: String?) {
+        invalidateCapture()
         marker = currentFingerprint
         onMarkerChanged(marker)
     }
 
     private var lastCapturedFingerprint: String? = null
+
+    fun invalidateCapture() {
+        // 历史已变，焦点去重不能继续把已删除条目当成仍在历史中。
+        lastCapturedFingerprint = null
+    }
 
     fun shouldSuppress(fingerprint: String): Boolean =
         marker != null && fingerprint.isNotEmpty() && fingerprint == marker
@@ -177,6 +183,7 @@ class ClipboardStore(private val context: Context) {
             prefs.edit().putString(KEY, PanelCodec.serialize(next)).commit()
             items.firstOrNull { it.id == id }
         }
+        if (removed != null) suppress.invalidateCapture()
         // Removing the entry that IS the current system clip would be undone
         // at the next editor focus (captureCurrent) — suppress it too.
         if (removed != null && currentClipText() == removed.text) {
