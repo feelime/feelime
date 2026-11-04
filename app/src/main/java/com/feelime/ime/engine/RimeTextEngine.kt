@@ -252,7 +252,7 @@ class RimeTextEngine(
             return@synchronized
         }
         viewPage = target
-        val next = parseState()
+        val next = parseState(json)
         lastState = next
         emit(event(Phase.READY, lastState))
         Unit
@@ -265,8 +265,8 @@ class RimeTextEngine(
      * never address the wrong composition; the expectedRevision guard on
      * Choose covers the rest.
      */
-    private var shownCandidates: Map<String, Int> = emptyMap()
-    private var shownTexts: Map<String, String> = emptyMap()
+    private val shownCandidates = HashMap<String, Int>()
+    private val shownTexts = HashMap<String, String>()
     private var lastPageSize = 5
     private var shownPreedit: String? = null
 
@@ -294,9 +294,9 @@ class RimeTextEngine(
         return committed.takeIf { it.isNotEmpty() }
     }
 
-    private fun parseState(): EngineState {
+    private fun parseState(page: JSONObject? = null): EngineState {
         // 只读通道：按应用视图页读取（键后恒为第 0 页，翻页只动 viewPage）。
-        var json = JSONObject(NativeSmoke.rimeContextAtPage(session, viewPage))
+        var json = page ?: JSONObject(NativeSmoke.rimeContextAtPage(session, viewPage))
         if (json.optInt("code", -1) != 0) {
             // 越界视图页（新组合重置了菜单）：回读第 0 页自愈。分页失败
             // 绝不能被解释成组合结束（codex 四轮 P1）。
@@ -312,8 +312,8 @@ class RimeTextEngine(
         val isLastPage = json.optInt("isLastPage", 1) != 0
         val preedit = json.optString("preedit")
         if (preedit != shownPreedit) {
-            shownCandidates = emptyMap()
-            shownTexts = emptyMap()
+            shownCandidates.clear()
+            shownTexts.clear()
             shownPreedit = preedit
         }
         val candidates = json.optString("candidates").lineSequence()
@@ -323,8 +323,8 @@ class RimeTextEngine(
                 val absolute = viewPageNo * lastPageSize + index
                 val id = stableCandidateId(engineName, viewPageNo, index, value)
                 if (value.isNotEmpty()) {
-                    shownCandidates = shownCandidates + (id to absolute)
-                    shownTexts = shownTexts + (id to value)
+                    shownCandidates[id] = absolute
+                    shownTexts[id] = value
                 }
                 Candidate(id, value)
             }

@@ -101,11 +101,10 @@ class OchwproEngine(
         val points = OnnxTensor.createTensor(
             env, FloatBuffer.wrap(features), longArrayOf(1, t.toLong(), FEATURE_DIM.toLong()),
         )
-        val mask = OnnxTensor.createTensor(
-            env, ByteBuffer.wrap(ByteArray(t) { 1 }), longArrayOf(1, t.toLong()), OnnxJavaType.BOOL,
-        )
         points.use { p ->
-            mask.use { m ->
+            OnnxTensor.createTensor(
+                env, ByteBuffer.wrap(ByteArray(t) { 1 }), longArrayOf(1, t.toLong()), OnnxJavaType.BOOL,
+            ).use { m ->
                 activeSession.run(mapOf("points" to p, "mask" to m)).use { output ->
                     @Suppress("UNCHECKED_CAST")
                     val logits = (output.get(0).value as Array<FloatArray>)[0]
@@ -123,20 +122,20 @@ class OchwproEngine(
         val bytes = runCatching { context.assets.open(MODEL_FILE).use { it.readBytes() } }.getOrNull()
             ?: return null
         val env = environment ?: OrtEnvironment.getEnvironment().also { environment = it }
-        val options = OrtSession.SessionOptions()
         return runCatching {
-            options.setIntraOpNumThreads(2)
-            env.createSession(bytes, options).also { session = it }
+            OrtSession.SessionOptions().use { options ->
+                options.setIntraOpNumThreads(2)
+                env.createSession(bytes, options).also { session = it }
+            }
         }.onFailure {
             Log.w(TAG, "ochwpro session create failed", it)
-            runCatching { options.close() }
         }.getOrNull()
     }
 
     private fun ensureVocabulary(): List<String>? {
         if (vocabulary.isNotEmpty()) return vocabulary
         val chars = runCatching {
-            val root = org.json.JSONObject(context.assets.open(VOCAB_FILE).readBytes().decodeToString())
+            val root = org.json.JSONObject(context.assets.open(VOCAB_FILE).use { it.readBytes().decodeToString() })
             val array = root.getJSONArray("chars")
             (0 until array.length()).map { array.getString(it) }
         }.getOrElse {

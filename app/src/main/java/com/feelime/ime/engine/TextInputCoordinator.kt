@@ -26,7 +26,7 @@ class TextInputCoordinator(
     private val mainPoster: (() -> Unit) -> Unit = { it() },
     private val background: Executor? = null,
     private val modeStore: ModeStore? = null,
-    private val delayPoster: ((Long, () -> Unit) -> Unit)? = null,
+    private val delayPoster: ((Long, () -> Unit) -> (() -> Unit))? = null,
     /** 诊断事件出口（Diagnostics 环形缓冲）。本类保持 JVM 无 android 依赖，
      *  由 service 注入；关闭诊断时 sink 内部直接丢弃。行内绝无文本内容。 */
     val diagnosticSink: ((String) -> Unit)? = null,
@@ -73,6 +73,12 @@ class TextInputCoordinator(
     private var pendingEngine: TextEngine? = null
     private var pendingStamp: EngineStamp? = null
     private var pendingLastRevision = 0L
+    private var cancelWarmupTimeout: (() -> Unit)? = null
+
+    private fun clearWarmupTimeout() {
+        cancelWarmupTimeout?.invoke()
+        cancelWarmupTimeout = null
+    }
 
     /** Close bookkeeping for swap gating (mode-fallback §2.4): a recreate's
      *  swap must wait for EVERY close in flight when it starts — its own,
@@ -353,6 +359,7 @@ class TextInputCoordinator(
         val liveWasStarted = liveEngineStarted
         val warmupEngine = pendingEngine
         val warmupStamp = pendingStamp
+        clearWarmupTimeout()
         pendingEngine = null
         pendingStamp = null
         pendingLastRevision = 0
@@ -983,6 +990,7 @@ class TextInputCoordinator(
         val liveWasStarted = liveEngineStarted
         val warmupEngine = pendingEngine
         val warmupStamp = pendingStamp
+        clearWarmupTimeout()
         pendingEngine = null
         pendingStamp = null
         pendingLastRevision = 0
@@ -1140,8 +1148,9 @@ class TextInputCoordinator(
         pendingStamp = targetStamp
         pendingLastRevision = 0
         pendingEngine = target
-        delayPoster?.invoke(15_000L) {
-            if (pendingEngine === target && pendingStamp == targetStamp) {
+        clearWarmupTimeout()
+        cancelWarmupTimeout = delayPoster?.invoke(15_000L) {
+            if (pendingStamp == targetStamp) {
                 degradeToDirect(targetStamp.mode, DegradeReason.WARMUP_TIMEOUT)
             }
         }
@@ -1204,6 +1213,7 @@ class TextInputCoordinator(
     private fun abandonPending() {
         val engine = pendingEngine
         val pending = pendingStamp
+        clearWarmupTimeout()
         pendingEngine = null
         pendingStamp = null
         pendingLastRevision = 0
@@ -1395,6 +1405,7 @@ class TextInputCoordinator(
                 // round-4 review).
                 engineSessionGeneration = stamp.engineSessionGeneration
                 liveEngineStarted = true
+                clearWarmupTimeout()
                 pendingEngine = null
                 pendingStamp = null
                 lastAppliedRevision = event.revision

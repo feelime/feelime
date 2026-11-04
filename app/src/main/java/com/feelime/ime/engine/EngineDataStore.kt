@@ -139,7 +139,7 @@ object EngineDataStore {
         // select by directory-name ordering — an older version whose hash
         // sorts later would win forever and report a permanent mismatch.
         val parsed = manifest(context) ?: return null
-        val version = sha256(parsed.raw)
+        val version = parsed.version
         val target = File(File(context.filesDir, "engine-data/versions"), version)
         return if (File(target, ".ready").isFile) target else null
     }
@@ -151,7 +151,7 @@ object EngineDataStore {
             deployFailed = true
             return
         }
-        val version = sha256(manifest.raw)
+        val version = manifest.version
         val versions = File(context.filesDir, "engine-data/versions").apply { mkdirs() }
         val target = File(versions, version)
         if (File(target, ".ready").isFile) return
@@ -226,11 +226,20 @@ object EngineDataStore {
         }
     }
 
-    private data class ParsedManifest(val raw: ByteArray, val files: Map<String, Entry>) {
+    private data class ParsedManifest(val version: String, val files: Map<String, Entry>) {
         data class Entry(val sha256: String, val bytes: Long)
     }
 
+    @Volatile private var cachedManifest: ParsedManifest? = null
+
     private fun manifest(context: Context): ParsedManifest? {
+        cachedManifest?.let { return it }
+        return synchronized(this) {
+            cachedManifest ?: readManifest(context)?.also { cachedManifest = it }
+        }
+    }
+
+    private fun readManifest(context: Context): ParsedManifest? {
         val raw = runCatching { context.assets.open(MANIFEST_ASSET).use { it.readBytes() } }
             .getOrNull() ?: return null
         return runCatching {
@@ -241,7 +250,7 @@ object EngineDataStore {
                 val entry = filesObject.getJSONObject(key)
                 files[key] = ParsedManifest.Entry(entry.getString("sha256"), entry.getLong("bytes"))
             }
-            ParsedManifest(raw, files)
+            ParsedManifest(sha256(raw), files)
         }.getOrNull()
     }
 

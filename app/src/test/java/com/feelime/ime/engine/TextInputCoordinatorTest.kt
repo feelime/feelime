@@ -1211,13 +1211,34 @@ class TextInputCoordinatorTest {
         val host = RecordingEditor()
         val delays = mutableListOf<() -> Unit>()
         val c = TextInputCoordinator(host, {}, { FakeEngine() }, background = ManualExecutor(),
-            delayPoster = { _, block -> delays.add(block) })
+            delayPoster = { _, block -> delays.add(block); { delays.remove(block); Unit } })
         c.onEditorStarted(false)
         c.selectMode(InputMode.FRENCH)
         c.key('a'.code)
         delays.single()()
         assertEquals("a", host.text)
         assertEquals(InputMode.DIRECT, c.currentMode)
+    }
+
+    @Test
+    fun warmupTimeoutCancelledOnReadyReplacementAndClose() {
+        val scheduled = mutableListOf<() -> Unit>()
+        val executor = ManualExecutor()
+        val c = TextInputCoordinator(RecordingEditor(), {}, { FakeEngine() }, background = executor,
+            delayPoster = { _, block -> scheduled.add(block); { scheduled.remove(block); Unit } })
+        c.onEditorStarted(false)
+        c.selectMode(InputMode.FRENCH)
+        val obsolete = scheduled.single()
+        c.selectMode(InputMode.RUSSIAN)
+        assertEquals(1, scheduled.size)
+        obsolete()
+        assertEquals(InputMode.RUSSIAN, c.currentMode)
+        executor.runAll()
+        assertTrue(scheduled.isEmpty())
+        c.selectMode(InputMode.FRENCH)
+        assertEquals(1, scheduled.size)
+        c.close()
+        assertTrue(scheduled.isEmpty())
     }
 
     @Test
@@ -1580,7 +1601,7 @@ class TextInputCoordinatorTest {
             },
             asrGuard = {},
             background = java.util.concurrent.Executor { },
-            delayPoster = { _, block -> fireTimeout = block },
+            delayPoster = { _, block -> fireTimeout = block; {} },
         )
         c.selectMode(InputMode.PINYIN)
         assertTrue(c.key('x'.code) == DispatchAck.Accepted)

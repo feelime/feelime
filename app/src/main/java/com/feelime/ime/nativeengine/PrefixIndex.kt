@@ -2,7 +2,7 @@ package com.feelime.ime.nativeengine
 
 import java.io.File
 
-class PrefixIndex private constructor(private val words: List<String>) {
+class PrefixIndex internal constructor(private val words: List<String>) {
     /** 词典全词表（重音折叠索引等派生数据构建用）。 */
     fun allWords(): List<String> = words
 
@@ -14,9 +14,14 @@ class PrefixIndex private constructor(private val words: List<String>) {
             val middle = (low + high) ushr 1
             if (words[middle].lowercase() < needle) low = middle + 1 else high = middle
         }
-        return words.asSequence().drop(low)
-            .takeWhile { it.startsWith(prefix, ignoreCase = true) }
-            .take(limit).toList()
+        require(limit >= 0)
+        val result = ArrayList<String>(minOf(limit, words.size - low))
+        while (low < words.size && result.size < limit) {
+            val word = words[low++]
+            if (!word.startsWith(prefix, ignoreCase = true)) break
+            result.add(word)
+        }
+        return result
     }
 
     companion object {

@@ -54,6 +54,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     private lateinit var coordinator: TextInputCoordinator
     private lateinit var clipboardStore: com.feelime.ime.panel.ClipboardStore
     private lateinit var favoritesStore: com.feelime.ime.panel.FavoritesStore
+    private val favoritesListener: () -> Unit = { main.post { pushFavorites() } }
     private var keyboardView: WebView? = null
     /** 按键音（issue #5 问题 2）合成器：实例化开销高，懒加载复用，
      *  onDestroy 释放。 */
@@ -792,9 +793,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // open favorites tab on the keyboard . Removals through the
         // panel push themselves; this listener covers the Setup->panel
         // direction. Panel ids the panel no longer has are inert.
-        com.feelime.ime.panel.PanelStoreSignals.favorites.add {
-            main.post { pushFavorites() }
-        }
+        com.feelime.ime.panel.PanelStoreSignals.favorites.add(favoritesListener)
         clipboardStore.start()
         registerReceiver(
             updateReceiver,
@@ -978,7 +977,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 Diagnostics.log("engine",
                     "pushState rev=${event.revision} composing=${event.state.composing} view=${System.identityHashCode(keyboardView)}")
                 lastStatePayloadJson = payload.toString()
-                evaluate("window.Feelime && window.Feelime.onEngineState && window.Feelime.onEngineState($payload)")
+                evaluate("window.Feelime && window.Feelime.onEngineState && window.Feelime.onEngineState($lastStatePayloadJson)")
                 // 中文联想（docs/design/association.md §3）：只在 commit 事件
                 // 上计算并推送，键盘保留现有联想直到组合开始。
                 val committed = event.state.commit
@@ -1005,7 +1004,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             mainPoster = { block -> main.post(block) },
             background = background,
             modeStore = sharedPreferencesModeStore(),
-            delayPoster = { delay, block -> main.postDelayed(block, delay) },
+            delayPoster = { delay, block ->
+                val task = Runnable { block() }
+                main.postDelayed(task, delay)
+                val cancel: () -> Unit = { main.removeCallbacks(task) }
+                cancel
+            },
             diagnosticSink = { Diagnostics.log("engine", it) },
             // 自家 app 的可编辑框（设置页 textarea）：拼音系组合镜像进
             // 编辑器（#39 反馈「JSON 框打字像卡死」的根因——组合只画在
@@ -1544,6 +1548,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     }
 
     override fun onDestroy() {
+        com.feelime.ime.panel.PanelStoreSignals.favorites.remove(favoritesListener)
         // 收起取证：service 销毁落一行——导出里「onDestroy 之后又见
         // process start」= 进程被系统回收/重启（环形缓冲清空的元凶）。
         Diagnostics.log("svc", "destroy")
