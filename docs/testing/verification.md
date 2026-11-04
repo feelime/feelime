@@ -97,7 +97,8 @@ ANDROID_HOME=… ./gradlew testDebugUnitTest   # 应用 JVM 套件（direct/play
   coordinator/cache、可控引擎与编辑器写入回调，分别排队回调和联想投递。
   覆盖自家/外部编辑器、暖/冷缓存、拼音族与法语组合替换、候选上屏、
   组合控制、降级落字、硬键补交及原生选区操作；真实选区变化和面板切换必须
-  作废旧结果。
+  作废旧结果。清理空操作后选词，省略或合并候选回调再把光标移回原位，冷热
+  缓存都必须作废旧联想；实际镜像 span 清理和正反向选区删除仍确认自身回调。
   面板自身写入的 JS 回调过滤另由键盘 mock 验证。
 - **滚动模型**：mock harness 对滚动容器有 clientWidth/scrollWidth/
   scrollLeft 模型与 `world.drag()`（preventDefault 即 cancelled）——

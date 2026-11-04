@@ -29,15 +29,22 @@ class AssociationSelectionIntegrationTest(private val own: Boolean, private val 
         var eventGeneration = 0L
         var failNextKey = false
         var hardwareCommit: String? = "你好"
+        var selectionEnd: Int? = null
         lateinit var coordinator: TextInputCoordinator
         private val port = object : EditorPort by editor {
             fun write(block: () -> Unit) {
                 val old = editor.caret
+                val oldEnd = selectionEnd ?: old
                 val text = editor.text
+                selectionEnd?.let { end ->
+                    editor.text = editor.text.removeRange(minOf(old, end), maxOf(old, end))
+                    editor.caret = minOf(old, end)
+                    selectionEnd = null
+                }
                 block()
                 val new = editor.caret
-                if (old != new || text != editor.text) selections.addLast {
-                    coordinator.onEditorSelectionChanged(old, old, new, new)
+                if (old != new || oldEnd != new || text != editor.text) selections.addLast {
+                    coordinator.onEditorSelectionChanged(old, oldEnd, new, new)
                 }
             }
             override fun setComposing(text: String) = write { editor.setComposing(text) }
@@ -123,6 +130,58 @@ class AssociationSelectionIntegrationTest(private val own: Boolean, private val 
         assertEquals(listOf(listOf("中国")), h.delivered)
     }
 
+    @Test fun `ordinary candidate with omitted callback still invalidates on host return`() =
+        hostReturnAfterCandidate("ordinary", merged = false)
+
+    @Test fun `ordinary candidate with merged callback still invalidates on host return`() =
+        hostReturnAfterCandidate("ordinary", merged = true)
+
+    @Test fun `setComposition then candidate with omitted callback still invalidates on host return`() =
+        hostReturnAfterCandidate("replace", merged = false)
+
+    @Test fun `setComposition then candidate with merged callback still invalidates on host return`() =
+        hostReturnAfterCandidate("replace", merged = true)
+
+    @Test fun `clearComposing then candidate with omitted callback still invalidates on host return`() =
+        hostReturnAfterCandidate("clear", merged = false)
+
+    @Test fun `clearComposing then candidate with merged callback still invalidates on host return`() =
+        hostReturnAfterCandidate("clear", merged = true)
+
+    private fun hostReturnAfterCandidate(control: String, merged: Boolean) = withHarness { h ->
+        // 用非零起点，防止只在空编辑器下偶然匹配；此前自身回调都已结清。
+        h.coordinator.pasteExternal("前")
+        h.drain()
+        h.callbacks()
+        val origin = h.editor.caret
+        h.compose()
+        when (control) {
+            "replace" -> h.coordinator.setComposition("na")
+            "clear" -> h.coordinator.clearComposing()
+        }
+        h.drain()
+        h.callbacks()
+        if (control == "clear") h.compose()
+        h.coordinator.choose(h.fake.revision, "candidate")
+        h.main.removeFirst()() // 已提交并发起联想，投递仍在队列中。
+        assertEquals("前你好", h.editor.text)
+        val input = h.coordinator.userInputGeneration
+        val committedCaret = h.editor.caret
+        assertEquals(1, h.selections.size)
+        h.selections.clear() // 宿主省略候选回调，或把它与随后的外部移动合并。
+        h.editor.caret = origin
+        h.coordinator.onEditorSelectionChanged(
+            if (merged) origin else committedCaret,
+            if (merged) origin else committedCaret,
+            origin, origin,
+        )
+        val label = "$control merged=$merged own=${h.own} warm=${h.warm} mode=${h.mode}"
+        // 两个断言分别防止虚假预测吞掉移动，以及旧的冷/热联想继续投递。
+        h.finishResult()
+        assertTrue("$label delivered=${h.delivered}", h.delivered.isEmpty())
+        assertTrue(label, h.coordinator.userInputGeneration > input)
+    }
+
     @Test fun `literal landing callbacks preserve warm and cold association`() = withHarness { h ->
         h.compose()
         h.coordinator.pasteExternal("你好") { h.request() }
@@ -136,6 +195,35 @@ class AssociationSelectionIntegrationTest(private val own: Boolean, private val 
 
     @Test fun `composition replacement registers own callbacks`() = control("replace")
     @Test fun `composition clear registers own callbacks`() = control("clear")
+
+    @Test fun `setComposition without mirrored span still predicts selected text deletion`() =
+        clearSelectedText("replace")
+
+    @Test fun `clearComposing without mirrored span still predicts selected text deletion`() =
+        clearSelectedText("clear")
+
+    private fun clearSelectedText(control: String) = withHarness { h ->
+        h.coordinator.pasteExternal("前你好后")
+        h.drain()
+        h.callbacks()
+        // 无组合 span，但非折叠选区会被空串替换；正反方向都必须保留自身回调预测。
+        val start = if (control == "replace") 1 else 3
+        val end = if (control == "replace") 3 else 1
+        h.editor.caret = start
+        h.selectionEnd = end
+        h.coordinator.onEditorSelectionChanged(4, 4, start, end)
+        if (control == "replace") h.coordinator.setComposition("") else h.coordinator.clearComposing()
+        val input = h.coordinator.userInputGeneration
+        h.drain()
+        assertEquals("前后", h.editor.text)
+        assertEquals(1, h.editor.caret)
+        assertEquals(1, h.selections.size)
+        h.request()
+        h.assertOwnCallbacks(input)
+        h.finishResult()
+        assertEquals(listOf(listOf("中国")), h.delivered)
+    }
+
     @Test fun `composition acceptance registers own callbacks`() = control("accept")
     @Test fun `gesture restore registers own callbacks`() = control("restore")
     @Test fun `engine reset registers own callbacks`() = control("reset")

@@ -257,6 +257,9 @@ class TextInputCoordinator(
 
     private fun expectReplacement(length: Int) {
         if (predictedSelectionStart < 0 || predictedSelectionEnd < 0) return
+        // 空串只有删除镜像 span 或非折叠选区时才需要预测；空操作会留下假回调，误吞后续外部移位。
+        if (length == 0 && !(composingActive && mirrorsComposing()) &&
+            predictedSelectionStart == predictedSelectionEnd) return
         val start = if (composingActive && mirrorsComposing()) predictedSelectionEnd - composingRaw.length
             else minOf(predictedSelectionStart, predictedSelectionEnd)
         val target = (start + length).coerceAtLeast(0)
