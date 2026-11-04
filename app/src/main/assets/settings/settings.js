@@ -214,7 +214,7 @@ const I18N = {
         "input.hwkb.follow": "跟随系统",
         "input.hwkb.hint": "硬键盘打字：字母直接进拼音组合、空格选词、Ctrl+空格 或 单按 Shift 切换中英。",
         "input.quickSwitch.policy": "快捷切换（切换键/Ctrl+空格）",
-        "input.quickSwitch.policyHint": "当前键盘↔英文：从英文切回最近使用的键盘；固定配对：始终在你选定的两个键盘间切换。",
+        "input.quickSwitch.policyHint": "固定配对：始终在你选定的两个键盘间切换；当前键盘↔英文：从英文切回最近使用的键盘。",
         "input.quickSwitch.follow": "当前键盘↔英文",
         "input.quickSwitch.fixed": "固定配对",
         "input.assoc.backspaceClearHint": "联想候选显示时按退格先清联想、恢复工具栏（不删字）；关闭则退格照旧删字。",
@@ -1024,7 +1024,7 @@ const I18N = {
         "input.hwkb.follow": "Follow system",
         "input.hwkb.hint": "Type with a hard keyboard: letters feed the pinyin composer, space picks a candidate, Ctrl+Space or a lone Shift toggles Chinese/English.",
         "input.quickSwitch.policy": "Quick switch (toggle / Ctrl+Space)",
-        "input.quickSwitch.policyHint": "Current keyboard ↔ English: returns to the last keyboard you used; Fixed pair: always flips between the two keyboards you picked.",
+        "input.quickSwitch.policyHint": "Fixed pair: always flips between the two keyboards you picked; Current keyboard ↔ English: returns to the last keyboard you used.",
         "input.quickSwitch.follow": "Current keyboard ↔ English",
         "input.quickSwitch.fixed": "Fixed pair",
         "input.assoc.backspaceClearHint": "When association candidates are showing, backspace clears them and restores the toolbar (nothing deleted); off = backspace deletes as usual.",
@@ -2366,7 +2366,7 @@ function renderLandscape(state) {
     const hwkb = $("hwkbForm");
     if (hwkb && document.activeElement !== hwkb) hwkb.value = state.hwkbForm || "candidates";
     const qsp = $("quickSwitchPolicy");
-    if (qsp && document.activeElement !== qsp) qsp.value = state.quickSwitchPolicy || "follow";
+    if (qsp && document.activeElement !== qsp) qsp.value = state.quickSwitchPolicy || "fixed";
     const ceil = $("landscapeCeil");
     const ceilOut = $("landscapeCeilOut");
     const ceilVal = Number(state.landscapeCeil);

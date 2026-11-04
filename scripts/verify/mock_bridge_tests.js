@@ -1033,7 +1033,9 @@ test('editor state and voice state compose in any order', () => {
 // ---------------------------------------------------------------- M4 bottom row
 
 test('bottom row: toggle flips the quick keyboard pair', () => {
-    const world = fresh();
+    // follow 显式注入：默认策略 2026-11-05 起为 fixed（用户裁定），
+    // 本测试钉的是 follow 语义（3.73.55 定案的法/双拼直切英文）。
+    const world = fresh({ quickSwitchPolicy: 'follow' });
     const toggle = world.$('modeToggle');
     assert(toggle && toggle.dataset.role === 'cnEn', 'cn-en toggle exists');
     // default pair 拼/En: direct -> pinyin
@@ -1051,6 +1053,14 @@ test('bottom row: toggle flips the quick keyboard pair', () => {
     const expect = verAtLeast(KEYBOARD_VERSION, '3.73.55') ? 'direct' : 'pinyin';
     equal(world.native.of('selectMode')[2].args[0], expect,
         verAtLeast(KEYBOARD_VERSION, '3.73.55') ? 'french toggles straight to English' : 'french falls back to pair end (pre-3.73.55)');
+});
+
+test('quick switch: factory default is fixed pair (2026-11-05 用户裁定)', {since: '3.73.76'}, () => {
+    const world = fresh();
+    world.engineState({phase: 'READY', revision: 1, mode: 'french', composing: '', candidates: []});
+    world.tap(world.$('modeToggle'));
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'pinyin',
+        'out-of-pair mode flips to pair[0] under the fixed default');
 });
 
 test('quick switch: follow returns to the last keyboard from English', {since: '3.73.55'}, () => {
@@ -1096,13 +1106,13 @@ test('quick switch: fixed keeps the pair semantics', {since: '3.73.55'}, () => {
 });
 
 test('quick switch: first-load migration classifies the saved pair', {since: '3.73.55'}, () => {
-    // 迁移表（codex 二轮 §2.5）：hello 不带 policy（旧壳/首载）时按存量
-    // localStorage 配对判定——恰出厂默认对/无配对 → follow；非默认对 →
-    // fixed（用户自配语义保留）。上报一次后不再重判。
+    // 迁移（codex 二轮 §2.5，2026-11-05 用户裁定后简化）：hello 不带
+    // policy（旧壳/首载）时统一迁移 fixed（默认策略改为固定配对；
+    // native pref 才是权威状态源）。上报一次后不再重判。
     const factory = fresh();
     equal(factory.native.of('setQuickSwitchPolicy').length, 1,
-        'no saved pair migrates to follow (reported once)');
-    equal(factory.native.of('setQuickSwitchPolicy')[0].args[0], 'follow', 'factory default is follow');
+        'no saved pair migrates to fixed (reported once)');
+    equal(factory.native.of('setQuickSwitchPolicy')[0].args[0], 'fixed', 'factory default is fixed');
     const custom = new KeyboardWorld().build();
     custom.storage.set('feelime_quick_pair', JSON.stringify(['double-pinyin', 'direct']));
     custom.hello({});
@@ -5167,7 +5177,8 @@ test('hello snapshot on a rebuilt page restores the badge silently and never re-
 });
 
 test('degraded short-press retries the failed mode instead of the pair', {since: '3.30.0'}, () => {
-    const world = fresh();
+    // follow 显式注入（默认已改 fixed，本测试钉降级恢复后的 follow 行为）
+    const world = fresh({ quickSwitchPolicy: 'follow' });
     world.engineState({phase: 'READY', revision: 1, mode: 'direct', composing: '',
         degraded: true, degradedActive: true, failedMode: 'double-pinyin',
         degradeReason: 'ENGINE_INIT_FAILED', degradeSeq: 1});
@@ -9804,7 +9815,7 @@ test('handwriting round-4: bottom row entries reuse the symbol/numpad channels',
 });
 
 test('handwriting round-5: the bottom-row key is the standard quick-pair toggle (tap) + mode menu (hold)', {since: '3.59.0'}, () => {
-    const world = handwritingWorld();
+    const world = handwritingWorld({ quickSwitchPolicy: 'follow' });
     const modeKey = world.$('modeToggle');
     assert(modeKey && modeKey.dataset.lp === 'mode-menu', 'standard toggle key rendered');
     equal(world.native.of('switchInputMethod').length, 0, 'system picker untouched');
@@ -9839,7 +9850,7 @@ test('handwriting round-5: the bottom-row key is the standard quick-pair toggle 
 
 
 test('handwriting round-5: entering handwriting no longer rewrites the pair (3.73.55)', {since: '3.59.0'}, () => {
-    const world = fresh();
+    const world = fresh({ quickSwitchPolicy: 'follow' });
     world.hello({ mode: 'pinyin' });
     equal(world.storage.get('feelime_last_kb_mode'), 'pinyin', 'last keyboard still tracked');
     world.hello({ mode: 'handwriting', engineDataReady: HANDWRITING_READY });

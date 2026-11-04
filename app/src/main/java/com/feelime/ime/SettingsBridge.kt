@@ -286,8 +286,8 @@ private val QUICK_SWITCH_POLICIES = setOf("follow", "fixed")
 
 fun readQuickSwitchPolicy(context: Context): String =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getString(PREF_QUICK_SWITCH_POLICY, "follow")
-        ?.let { if (it in QUICK_SWITCH_POLICIES) it else "follow" } ?: "follow"
+        .getString(PREF_QUICK_SWITCH_POLICY, "fixed")
+        ?.let { if (it in QUICK_SWITCH_POLICIES) it else "fixed" } ?: "fixed"
 
 /** #H 返回键盘记忆（follow 策略）：最近一次成功落地的非英文键盘。
  *  仅在引擎 READY 成功应用时由 service 写入（LOADING/降级/密码框强制

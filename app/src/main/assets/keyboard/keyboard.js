@@ -321,7 +321,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.75';
+    const KEYBOARD_VERSION = '3.73.76';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1717,7 +1717,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #H 快捷切换策略（codex 双拼事故二轮定案）：follow=当前
             // 键盘↔英文（英文侧返回 quickReturnMode——native 是真相源，
             // JS 只持快照）；fixed=固定配对（存量）。
-            this.quickSwitchPolicy = 'follow';
+            this.quickSwitchPolicy = 'fixed';
             this.quickReturnMode = 'pinyin';
             // 切换成功 toast 的意图回执窗（quickSwitchTarget 发出后等
             // 权威 mode 回声，回声匹配才提示——不乐观弹）。
@@ -3806,7 +3806,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          *  fixed：固定配对翻转（配对外模式回 pair[0]，存量约定）。
          *  降级重试优先级保留在上层调用处。 */
         quickSwitchTarget() {
-            if ((this.quickSwitchPolicy || 'follow') === 'fixed') {
+            if ((this.quickSwitchPolicy || 'fixed') === 'fixed') {
                 const pair = this.quickPair;
                 return this.mode === pair[0] ? pair[1] : pair[0];
             }
@@ -11512,21 +11512,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.symbolFreqSort = payload.symbolFreqSort === true;
             this.hwkbForm = payload.hwkbForm || 'candidates';
             // #H 快捷切换策略/返回记忆快照（native 是真相源）。hello 未
-            // 带 policy 字段（旧壳或首载迁移未完成）时按迁移表从存量
-            // localStorage 配对判定一次并上报：恰出厂默认对/无配对 →
-            // follow；非默认有效对 → fixed（用户自配语义保留）。
+            // 带 policy 字段（旧壳或首载迁移未完成）时按存量 localStorage
+            // 配对判定一次并上报（用户裁定 2026-11-05：默认固定配对，
+            // 自配/无配对统一 fixed；原生 pref 才是权威状态源）。
             if (payload.quickSwitchPolicy !== undefined) {
                 this.quickSwitchPolicy = payload.quickSwitchPolicy;
                 this.quickReturnMode = payload.quickReturnMode || 'pinyin';
+                // 权威字段已到（native pref），迁移判定期就此关闭——
+                // 否则后续不带字段的 hello（测试/旧壳混合序列）会把
+                // 已下发的策略重置回迁移默认。
+                this.quickPolicyMigrated = true;
             } else if (!this.quickPolicyMigrated) {
                 // 只判定快照；上报在 ready 之后（call 门闸会吞掉
                 // keyboardReady 之前的桥调用——#27 同款时序坑）。
                 this.quickPolicyMigrated = true;
-                let savedPair = null;
-                try { savedPair = JSON.parse(localStorage.getItem('feelime_quick_pair') || 'null'); } catch (_) { /* unset */ }
-                const customized = Array.isArray(savedPair) && savedPair.length === 2 &&
-                    !(savedPair[0] === 'pinyin' && savedPair[1] === 'direct');
-                this.quickSwitchPolicy = customized ? 'fixed' : 'follow';
+                this.quickSwitchPolicy = 'fixed';
                 this.quickPolicyReportPending = true;
             }
             // #H 会话代数（codex 评审 P1-1）：重载/换页后以 native 当前

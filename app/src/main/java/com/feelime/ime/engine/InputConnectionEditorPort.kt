@@ -55,9 +55,18 @@ class InputConnectionEditorPort(private val service: InputMethodService) : Edito
         return connection.deleteSurroundingText(count, 0)
     }
 
-    override fun textBeforeCursor(limit: Int): Int? {
+    override fun textBeforeCursorWindow(limitUnits: Int): EditorPort.TextWindow? {
         val connection = service.currentInputConnection ?: return null
-        return runCatching { connection.getTextBeforeCursor(limit, 0)?.length }.getOrNull()
+        // limit 按 UTF-16 单位截窗；计数按码点（删除走 InCodePoints /
+        // DEL 键一次一个字素）。full=窗口满（协调器现只按码点数删，
+        // 不读 full——保留字段备诊断；API 合约允许宿主限量返回，
+        // 窗口形态不构成「删完/无效」的证据，codex 三轮 P1）。
+        return runCatching {
+            connection.getTextBeforeCursor(limitUnits, 0)?.let { raw ->
+                val text = raw.toString()
+                EditorPort.TextWindow(text.codePointCount(0, text.length), text.length == limitUnits)
+            }
+        }.getOrNull()
     }
 
     override fun sendDeleteKey() {

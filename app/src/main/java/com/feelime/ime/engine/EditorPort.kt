@@ -14,9 +14,11 @@ interface EditorPort {
     fun selectedText(): String?
     /** Returns false when the editor cannot delete by code points. */
     fun deleteSurroundingCodePoints(count: Int): Boolean
-    /** #85: length of the text before the cursor, null when the host does
-     *  not answer IC text queries (xterm-style buffers). */
-    fun textBeforeCursor(limit: Int): Int? = null
+    /** #85 光标前文本窗口：码点数 + 窗口（UTF-16 单位）是否截断。
+     *  null = 宿主不回 IC 文本查询（xterm 类缓冲）。 */
+    data class TextWindow(val codePoints: Int, val full: Boolean)
+
+    fun textBeforeCursorWindow(limitUnits: Int): TextWindow? = null
     fun sendDeleteKey()
     fun performEditorAction()
 }

@@ -667,26 +667,44 @@ class TextInputCoordinator(
         repeat(count) { editor.sendDeleteKey() }
     }
 
-    /** #85 上滑删光标前全部：deleteSurrounding 码点路线（不发键事件，
-     *  法/俄「退格重开上一词」语义天然不触发）——selectALL+DEL 会连光
-     *  标后内容一起清。xterm 类宿主不回应 IC 文本查询（见
-     *  InputConnectionEditorPort.deleteSurroundingCodePoints 注释），
-     *  textBeforeCursor null/0 时静默不动，比误删好。组合态已在键盘侧
-     *  门闸排除。单轮 IC 查询上限 10000 码点，满轮续删（5 轮封顶防异
-     *  常宿主死循环）。 */
+    /** #85 上滑删光标前全部：deleteSurrounding 码点路线优先（不发键
+ *  事件，法/俄「退格重开上一词」语义天然不触发）——selectAll+DEL
+ *  会连光标后内容一起清。
+ *
+ *  宿主策略（ohmyterm 复现 + codex 四轮评审定案）：查询窗口（256
+ *  UTF-16 单位）读到的码点数即本轮删除量，循环删到 0 或 guard 24
+ *  轮（约 6k ASCII；API 合约限量返回宿主单轮覆盖更少）。DEL 键连
+ *  发只在宿主明示信号下触发：查询不回（null，xterm 类）连发 48、
+ *  deleteSurrounding 返回 false 按 min(窗读数,48) 连发；读数形态
+ *  不构成证据（合约允许限量返回，凭读数连发会误伤正常宿主）。
+ *  静默无效（true 但没删）与超预算文本由 guard 有界放弃：零 DEL、
+ *  不保证删净。组合态由键盘侧门闸排除（方向锁定后到达的组合回声
+ *  仍有既有时序缺口，见松手入口）。 */
     fun deleteAllBeforeCursor() {
         userInputGeneration++
         invalidateWordUndo()
+        // 连发只在两种宿主明示信号下触发：查询不回（null）、API 明拒
+        // （false）。读数形态不构成证据——API 合约允许宿主限量返回
+        // （满窗/短窗都可能还有更多文本，codex 三轮 P1），凭读数连发
+        // 会误伤合约宿主；删除不生效的宿主由 guard 有界放弃兜底。
+        var window = editor.textBeforeCursorWindow(SCAN_UNITS) ?: return keyBurst(KEY_BURST)
         var rounds = 0
-        // 单轮 1000 码点：大 limit 的 IC 查询是同步 binder，部分宿主对
-        // 10000 级别的请求阻塞秒级（验收实录「卡两秒」）。10 轮覆盖万级。
-        while (rounds < 10) {
-            val len = editor.textBeforeCursor(1000) ?: return
-            if (len <= 0) return
-            if (!editor.deleteSurroundingCodePoints(len)) return
+        while (rounds < 24) {
+            val count = window.codePoints
+            if (count <= 0) return
+            if (!editor.deleteSurroundingCodePoints(count)) {
+                return keyBurst(count.coerceAtMost(KEY_BURST))
+            }
             rounds += 1
-            if (len < 1000) return
+            window = editor.textBeforeCursorWindow(SCAN_UNITS) ?: return
         }
+    }
+
+    /** DEL 键连发兜底：每次删光标前一个字符，位置 0 处 no-op 不会过删
+     *  （终端宿主删到提示符自然停）。emoji 等增补平面字符一次 DEL 删
+     *  整个字素，键数按码点计可能多补一发，位置 0 停住即无害。 */
+    private fun keyBurst(count: Int) {
+        repeat(count) { editor.sendDeleteKey() }
     }
 
     /** #34 回滑恢复：把会话缓冲里最后删掉的一个字符弹回编辑器。
@@ -1600,7 +1618,14 @@ class TextInputCoordinator(
         )
     }
 
-    private companion object {
-        const val MAX_WARMUP_QUEUE = 256
+    companion object {
+        private const val MAX_WARMUP_QUEUE = 256
+
+        /** #85 IC 文本查询窗口的 UTF-16 单位上限（同步 binder，比旧版
+         *  1000 小一档防阻塞）。 */
+        internal const val SCAN_UNITS = 256
+
+        /** xterm 类宿主（文本查询不回）DEL 键兜底的连发上限。 */
+        internal const val KEY_BURST = 48
     }
 }

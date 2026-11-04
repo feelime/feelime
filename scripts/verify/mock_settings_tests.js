@@ -52,6 +52,7 @@ class MockSettingsNative {
     // FeelimeService SettingsBridge surface. Every @JavascriptInterface method
     // ends with the page token; the mocks accept anything and record it.
     ready(...a) { this._rec('ready', a); }
+    setQuickSwitchPolicy(...a) { this._rec('setQuickSwitchPolicy', a); }
     enableIme(...a) { this._rec('enableIme', a); }
     pickIme(...a) { this._rec('pickIme', a); }
     addImeShortcut(...a) { this._rec('addImeShortcut', a); }
@@ -1364,6 +1365,24 @@ test('input page splits fuzzy and keyboards into third-level pages (2026-09-30 a
     assert(inputPage.querySelector('#secKeyboards-entry'), 'keyboards entry card on input');
     equal(inputPage.querySelector('#sec-fuzzy'), null, 'fuzzy card moved out');
     equal(inputPage.querySelector('#secKeyboards'), null, 'keyboards card moved out');
+});
+
+test('quick switch policy lives on the keyboards page, defaults fixed (2026-11-05 用户裁定)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const sel = world.$('quickSwitchPolicy');
+    assert(sel, 'policy select exists');
+    equal(sel.closest('[data-page]').dataset.page, 'keyboards', 'policy select lives on the keyboards page');
+    assert(!sel.closest('#sec-hwkb'),
+        'policy select no longer sits in the physical-keyboard card');
+    equal(sel.value, 'fixed', 'default render is fixed (state without quickSwitchPolicy)');
+    world.push({ ...BASE_STATE, quickSwitchPolicy: 'follow' });
+    equal(sel.value, 'follow', 'explicit follow renders back');
+    // 回写带 token（fire change 沿用 setUiLanguage 的同款调用链）
+    sel.value = 'fixed';
+    sel.listeners.find(l => l.type === 'change').handler({ target: sel });
+    equal(world.lastCall('setQuickSwitchPolicy').args, ['fixed', world.token],
+        'change writes setQuickSwitchPolicy(value, token)');
 });
 
 test('hidden pages still render from state pushes (R7: render does not follow the page)', () => {

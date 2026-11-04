@@ -33,6 +33,23 @@ class RecordingEditor : EditorPort {
     }
     var codePointDeleteSucceeds = true
 
+    /** #85 三类宿主仿真：不答文本查询（xterm）/静默无效（true 但不删）。 */
+    var answersTextQueries = true
+    var surroundingDeleteWorks = true
+
+    /** 生产窗口语义：取光标前最近 limitUnits 个 UTF-16 单位。
+     *  maxWindowUnits 仿真 API 合约宿主的限量返回（还有更多文本却
+     *  返回少于请求量）。 */
+    var maxWindowUnits = 256
+
+    override fun textBeforeCursorWindow(limitUnits: Int): EditorPort.TextWindow? {
+        if (!answersTextQueries) return null
+        val units = minOf(maxWindowUnits, limitUnits)
+        val from = maxOf(0, caret - units)
+        val window = text.substring(from, caret)
+        return EditorPort.TextWindow(window.codePointCount(0, window.length), window.length == limitUnits)
+    }
+
     override fun finishComposing() {
         composingStart = null
         operations.add("finishComposing")
@@ -52,6 +69,16 @@ class RecordingEditor : EditorPort {
 
     override fun deleteSurroundingCodePoints(count: Int): Boolean {
         operations.add("deleteCodePoints:$count")
+        if (codePointDeleteSucceeds && surroundingDeleteWorks) {
+            var cut = caret
+            var left = minOf(count, text.codePointCount(0, caret))
+            while (left > 0) {
+                cut = text.offsetByCodePoints(cut, -1)
+                left -= 1
+            }
+            text = text.removeRange(cut, caret)
+            caret = cut
+        }
         return codePointDeleteSucceeds
     }
 
@@ -263,6 +290,118 @@ class TextInputCoordinatorTest {
         // Committed text deletes via a real Backspace key event -
         // deleteSurroundingText never reached xterm.js-style hosts.
         assertEquals("sendDeleteKey", editor.operations.last())
+    }
+
+    // ---- #85 宿主策略（2026-11-05 ohmyterm 复现 + codex 两轮评审边界） ----
+
+    @Test
+    fun deleteBeforeCursorNormalHostDeletesExactly() {
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "abcde"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("de", editor.text)
+        assertTrue(editor.operations.none { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun deleteBeforeCursorTwoFullBlocksNoFalseBurst() {
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "x".repeat(128) + "de"; editor.caret = 128
+        c.deleteAllBeforeCursor()
+        assertEquals("de", editor.text)
+        assertTrue(editor.operations.none { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun deleteBeforeCursorCapBoundaryNeverBursts() {
+        // codex P1-1：575/576/577 与超长文本——封顶读数循环不构成无效
+        // 证据，正常宿主零 DEL、光标后文本不动。
+        for (n in intArrayOf(575, 576, 577, 1000, 5000)) {
+            val c = coordinator()
+            c.onEditorStarted(sensitive = false)
+            editor.text = "x".repeat(n) + "de"; editor.caret = n
+            c.deleteAllBeforeCursor()
+            assertEquals("n=$n text", "de", editor.text)
+            assertEquals("n=$n del-keys", 0, editor.operations.count { it == "sendDeleteKey" })
+        }
+    }
+
+    @Test
+    fun deleteBeforeCursorMixedEmojiWindowUnits() {
+        // codex P1-2：200 ASCII + 128 emoji（各 2 单位）。首窗 256 单位
+        // 全是 emoji（码点数 128），删完后窗口变 200 ASCII——计数增长
+        // 不是异常，继续删净。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "x".repeat(200) + "\uD83D\uDE00".repeat(128) + "de"
+        editor.caret = 200 + 256
+        c.deleteAllBeforeCursor()
+        assertEquals("de", editor.text)
+        assertTrue(editor.operations.none { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun deleteBeforeCursorXtermHostFallsBackToKeyBurst() {
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.answersTextQueries = false
+        editor.text = "abcde"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("de", editor.text)
+        assertEquals(TextInputCoordinator.KEY_BURST, editor.operations.count { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun deleteBeforeCursorSilentNoOpGivesUpWithoutBurst() {
+        // codex 三轮 P1 定案：读数形态不构成连发证据（API 合约允许
+        // 限量返回），静默无效宿主由 guard 有界放弃，零 DEL 不误伤
+        // ——保证范围是「不误伤正常宿主」，不是「删净」。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.surroundingDeleteWorks = false
+        editor.text = "abcde"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals(0, editor.operations.count { it == "sendDeleteKey" })
+        assertEquals("abcde", editor.text)
+    }
+
+    @Test
+    fun deleteBeforeCursorContractLimitedWindowStillDeletesAll() {
+        // API 合约宿主：查询最多回 128 单位（还有更多文本），删除正常
+        // ——576 字符分 5 轮删净，零 DEL（codex 三轮 P1 的反例回归）。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.maxWindowUnits = 128
+        editor.text = "x".repeat(576) + "de"; editor.caret = 576
+        c.deleteAllBeforeCursor()
+        assertEquals("de", editor.text)
+        assertEquals(0, editor.operations.count { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun deleteBeforeCursorSilentNoOpCappedGivesUpWithoutBurst() {
+        // 封顶读数下静默无效无确凿证据：有界放弃，不误伤正常长文本的
+        // 判据（连发只认「未截断窗口不变」）。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.surroundingDeleteWorks = false
+        editor.text = "x".repeat(1000) + "de"; editor.caret = 1000
+        c.deleteAllBeforeCursor()
+        assertEquals(0, editor.operations.count { it == "sendDeleteKey" })
+        assertEquals("x".repeat(1000) + "de", editor.text)
+    }
+
+    @Test
+    fun deleteBeforeCursorRejectedApiBurstsExactCount() {
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.codePointDeleteSucceeds = false
+        editor.text = "abcde"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("de", editor.text)
+        assertEquals(3, editor.operations.count { it == "sendDeleteKey" })
     }
 
     @Test
