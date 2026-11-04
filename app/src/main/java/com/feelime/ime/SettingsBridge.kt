@@ -953,6 +953,7 @@ class SettingsBridge(
             .put("models", modelsJson())
             .put("asr", JSONObject()
                 .put("stripPeriod", asrPrefs().getBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, true))
+                .put("idleUnload", asrPrefs().getBoolean(AsrSettings.KEY_IDLE_UNLOAD, false))
                 .put("hotwords", asrPrefs().getString(AsrSettings.KEY_HOTWORDS, "") ?: ""))
             .put("custom", JSONObject()
                 .put("enabled", customKeysStore.enabled())
@@ -3127,6 +3128,12 @@ class SettingsBridge(
         context.sendBroadcast(
             android.content.Intent(ACTION_MODELS_CHANGED).setPackage(context.packageName),
         )
+    }
+
+    @JavascriptInterface
+    fun setAsrIdleUnload(enabled: Boolean, token: String) = guarded(token) {
+        asrPrefs().edit().putBoolean(AsrSettings.KEY_IDLE_UNLOAD, enabled).commit()
+        pushState()
     }
 
     @JavascriptInterface

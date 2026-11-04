@@ -74,6 +74,10 @@ object EnglishTextNormalizer {
         "wasnt" to "wasn't", "werent" to "weren't", "havent" to "haven't",
         "hasnt" to "hasn't", "hadnt" to "hadn't",
     )
+    private val whitespace = Regex("\\s+")
+    private val contractionPatterns = bareContractions.map { (plain, replacement) ->
+        Regex("\\b$plain\\b") to replacement
+    }
     private val terminalPunctuation = Regex("[.!?。！？…]$")
     private val englishQuestion = Regex(
         "^(what|who|whose|where|when|why|how|is|are|am|was|were|do|does|did|" +
@@ -81,14 +85,14 @@ object EnglishTextNormalizer {
     )
 
     fun normalize(text: String): String {
-        var value = text.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ENGLISH)
+        var value = text.trim().replace(whitespace, " ").lowercase(Locale.ENGLISH)
         value = spacedSuffix.replace(value) { "${it.groupValues[1]}'${it.groupValues[2]}" }
         value = spacedNegative.replace(value) {
             val stem = it.groupValues[1]
             if (stem == "wo") "won't" else "${stem}n't"
         }
-        bareContractions.forEach { (plain, contraction) ->
-            if (plain != contraction) value = Regex("\\b$plain\\b").replace(value, contraction)
+        contractionPatterns.forEach { (pattern, contraction) ->
+            value = pattern.replace(value, contraction)
         }
         return value
     }

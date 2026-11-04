@@ -2826,6 +2826,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         if (!acceptAsrResults || session.cancelled ||
             session.editorGeneration != inputConnectionGeneration
         ) return@onMain
+        if (currentPartial == text && session.text == session.finalizedText + text) return@onMain
         session.text = session.finalizedText + text
         currentPartial = text
         renderVoiceText(session)
@@ -2846,7 +2847,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
     override fun onLevel(level: Float) = onMain {
         this.level = level
-        if (acceptAsrResults && state == VoiceState.LISTENING) pushState()
+        if (acceptAsrResults && state == VoiceState.LISTENING) {
+            evaluate("window.Feelime && window.Feelime.onVoiceLevel && window.Feelime.onVoiceLevel(${level.toDouble()})")
+        }
     }
 
     override fun onStopped() = onMain {

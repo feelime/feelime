@@ -437,7 +437,7 @@ class UserdataBackup(
         /** 读侧 getBoolean 的键（CustomKeysStore/AsrSettings/自动检查）。 */
         private val BOOL_KEYS = mapOf(
             "feelime_custom_keys" to setOf("enabled"),
-            "feelime_asr" to setOf("strip_final_period"),
+            "feelime_asr" to setOf("strip_final_period", "idle_unload"),
             "feelime_keyboard" to setOf(
                 PREF_ASSOCIATION,
                 PREF_KEY_SOUND,

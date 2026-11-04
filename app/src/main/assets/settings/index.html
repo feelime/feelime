@@ -1037,6 +1037,10 @@
           <span class="row-label"><span data-i18n="voice.asr.stripPeriod">去掉句尾句号</span><small data-i18n="voice.asr.stripHint">问号、叹号保留；关闭后保留模型输出</small></span>
           <input type="checkbox" id="stripPeriod" class="toggle">
         </label>
+        <label class="row switch-row" for="asrIdleUnload">
+          <span class="row-label"><span data-i18n="voice.asr.idleUnload">空闲时释放语音模型</span><small data-i18n="voice.asr.idleUnloadHint">默认关闭；开启后空闲 5 分钟释放，下次语音需要重新加载</small></span>
+          <input type="checkbox" id="asrIdleUnload" class="toggle">
+        </label>
       </div>
       <label class="field-label" for="hotwords" data-i18n="voice.asr.hotwordsLabel">热词（一行一个，可填中文或英文；识别优先考虑这些词）</label>
       <small class="hint block" data-i18n="voice.asr.hotwordsWeightHint">某个词总识别错？在词后面加「:数字」加大纠正力度，如 姚程:10。范围 1~20（最多一位小数），不填用默认力度；数字过大可能出现重复词或误识别其他词，调小即可。</small>

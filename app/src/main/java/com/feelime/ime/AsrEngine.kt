@@ -78,8 +78,36 @@ class AsrEngine(
         fun onError(message: String)
     }
 
-    private val worker = Executors.newSingleThreadExecutor { task -> Thread(task, "feelime-asr") }
+    private val worker = Executors.newSingleThreadScheduledExecutor { task -> Thread(task, "feelime-asr") }
     private val modelStore = ModelStore(context)
+    private val preferences = context.getSharedPreferences(AsrSettings.PREFS, Context.MODE_PRIVATE)
+    private val idleUnload = AsrIdleUnload(
+        schedule = { delay, block ->
+            val task = worker.schedule(block, delay, java.util.concurrent.TimeUnit.MILLISECONDS)
+            val cancel: () -> Unit = { task.cancel(false); Unit }
+            cancel
+        },
+        unload = { if (!released.get() && !starting.get()) unloadModels() },
+    )
+    private val preferenceListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == AsrSettings.KEY_IDLE_UNLOAD && !released.get()) {
+            runCatching { worker.execute { if (!released.get()) refreshIdleUnloadSetting() } }
+        }
+    }
+
+    init {
+        preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
+    }
+
+    private fun refreshIdleUnloadSetting() {
+        idleUnload.setEnabled(preferences.getBoolean(AsrSettings.KEY_IDLE_UNLOAD, false))
+    }
+
+    /** 仅卸载模型链，保留 worker；下一次 start 会按当前模型来源重新加载。 */
+    private fun unloadModels() {
+        check(!running.get())
+        releaseRecognizerChain()
+    }
 
     /** transcripts never reach release logs; only lengths are recorded. */
     private inline fun transcriptLog(len: Int, debugLine: () -> String) {
@@ -102,12 +130,13 @@ class AsrEngine(
     private var postProcessor: TranscriptPostProcessor? = null
     private var loadedModels: AsrModelSnapshot? = null
 
-    fun start() {
+    @Synchronized fun start() {
         if (released.get()) return
         if (running.get() || !starting.compareAndSet(false, true)) return
         stopRequested.set(false)
         cancelRequested.set(false)
         worker.execute {
+            idleUnload.becameActive()
             val failure = try {
                 if (ensureRecognizer() && !stopRequested.get() && !cancelRequested.get()) {
                     recordLoop()
@@ -122,6 +151,10 @@ class AsrEngine(
             // would clear the next recording's ownership on a quick restart.
             val cancelled = cancelRequested.get() || released.get()
             starting.set(false)
+            if (released.get()) idleUnload.close() else {
+                refreshIdleUnloadSetting()
+                idleUnload.becameIdle()
+            }
             if (failure != null && !cancelled) {
                 listener.onError(failure.message ?: failure.javaClass.simpleName)
             } else {
@@ -144,14 +177,16 @@ class AsrEngine(
         runCatching { recorder?.stop() }
     }
 
-    fun release() {
-        released.set(true)
+    @Synchronized fun release() {
+        if (!released.compareAndSet(false, true)) return
+        preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         stopRequested.set(true)
         cancelRequested.set(true)
         running.set(false)
         audioQueue?.cancel()
         runCatching { recorder?.stop() }
         worker.execute {
+            idleUnload.close()
             releaseRecorder()
             releaseRecognizerChain()
         }
@@ -261,7 +296,8 @@ class AsrEngine(
         var captureThread: Thread? = null
         var rawPartial = ""
         var currentPartial = ""
-        var previousLoggedPartial = ""
+        var previousRawPartial: String? = null
+        var previousDisplayedPartial = ""
         var previousFinal = ""
         var chunks = 0
         var lastAudioLogMs = 0L
@@ -336,17 +372,21 @@ class AsrEngine(
                 decodeReady(stream)
                 chunks += 1
                 rawPartial = checkNotNull(recognizer).getResult(stream).text.trim()
-                currentPartial = checkNotNull(postProcessor).partial(rawPartial)
-                if (currentPartial != previousLoggedPartial) {
+                if (rawPartial != previousRawPartial) {
+                    currentPartial = checkNotNull(postProcessor).partial(rawPartial)
+                    previousRawPartial = rawPartial
+                }
+                val displayed = AsrSegmentSpacing.forNext(previousFinal, currentPartial)
+                if (displayed != previousDisplayedPartial) {
                     transcriptLog(currentPartial.length) { "partial=[$currentPartial]" }
-                    previousLoggedPartial = currentPartial
+                    listener.onPartial(displayed)
+                    previousDisplayedPartial = displayed
                 }
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastAudioLogMs >= 1_000L) {
                     Log.d(TAG, "audio chunks=$chunks rms=$rms resultLength=${currentPartial.length}")
                     lastAudioLogMs = now
                 }
-                listener.onPartial(AsrSegmentSpacing.forNext(previousFinal, currentPartial))
 
                 if (checkNotNull(recognizer).isEndpoint(stream)) {
                     if (cancelRequested.get()) return
@@ -359,6 +399,8 @@ class AsrEngine(
                     emitFinal(finalText)
                     rawPartial = ""
                     currentPartial = ""
+                    previousRawPartial = null
+                    previousDisplayedPartial = ""
                     listener.onPartial("")
                 }
             }
