@@ -40,15 +40,7 @@ PUNCT_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/punctuation-m
 PUNCT_SHA256="c0d5aa5f8eeb686032345e180bedf39319dc2e0556781c6264bcadba8328a6e1"
 PUNCT_DIR="sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8"
 
-# 手写识别（design/handwriting.md §5.3）：Melnyk-Net int8 单文件，
-# feelime/distribution gitee 镜像直链（国内直连），sha256 与
-# models/manifest.json 同源（原 gitee.com/feelime/models handwriting-v2
-# 已迁移至 distribution 的 handwriting 频道，字节不变）。
-INK_ASSET_DIR="$MODELS_ROOT/handwriting"
-INK_URL="https://gitee.com/feelime/distribution/releases/download/handwriting/model.onnx"
-INK_SHA256="04bf65859482f2e9f4836fb872c5a881940a8f6f81bd0994542187617793e932"
-
-mkdir -p "$LIB_DIR" "$ASSET_DIR" "$FINAL_ASSET_DIR" "$PUNCT_ASSET_DIR" "$INK_ASSET_DIR" "$CACHE_DIR"
+mkdir -p "$LIB_DIR" "$ASSET_DIR" "$FINAL_ASSET_DIR" "$PUNCT_ASSET_DIR" "$CACHE_DIR"
 
 download_and_verify() {
     local url="$1" output="$2" expected="$3"
@@ -88,13 +80,9 @@ install -m 0644 "$TEMP_DIR/$PUNCT_DIR/model.int8.onnx" "$PUNCT_ASSET_DIR/model.i
 # file beside the OfflinePunctuation model.
 rm -f "$PUNCT_ASSET_DIR/bpe.vocab"
 
-# 手写模型：目录缺失/文件不完整才下载（本地已有同 sha 文件则零流量）。
-if ! echo "$INK_SHA256  $INK_ASSET_DIR/model.onnx" | sha256sum --check --status; then
-    download_and_verify "$INK_URL" "$CACHE_DIR/melnyk-net-int8.onnx" "$INK_SHA256"
-    install -m 0644 "$CACHE_DIR/melnyk-net-int8.onnx" "$INK_ASSET_DIR/model.onnx"
-fi
-
-echo "Feelime streaming ASR, final-pass ASR, punctuation, and handwriting models are ready."
+# 手写模型不再内置：引擎已统一为 ochwpro，模型资产在
+# app/src/main/assets/ochwpro/（issue #84，Melnyk-Net 2026-11-04 退役）。
+echo "Feelime streaming ASR, final-pass ASR, and punctuation models are ready."
 echo "  AAR:    $LIB_DIR/$AAR_NAME"
 echo "  models: $MODELS_ROOT"
 
