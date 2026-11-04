@@ -138,7 +138,7 @@ class AsrEngine(
         worker.execute {
             idleUnload.becameActive()
             val failure = try {
-                if (ensureRecognizer() && !stopRequested.get() && !cancelRequested.get()) {
+                if (!released.get() && ensureRecognizer() && !stopRequested.get() && !cancelRequested.get()) {
                     recordLoop()
                 }
                 null
@@ -189,8 +189,10 @@ class AsrEngine(
             idleUnload.close()
             releaseRecorder()
             releaseRecognizerChain()
+            // 先在 worker 上撤完空闲任务再关调度器，避免录音收尾与 release
+            // 交错时向已关闭的调度器注册计时任务。
+            worker.shutdown()
         }
-        worker.shutdown()
     }
 
     /** Called only on the ASR worker, after the previous recording has

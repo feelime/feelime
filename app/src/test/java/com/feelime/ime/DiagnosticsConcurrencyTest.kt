@@ -8,7 +8,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DiagnosticsConcurrencyTest {
-    @Test fun `slow critical fsync does not hold event lock and completes before caller returns`() {
+    @Test fun `slow critical fsync permits ordinary enqueue and acknowledgement waits for sync`() {
         val file = Files.createTempDirectory("diag-sync").resolve("events.log").toFile()
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
