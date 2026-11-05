@@ -274,6 +274,9 @@ test('delete gesture: swipe back right restores one unit at a time', {since: '3.
 
 test('delete gesture: down swipe releases Ctrl+Z keyEvent', {since: '3.68.0'}, () => {
     const world = fresh();
+    // 3.73.77 起下滑优先原生快照恢复；本用例保留旧壳（无该桥）的
+    // Ctrl+Z 回落断言（新链路见 3.73.77 组）。
+    world.native.undoDeleteBeforeCursor = undefined;
     const bs = bsKey(world);
     world.touchDown(bs, 100, 20);
     world.move(bs, 100, 90); // dy=+70 纵向主导向下
@@ -1053,6 +1056,33 @@ test('bottom row: toggle flips the quick keyboard pair', () => {
     const expect = verAtLeast(KEYBOARD_VERSION, '3.73.55') ? 'direct' : 'pinyin';
     equal(world.native.of('selectMode')[2].args[0], expect,
         verAtLeast(KEYBOARD_VERSION, '3.73.55') ? 'french toggles straight to English' : 'french falls back to pair end (pre-3.73.55)');
+});
+
+test('backspace vertical gestures: down after up restores via native snapshot (3.73.77)', {since: '3.73.77'}, () => {
+    const world = fresh();
+    const bs = bsKey(world);
+    // 上滑：删光标前（桥 deleteBeforeCursor）
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 100, -30);
+    world.touchUp(bs, 100, -35);
+    equal(world.native.of('deleteBeforeCursor').length, 1, 'up swipe calls deleteBeforeCursor');
+    // 下滑：新壳走 undoDeleteBeforeCursor（不再直接 keyEvent Ctrl+Z）
+    world.touchDown(bs, 100, -30);
+    world.move(bs, 100, 60);
+    world.touchUp(bs, 100, 65);
+    equal(world.native.of('undoDeleteBeforeCursor').length, 1, 'down swipe prefers native undo');
+    equal(world.native.of('keyEvent').length, 0,
+        'no raw Ctrl+Z when native undo exists');
+});
+
+test('backspace vertical gestures: old shell falls back to Ctrl+Z (pre-3.73.77)', {since: '3.73.77'}, () => {
+    const world = fresh();
+    world.native.undoDeleteBeforeCursor = undefined;
+    const bs = bsKey(world);
+    world.touchDown(bs, 100, -30);
+    world.move(bs, 100, 60);
+    world.touchUp(bs, 100, 65);
+    equal(world.native.of('keyEvent').length, 1, 'old shell keeps the Ctrl+Z fallback');
 });
 
 test('quick switch: factory default is fixed pair (2026-11-05 用户裁定)', {since: '3.73.76'}, () => {

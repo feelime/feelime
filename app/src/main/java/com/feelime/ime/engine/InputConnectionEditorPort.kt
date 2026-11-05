@@ -55,6 +55,32 @@ class InputConnectionEditorPort(private val service: InputMethodService) : Edito
         return connection.deleteSurroundingText(count, 0)
     }
 
+    /** #85 窗口语义删除（EditorPort.deleteSurrounding 契约）：码点 API
+     *  的删除量与窗口码点数一致（含窗口起点劈开代理对的场合——真实
+     *  删除按完整字素跨过）；字符版回退只在窗口对齐码点边界时安全
+     *  （单位数=窗口文本长度=实际范围），劈开时禁止回退（codex 复审
+     *  P1：孤高代理项损坏）。 */
+    override fun deleteSurrounding(window: EditorPort.TextWindow): Boolean {
+        val connection = service.currentInputConnection ?: return false
+        if (runCatching { connection.deleteSurroundingTextInCodePoints(window.codePoints, 0) }
+                .getOrDefault(false)) return true
+        val misaligned = window.text.isNotEmpty() && Character.isLowSurrogate(window.text.first())
+        if (misaligned) return false
+        return connection.deleteSurroundingText(window.text.length, 0)
+    }
+
+    override fun textAfterCursorWindow(limitUnits: Int): EditorPort.TextWindow? {
+        val connection = service.currentInputConnection ?: return null
+        return runCatching {
+            connection.getTextAfterCursor(limitUnits, 0)?.let { raw ->
+                val text = raw.toString()
+                // 尾部起点贴光标、截断发生在远端：与删除内容相邻的边界
+                // 不会被劈开，恢复前比对的是同一前缀，无需代理对修复。
+                EditorPort.TextWindow(text.codePointCount(0, text.length), text.length >= limitUnits, text)
+            }
+        }.getOrNull()
+    }
+
     override fun textBeforeCursorWindow(limitUnits: Int): EditorPort.TextWindow? {
         val connection = service.currentInputConnection ?: return null
         // limit 按 UTF-16 单位截窗；计数按码点（删除走 InCodePoints /
@@ -63,10 +89,37 @@ class InputConnectionEditorPort(private val service: InputMethodService) : Edito
         // 窗口形态不构成「删完/无效」的证据，codex 三轮 P1）。
         return runCatching {
             connection.getTextBeforeCursor(limitUnits, 0)?.let { raw ->
-                val text = raw.toString()
-                EditorPort.TextWindow(text.codePointCount(0, text.length), text.length == limitUnits)
+                var text = raw.toString()
+                // 截窗起点劈开代理对时（起点落在 emoji 低代理项上），
+                // 删除按码点会删掉整个 emoji，快照却只有半个——补读
+                // 一个单位把高代理项带上。宿主限量返回时补读同样被钳
+                // （拿不到高代理项），只接受严格一致的补读：+1 单位、
+                // 以原窗口为后缀、起点对齐；不一致就保留原窗口，由协
+                // 调器按「未对齐」作废快照（codex 复审 P1）。
+                if (text.isNotEmpty() && Character.isLowSurrogate(text.first())) {
+                    connection.getTextBeforeCursor(limitUnits + 1, 0)?.let { wide ->
+                        val candidate = wide.toString()
+                        if (candidate.length == text.length + 1 &&
+                            candidate.endsWith(text) &&
+                            !Character.isLowSurrogate(candidate.first())
+                        ) text = candidate
+                    }
+                }
+                EditorPort.TextWindow(text.codePointCount(0, text.length), text.length >= limitUnits, text)
             }
         }.getOrNull()
+    }
+
+    override fun sendCtrlZ() {
+        val connection = service.currentInputConnection ?: return
+        val stamp = android.os.SystemClock.uptimeMillis()
+        val wire = android.view.KeyEvent.META_CTRL_ON or android.view.KeyEvent.META_CTRL_LEFT_ON
+        connection.sendKeyEvent(
+            android.view.KeyEvent(stamp, stamp, android.view.KeyEvent.ACTION_DOWN,
+                android.view.KeyEvent.KEYCODE_Z, 0, wire))
+        connection.sendKeyEvent(
+            android.view.KeyEvent(stamp, stamp, android.view.KeyEvent.ACTION_UP,
+                android.view.KeyEvent.KEYCODE_Z, 0, wire))
     }
 
     override fun sendDeleteKey() {

@@ -800,6 +800,7 @@ class MockNative {
         this._record('moveCursor', [delta, token]);
     }
     // Control layer: raw host key events (keycode + meta).
+    undoDeleteBeforeCursor(token) { this._record('undoDeleteBeforeCursor', [token]); }
     keyEvent(keyCode, metaState, token) {
         this._record('keyEvent', [keyCode, metaState, token]);
     }

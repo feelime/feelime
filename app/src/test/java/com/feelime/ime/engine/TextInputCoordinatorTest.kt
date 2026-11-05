@@ -14,7 +14,18 @@ class RecordingEditor : EditorPort {
     private var composingStart: Int? = null
     private var composingEnd = 0
 
+    /** 仿真宿主选中段：非组合写入替换选中范围（Android 宿主语义，
+     *  #85 恢复丢字反例用）。null=折叠。 */
+    var selectedRange: IntRange? = null
+
     private fun replace(value: String, composing: Boolean) {
+        val range = if (composing) null else selectedRange
+        if (range != null) {
+            text = text.substring(0, range.first) + value + text.substring(range.last + 1)
+            caret = range.first + value.length
+            selectedRange = null
+            return
+        }
         val start = composingStart ?: caret
         val end = if (composingStart != null) composingEnd else caret
         text = text.substring(0, start) + value + text.substring(end)
@@ -39,15 +50,54 @@ class RecordingEditor : EditorPort {
 
     /** 生产窗口语义：取光标前最近 limitUnits 个 UTF-16 单位。
      *  maxWindowUnits 仿真 API 合约宿主的限量返回（还有更多文本却
-     *  返回少于请求量）。 */
+     *  返回少于请求量）——补读也一样被钳，模型对齐生产端口。 */
     var maxWindowUnits = 256
 
     override fun textBeforeCursorWindow(limitUnits: Int): EditorPort.TextWindow? {
         if (!answersTextQueries) return null
         val units = minOf(maxWindowUnits, limitUnits)
         val from = maxOf(0, caret - units)
-        val window = text.substring(from, caret)
-        return EditorPort.TextWindow(window.codePointCount(0, window.length), window.length == limitUnits)
+        var window = text.substring(from, caret)
+        // 镜像 IC 端口的补读：起点劈开代理对时多要一个单位；宿主限量
+        // 返回时补读同样被钳（拿不到高代理项），只接受严格 +1 的补读。
+        if (window.isNotEmpty() && Character.isLowSurrogate(window.first()) && from > 0) {
+            val widenedUnits = minOf(maxWindowUnits, limitUnits + 1, caret)
+            if (widenedUnits == units + 1) window = text.substring(from - 1, caret)
+        }
+        return EditorPort.TextWindow(window.codePointCount(0, window.length), window.length >= limitUnits, window)
+    }
+
+    /** 仿真「宿主不回尾部查询」（连接降级），尾部核对跳过分支用。 */
+    var textAfterCursorAnswers = true
+
+    override fun textAfterCursorWindow(limitUnits: Int): EditorPort.TextWindow? {
+        if (!answersTextQueries || !textAfterCursorAnswers) return null
+        val units = minOf(maxWindowUnits, limitUnits)
+        val to = minOf(text.length, caret + units)
+        val window = text.substring(caret, to)
+        return EditorPort.TextWindow(window.codePointCount(0, window.length), window.length >= limitUnits, window)
+    }
+
+    /** 仿真宿主字符版删除是否可用（码点版拒绝时的回退通道）。 */
+    var charFallbackWorks = true
+
+    /** 镜像生产端口的窗口语义删除：码点 API 优先；窗口对齐码点边界
+     *  时字符版按 UTF-16 单位删（=窗口文本长度）；劈开代理对时禁止
+     *  字符版回退（单位数≠实际跨度，会留孤高代理项）。 */
+    override fun deleteSurrounding(window: EditorPort.TextWindow): Boolean {
+        operations.add("deleteWindow:${window.codePoints}")
+        val misaligned = window.text.isNotEmpty() && Character.isLowSurrogate(window.text.first())
+        if (codePointDeleteSucceeds) {
+            if (surroundingDeleteWorks) deleteCodePoints(window.codePoints)
+            return true
+        }
+        if (misaligned || !charFallbackWorks) return false
+        if (surroundingDeleteWorks) {
+            text = text.removeRange(caret - window.text.length, caret)
+            caret -= window.text.length
+            composingStart = null
+        }
+        return true
     }
 
     override fun finishComposing() {
@@ -65,21 +115,33 @@ class RecordingEditor : EditorPort {
         operations.add("commitText:$text")
     }
 
+    /** 与生产端口同形：untracked 通道不进统计口径，记录单列。 */
+    override fun commitTextUntracked(text: String) {
+        replace(text, false)
+        operations.add("commitUntracked:$text")
+    }
+
     override fun selectedText(): String? = selection
 
     override fun deleteSurroundingCodePoints(count: Int): Boolean {
         operations.add("deleteCodePoints:$count")
-        if (codePointDeleteSucceeds && surroundingDeleteWorks) {
-            var cut = caret
-            var left = minOf(count, text.codePointCount(0, caret))
-            while (left > 0) {
-                cut = text.offsetByCodePoints(cut, -1)
-                left -= 1
-            }
-            text = text.removeRange(cut, caret)
-            caret = cut
-        }
+        if (codePointDeleteSucceeds && surroundingDeleteWorks) deleteCodePoints(count)
         return codePointDeleteSucceeds
+    }
+
+    private fun deleteCodePoints(count: Int) {
+        var cut = caret
+        var left = minOf(count, text.codePointCount(0, caret))
+        while (left > 0) {
+            cut = text.offsetByCodePoints(cut, -1)
+            left -= 1
+        }
+        text = text.removeRange(cut, caret)
+        caret = cut
+        // 宿主建模：删除跨过组合区时按「销毁型宿主」建模（Android
+        // 合约也允许缩短保留——生产代码不依赖 span 存活与否：协调器
+        // 在删除入口已自行清 composingActive 记账）。
+        composingStart = null
     }
 
     override fun sendDeleteKey() {
@@ -394,10 +456,382 @@ class TextInputCoordinatorTest {
     }
 
     @Test
-    fun deleteBeforeCursorRejectedApiBurstsExactCount() {
+    fun undoAfterDeleteRestoresTextAndCursorPosition() {
+        // 用户裁定 2026-11-05：上滑删「123」→下滑恢复「12345」光标回 3，
+        // 无选中态（commitText 恢复而非宿主 Ctrl+Z）。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        assertEquals(0, editor.caret)
+        val restored = c.undoDeleteBeforeCursor()
+        assertTrue(restored)
+        assertEquals("12345", editor.text)
+        assertEquals(3, editor.caret)
+        // 恢复走 untracked 通道：只见 commitUntracked，tracked 无记录
+        assertTrue(editor.operations.contains("commitUntracked:123"))
+        assertFalse(editor.operations.contains("commitText:123"))
+    }
+
+    @Test
+    fun undoWithoutSnapshotReturnsFalse() {
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        assertFalse(c.undoDeleteBeforeCursor())
+    }
+
+    @Test
+    fun undoAfterInterveningInputReturnsFalse() {
+        // 删后又有输入：光标前非空 → 校验不过，回落由调用方处理。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        editor.text = "x45"; editor.caret = 1
+        assertFalse(c.undoDeleteBeforeCursor())
+    }
+
+    @Test
+    fun undoAfterXtermBurstDeleteHasNoSnapshot() {
+        // null 查询宿主连发删除：内容不可知，快照为空，恢复回落 Ctrl+Z。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.answersTextQueries = false
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertFalse(c.undoDeleteBeforeCursor())
+    }
+
+    @Test
+    fun undoSnapshotInvalidatedOnEditorRestart() {
+        // codex 复审 P1：A 框删「123」后切 B 框（onStartInput→新会话），
+        // 下滑不得把 A 的内容写进 B——快照随会话作废，回落 Ctrl+Z。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        c.onEditorStarted(sensitive = false)
+        editor.text = "other"; editor.caret = 0
+        assertFalse(c.undoDeleteBeforeCursor())
+        assertEquals("other", editor.text)
+        assertTrue(editor.operations.none { it.startsWith("commitUntracked:") })
+    }
+
+    @Test
+    fun undoSnapshotInvalidatedOnHostSelectionChange() {
+        // codex 复审 P1 同框反例：删后宿主侧又动了光标/文本（光标前
+        // 恰为空、内容校验拦不住）——选区回调未命中须作废快照。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "123"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("", editor.text)
+        assertEquals(0, editor.caret)
+        // 宿主在删后又写入了内容（如粘贴）：选区回调未命中预期——
+        // 真实分歧证据，快照作废。
+        editor.text = "zz"; editor.caret = 2
+        c.onEditorSelectionChanged(0, 0, 2, 2)
+        assertFalse(c.undoDeleteBeforeCursor())
+        assertTrue(editor.operations.none { it.startsWith("commitUntracked:") })
+    }
+
+    @Test
+    fun keyboardHideAloneKeepsSnapshot() {
+        // 服务侧 onFinishInputView 直接调 onExternalEditorMutation（收
+        // 起键盘作废词撤销/联想）。同编辑器收起再唤起删后现场仍在，
+        // 快照不随之作废——下滑在唤起后依然原生恢复。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        c.onExternalEditorMutation()
+        assertTrue(c.undoDeleteBeforeCursor())
+        assertEquals("12345", editor.text)
+        assertEquals(3, editor.caret)
+    }
+
+    @Test
+    fun deleteOwnSelectionEchoKeepsSnapshotValid() {
+        // codex 复审 P2-3：删除自身的选区回声须按 own 排水——否则进
+        // 外部编辑分支作废快照，主流程上滑→下滑在真机上必回落 Ctrl+Z。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        // 真实时序：先让协调器知道光标在 3（宿主回调），再删除。
+        c.onEditorSelectionChanged(-1, -1, 3, 3)
+        c.deleteAllBeforeCursor()
+        // 删除完成后的宿主回声 (0,0)：登记过预期 → own，不作废快照。
+        c.onEditorSelectionChanged(3, 3, 0, 0)
+        assertTrue(c.undoDeleteBeforeCursor())
+        assertEquals("12345", editor.text)
+        assertEquals(3, editor.caret)
+    }
+
+    @Test
+    fun undoEmojiSplitWindowRestoresExactText() {
+        // codex 复审 P1：😀+255x 共 257 单位，首窗 256 从低代理项起——
+        // 补读修复后快照与实际删除一致，恢复不写回孤代理项。
+        // maxWindowUnits=512：宿主有补读余量，修复可得逞。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.maxWindowUnits = 512
+        val original = "😀" + "x".repeat(255)
+        editor.text = original + "45"; editor.caret = original.length
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        assertTrue(c.undoDeleteBeforeCursor())
+        assertEquals(original + "45", editor.text)
+        assertEquals(original.length, editor.caret)
+        // 快照必须是完整代理对（写回孤低代理项即破坏文本相等断言）。
+        assertFalse(Character.isLowSurrogate(editor.text.first()))
+    }
+
+    @Test
+    fun cappedHostEmojiWindowDeletesButPoisonsSnapshot() {
+        // codex 复审 P1：宿主限量 256 时补读同样被钳，拿不到高代理项
+        // ——码点删除仍跨过完整 emoji（文本正确变 45），但快照与实际
+        // 删除不可证一致，作废，下滑回落 Ctrl+Z（孤代理项不写回）。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.maxWindowUnits = 256
+        val original = "😀" + "x".repeat(255)
+        editor.text = original + "45"; editor.caret = original.length
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        assertFalse(c.undoDeleteBeforeCursor())
+        assertTrue(editor.operations.none { it.startsWith("commitUntracked:") })
+    }
+
+    @Test
+    fun charFallbackDeletesExactWindowAndRestores() {
+        // codex 复审 P1：码点 API 拒绝的宿主走字符版——对齐窗口按
+        // UTF-16 单位删=窗口文本长度，emoji 不劈半（旧实现按码点数
+        // 当单位数删会留下孤高代理项 D83D）。
         val c = coordinator()
         c.onEditorStarted(sensitive = false)
         editor.codePointDeleteSucceeds = false
+        editor.text = "😀x45"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        assertTrue(c.undoDeleteBeforeCursor())
+        assertEquals("😀x45", editor.text)
+        assertEquals(3, editor.caret)
+    }
+
+    @Test
+    fun misalignedWindowApiRejectBurstsWithoutCharFallback() {
+        // 窗口劈开代理对 + 码点 API 拒绝：字符版会删出孤高代理项，
+        // 端口必须拒绝 → DEL 键连发兜底（键事件按字素删不劈半），
+        // 快照作废。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.maxWindowUnits = 256
+        editor.codePointDeleteSucceeds = false
+        editor.text = "😀" + "x".repeat(255) + "45"; editor.caret = 257
+        c.deleteAllBeforeCursor()
+        assertEquals(TextInputCoordinator.KEY_BURST, editor.operations.count { it == "sendDeleteKey" })
+        assertFalse(c.undoDeleteBeforeCursor())
+    }
+
+    @Test
+    fun secondEmptyDeleteKeepsSnapshotForUndo() {
+        // codex 复审 P2：上滑删净后再上滑是 no-op，不得用空串覆盖既有
+        // 快照——下滑仍恢复上一次真实删除。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        c.deleteAllBeforeCursor()
+        assertTrue(c.undoDeleteBeforeCursor())
+        assertEquals("12345", editor.text)
+        assertEquals(3, editor.caret)
+    }
+
+    @Test
+    fun guardCapPartialDeleteHasNoSnapshot() {
+        // codex 复审 P2：6145 字符超 24 轮预算（6144）残留 1——部分删除
+        // 无法原样恢复（写回会插进残留文本之前），快照作废回落 Ctrl+Z。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "x".repeat(6145) + "de"; editor.caret = 6145
+        c.deleteAllBeforeCursor()
+        assertEquals("x".repeat(1) + "de", editor.text)
+        assertFalse(c.undoDeleteBeforeCursor())
+        assertTrue(editor.operations.none { it.startsWith("commitUntracked:") })
+    }
+
+    @Test
+    fun undoValidationFailureConsumesStaleSnapshot() {
+        // codex 复审：校验失败（光标前有内容）也要作废快照，过期状态
+        // 不留到下一次——宿主清回删后现场后下滑仍不得恢复旧内容。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        editor.text = "a45"; editor.caret = 1
+        assertFalse(c.undoDeleteBeforeCursor())
+        // 宿主把光标前清空（回到删后现场形态）：快照已被上一次校验
+        // 失败消耗，不得恢复。
+        editor.text = "45"; editor.caret = 0
+        assertFalse(c.undoDeleteBeforeCursor())
+    }
+
+    @Test
+    fun undoTailChangeBlocksRestore() {
+        // codex 复审 P1 同框反例：删前 123|45 → 删后 |45 → 宿主删右
+        // 侧 4（选区/组合坐标不变，updateSelection 可不回调）——光标
+        // 前仍为空，靠尾部留档比对暴露，不得写回。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        assertEquals(0, editor.caret)
+        editor.text = "5"; editor.caret = 0  // 宿主删右侧 4，无任何回调
+        assertFalse(c.undoDeleteBeforeCursor())
+        assertTrue(editor.operations.none { it.startsWith("commitUntracked:") })
+    }
+
+    @Test
+    fun tailCheckBeyondWindowIsBounded() {
+        // codex 七轮 P2（文档化边界）：尾部核对只看前 256 单位——第
+        // 257 单位以远的宿主变更检测不到，恢复照常发生。这是有界检
+        // 测的既定降级，不是缺陷修复项。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "123" + "y".repeat(300); editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("y".repeat(300), editor.text)
+        // 宿主改了第 300 个 y（256 窗口之外），无回调
+        editor.text = "y".repeat(299) + "z"; editor.caret = 0
+        assertTrue(c.undoDeleteBeforeCursor())  // 有界检测：放行（边界内不变）
+        assertEquals("123" + "y".repeat(299) + "z", editor.text)
+    }
+
+    @Test
+    fun tailQueryUnavailableSkipsCheck() {
+        // codex 七轮 P2（文档化边界）：删除完成时宿主不回尾部查询
+        // （null）→ 核对跳过，仅剩前窗校验。行为固定，防止将来被
+        // 「静默收紧或放宽」。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.textAfterCursorAnswers = false  // 删除完成时就拿不到尾部
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        // 尾部无留档（null）→ 恢复前无从核对，右侧被删也只剩前窗校验
+        editor.text = "5"; editor.caret = 0
+        assertTrue(c.undoDeleteBeforeCursor())  // 有界检测：跳过核对
+        assertEquals("1235", editor.text)
+    }
+
+    @Test
+    fun ownInputBetweenDeleteAndUndoInvalidates() {
+        // codex 复审 P1：上滑后按过键（哪怕随后退格删净、净效果为零）
+        // ——自身输入入口即作废快照，不得恢复旧内容。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertEquals("45", editor.text)
+        c.key('x'.code)
+        editor.text = "45"; editor.caret = 0  // x 又被退格删净，回到删后形态
+        assertFalse(c.undoDeleteBeforeCursor())
+    }
+
+    @Test
+    fun nonCollapsedSelectionBlocksSnapshotAndRestore() {
+        // codex 复审 P1：非折叠选区下 deleteSurrounding 保留选中段，
+        // 恢复的 commitText 会替换选中内容丢字——删除禁存快照、恢复
+        // 直接拒绝。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor(selectionStart = 1, selectionEnd = 3)
+        assertEquals("45", editor.text)  // 删除本身照常
+        assertFalse(c.undoDeleteBeforeCursor())  // 无快照
+        // 反向：删除时折叠、恢复时非折叠——同样拒绝（快照随之作废）。
+        editor.text = "12345"; editor.caret = 3
+        c.deleteAllBeforeCursor()
+        assertFalse(c.undoDeleteBeforeCursor(selectionStart = 1, selectionEnd = 3))
+        assertFalse(c.undoDeleteBeforeCursor())  // 已被上一次作废
+    }
+
+    @Test
+    fun unknownSelectionGetsNoSnapshotEligibility() {
+        // codex 七轮 P1：桥端坐标 (-1,-1)（宿主未上报）时实际选区可能
+        // 是 123[45]67——未知不得默认折叠，否则恢复替换选中段丢字。
+        // 删除照常、快照禁存；恢复两端都拒绝。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "1234567"; editor.caret = 3
+        c.deleteAllBeforeCursor(selectionStart = -1, selectionEnd = -1)
+        assertEquals("4567", editor.text)
+        assertFalse(c.undoDeleteBeforeCursor(selectionStart = -1, selectionEnd = -1))
+        assertFalse(c.undoDeleteBeforeCursor())  // 已作废，折叠坐标也救不回
+        assertTrue(editor.operations.none { it.startsWith("commitUntracked:") })
+    }
+
+    @Test
+    fun undoWithUnknownSelectionRejectsValidSnapshot() {
+        // codex 八轮 P2：快照由折叠删除正常产生、恢复时桥端坐标未知
+        // ——恢复入口的未知裁决必须拒绝、清槽、零写入。fake 建模宿主
+        // 选中段替换：若裁决被改回「未知按折叠放行」，commitText 会把
+        // 快照写进选中段（45 被 123 替换、丢字），文本断言随之失败。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.text = "1234567"; editor.caret = 3
+        c.deleteAllBeforeCursor()  // 折叠：有效快照 "123"
+        assertEquals("4567", editor.text)
+        editor.selectedRange = 0..1  // 现场变为选中段（桥端坐标未知）
+        assertFalse(c.undoDeleteBeforeCursor(selectionStart = -1, selectionEnd = -1))
+        // 清槽：折叠坐标随后到达也不得再写
+        assertFalse(c.undoDeleteBeforeCursor())
+        assertTrue(editor.operations.none { it.startsWith("commitUntracked:") })
+        assertEquals("4567", editor.text)  // 选中段未被替换（丢字反例锁定）
+    }
+
+    @Test
+    fun duplicateCoordinateLateEchoKeepsSnapshotViaFifoDrain() {
+        // codex 复审 P2：两次输入的在途回声与删除登记出现重复坐标
+        // （队尾视角 [1..300, 44, 0]）。旧 lastIndexOf 排水会误排中段
+        // 登记（详见下方判别序列注释）；FIFO（indexOf）排水命中最早
+        // 一处，自身回声全部 own。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        repeat(300) { c.key('x'.code) }
+        assertEquals(300, editor.caret)
+        c.deleteAllBeforeCursor()  // 两轮：256 + 44，登记 [44, 0]
+        assertEquals("", editor.text)
+        // 判别序列（旧 lastIndexOf 实现在此失败）：
+        // 44（迟到的打字回声，与删除轮登记重复）→ 旧实现排到第二个
+        // 44、连中间档全吃；300（更迟的打字回声）→ 旧实现已无预期
+        // 可匹配、判外部编辑作废快照。FIFO 命中最早一处，两声都 own。
+        c.onEditorSelectionChanged(-1, -1, 44, 44)
+        c.onEditorSelectionChanged(-1, -1, 300, 300)
+        // 删除自身的两声回声（轮 1 落点 44 与最终 0）。旧实现首声 44
+        // 排到第二个 44、中间档全吃、只剩 [0]；随后 300 无预期可匹配。
+        c.onEditorSelectionChanged(-1, -1, 44, 44)
+        c.onEditorSelectionChanged(-1, -1, 0, 0)
+        assertTrue(c.undoDeleteBeforeCursor())
+        assertEquals("x".repeat(300), editor.text)
+        assertEquals(300, editor.caret)
+    }
+
+    @Test
+    fun deleteBeforeCursorRejectedApiBurstsExactCount() {
+        // 码点 API 与字符版回退都被拒（charFallbackWorks=false）——
+        // 按 min(窗读数,48) 连发。字符版可用的宿主走精确删除（见
+        // charFallbackDeletesExactWindowAndRestores），不再连发。
+        val c = coordinator()
+        c.onEditorStarted(sensitive = false)
+        editor.codePointDeleteSucceeds = false
+        editor.charFallbackWorks = false
         editor.text = "abcde"; editor.caret = 3
         c.deleteAllBeforeCursor()
         assertEquals("de", editor.text)
@@ -1318,7 +1752,8 @@ class TextInputCoordinatorTest {
                 EngineCommand.Key(apostrophe.code, 0),
                 fake.requests.drop(requestsBeforeApostrophe).single().command,
             )
-            assertFalse(host.operations.drop(operationsBeforeApostrophe).any { it.startsWith("commitText:") })
+            assertFalse(host.operations.drop(operationsBeforeApostrophe).any {
+                it.startsWith("commitText:") || it.startsWith("commitUntracked:") })
 
             "homme".forEach { c.key(it.code) }
             val word = "l${apostrophe}homme"
@@ -1716,7 +2151,9 @@ class TextInputCoordinatorTest {
         // not a second composing span layered after the engine's stale buffer.
         c.key('h'.code)
         assertEquals("h", events.last().state.composing)
-        val editorOps = editor.operations.filter { it.startsWith("setComposing") || it.startsWith("commitText") }
+        val editorOps = editor.operations.filter {
+            it.startsWith("setComposing") || it.startsWith("commitText") || it.startsWith("commitUntracked")
+        }
         assertEquals("setComposing:n", editorOps.first())
         assertEquals("setComposing:h", editorOps.last())
         assertTrue(editorOps.contains("commitText:已粘贴"))

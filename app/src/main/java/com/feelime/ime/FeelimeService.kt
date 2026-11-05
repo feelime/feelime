@@ -3170,10 +3170,25 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
         /** #85 上滑删光标前全部：走 coordinator/editor port（码点删不发
          *  键事件，词撤销作废、终端宿主降级语义集中在
-         *  TextInputCoordinator.deleteAllBeforeCursor）。 */
+         *  TextInputCoordinator.deleteAllBeforeCursor）。选区裁决传原始
+         *  坐标：非折叠或未知（-1）都禁用快照——恢复的 commitText 会
+         *  替换选中段丢字，未知时无从排除（codex 七轮 P1）。 */
         @JavascriptInterface
         fun deleteBeforeCursor(token: String) = guarded(token, limited = false) {
-            onMain { coordinator.deleteAllBeforeCursor() }
+            onMain {
+                coordinator.deleteAllBeforeCursor(hostSelectionStart, hostSelectionEnd)
+            }
+        }
+
+        @JavascriptInterface
+        fun undoDeleteBeforeCursor(token: String) = guarded(token, limited = false) {
+            // 无快照（xterm 连发删/删后又输入/部分删除/尾部已变/选区
+            // 非折叠或未知）回落宿主自己的 undo。
+            onMain {
+                if (!coordinator.undoDeleteBeforeCursor(hostSelectionStart, hostSelectionEnd)) {
+                    editorPort.sendCtrlZ()
+                }
+            }
         }
 
         @JavascriptInterface

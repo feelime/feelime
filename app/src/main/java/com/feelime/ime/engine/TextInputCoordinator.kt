@@ -200,7 +200,12 @@ class TextInputCoordinator(
         newSelEnd: Int,
     ) {
         val actual = newSelStart to newSelEnd
-        val own = expectedSelections.lastIndexOf(actual)
+        // FIFO 排水：命中最早一处，排掉它之前的全部（被跳过的中间档
+        // 视为已被批量/合并回声覆盖）。lastIndexOf 会误吃后段——两次
+        // 大提交的在途回声与删除登记出现重复坐标时（[256,512,256,0]，
+        // codex 复审 P2），迟到的旧 256 会把 512 一起排掉，随后自身
+        // 512 回声被判外部编辑、误杀删除快照。
+        val own = expectedSelections.indexOf(actual)
         if (own >= 0) {
             repeat(own + 1) { expectedSelections.removeFirst() }
             return
@@ -208,6 +213,9 @@ class TextInputCoordinator(
         predictedSelectionStart = newSelStart
         predictedSelectionEnd = newSelEnd
         onExternalEditorMutation()
+        // 宿主侧移位/编辑：删后现场已不存在，快照作废（删除自身的
+        // 回声经 expectDeletion 登记按 own 排水，不会走到这里）。
+        invalidateDeleteSnapshot()
     }
 
     /** A host mutation invalidates both word ownership and pending predictions. */
@@ -217,9 +225,20 @@ class TextInputCoordinator(
         invalidateWordUndo()
     }
 
+    /** 删除快照的精确作废：只挂在真实分歧点上（宿主光标/选区回调
+     *  未命中、自身选区操作、输入目标切换、手势恢复写回、新编辑会
+     *  话）。键盘收起（onFinishInputView→onExternalEditorMutation）
+     *  不作废——同编辑器收起再唤起，删后现场仍在，恢复依然成立
+     *  （codex 复审 P1 的跨框写回由 onEditorStarted 拦截）。 */
+    private fun invalidateDeleteSnapshot() {
+        deletedBeforeCursor = null
+    }
+
     /** 已成功应用的自身选区操作，与异步宿主回调分开结算。 */
     fun onEditorSelectionApplied(start: Int, end: Int) {
         onExternalEditorMutation()
+        // 光标被刻意移动：快照的「恢复到删前位置」语义已不成立。
+        invalidateDeleteSnapshot()
         // setSelection 已成功，后续写入立即使用新坐标；回调只确认自身操作，不算新输入。
         predictedSelectionStart = start
         predictedSelectionEnd = end
@@ -235,6 +254,8 @@ class TextInputCoordinator(
      * explicit DOM caret edit. Coordinates never carry across input targets. */
     fun onInputTargetSelection(start: Int, end: Int) {
         onExternalEditorMutation()
+        // 输入目标切换（宿主↔面板编辑器）：旧目标上的删除不得写进新目标。
+        invalidateDeleteSnapshot()
         predictedSelectionStart = start
         predictedSelectionEnd = end
         // The DOM accepted any old span before reporting an explicit caret
@@ -271,6 +292,11 @@ class TextInputCoordinator(
     fun onEditorStarted(sensitive: Boolean, terminalLike: Boolean = false, initialSelectionStart: Int = 0, initialSelectionEnd: Int = initialSelectionStart) {
         asrGuard()
         invalidateWordUndo()
+        // 新编辑会话（含同编辑器 restart）：旧会话的删除快照禁止带进
+        // 新输入框（A 框删的写回 B 框，codex 复审 P1）。同编辑器收起
+        // 再唤起不触发本回调（服务侧 onStartInput 才进来），主流程
+        // 上滑→下滑之间不受影响。
+        invalidateDeleteSnapshot()
         expectedSelections.clear()
         predictedSelectionStart = initialSelectionStart
         predictedSelectionEnd = initialSelectionEnd
@@ -613,6 +639,7 @@ class TextInputCoordinator(
 
     fun key(unicodeScalar: Int, hw: Boolean = false): DispatchAck {
         userInputGeneration++
+        invalidateDeleteSnapshot()
         if (!isWordPunctuation(unicodeScalar)) invalidateWordUndo()
         return dispatch(EngineCommand.Key(unicodeScalar, 0, hw))
     }
@@ -626,6 +653,7 @@ class TextInputCoordinator(
      */
     fun setComposition(keys: String): DispatchAck {
         userInputGeneration++
+        invalidateDeleteSnapshot()
         asrGuard()
         invalidateWordUndo()
         // Reset 回声可能延后；先登记下面同步清理 span 产生的光标回调。
@@ -644,12 +672,16 @@ class TextInputCoordinator(
 
     fun space(): DispatchAck {
         userInputGeneration++
+        invalidateDeleteSnapshot()
         invalidateWordUndo()
         return dispatch(EngineCommand.Space)
     }
 
     fun backspace(): DispatchAck {
         userInputGeneration++
+        // 自身输入=删后现场已变，删除快照作废（codex 复审 P1：上滑
+        // 后输入再退格，净效果为零也不得恢复旧快照）。
+        invalidateDeleteSnapshot()
         val undo = lastWordCommit
         if (!replaying && undo != null && canReopen(undo)) return reopenLastWord(undo)
         invalidateWordUndo()
@@ -663,6 +695,7 @@ class TextInputCoordinator(
      *  误触。面板编辑器经 editor 端口的改道规则自然路由到 panelDelete。 */
     fun gestureBackspace(count: Int) {
         userInputGeneration++
+        invalidateDeleteSnapshot()
         invalidateWordUndo()
         repeat(count) { editor.sendDeleteKey() }
     }
@@ -680,24 +713,137 @@ class TextInputCoordinator(
  *  静默无效（true 但没删）与超预算文本由 guard 有界放弃：零 DEL、
  *  不保证删净。组合态由键盘侧门闸排除（方向锁定后到达的组合回声
  *  仍有既有时序缺口，见松手入口）。 */
-    fun deleteAllBeforeCursor() {
+    fun deleteAllBeforeCursor(selectionStart: Int = 0, selectionEnd: Int = selectionStart) {
         userInputGeneration++
         invalidateWordUndo()
+        // 未知选区（-1）不得默认获得快照资格：非折叠选区下恢复的
+        // commitText 会替换选中段丢字，选区未知时无从排除（codex
+        // 七轮 P1，桥端传原始坐标由这里统一裁决）。
+        val selectionCollapsed = selectionStart >= 0 && selectionStart == selectionEnd
+        // 删除跨过组合区，宿主侧 span 按合约可缩短或销毁（实现各异）
+        // ——协调器不依赖宿主行为，记账就地清零，否则恢复的
+        // expectReplacement 按组合语义算错目标位置。
+        composingActive = false
+        composingRaw = ""
         // 连发只在两种宿主明示信号下触发：查询不回（null）、API 明拒
         // （false）。读数形态不构成证据——API 合约允许宿主限量返回
         // （满窗/短窗都可能还有更多文本，codex 三轮 P1），凭读数连发
         // 会误伤合约宿主；删除不生效的宿主由 guard 有界放弃兜底。
-        var window = editor.textBeforeCursorWindow(SCAN_UNITS) ?: return keyBurst(KEY_BURST)
+        var window: EditorPort.TextWindow = editor.textBeforeCursorWindow(SCAN_UNITS)
+            ?: run {
+                // DEL 连发删除的字符内容不可知，快照作废。
+                deletedBeforeCursor = null
+                deletedTailBeforeCursor = null
+                return keyBurst(KEY_BURST)
+            }
         var rounds = 0
+        var deleted = ""
+        // 快照可信前提：选区折叠（非折叠时删除/恢复语义与选中段
+        // 交缠，恢复的 commitText 会替换选中内容丢字，codex 复审
+        // P1）+ 每轮窗口与实际删除范围可证一致（起点劈开代理对时
+        // 码点删除跨过完整字素，窗口文本只有半个，不等价）。
+        var snapshotTrusted = selectionCollapsed
         while (rounds < 24) {
             val count = window.codePoints
-            if (count <= 0) return
-            if (!editor.deleteSurroundingCodePoints(count)) {
+            if (count <= 0) break
+            if (window.text.isNotEmpty() && Character.isLowSurrogate(window.text.first())) {
+                snapshotTrusted = false
+            }
+            if (!editor.deleteSurrounding(window)) {
+                // API 明拒后连发删的字符内容不可知，快照作废。
+                deletedBeforeCursor = null
+                deletedTailBeforeCursor = null
                 return keyBurst(count.coerceAtMost(KEY_BURST))
             }
+            deleted = window.text + deleted
+            // 登记本轮删后选区：删除自身的回调不许进外部编辑分支——
+            // 那会作废刚保存的快照（P2-3/P1-1 生命周期收口）。
+            expectDeletion(window.text.length)
             rounds += 1
-            window = editor.textBeforeCursorWindow(SCAN_UNITS) ?: return
+            val next = editor.textBeforeCursorWindow(SCAN_UNITS)
+            if (next == null) {
+                deletedBeforeCursor = null
+                deletedTailBeforeCursor = null
+                return
+            }
+            window = next
         }
+        if (deleted.isEmpty()) {
+            // 空窗 no-op：这次手势什么都没删，保留既有快照让下滑恢复
+            // 仍指向上一次真实删除（codex 复审 P2：不得被空串覆盖）。
+            return
+        }
+        // guard 有界放弃=部分删除：写回会插进残留文本之前，内容与
+        // 光标都不对，快照作废、下滑回落宿主 Ctrl+Z（codex 复审 P2）。
+        if (window.codePoints != 0 || !snapshotTrusted) {
+            deletedBeforeCursor = null
+            deletedTailBeforeCursor = null
+            return
+        }
+        deletedBeforeCursor = deleted
+        // 光标后尾部留档：宿主删右侧文本常无选区回调，恢复前核对
+        // 尾部一致才允许写回（codex 复审 P1 同框反例）。
+        deletedTailBeforeCursor = editor.textAfterCursorWindow(SCAN_UNITS)
+    }
+
+    /** 登记删除自身的选区回声：光标左移 units 个 UTF-16 单位。追加
+     *  不清旧（旧预期属于在途操作，清掉会让迟到回声误判外部编辑）；
+     *  回声匹配走 FIFO 排水（onEditorSelectionChanged），中间档登记
+     *  自然并掉。选区未知（-1，宿主从未告知）则放弃登记——此时回
+     *  声会被判外部编辑、快照作废，是可接受的保守降级。 */
+    private fun expectDeletion(units: Int) {
+        if (predictedSelectionStart < 0 || predictedSelectionEnd < 0) return
+        val base = minOf(predictedSelectionStart, predictedSelectionEnd)
+        val target = (base - units).coerceAtLeast(0)
+        predictedSelectionStart = target
+        predictedSelectionEnd = target
+        expectedSelections.addLast(target to target)
+    }
+
+    /** #85 下滑恢复：把上滑删掉的内容原样写回——光标随 commitText
+     *  落在写回文本之后，恰是删除前的位置，无选中态（宿主 Ctrl+Z 的
+     *  恢复会带选中，验收 2026-11-05 裁定不用）。返回 false = 无可用
+     *  快照（xterm 连发删除/删后又输入过/部分删除/未对齐窗口/非折叠
+     *  选区/尾部已变），调用方回落 Ctrl+Z。校验三件：光标前为空、
+     *  光标后尾部与删除完成时一致（右侧无回调的宿主编辑靠它暴露）、
+     *  选区折叠（commitText 会替换选中段）。校验失败同样作废快照。 */
+    fun undoDeleteBeforeCursor(selectionStart: Int = 0, selectionEnd: Int = selectionStart): Boolean {
+        val snapshot = deletedBeforeCursor ?: return false
+        if (snapshot.isEmpty()) return false
+        // 与删除入口同款裁决：未知选区（-1）按非折叠拒绝。
+        if (!(selectionStart >= 0 && selectionStart == selectionEnd)) {
+            deletedBeforeCursor = null
+            deletedTailBeforeCursor = null
+            return false
+        }
+        val window = editor.textBeforeCursorWindow(SCAN_UNITS)
+        if (window == null || window.codePoints != 0) {
+            // 查询失效=无从校验；光标前有内容=删后有过编辑/移位。
+            deletedBeforeCursor = null
+            deletedTailBeforeCursor = null
+            return false
+        }
+        val recordedTail = deletedTailBeforeCursor
+        if (recordedTail != null) {
+            val currentTail = editor.textAfterCursorWindow(SCAN_UNITS)
+            if (currentTail == null || currentTail.text != recordedTail.text) {
+                // 光标后内容已变（宿主删了右侧/追加了文本）：删后现场
+                // 不存在，不得写回。
+                deletedBeforeCursor = null
+                deletedTailBeforeCursor = null
+                return false
+            }
+        }
+        deletedBeforeCursor = null
+        deletedTailBeforeCursor = null
+        userInputGeneration++
+        invalidateWordUndo()
+        // 每轮删除都登记过选区预测，此时预测=删后光标，+快照长度=
+        // 删前光标：恢复自身的回声按 own 排水，不进外部编辑分支。
+        expectReplacement(snapshot.length)
+        // 恢复不是新输入（原文上屏时已计数），不进 #41 统计。
+        editor.commitTextUntracked(snapshot)
+        return true
     }
 
     /** DEL 键连发兜底：每次删光标前一个字符，位置 0 处 no-op 不会过删
@@ -712,12 +858,15 @@ class TextInputCoordinator(
      *  光标，残留的撤销记录按代际校验必须失效。 */
     fun gestureRestore(text: String) {
         onExternalEditorMutation()
+        // 写回了字符：文本已变，删除快照过期。
+        invalidateDeleteSnapshot()
         expectReplacement(text.length)
         editor.commitText(text)
     }
 
     fun enterRaw(): DispatchAck {
         userInputGeneration++
+        invalidateDeleteSnapshot()
         invalidateWordUndo()
         lastEnterConsumedComposing = false
         return dispatch(EngineCommand.EnterRaw)
@@ -725,6 +874,7 @@ class TextInputCoordinator(
 
     fun choose(expectedRevision: Long, candidateId: String): DispatchAck {
         userInputGeneration++
+        invalidateDeleteSnapshot()
         invalidateWordUndo()
         return dispatch(EngineCommand.Choose(expectedRevision, candidateId))
     }
@@ -769,6 +919,7 @@ class TextInputCoordinator(
      */
     fun pasteExternal(text: String, countStats: Boolean = true, onComplete: (Long) -> Unit = {}): DispatchAck {
         val input = ++userInputGeneration
+        invalidateDeleteSnapshot()
         // 完成回调携带接受时的代际；排队期间的新输入不能被 Reset 回声掩盖。
         val after = { onComplete(input) }
         asrGuard()
@@ -1628,4 +1779,15 @@ class TextInputCoordinator(
         /** xterm 类宿主（文本查询不回）DEL 键兜底的连发上限。 */
         internal const val KEY_BURST = 48
     }
+
+    /** 上滑删除的快照（下滑恢复用）；单槽，下次删除覆盖。生命周期：
+     *  仅在「删除完成 → 恢复」之间无编辑会话切换、无外部编辑、无
+     *  自身输入、无过期校验失败时可用（codex 复审 P1 定案）。 */
+    private var deletedBeforeCursor: String? = null
+
+    /** 删除完成时的光标后尾部（与快照成对）：恢复前核对一致，暴露
+     *  无选区回调的右侧宿主编辑。这是**有界检测**：只比对光标后前
+     *  256 单位，更远的变更检测不到；null=宿主删除完成时不回尾部
+     *  查询，核对跳过（仅剩前窗校验）——两种降级均既定行为。 */
+    private var deletedTailBeforeCursor: EditorPort.TextWindow? = null
 }
