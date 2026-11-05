@@ -954,6 +954,7 @@ class SettingsBridge(
             .put("models", modelsJson())
             .put("asr", JSONObject()
                 .put("stripPeriod", asrPrefs().getBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, true))
+                .put("itn", asrPrefs().getBoolean(AsrSettings.KEY_ITN, true))
                 .put("idleUnload", asrPrefs().getBoolean(AsrSettings.KEY_IDLE_UNLOAD, false))
                 .put("hotwords", asrPrefs().getString(AsrSettings.KEY_HOTWORDS, "") ?: ""))
             .put("custom", JSONObject()
@@ -3182,7 +3183,7 @@ class SettingsBridge(
     }
 
     @JavascriptInterface
-    fun saveAsrSettings(stripPeriod: Boolean, hotwords: String, token: String) = guarded(token) {
+    fun saveAsrSettings(stripPeriod: Boolean, itn: Boolean, hotwords: String, token: String) = guarded(token) {
         // Raw lines go to the parser (original line numbers in errors, the
         // 50-line limit counts non-empty lines before dedup) and to prefs
         // verbatim: one bad line ("姚程:0", a full-width colon) rejects the
@@ -3203,6 +3204,7 @@ class SettingsBridge(
         }
         asrPrefs().edit()
             .putBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, stripPeriod)
+            .putBoolean(AsrSettings.KEY_ITN, itn)
             .putString(AsrSettings.KEY_HOTWORDS, normalized)
             .commit()
         // Success receipt with the normalized text: the JS side re-syncs the

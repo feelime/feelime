@@ -574,10 +574,11 @@ test('保存识别设置 sends the checkbox + textarea verbatim', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     world.$('stripPeriod').checked = false;
+    world.$('numItn').checked = false;
     world.$('hotwords').value = '倪妮\nGPU';
     world.$('btnSaveAsr').click();
     equal(world.lastCall('saveAsrSettings').args,
-        [false, '倪妮\nGPU', world.token], 'saveAsrSettings args');
+        [false, false, '倪妮\nGPU', world.token], 'saveAsrSettings args');
     assert(world.$('asrNote').textContent.includes('已保存'), 'save note shown');
 });
 

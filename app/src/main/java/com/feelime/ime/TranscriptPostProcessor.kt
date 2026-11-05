@@ -2,6 +2,7 @@ package com.feelime.ime
 
 import android.content.Context
 import android.util.Log
+import com.feelime.ime.engine.ChineseNumberItn
 import com.k2fsa.sherpa.onnx.OfflinePunctuation
 import com.k2fsa.sherpa.onnx.OfflinePunctuationConfig
 import com.k2fsa.sherpa.onnx.OfflinePunctuationModelConfig
@@ -40,7 +41,13 @@ class TranscriptPostProcessor(
     fun final(text: String): String {
         val normalized = partial(text)
         if (normalized.isBlank()) return ""
-        val restored = punctuation?.addPunctuation(normalized)?.trim().orEmpty().ifBlank { normalized }
+        // 数字 ITN（#78）在标点恢复之前：识别原文里数字段以词界/句尾收束，
+        // 标点模型插逗号后句尾裸段规则（「一共十二」）会失配；模型对含
+        // 阿拉伯数字的输入同样在域内。关闭开关则原文进标点模型。
+        val itnEnabled = appContext.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
+            .getBoolean(AsrSettings.KEY_ITN, true)
+        val converted = if (itnEnabled) ChineseNumberItn.apply(normalized) else normalized
+        val restored = punctuation?.addPunctuation(converted)?.trim().orEmpty().ifBlank { converted }
         val stripPeriod = appContext.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
             .getBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, true)
         return if (stripPeriod) EnglishTextNormalizer.ensureTerminalPunctuation(restored) else restored

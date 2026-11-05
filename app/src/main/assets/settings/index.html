@@ -1040,6 +1040,10 @@
           <span class="row-label"><span data-i18n="voice.asr.stripPeriod">去掉句尾句号</span><small data-i18n="voice.asr.stripHint">问号、叹号保留；关闭后保留模型输出</small></span>
           <input type="checkbox" id="stripPeriod" class="toggle">
         </label>
+        <label class="row switch-row" for="numItn">
+          <span class="row-label"><span data-i18n="voice.asr.numItn">数字写成阿拉伯数字</span><small data-i18n="voice.asr.numItnHint">数量、日期、金额、小数自动转换（三个 → 3个）；关闭后保留汉字</small></span>
+          <input type="checkbox" id="numItn" class="toggle">
+        </label>
         <label class="row switch-row" for="asrIdleUnload">
           <span class="row-label"><span data-i18n="voice.asr.idleUnload">空闲时释放语音模型</span><small data-i18n="voice.asr.idleUnloadHint">默认关闭；开启后空闲 5 分钟释放，下次语音需要重新加载</small></span>
           <input type="checkbox" id="asrIdleUnload" class="toggle">
