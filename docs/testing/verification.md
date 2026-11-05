@@ -325,7 +325,9 @@ table 实测词频错位到 51.7% 命中）。重编链路（host，无需 NDK�
 4. T9：先 `scripts/generate-t9-syllables.py`（读新 `table.txt` 重写
    keyboard.js 内联块，KEYBOARD_VERSION 两处 bump），再
    `FEELIME_T9_DEPLOYER=… FEELIME_T9_SHARED=… scripts/generate-t9-schema.py
-   --compile`（顺带更新 engine-data MANIFEST）。
+   --compile`（顺带更新 engine-data MANIFEST）；模糊变体矩阵用
+   `--fuzzy-all`（31 个 `luna_pinyin_t9_fuzzy_m{mask}.prism.bin` +
+   部署模板，#73）。
 5. 双拼键位图：`scripts/generate-keyboard-data.py`（prism.txt 派生，
    mock 有 golden 校验）。
 6. `assets/engine-data/MANIFEST.json` 全量重算 sha/bytes；

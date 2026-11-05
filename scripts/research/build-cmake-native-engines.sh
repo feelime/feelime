@@ -120,6 +120,9 @@ deployer="$work/build/rime-host/librime/bin/rime_deployer"
 # byte 级会因 marisa 构建顺序差百字节，不做 cmp。
 python3 "$repo_root/scripts/generate-fuzzy-prisms.py" \
   --shared "$rime_shared" --deployer "$deployer" --out "$rime_build/fuzzy"
+# T9 家族（严格 schema/prism 与 #73 模糊变体矩阵）不在这条链上：由
+# scripts/generate-t9-schema.py 用本现场的 deployer/shared（环境变量
+# 注入）就地再生成进 assets——见 docs/testing/verification.md §4c。
 mkdir -p "$work/artifacts/rime-data"
 mkdir -p "$work/artifacts/rime-data"
 for output in \
