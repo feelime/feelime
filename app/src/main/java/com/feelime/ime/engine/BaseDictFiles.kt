@@ -371,6 +371,7 @@ object BaseDictFiles {
         val variantId = "${FuzzyPinyin.T9_SCHEMA_ID}_m$mask"
         val out = StringBuilder()
         var inAlgebra = false
+        var keptFuzzy = 0
         for (line in template.lines()) {
             val trimmed = line.trimEnd()
             // 缩进无关判定：真实 T9 schema 是 2 空格列表项，测试 fixture 与
@@ -381,10 +382,18 @@ object BaseDictFiles {
             if (rule != null && KNOWN_FUZZY_BITS.containsKey(rule)) {
                 if (mask and KNOWN_FUZZY_BITS.getValue(rule) != 0) {
                     out.append(line).append('\n')
+                    keptFuzzy += 1
                 }
                 continue
             }
             out.append(line).append('\n')
+        }
+        // 防呆（codex 实锤教训：模板曾是只带一组的 _m1 资产，过滤其它
+        // mask 时静默得零模糊规则、编出「假变体」）：留下的模糊行数必须
+        // 等于该 mask 应有的全部行，缺组当场响亮。
+        val expected = KNOWN_FUZZY_BITS.values.count { mask and it != 0 }
+        require(keptFuzzy == expected) {
+            "t9 fuzzy template incomplete: kept=$keptFuzzy expected=$expected (mask=$mask)"
         }
         val rewritten = out.toString()
         return rewriteLine(rewritten, "schema_id", variantId)

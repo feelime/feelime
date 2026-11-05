@@ -225,36 +225,45 @@ def generate_fuzzy_variant(mask: int, with_template: bool) -> int:
     start = text.index("speller:")
     end = text.index("switches:")
     patches = coverage_patches(syllabary(), protect_rules())
+    # 模板恒用全五组（自定义基底补编按 mask 过滤的源）；变体才按 mask。
+    full_rules = fuzzy_rules(31)
     rules = fuzzy_rules(mask if mask > 0 else 31)
+    if with_template:
+        template_text = (text[:start]
+                         + hybrid_speller(patches, full_rules) + "\n" + text[end:])
+        template_text = template_text.replace(
+            "alphabet: zyxwvutsrqponmlkjihgfedcba",
+            "alphabet: abcdefghijklmnopqrstuvwxyz23456789")
+        template_text = template_text.replace(
+            "schema_id: luna_pinyin\n", f"schema_id: {FUZZY_SCHEMA}\n")
+        template_text = template_text.replace(
+            "translator:\n  dictionary: luna_pinyin\n",
+            "translator:\n  dictionary: luna_pinyin\n"
+            f"  prism: {FUZZY_SCHEMA}\n")
+        FUZZY_TEMPLATE_DST.write_text(template_text, encoding="utf-8")
+        manifest_add(FUZZY_TEMPLATE_DST)
+        print(f"wrote {FUZZY_TEMPLATE_DST} (full 5 groups)")
+    if mask <= 0:
+        return 0
     text = text[:start] + hybrid_speller(patches, rules) + "\n" + text[end:]
     text = text.replace("alphabet: zyxwvutsrqponmlkjihgfedcba",
                         "alphabet: abcdefghijklmnopqrstuvwxyz23456789")
     text = text.replace("schema_id: luna_pinyin\n", f"schema_id: {FUZZY_SCHEMA}\n")
-    # 先组装部署模板（prism 指向物化目标名），变体文本在其上派生——
-    # 避免对 translator 段做多遍 replace 产生重复 prism 行。变体的
-    # schema_id 与 prism 都带 _m{N} 后缀（与全拼 variantSchema 同款：
-    # SchemaUpdate 按 schema_id 定位 deployed config，不带后缀会找不到
-    # 而静默跳过编译——日志定罪实录）。
-    base = text.replace(
+    # 变体的 schema_id 与 prism 都带 _m{N} 后缀（与全拼 variantSchema
+    # 同款：SchemaUpdate 按 schema_id 定位 deployed config，不带后缀会
+    # 找不到而静默跳过编译——日志定罪实录）。
+    variant = f"{FUZZY_SCHEMA}_m{mask}"
+    variant_text = text.replace(
         "translator:\n  dictionary: luna_pinyin\n",
         "translator:\n  dictionary: luna_pinyin\n"
-        f"  prism: {FUZZY_SCHEMA}\n")
-    if mask > 0:
-        variant_id = f"{FUZZY_SCHEMA}_m{mask}"
-        base = base.replace(f"schema_id: {FUZZY_SCHEMA}\n",
-                            f"schema_id: {variant_id}\n")
-    if with_template:
-        FUZZY_TEMPLATE_DST.write_text(base, encoding="utf-8")
-        print(f"wrote {FUZZY_TEMPLATE_DST}")
-    if mask > 0:
-        variant = f"{FUZZY_SCHEMA}_m{mask}"
-        variant_text = base.replace(f"  prism: {FUZZY_SCHEMA}\n",
-                                    f"  prism: {variant}\n")
-        schema_name = f"{variant}.schema.yaml"
-        if "--no-compile" not in sys.argv:
-            return compile_variant(variant_text, schema_name,
-                                   PRISM_DST.parent / f"{variant}.prism.bin")
-        print(f"[dry] variant algebra rules = {len(rules)}")
+        f"  prism: {variant}\n")
+    variant_text = variant_text.replace(f"schema_id: {FUZZY_SCHEMA}\n",
+                                        f"schema_id: {variant}\n")
+    schema_name = f"{variant}.schema.yaml"
+    if "--no-compile" not in sys.argv:
+        return compile_variant(variant_text, schema_name,
+                               PRISM_DST.parent / f"{variant}.prism.bin")
+    print(f"[dry] variant algebra rules = {len(rules)}")
     return 0
 
 

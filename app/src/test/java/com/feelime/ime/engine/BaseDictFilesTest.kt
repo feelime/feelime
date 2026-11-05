@@ -363,6 +363,29 @@ class BaseDictFilesTest {
         BaseDictFiles.t9VariantSchema(t9Template, 32)
     }
 
+    /** codex #4 实锤教训：部署模板资产曾是「schema_id 带 _m1 + 只含一组
+     *  模糊规则」的残次品，手写 fixture 掩盖了它。直接读真实资产跑全部
+     *  31 个 mask——缺组会让 t9VariantSchema 的防呆 require 响亮失败。 */
+    @Test
+    fun t9VariantSchemaWorksAgainstRealAssetTemplate() {
+        var dir = java.io.File(System.getProperty("user.dir") ?: ".")
+        var asset: java.io.File? = null
+        repeat(5) {
+            val f = java.io.File(dir, "src/main/assets/engine-data/rime/luna_pinyin_t9_fuzzy.schema.yaml")
+            if (f.isFile) { asset = f; return@repeat }
+            dir = dir.parentFile ?: return@repeat
+        }
+        org.junit.Assume.assumeNotNull(asset)
+        val template = asset!!.readText()
+        assertTrue(template.contains("schema_id: luna_pinyin_t9_fuzzy\n"))
+        assertTrue(template.contains("derive/^n/l/"))
+        assertTrue(template.contains("derive/ang${'$'}/an/"))
+        for (mask in 1..31) {
+            val out = BaseDictFiles.t9VariantSchema(template, mask)
+            assertTrue("mask=$mask", out.contains("schema_id: luna_pinyin_t9_fuzzy_m$mask"))
+        }
+    }
+
     @Test
     fun fuzzyVariantOfNamesBothSchemaFamilies() {
         assertEquals("luna_pinyin_fuzzy_m19", BaseDictFiles.fuzzyVariantOf("luna_pinyin_fuzzy", 19))

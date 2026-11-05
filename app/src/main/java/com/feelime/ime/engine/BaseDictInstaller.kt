@@ -313,9 +313,23 @@ object BaseDictInstaller {
         val variant = BaseDictFiles.fuzzyVariant(mask) ?: return
         val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         if (prefs.getString(KEY_MODE, "builtin") != "custom") return
-        if (fuzzyVariantIntact(context, mask)) return
+        // codex #73 审：只查全拼会让「已有全拼变体、缺 T9 变体」的升级
+        // 用户永远停在严格 T9——两族都完整才算齐（T9 不适用时只看全拼）。
+        if (fuzzyVariantsIntact(context, mask)) return
         android.util.Log.i("FeelimeBaseDict", "fuzzy variant $variant missing -> compile")
         ensureFuzzyVariantAsync(context, mask)
+    }
+
+    /** 两族模糊变体（全拼 + T9）都已完整 = 入口放行条件。T9 适用性
+     *  与 [compileFuzzyVariant] 同门：staging 有严格 T9 prism（导入时
+     *  内存门的裁决）且部署模板在场。 */
+    private fun fuzzyVariantsIntact(context: Context, mask: Int): Boolean {
+        if (!fuzzyVariantIntact(context, mask)) return false
+        val staging = File(context.filesDir, "rime-user/build")
+        val t9Applies = File(staging, "luna_pinyin_t9.prism.bin").isFile &&
+            t9Template(context) != null
+        if (!t9Applies) return true
+        return fuzzyVariantIntact(context, mask, FuzzyPinyin.T9_SCHEMA_ID)
     }
 
     /** 变体产物可用 = prism 存在且无编译事务位残留（codex 三轮 P1-2：
@@ -384,8 +398,8 @@ object BaseDictInstaller {
         val user = File(context.filesDir, "rime-user")
         val staging = File(user, "build")
         val prism = File(staging, "$variant.prism.bin")
-        if (prism.isFile && prefs.getInt(KEY_FUZZY_COMPILING_MASK, 0) == 0) {
-            return null // 已有且非中断残留，无需补编
+        if (fuzzyVariantsIntact(context, mask)) {
+            return null // 两族齐备且非中断残留，无需补编
         }
 
         val archive = activeSourceDir(context) ?: return "NO_ARCHIVE"
@@ -1045,6 +1059,20 @@ object BaseDictInstaller {
                 File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(variant)
                 File(staging, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").writeText(variant)
             }
+            // issue #73：T9 变体 schema 同批双落位（codex 实锤：只写全拼
+            // 时 compileSchemas 里的 T9 变体在 staging 无源，requiredProducts
+            // 校验缺产物 → 首次导入整体回滚）。门与 compileSchemas 一致：
+            // includeT9（内存门）+ 模板在场。
+            if (includeT9) {
+                t9Template(context)?.let { t9Tpl ->
+                    (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
+                        val variant = BaseDictFiles.t9FuzzyVariant(mask) ?: return@forEach
+                        val text = BaseDictFiles.t9VariantSchema(t9Tpl, mask)
+                        File(user, "$variant.schema.yaml").writeText(text)
+                        File(staging, "$variant.schema.yaml").writeText(text)
+                    }
+                }
+            }
             // default 双落位：user 根 = ConfigBuilder 的源（include 解析），
             // staging = SchemaListUpdate 的 deployed 直读。
             File(user, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
@@ -1060,6 +1088,7 @@ object BaseDictInstaller {
             staging.listFiles()?.forEach { f ->
                 val stem = f.name.removeSuffix(".prism.bin")
                 val managed = stem.startsWith("${FuzzyPinyin.SCHEMA_ID}_m") ||
+                    stem.startsWith("${FuzzyPinyin.T9_SCHEMA_ID}_m") ||
                     stem == "luna_pinyin_t9"
                 if (f.name.endsWith(".prism.bin") && managed &&
                     stem !in compileSchemas

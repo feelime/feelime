@@ -397,8 +397,8 @@
       "sha256": "7f1fd0a016205adb6ebe413fd213fd8331d0f42440c56f1e47f2aacc861a7c7c"
     },
     "rime/luna_pinyin_t9_fuzzy.schema.yaml": {
-      "bytes": 45681,
-      "sha256": "ab849569b980cbae936f3fc7036cbc55d9ad0942f8e026c2ad4469fd46efefe6"
+      "bytes": 45924,
+      "sha256": "c0aeb86042201399b1a15c6988d643e575d27dbdb97577c44d47cce0177f7f5e"
     }
   },
   "formatVersion": 1

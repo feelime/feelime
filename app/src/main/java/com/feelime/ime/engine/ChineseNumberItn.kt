@@ -6,9 +6,10 @@ package com.feelime.ime.engine
  * （一二三），数量/日期/小数场景的期望是阿拉伯。
  *
  * 保守策略：只在数字段后跟单位白名单（个/年/月/号/元…）、构成「点」
- * 小数、或句尾 ≥10 的组合数值（如「一共十二」）时转换；句尾裸个位数、
- * 成语（一五一十/三心二意——段后无单位）保持原样。宁可少转不误转，
- * 白名单按用户反馈再加宽。
+ * 小数或钟点、或句尾 ≥10 的组合数值（如「一共十二」）时转换；句尾裸
+ * 个位数、成语（一五一十/三心二意——段后无单位）保持原样。宁可少转
+ * 不误转，白名单按用户反馈再加宽（已知残留：「一日三餐」这类成语里
+ * 的单字后缀无法与量词机械区分，仅堵最高频的「十分」）。
  *
  * 纯字符串逻辑（JVM 可测）；流式中间态（partial）不转，只处理最终文本。
  */
@@ -31,7 +32,7 @@ object ChineseNumberItn {
         '样', '批', '组', '队', '轮', '遍', '趟', '场', '局', '步',
     )
 
-    /** 逐位读法段（二零二六/三七）→ 数字串；含进制词返回 null。 */
+    /** 逐位读法段（二零二六/零零七）→ 数字串（保留前导零）；含进制词 null。 */
     private fun digitwise(s: String): String? {
         if (s.isEmpty()) return null
         return buildString {
@@ -42,11 +43,14 @@ object ChineseNumberItn {
         }
     }
 
-    /** 数值式（十/十五/一千二百三十四/两万）→ Long；逐位式（二零二六）null。 */
+    /** 数值式（十/十五/一千二百三十四/两万/一亿两千万）→ Long；逐位式
+     *  （二零二六/一五一十）与歧形 null。万只缩放段内累计、亿结算进
+     *  总量（codex #2 实锤：旧算法一亿两千万 = (1e8+2000)×1e4 错算
+     *  一万亿）。 */
     fun parseZhNumber(s: String): Long? {
         if (s.isEmpty()) return null
-        var total = 0L      // 万/亿 段累计
-        var section = 0L    // 当前万段内累计
+        var total = 0L      // 已结算（亿级）累计
+        var section = 0L    // 万段内累计（万结算后暂存，遇亿时并入 total）
         var current = 0L    // 十/百/千 链上的尾数字
         var pendingDigit = false
         var sawUnit = false
@@ -70,10 +74,14 @@ object ChineseNumberItn {
                     section += current * if (c == '百') 100L else 1000L
                     current = 0L; pendingDigit = false; sawUnit = true
                 }
-                c == '万' || c == '亿' -> {
+                c == '万' -> {
                     if (!pendingDigit && !sawUnit) return null
-                    section += current
-                    total = (total + section) * if (c == '万') 10_000L else 100_000_000L
+                    section = (section + current) * 10_000L
+                    current = 0L; pendingDigit = false; sawUnit = true
+                }
+                c == '亿' -> {
+                    if (!pendingDigit && !sawUnit) return null
+                    total += (section + current) * 100_000_000L
                     section = 0L; current = 0L; pendingDigit = false; sawUnit = true
                 }
                 else -> return null
@@ -89,40 +97,50 @@ object ChineseNumberItn {
         var i = 0
         val n = text.length
         while (i < n) {
-            val c = text[i]
-            if (!isNumChar(c)) {
-                // 「点」小数特判：<数段>点<纯数字段>（三点一四 → 3.14）
-                if (c == '点' && i > 0 && i + 1 < n &&
-                    isNumChar(text[i - 1]) && DIGIT_MAP.containsKey(text[i + 1])
-                ) {
-                    var l = i - 1
-                    while (l > 0 && isNumChar(text[l - 1])) l--
-                    var r = i + 1
-                    while (r < n && DIGIT_MAP.containsKey(text[r])) r++
-                    val intPart = text.substring(l, i)
-                    val fracPart = text.substring(i + 1, r)
-                    val intVal = parseZhNumber(intPart)
-                    val fracDigits = digitwise(fracPart)
-                    if (intVal != null && fracDigits != null) {
-                        // 整数部可能已按单段写入（如「三点」的单段转换没发生——
-                        // 点在白名单里；这里回退已写内容改写整体）
-                        val drop = out.length - (i - l)
-                        out.setLength(drop.coerceAtLeast(0))
-                        out.append(intVal).append('.').append(fracDigits)
-                        i = r
-                        continue
-                    }
-                }
-                out.append(c)
+            if (!isNumChar(text[i])) {
+                out.append(text[i])
                 i++
                 continue
             }
             var j = i
             while (j < n && isNumChar(text[j])) j++
             val segment = text.substring(i, j)
-            val next = if (j < n) text[j] else null
-            val next2 = if (j + 1 < n) text[j + 1] else null
-            out.append(convertSegment(segment, next, next2))
+            // 「点」前瞻（codex #1/#7）：小数/钟点必须按完整片段一次成形，
+            // 不能先单段转换再回删——整数段转换后输出长度已变，按原文
+            // 长度回删会吃掉正文（「价格是一百二十三点四五元」实录）。
+            // frac = 点后的完整数字段（含进制词，钟点分钟常是数值式
+            // 「二十」）；「分/秒」跟随按钟点保留点字，「刻」不进转换。
+            if (j < n - 1 && text[j] == '点') {
+                var r = j + 1
+                while (r < n && isNumChar(text[r])) r++
+                val frac = text.substring(j + 1, r)
+                val after = if (r < n) text[r] else null
+                val intVal = parseZhNumber(segment)
+                if (intVal != null && frac.isNotEmpty()) {
+                    if ((after == '分' || after == '秒')) {
+                        // 分钟优先逐位（保前导零：零五 → 05），数值式其次
+                        val minute = digitwise(frac) ?: parseZhNumber(frac)?.toString()
+                        if (minute != null) {
+                            out.append(intVal).append("点").append(minute)
+                            i = r
+                            continue
+                        }
+                    } else if (after != '刻') {
+                        // 小数：frac 必须纯数字字形（三四 → 34）
+                        val digits = digitwise(frac)
+                        if (digits != null) {
+                            out.append(intVal).append('.').append(digits)
+                            i = r
+                            continue
+                        }
+                    }
+                }
+            }
+            out.append(convertSegment(
+                segment,
+                if (j < n) text[j] else null,
+                if (j + 1 < n) text[j + 1] else null,
+            ))
             i = j
         }
         return out.toString()
@@ -133,6 +151,17 @@ object ChineseNumberItn {
      *  一四」这类点后带数字的才按钟点/小数转）。 */
     private fun convertSegment(segment: String, next: Char?, next2: Char? = null): String {
         if (segment.isEmpty()) return segment
+        // 纯数字字形段（无进制词）在编号语境优先按位转：零零七 → 007
+        // （codex #9：先走数值解析会丢前导零）。单段（三个）不适用。
+        if (segment.length >= 2 && segment.none { it in UNITS } && next != null &&
+            (next == '年' || next == '月' || next == '日' || next == '号' ||
+                (segment.length >= 3 && SUFFIX_UNITS.contains(next)))
+        ) {
+            digitwise(segment)?.let { return it }
+        }
+        // 「十分」黑名单（codex #8 实锤：十分满意 → 10分满意）。程度
+        // 副词远高频于量词（分数语境通常另带 钟分/之 佐证），一律不转。
+        if (segment == "十" && next == '分') return segment
         val hasUnit = segment.any { it in UNITS }
         val value = parseZhNumber(segment)
         if (value != null) {

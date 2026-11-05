@@ -371,7 +371,7 @@ schema:
       * opencc - 開放中文轉換
 
   name: "朙月拼音"
-  schema_id: luna_pinyin_t9_fuzzy_m1
+  schema_id: luna_pinyin_t9_fuzzy
   version: 0.31
 selector:
   bindings:
@@ -391,6 +391,18 @@ speller:
   algebra:
   - "derive/^([zcs])h/$1/"
   - "derive/^([zcs])([^h])/$1h$2/"
+  - "derive/^n/l/"
+  - "derive/^l/n/"
+  - "derive/^f/h/"
+  - "derive/^h/f/"
+  - "derive/^r/l/"
+  - "derive/^l/r/"
+  - "derive/ang$/an/"
+  - "derive/an$/ang/"
+  - "derive/eng$/en/"
+  - "derive/en$/eng/"
+  - "derive/ing$/in/"
+  - "derive/in$/ing/"
   - "derive/^(.*)a(.*)$/$1A$2/"
   - "derive/^a(.*)$/A$1/"
   - "derive/^(.*)b(.*)$/$1B$2/"

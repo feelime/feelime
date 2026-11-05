@@ -25,6 +25,31 @@ class ChineseNumberItnTest {
         assertEquals("3.14", ChineseNumberItn.apply("三点一四"))
         assertEquals("圆周率是3.1415", ChineseNumberItn.apply("圆周率是三点一四一五"))
         assertEquals("0.5米", ChineseNumberItn.apply("零点五米"))
+        assertEquals("30.5", ChineseNumberItn.apply("三十点五"))
+        // codex #1：整数段先转换后回删会吃掉正文——必须整段一次成形
+        assertEquals("价格是123.45元", ChineseNumberItn.apply("价格是一百二十三点四五元"))
+        // codex #7：单位小数（分/秒）是钟点，保留点字；数值式分钟
+        assertEquals("下午3点5分", ChineseNumberItn.apply("下午三点五分"))
+        assertEquals("10点20分", ChineseNumberItn.apply("十点二十分"))
+        assertEquals("3点05分", ChineseNumberItn.apply("三点零五分"))
+        // 「一刻」不进小数语境（3.1 是错值），钟点整数部仍转
+        assertEquals("3点一刻", ChineseNumberItn.apply("三点一刻"))
+        // 「一点」的稍微义/成语语境不转（frac 为空或非数字）
+        assertEquals("一点意见都没有", ChineseNumberItn.apply("一点意见都没有"))
+    }
+
+    @Test
+    fun codexRegressions() {
+        // codex #2：亿位后再遇万，旧算法把亿级总量再乘万
+        assertEquals("120000000个", ChineseNumberItn.apply("一亿两千万个"))
+        assertEquals(120000000L, ChineseNumberItn.parseZhNumber("一亿两千万"))
+        assertEquals(100000000L, ChineseNumberItn.parseZhNumber("一亿"))
+        assertEquals(12000000L, ChineseNumberItn.parseZhNumber("一千二百万"))
+        // codex #8：「十分」程度副词黑名单
+        assertEquals("十分满意", ChineseNumberItn.apply("十分满意"))
+        // codex #9：纯字形编号保前导零（先走数值解析会丢）
+        assertEquals("007号", ChineseNumberItn.apply("零零七号"))
+        assertEquals("三心二意", ChineseNumberItn.apply("三心二意"))
     }
 
     @Test
