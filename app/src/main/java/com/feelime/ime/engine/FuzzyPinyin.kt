@@ -18,6 +18,12 @@ object FuzzyPinyin {
     const val SCHEMA_ID = "luna_pinyin_fuzzy"
     const val STRICT_SCHEMA_ID = "luna_pinyin"
 
+    /** T9 九宫格的模糊变体（issue #73：模糊音扩展到全部拼音类键盘，
+     *  双拼除外——键位映射与容错语义冲突）。机制与全拼同款：同一
+     *  [PREF_KEY] 掩码，变体 prism 物化为 luna_pinyin_t9_fuzzy.prism.bin。 */
+    const val T9_SCHEMA_ID = "luna_pinyin_t9_fuzzy"
+    const val T9_STRICT_SCHEMA_ID = "luna_pinyin_t9"
+
     /** 各分组一位；新增分组时同步 build_matrix.py 与设置页。 */
     const val BIT_PINGQIAOSHE = 1 // 平翘舌 z/zh c/ch s/sh
     const val BIT_NL = 2          // n/l

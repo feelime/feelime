@@ -110,7 +110,16 @@ object BaseDictFiles {
 
     /** 模糊音变体 schema id（mask≠0 时进编译清单）。 */
     fun fuzzyVariant(mask: Int): String? =
-        if (mask in 1..31) "${FuzzyPinyin.SCHEMA_ID}_m$mask" else null
+        fuzzyVariantOf(FuzzyPinyin.SCHEMA_ID, mask)
+
+    /** 模糊变体名（schemaId = luna_pinyin_fuzzy / luna_pinyin_t9_fuzzy）。 */
+    fun fuzzyVariantOf(schemaId: String, mask: Int): String? =
+        if (mask in 1..31) "${schemaId}_m$mask" else null
+
+    /** T9 模糊变体（issue #73）：与全拼同掩码；custom 基底按需补编，
+     *  大基底被 [t9Eligible] 内存门拦下（变体缺失回落严格 T9）。 */
+    fun t9FuzzyVariant(mask: Int): String? =
+        fuzzyVariantOf(FuzzyPinyin.T9_SCHEMA_ID, mask)
 
     /** T9 进清单的词条上限：T9 的「首末字母保护级联」（design/t9.md §1，
      *  26 字母 × derive）把每词条拼写数乘 ~8，prism 内存随词条数线性放大
@@ -141,7 +150,10 @@ object BaseDictFiles {
     ): List<String> {
         val core = if (includeT9) CORE_SCHEMAS
             else CORE_SCHEMAS.filter { it != "luna_pinyin_t9" }
-        return core + listOfNotNull(fuzzyVariant(fuzzyMask)) +
+        // issue #73：T9 模糊变体与全拼变体同场（includeT9 由 t9Eligible
+        // 内存门裁决——T9 变体的拼写展开比原版再乘模糊倍数，不能越过门）。
+        val t9Fuzzy = if (includeT9) t9FuzzyVariant(fuzzyMask) else null
+        return core + listOfNotNull(fuzzyVariant(fuzzyMask), t9Fuzzy) +
             listOfNotNull(FLYPY_SCHEMA.takeIf { flypyInstalled })
     }
 
@@ -350,6 +362,46 @@ object BaseDictFiles {
         return rewriteLine(rewritten, "schema_id", variantId)
             .let { rewriteLine(it, "prism", variantId) }
     }
+
+    /** T9 模糊变体 schema（issue #73）：T9 模板的模糊行在 algebra 开头
+     *  （保护级联之前——级联的大写化会让模糊正则失配），按掩码过滤
+     *  algebra 段内的已知模糊行，schema_id/prism 重写为 _m{N}。 */
+    fun t9VariantSchema(template: String, mask: Int): String {
+        require(mask in MASK_MIN..MASK_MAX) { "mask out of range: $mask" }
+        val variantId = "${FuzzyPinyin.T9_SCHEMA_ID}_m$mask"
+        val out = StringBuilder()
+        var inAlgebra = false
+        for (line in template.lines()) {
+            val trimmed = line.trimEnd()
+            // 缩进无关判定：真实 T9 schema 是 2 空格列表项，测试 fixture 与
+            // 可能的格式变体是 4 空格——按「列表项形态」识别而非字面缩进。
+            if (trimmed == "  algebra:") inAlgebra = true
+            else if (inAlgebra && !ALGEBRA_ITEM.matches(trimmed)) inAlgebra = false
+            val rule = if (inAlgebra) t9AlgebraRule(trimmed) else null
+            if (rule != null && KNOWN_FUZZY_BITS.containsKey(rule)) {
+                if (mask and KNOWN_FUZZY_BITS.getValue(rule) != 0) {
+                    out.append(line).append('\n')
+                }
+                continue
+            }
+            out.append(line).append('\n')
+        }
+        val rewritten = out.toString()
+        return rewriteLine(rewritten, "schema_id", variantId)
+            .let { rewriteLine(it, "prism", variantId) }
+    }
+
+    private val ALGEBRA_ITEM = Regex("""^\s*-\s+.*$""")
+
+    /** algebra 列表行 `- "<rule>"` 的规则文本；非该形态返回 null。 */
+    private fun t9AlgebraRule(line: String): String? {
+        val m = Regex("""^\s*- "([^"]+)"\s*$""").find(line) ?: return null
+        return m.groupValues[1]
+    }
+
+    /** 模糊规则串到位掩码的映射（与 GROUPS 同源；T9/全拼模板通用）。 */
+    private val KNOWN_FUZZY_BITS: Map<String, Int> =
+        GROUPS.flatMap { (bit, rules) -> rules.map { it to bit } }.toMap()
 
     /** 改写段内 2 空格缩进的单值行（schema_id/prism；只动第一个匹配）。 */
     private fun rewriteLine(text: String, key: String, value: String): String {

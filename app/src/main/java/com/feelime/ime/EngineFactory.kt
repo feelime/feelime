@@ -29,7 +29,13 @@ object EngineFactory {
         // T9 九宫格：数字键面（schema 侧 xlit 把音节表映射成数字串，
         // 见 scripts/generate-t9-schema.py）；资产缺失时由引擎数据
         // 就绪判定挡在模式菜单，不会走到这里。
-        InputMode.T9 -> RimeTextEngine(context, "luna_pinyin_t9")
+        // T9 模糊音（issue #73）：模糊开启且变体可用时用 T9 模糊 schema，
+        // 否则严格 T9——全拼同款回落语义。
+        InputMode.T9 -> RimeTextEngine(
+            context,
+            com.feelime.ime.engine.EngineDataStore.t9FuzzySchemaId(context)
+                ?: com.feelime.ime.engine.FuzzyPinyin.T9_STRICT_SCHEMA_ID,
+        )
         // 笔画五键（issue #18）：GB2312 裁剪词典 + 单通配派生行，资产
         // 缺失时由引擎数据就绪判定挡在模式菜单。
         InputMode.STROKE -> RimeTextEngine(context, "feelime_stroke")

@@ -82,25 +82,36 @@ object EngineDataStore {
      * 预编译变体（shared 根）。物化目标仍是 shared 根的 active 名——
      * librime 按 user/build > shared 顺序找 prism，但 active 由本机制
      * 管理（不在 MANIFEST、不进 build）。 */
-    fun fuzzySchemaId(context: Context): String? {
+    fun fuzzySchemaId(context: Context): String? =
+        fuzzyVariantSchemaId(context, FuzzyPinyin.SCHEMA_ID)
+
+    /** T9 九宫格的模糊 schema（issue #73：模糊音扩展到全部拼音类键盘，
+     *  双拼除外）：与全拼同掩码同机制；变体缺失（资产未部署 / custom
+     *  补编未完成或被 T9 内存门跳过）时返回 null，调用方回落严格 T9。 */
+    fun t9FuzzySchemaId(context: Context): String? =
+        fuzzyVariantSchemaId(context, FuzzyPinyin.T9_SCHEMA_ID)
+
+    /** 全拼与 T9 共用的模糊变体物化（schemaId = luna_pinyin_fuzzy 或
+     *  luna_pinyin_t9_fuzzy），语义同上。 */
+    private fun fuzzyVariantSchemaId(context: Context, schemaId: String): String? {
         val mask = FuzzyPinyin.mask(context)
         if (mask == 0) return null
         val root = readyRoot(context) ?: return null
-        if (!File(root, "rime/${FuzzyPinyin.SCHEMA_ID}.schema.yaml").isFile) return null
+        if (!File(root, "rime/$schemaId.schema.yaml").isFile) return null
         val userVariant = File(
-            context.filesDir, "rime-user/build/${FuzzyPinyin.SCHEMA_ID}_m$mask.prism.bin",
+            context.filesDir, "rime-user/build/${schemaId}_m$mask.prism.bin",
         )
-        val sharedVariant = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}_m$mask.prism.bin")
+        val sharedVariant = File(root, "rime/${schemaId}_m$mask.prism.bin")
         // codex 二轮 P2-C：基底是用户自定义（staging 有自编 table）时只认
         // 自编变体——shared 变体是按内置 table 编的，跨基底配对出错位候选。
-        // 缺口返回 null 走严格全拼，补编由 ensureFuzzyVariantIfNeeded 负责。
+        // 缺口返回 null 走严格形态，补编由 ensureFuzzyVariantIfNeeded 负责。
         val customBase = File(context.filesDir, "rime-user/build/luna_pinyin.table.bin").isFile
         // codex 三轮 P1-2：自编变体还要无编译事务位（半截 prism 不可用）。
         val userIntact = !customBase ||
-            com.feelime.ime.engine.BaseDictInstaller.fuzzyVariantIntact(context, mask)
+            com.feelime.ime.engine.BaseDictInstaller.fuzzyVariantIntact(context, mask, schemaId)
         val variant = userVariant.takeIf { it.isFile && userIntact }
             ?: sharedVariant.takeIf { it.isFile && !customBase }
-        val active = File(root, "rime/${FuzzyPinyin.SCHEMA_ID}.prism.bin")
+        val active = File(root, "rime/$schemaId.prism.bin")
         if (variant == null) return null
         // active 不在 MANIFEST 里，长度相等的内容损坏无法被启动校验发现：
         // 以内容一致为准，不一致就一律从已校验的变体重新物化
@@ -112,7 +123,7 @@ object EngineDataStore {
             android.util.Log.w("FeelimeEngine", "fuzzy prism re-materialize: ${active.name} (mask=$mask)")
             variant.copyTo(active, overwrite = true)
         }
-        return FuzzyPinyin.SCHEMA_ID
+        return schemaId
     }
 
     /**

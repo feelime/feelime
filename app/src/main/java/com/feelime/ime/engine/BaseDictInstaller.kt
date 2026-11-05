@@ -321,8 +321,9 @@ object BaseDictInstaller {
     /** 变体产物可用 = prism 存在且无编译事务位残留（codex 三轮 P1-2：
      *  librime 原地写，中断的半截 prism 文件也在——只看 isFile 会把
      *  残骸当可用变体喂给运行时）。fuzzySchemaId 与入口共用本判定。 */
-    fun fuzzyVariantIntact(context: Context, mask: Int): Boolean {
-        val variant = BaseDictFiles.fuzzyVariant(mask) ?: return false
+    fun fuzzyVariantIntact(context: Context, mask: Int,
+        schemaId: String = FuzzyPinyin.SCHEMA_ID): Boolean {
+        val variant = BaseDictFiles.fuzzyVariantOf(schemaId, mask) ?: return false
         if (!File(context.filesDir, "rime-user/build/$variant.prism.bin").isFile) return false
         return context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
             .getInt(KEY_FUZZY_COMPILING_MASK, 0) == 0
@@ -389,10 +390,18 @@ object BaseDictInstaller {
 
         val archive = activeSourceDir(context) ?: return "NO_ARCHIVE"
         val template = engineTemplate(context) ?: return "ENGINE_NOT_READY"
+        // issue #73：T9 模糊变体同场补编。门 = staging 有 T9 prism（导入时
+        // t9Eligible 内存门的裁决结果——变体拼写比原版再乘模糊倍数，不能
+        // 在被门拦下的基底上编）+ T9 模板在场（旧资产混搭时缺失则跳过）。
+        // T9 变体编译失败不阻塞全拼（编译后按产物存在性分别判定）。
+        val t9Variant = BaseDictFiles.t9FuzzyVariant(mask)
+            ?.takeIf { File(staging, "luna_pinyin_t9.prism.bin").isFile }
+            ?.takeIf { t9Template(context) != null }
+        val schemas = listOfNotNull(variant, t9Variant)
         val defaultYaml = runCatching {
             BaseDictFiles.defaultYaml(
                 context.assets.open(BaseDictFiles.ASSETS_DEFAULT).bufferedReader().readText(),
-                listOf(variant),
+                schemas,
             )
         }.getOrNull() ?: return "NO_TEMPLATE"
         val sha = prefs.getString(KEY_SOURCE_SHA, "user") ?: "user"
@@ -416,6 +425,11 @@ object BaseDictInstaller {
                 val schemaText = BaseDictFiles.variantSchema(template, mask)
                 File(user, "$variant.schema.yaml").writeText(schemaText)
                 File(staging, "$variant.schema.yaml").writeText(schemaText)
+                if (t9Variant != null) {
+                    val t9Text = BaseDictFiles.t9VariantSchema(t9Template(context)!!, mask)
+                    File(user, "$t9Variant.schema.yaml").writeText(t9Text)
+                    File(staging, "$t9Variant.schema.yaml").writeText(t9Text)
+                }
                 File(user, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
                 File(staging, BaseDictFiles.DEFAULT_FILE).writeText(defaultYaml)
             }.getOrElse { return finallyCleanup(user, staging, prefs, "STAGE_FAILED") }
@@ -438,6 +452,9 @@ object BaseDictInstaller {
             }
             pollMaintenance({ })
             NativeSmoke.rimeJoinMaintenance()
+            if (t9Variant != null && !File(staging, "$t9Variant.prism.bin").isFile) {
+                android.util.Log.w("FeelimeBaseDict", "t9 fuzzy variant m$mask missing after compile")
+            }
             result = if (prism.isFile) null else "PRISM_MISSING"
             return result
         } finally {
@@ -462,6 +479,7 @@ object BaseDictInstaller {
         // user 根累积 luna_pinyin_fuzzy_m*.schema.yaml。
         (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
             File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").delete()
+            File(user, "${FuzzyPinyin.T9_SCHEMA_ID}_m$mask.schema.yaml").delete()
         }
         // 成功/确认无产物（PRISM_MISSING = prism 根本没写出）清事务位；
         // 中途失败保留事务位——半成品/无产物都视为不可用，下次补编
@@ -786,6 +804,9 @@ object BaseDictInstaller {
                 if (variant != null) {
                     File(context.filesDir, "rime-user/build/$variant.prism.bin").delete()
                 }
+                BaseDictFiles.t9FuzzyVariant(staleCompiling)?.let {
+                    File(context.filesDir, "rime-user/build/$it.prism.bin").delete()
+                }
                 // 编译现场的 user 根残留（源/umbrella/default/变体 schema）
                 // 一并清——finallyCleanup 没机会跑。
                 val user = File(context.filesDir, "rime-user")
@@ -795,6 +816,7 @@ object BaseDictInstaller {
                 File(File(user, "build"), BaseDictFiles.DEFAULT_FILE).delete()
                 (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { m ->
                     File(user, "${FuzzyPinyin.SCHEMA_ID}_m$m.schema.yaml").delete()
+                    File(user, "${FuzzyPinyin.T9_SCHEMA_ID}_m$m.schema.yaml").delete()
                 }
             }
             prefs.edit().remove(KEY_FUZZY_COMPILING_MASK).apply()
@@ -1681,6 +1703,14 @@ object BaseDictInstaller {
         return runCatching { shared.readText() }.getOrNull()
     }
 
+    /** T9 模糊部署模板（issue #73；旧资产混搭时可能缺失，调用方需容错）。 */
+    private fun t9Template(context: Context): String? {
+        val shared = EngineDataStore.readyFile(
+            context, "rime/${FuzzyPinyin.T9_SCHEMA_ID}.schema.yaml",
+        ) ?: return null
+        return runCatching { shared.readText() }.getOrNull()
+    }
+
     private fun cleanupCompileSources(
         user: File,
         keepSource: Boolean,
@@ -1699,6 +1729,7 @@ object BaseDictInstaller {
         }
         (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
             File(user, "${FuzzyPinyin.SCHEMA_ID}_m$mask.schema.yaml").delete()
+            File(user, "${FuzzyPinyin.T9_SCHEMA_ID}_m$mask.schema.yaml").delete()
         }
         // staging 的编译期 default.yaml 一并删（运行时不需要 schema_list）；
         // staging 的变体 schema yaml 不删——那是 DictCompiler 输出的

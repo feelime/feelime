@@ -20,6 +20,18 @@ librime 音节图对混合输入原生枚举切分。coverage_patches() 模拟�
   --compile   ：再用 pinned rime_deployer 编译 prism.bin，拷入 assets 并
                 重算 MANIFEST.json 两文件的 bytes+sha256（checkEngineArtifacts
                 会在构建期审计一致性）
+
+T9 模糊音（issue #73，扩展全拼模糊到九宫格）：
+  --fuzzy <mask> 生成单个模糊变体：schema_id=luna_pinyin_t9_fuzzy、
+                algebra 在保护级联之前注入 mask 对应的模糊组行（与
+                generate-fuzzy-prisms.py 的 GROUPS 同源，须保持一致），
+                编译产物 luna_pinyin_t9_fuzzy_m{mask}.prism.bin 进 assets
+                与 MANIFEST（运行时由 EngineDataStore 物化为
+                luna_pinyin_t9_fuzzy.prism.bin——同全拼模糊的变体机制）。
+                mask=0 时另写部署模板 luna_pinyin_t9_fuzzy.schema.yaml
+                （algebra 含全五组；仅供 select_schema 加载配置与 custom
+                基底补编做模板，运行时不重编）。
+  --fuzzy-all    mask 1..31 全矩阵循环（每个都走 --fuzzy <mask> 路径）。
 """
 import json
 import os
@@ -33,6 +45,27 @@ SRC = pathlib.Path("app/src/main/assets/engine-data/rime/luna_pinyin.schema.yaml
 DST = pathlib.Path("app/src/main/assets/engine-data/rime/luna_pinyin_t9.schema.yaml")
 PRISM_DST = pathlib.Path("app/src/main/assets/engine-data/rime/luna_pinyin_t9.prism.bin")
 MANIFEST = pathlib.Path("app/src/main/assets/engine-data/MANIFEST.json")
+
+# T9 模糊音（issue #73）：五组位定义与 FuzzyPinyin.kt / generate-fuzzy-prisms.py
+# 同源——三处须保持一致（新增分组时同步三方 + 设置页）。
+FUZZY_SCHEMA = "luna_pinyin_t9_fuzzy"
+FUZZY_TEMPLATE_DST = pathlib.Path(
+    f"app/src/main/assets/engine-data/rime/{FUZZY_SCHEMA}.schema.yaml")
+FUZZY_GROUPS = [
+    (1, ["derive/^([zcs])h/$1/", "derive/^([zcs])([^h])/$1h$2/"]),  # 平翘舌
+    (2, ["derive/^n/l/", "derive/^l/n/"]),                          # n/l
+    (4, ["derive/^f/h/", "derive/^h/f/"]),                          # f/h
+    (8, ["derive/^r/l/", "derive/^l/r/"]),                          # r/l
+    (16, [                                                         # 前后鼻音
+        "derive/ang$/an/", "derive/an$/ang/",
+        "derive/eng$/en/", "derive/en$/eng/",
+        "derive/ing$/in/", "derive/in$/ing/",
+    ]),
+]
+
+
+def fuzzy_rules(mask: int) -> list:
+    return [rule for bit, rules in FUZZY_GROUPS if mask & bit for rule in rules]
 # 词库换装/重编现场与 pinned deployer 可用环境变量覆盖（默认沿用历史路径）。
 DEPLOYER = pathlib.Path(os.environ.get(
     "FEELIME_T9_DEPLOYER",
@@ -108,7 +141,7 @@ def coverage_patches(syllables: list, rules: list) -> list:
     return lines
 
 
-def hybrid_speller(patches: list) -> str:
+def hybrid_speller(patches: list, fuzzy: list = None) -> str:
     head = (
         "speller:\n"
         "  # 混合拼写（docs/design/t9.md §1）：首/末字母保护级联 + xlit 成数字\n"
@@ -117,9 +150,12 @@ def hybrid_speller(patches: list) -> str:
         "  delimiter: \" '\"\n"
         "  algebra:\n"
     )
+    # 模糊行必须在保护级联之前：protect 把字母大写化后（ZH≠zh），模糊
+    # 正则不再命中——音节容错只在纯小写音节形态上派生。
+    fuzzy_lines = "".join(f'  - "{r}"\n' for r in (fuzzy or []))
     rule_lines = "".join(f'  - "derive/{p}/{r}/"\n' for p, r in protect_rules())
     patch_lines = "".join(f'  - "{p}"\n' for p in patches)
-    return (head + rule_lines + patch_lines
+    return (head + fuzzy_lines + rule_lines + patch_lines
             + f'  - "{XLIT}"\n'
             + f'  - "{RESTORE}"\n')
 
@@ -140,6 +176,86 @@ def update_manifest() -> None:
     MANIFEST.write_text(
         json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"manifest updated: {DST.name}, {PRISM_DST.name}")
+
+
+def compile_variant(schema_text: str, schema_name: str, prism_out: pathlib.Path) -> int:
+    """在临时现场编译单个变体 schema，产物 rename 后拷入 assets 并进 MANIFEST。
+
+    与 compile_prism 同款调用形态（deployer --compile <schema> . SHARED build），
+    只是 schema 文本与产物名参数化。"""
+    if not DEPLOYER.exists():
+        print(f"deployer missing: {DEPLOYER}", file=sys.stderr)
+        return 1
+    work = pathlib.Path(tempfile.mkdtemp(prefix="t9-fuzzy-"))
+    (work / "build").mkdir()
+    schema_file = work / schema_name
+    schema_file.write_text(schema_text, encoding="utf-8")
+    r = subprocess.run(
+        [str(DEPLOYER), "--compile", schema_name, ".", str(SHARED), "build"],
+        cwd=work, capture_output=True, text=True, timeout=1200)
+    built = work / "build" / (schema_name.replace(".schema.yaml", ".prism.bin"))
+    if r.returncode != 0 or not built.is_file():
+        print(f"compile failed rc={r.returncode}\n{r.stdout[-400:]}\n{r.stderr[-400:]}",
+              file=sys.stderr)
+        shutil.rmtree(work, ignore_errors=True)
+        return 1
+    shutil.copy2(built, prism_out)
+    print(f"prism: {prism_out.name} = {prism_out.stat().st_size} bytes")
+    manifest_add(prism_out)
+    shutil.rmtree(work, ignore_errors=True)
+    return 0
+
+
+def manifest_add(path: pathlib.Path) -> None:
+    data = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    key = str(path.relative_to(path.parents[1]))
+    data["files"][key] = {"bytes": path.stat().st_size, "sha256": sha256(path)}
+    MANIFEST.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+
+
+def generate_fuzzy_variant(mask: int, with_template: bool) -> int:
+    """生成 T9 模糊变体（issue #73）。
+
+    mask>0：变体 schema（algebra 只含 mask 的模糊组）编译出
+    luna_pinyin_t9_fuzzy_m{mask}.prism.bin。with_template 时另写部署模板
+    luna_pinyin_t9_fuzzy.schema.yaml（algebra 含全五组、prism 字段指向
+    物化目标名 luna_pinyin_t9_fuzzy）——select_schema 加载配置用。"""
+    text = SRC.read_text(encoding="utf-8")
+    start = text.index("speller:")
+    end = text.index("switches:")
+    patches = coverage_patches(syllabary(), protect_rules())
+    rules = fuzzy_rules(mask if mask > 0 else 31)
+    text = text[:start] + hybrid_speller(patches, rules) + "\n" + text[end:]
+    text = text.replace("alphabet: zyxwvutsrqponmlkjihgfedcba",
+                        "alphabet: abcdefghijklmnopqrstuvwxyz23456789")
+    text = text.replace("schema_id: luna_pinyin\n", f"schema_id: {FUZZY_SCHEMA}\n")
+    # 先组装部署模板（prism 指向物化目标名），变体文本在其上派生——
+    # 避免对 translator 段做多遍 replace 产生重复 prism 行。变体的
+    # schema_id 与 prism 都带 _m{N} 后缀（与全拼 variantSchema 同款：
+    # SchemaUpdate 按 schema_id 定位 deployed config，不带后缀会找不到
+    # 而静默跳过编译——日志定罪实录）。
+    base = text.replace(
+        "translator:\n  dictionary: luna_pinyin\n",
+        "translator:\n  dictionary: luna_pinyin\n"
+        f"  prism: {FUZZY_SCHEMA}\n")
+    if mask > 0:
+        variant_id = f"{FUZZY_SCHEMA}_m{mask}"
+        base = base.replace(f"schema_id: {FUZZY_SCHEMA}\n",
+                            f"schema_id: {variant_id}\n")
+    if with_template:
+        FUZZY_TEMPLATE_DST.write_text(base, encoding="utf-8")
+        print(f"wrote {FUZZY_TEMPLATE_DST}")
+    if mask > 0:
+        variant = f"{FUZZY_SCHEMA}_m{mask}"
+        variant_text = base.replace(f"  prism: {FUZZY_SCHEMA}\n",
+                                    f"  prism: {variant}\n")
+        schema_name = f"{variant}.schema.yaml"
+        if "--no-compile" not in sys.argv:
+            return compile_variant(variant_text, schema_name,
+                                   PRISM_DST.parent / f"{variant}.prism.bin")
+        print(f"[dry] variant algebra rules = {len(rules)}")
+    return 0
 
 
 def compile_prism() -> int:
@@ -165,6 +281,17 @@ def compile_prism() -> int:
 
 
 def main() -> int:
+    # T9 模糊变体（issue #73）优先分流：--fuzzy <mask> / --fuzzy-all。
+    for i, arg in enumerate(sys.argv):
+        if arg == "--fuzzy":
+            return generate_fuzzy_variant(int(sys.argv[i + 1]), with_template=True)
+        if arg == "--fuzzy-all":
+            for mask in range(1, 32):
+                print(f"== fuzzy mask {mask} ==")
+                rc = generate_fuzzy_variant(mask, with_template=(mask == 1))
+                if rc != 0:
+                    return rc
+            return 0
     text = SRC.read_text(encoding="utf-8")
     # 只替换 speller 段（到 switches: 为止）——切到 translator 会把
     # switches（zh_hans 默认简体）一起删掉，新会话全部输出繁体
