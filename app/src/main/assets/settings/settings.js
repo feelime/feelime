@@ -476,7 +476,7 @@ const I18N = {
         "voice.asr.idleUnloadHint": "默认关闭；开启后空闲 5 分钟释放，下次语音需要重新加载",
         "voice.asr.stripHint": "问号、叹号保留；关闭后保留模型输出",
         "voice.asr.numItn": "数字写成阿拉伯数字",
-        "voice.asr.numItnHint": "数量、日期、金额、小数自动转换（三个 → 3个）；关闭后保留汉字",
+        "voice.asr.numItnHint": "数量、日期、金额、小数自动转换（三个 → 3个）；默认关闭",
         "voice.asr.hotwordsLabel": "热词（一行一个，可填中文或英文；识别优先考虑这些词）",
         "voice.asr.hotwordsWeightHint": "某个词总识别错？在词后面加「:数字」加大纠正力度，如 姚程:10。范围 1~20（最多一位小数），不填用默认力度；数字过大可能出现重复词或误识别其他词，调小即可。",
         "voice.asr.hotwordsPlaceholder": "例如：\n倪妮\n姚程:10 ← 总识别错时加权重\nGPU",
@@ -1286,7 +1286,7 @@ const I18N = {
         "voice.asr.idleUnloadHint": "Off by default. Release after 5 idle minutes; the next recording reloads the models.",
         "voice.asr.stripHint": "Question and exclamation marks stay; turn off to keep model output unchanged",
         "voice.asr.numItn": "Write numbers as digits",
-        "voice.asr.numItnHint": "Quantities, dates, amounts and decimals convert automatically (三个 → 3个); off keeps Chinese numerals",
+        "voice.asr.numItnHint": "Quantities, dates, amounts and decimals convert automatically (三个 → 3个); off by default",
         "voice.asr.hotwordsLabel": "Hotwords (one per line; Chinese or English; recognition gives these words priority)",
         "voice.asr.hotwordsWeightHint": "A word keeps being misrecognized? Append \":number\" for a stronger pull, e.g. 姚程:10. Range 1-20 (one decimal at most), omitted = default strength; too high may duplicate the word or misrecognize others - lower it then.",
         "voice.asr.hotwordsPlaceholder": "For example:\n倪妮\n姚程:10 ← stronger pull when misrecognized\nGPU",
@@ -3063,7 +3063,7 @@ function renderAsr(state) {
     if ((asr.hotwords || "") === field.value) asrHotwordsDirty = false;
     if (document.activeElement !== field && !asrHotwordsDirty) field.value = asr.hotwords || "";
     if (document.activeElement !== $("stripPeriod")) $("stripPeriod").checked = !!asr.stripPeriod;
-    if (document.activeElement !== $("numItn")) $("numItn").checked = asr.itn !== false;
+    if (document.activeElement !== $("numItn")) $("numItn").checked = asr.itn === true;
 }
 
 function renderCustom(state) {

@@ -45,7 +45,7 @@ class TranscriptPostProcessor(
         // 标点模型插逗号后句尾裸段规则（「一共十二」）会失配；模型对含
         // 阿拉伯数字的输入同样在域内。关闭开关则原文进标点模型。
         val itnEnabled = appContext.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
-            .getBoolean(AsrSettings.KEY_ITN, true)
+            .getBoolean(AsrSettings.KEY_ITN, false)
         val converted = if (itnEnabled) ChineseNumberItn.apply(normalized) else normalized
         val restored = punctuation?.addPunctuation(converted)?.trim().orEmpty().ifBlank { converted }
         val stripPeriod = appContext.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)

@@ -954,7 +954,7 @@ class SettingsBridge(
             .put("models", modelsJson())
             .put("asr", JSONObject()
                 .put("stripPeriod", asrPrefs().getBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, true))
-                .put("itn", asrPrefs().getBoolean(AsrSettings.KEY_ITN, true))
+                .put("itn", asrPrefs().getBoolean(AsrSettings.KEY_ITN, false))
                 .put("idleUnload", asrPrefs().getBoolean(AsrSettings.KEY_IDLE_UNLOAD, false))
                 .put("hotwords", asrPrefs().getString(AsrSettings.KEY_HOTWORDS, "") ?: ""))
             .put("custom", JSONObject()
