@@ -8,6 +8,17 @@ const fs = require('fs');
 const path = require('path');
 const { KeyboardWorld, KEYBOARD_VERSION } = require('./mock_bridge_harness');
 
+// 语义化版本比较（En 常用表 3.73.79 重排后，跨版本断言需要分支）。
+function verAtLeast(version, want) {
+    const a = version.split('.').map(Number);
+    const b = want.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+    }
+    return true;
+}
+const EN_ROW2 = verAtLeast(KEYBOARD_VERSION, '3.73.79') ? '-/:;()|@+=' : '-/:;()&@+=';
+
 let passed = 0;
 let failed = 0;
 let skipped = 0;
@@ -2659,7 +2670,7 @@ test('rotation keeps the pinned 常用 variant; mode switch resets it', {since: 
     // Rotation re-renders the SAME mode: pin, badge and grid must agree.
     world.hello({ orientation: 'landscape', mode: 'pinyin' });
     equal(tab().querySelector('.cat-sub').textContent, 'En', 'badge survives rotation');
-    equal(row2(), '-/:;()&@+=', 'grid still matches the badge');
+    equal(row2(), EN_ROW2, 'grid still matches the badge');
     // A REAL mode switch resets to the new mode's default, live.
     world.hello({ orientation: 'landscape', mode: 'double-pinyin' });
     equal(tab().querySelector('.cat-sub').textContent, '中', 'mode switch resets the pin');
@@ -2846,7 +2857,7 @@ test('second tap on the active 常用 tab flips the zh/en table', {since: '3.28.
     equal(rows(), '+-、；：？！～（）', 'mode default is the zh table');
     world.tap(commonTab);
     equal(commonTab.querySelector('.cat-sub').textContent, 'En', 'badge flips');
-    equal(rows(), '-/:;()&@+=', 'grid re-renders from the en table');
+    equal(rows(), EN_ROW2, 'grid re-renders from the en table');
     equal([...world.$('symGrid').querySelectorAll('.kb-row')][0].children[0].textContent,
         '1', 'digits still lead row 1');
     world.tap(commonTab);
@@ -2862,7 +2873,7 @@ test('second tap on the active 常用 tab flips the zh/en table', {since: '3.28.
     equal(tab.querySelector('.cat-sub').textContent, 'En', 'direct keeps the en default');
     equal(
         rows(),
-        '-/:;()&@+=',
+        EN_ROW2,
         'en rows without a stale pin',
     );
 });
@@ -10575,6 +10586,204 @@ test('performance: old native receives original handwriting points without reduc
 
 // runner 收尾：统计必须跑在【全部】test() 之后（曾在文件中部：其后
 // 追加的测试失败不进统计、exit 0 假绿——与 settings 套件同款缺陷）。
+
+// ------------------------------------------------- #85 面板手势 + 常用(En) |
+
+test('#85 panel-input swipe gestures run in-page: delete-all + restore', {since: '3.73.78'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.tap(world.document.getElementById('panelManage'));
+    const input = world.document.getElementById('panelEditorInput');
+    const fire = (el, type) => {
+        const l = el.listeners.find(l => l.type === type);
+        if (l) l.handler({ target: el });
+    };
+    world.document.activeElement = input;
+    fire(input, 'focus');
+    // fake DOM 无 setSelectionRange：按既有测试模式装上（8110 行同款）
+    input.setSelectionRange = (start, end) => {
+        input.selectionStart = start; input.selectionEnd = end;
+    };
+    input.value = '12345';
+    input.selectionStart = 3; input.selectionEnd = 3;
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'swipe-up deletes everything before the cursor');
+    equal(input.selectionStart, 0, 'cursor rests at 0');
+    world.context.window.Feelime.onImeGestureRestore();
+    equal(input.value, '12345', 'swipe-down restores verbatim');
+    equal(input.selectionStart, 3, 'cursor lands at the pre-delete position');
+    equal(input.selectionEnd, 3, 'restored without a selection');
+    // 面板写入（提交一个字）作废快照：恢复不得回旧内容
+    input.value = '12345'; input.selectionStart = 3; input.selectionEnd = 3;
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'second delete lands');
+    world.context.window.Feelime.onPanelCommit({ text: 'x' });
+    world.context.window.Feelime.onImeGestureRestore();
+    equal(input.value, 'x45', 'stale snapshot never restores after a panel write');
+    // 选中段：与宿主路径同语义，手势不动
+    input.value = 'abc'; input.selectionStart = 1; input.selectionEnd = 3;
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, 'abc', 'selected range is left alone');
+    // 空删 no-op：不得用空串覆盖有效快照（codex 复审 P2）
+    input.value = '12345'; input.selectionStart = 3; input.selectionEnd = 3;
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'delete lands');
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'empty delete is a no-op');
+    world.context.window.Feelime.onImeGestureRestore();
+    equal(input.value, '12345', 'snapshot survives the empty delete');
+    // 光标移位后恢复拒绝（删后现场已不存在）
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'delete again');
+    input.setSelectionRange(1, 2);
+    world.context.window.Feelime.onImeGestureRestore();
+    equal(input.value, '45', 'restore refuses after the cursor moved');
+});
+
+test('#85 native input on a panel field invalidates the gesture snapshot', {since: '3.73.79'}, () => {
+    // codex 复审 P1：不经 replacePanelRange 的原生编辑路径（浏览器侧
+    // input）到达即作废快照——报告选区时顺手清，恢复不得拼出 123NEW。
+    const world = fresh({ mode: 'pinyin' });
+    world.tap(world.document.getElementById('panelManage'));
+    const input = world.document.getElementById('panelEditorInput');
+    const fire = (el, type) => {
+        const l = el.listeners.find(l => l.type === type);
+        if (l) l.handler({ target: el });
+    };
+    world.document.activeElement = input;
+    fire(input, 'focus');
+    input.value = '12345'; input.selectionStart = 3; input.selectionEnd = 3;
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'delete lands');
+    // 浏览器侧直接改值并派发 input（绕开面板写入通道）
+    input.value = 'NEW'; input.selectionStart = 0; input.selectionEnd = 0;
+    fire(input, 'input');
+    world.context.window.Feelime.onImeGestureRestore();
+    equal(input.value, 'NEW', 'native edit invalidated the snapshot');
+});
+
+test('#85 async select echo after the gesture delete never kills the snapshot', {since: '3.73.79'}, () => {
+    // codex 复审 P1（round 12 合并清单）：replacePanelRange 自身的
+    // setSelectionRange 在真实浏览器里异步派发 select（当前同步块之后），
+    // 回声进 reportPanelSelection 不得清掉刚存的恢复快照。fake 的
+    // setSelectionRange 经 FakeClock 延迟派发，advance(0) 即模拟该回声。
+    const world = fresh({ mode: 'pinyin' });
+    world.tap(world.document.getElementById('panelManage'));
+    const input = world.document.getElementById('panelEditorInput');
+    const fire = (el, type) => {
+        const l = el.listeners.find(l => l.type === type);
+        if (l) l.handler({ target: el });
+    };
+    world.document.activeElement = input;
+    fire(input, 'focus');
+    input.value = '12345'; input.selectionStart = 3; input.selectionEnd = 3;
+    let selectEvents = 0;
+    input.listeners.push({ type: 'select', handler: () => { selectEvents += 1; } });
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'delete lands');
+    equal(selectEvents, 0, 'select never fires mid-gesture (async contract)');
+    world.clock.advance(0); // 浏览器此刻才派发 select 回声
+    equal(selectEvents, 1, 'exactly one select echo per real selection change');
+    world.context.window.Feelime.onImeGestureRestore();
+    equal(input.value, '12345', 'select echo leaves the restore snapshot intact');
+    equal(input.selectionStart, 3, 'restore still lands the pre-delete cursor');
+});
+
+test('#85 late composing echo during the gesture never eats the tail', {since: '3.73.79'}, () => {
+    // codex 复审 P1：上滑方向锁定后、松手前到达的组合回声留下陈旧
+    // span——删除后同 session 提交按旧 span 写入会吞掉尾部。
+    const world = fresh({ mode: 'pinyin' });
+    world.tap(world.document.getElementById('panelManage'));
+    const input = world.document.getElementById('panelEditorInput');
+    const fire = (el, type) => {
+        const l = el.listeners.find(l => l.type === type);
+        if (l) l.handler({ target: el });
+    };
+    world.document.activeElement = input;
+    fire(input, 'focus');
+    input.value = 'abcTAIL'; input.selectionStart = 3; input.selectionEnd = 3;
+    // 手势期间迟到的组合回声（同 session）
+    world.context.window.Feelime.onPanelComposing({ text: 'ni' });
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, 'TAIL', 'delete clears the prefix and the stale span');
+    world.context.window.Feelime.onPanelCommit({ text: '你' });
+    equal(input.value, '你TAIL', 'commit appends at the cursor, tail intact');
+});
+
+test('#85 panel gesture snapshot dies with the edit session (no cross-form leak)', {since: '3.73.79'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.tap(world.document.getElementById('panelManage'));
+    const input = world.document.getElementById('panelEditorInput');
+    const fire = (el, type) => {
+        const l = el.listeners.find(l => l.type === type);
+        if (l) l.handler({ target: el });
+    };
+    world.document.activeElement = input;
+    fire(input, 'focus');
+    input.value = '12345';
+    input.selectionStart = 3; input.selectionEnd = 3;
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'delete lands in the editor session');
+    // 关闭编辑卡：setPanelInput 会话重置必须清手势快照（codex 复审 P1
+    // ——编辑卡重开是同一批 DOM，直接赋值不触发 input）
+    world.tap(world.document.getElementById('phraseCardCancel'));
+    // 重开编辑器
+    world.tap(world.document.getElementById('panelManage'));
+    const input2 = world.document.getElementById('panelEditorInput');
+    world.document.activeElement = input2;
+    fire(input2, 'focus');
+    input2.value = ''; input2.selectionStart = 0; input2.selectionEnd = 0;
+    world.context.window.Feelime.onImeGestureRestore();
+    equal(input2.value, '', 'stale snapshot never leaks into the reopened editor');
+});
+
+test('#85 reopening the add-form while the card stays open never restores the old prefix', {since: '3.73.79'}, () => {
+    // codex round 13 P1：编辑卡保持打开时再点「＋添加」——openPanelEditor
+    // 直接赋值清表单 + setPanelInput(true→true) 不走 changed 清理分支 +
+    // 程序化赋值不触发 input，三条作废通道全不经过。Chromium 复现过
+    // 旧前缀 123 写进新空表单；修复=表单（重）开即显式作废快照。
+    const world = fresh({ mode: 'pinyin' });
+    world.tap(world.document.getElementById('panelManage'));
+    const input = world.document.getElementById('phraseCardInput');
+    const fire = (el, type) => {
+        const l = el.listeners.find(l => l.type === type);
+        if (l) l.handler({ target: el });
+    };
+    world.document.activeElement = input;
+    fire(input, 'focus');
+    input.value = '12345'; input.selectionStart = 3; input.selectionEnd = 3;
+    world.context.window.Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'delete lands');
+    // 卡不关，直接再点「＋添加」：表单清空、快照必须随之作废
+    world.tap(world.document.getElementById('panelManage'));
+    equal(input.value, '', 'add-form resets to empty');
+    world.clock.advance(0); // 异步 select 回声落地
+    world.context.window.Feelime.onImeGestureRestore();
+    equal(input.value, '', 'stale snapshot never restores into the fresh add-form');
+    equal(input.selectionStart, 0, 'fresh form cursor untouched');
+});
+
+test('common-en: | and \\ take the &/# slots; & # lead row 4; nothing dropped (user 2026-11-05)', {since: '3.73.79'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.tap([...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    ));
+    const commonTab = world.document.querySelector('[data-sym-cat="common"]');
+    world.tap(commonTab); // flip to the en table
+    equal(commonTab.querySelector('.cat-sub').textContent, 'En', 'badge flips to en');
+    const rows = [...world.$('symGrid').querySelectorAll('.kb-row')];
+    const rowText = r => [...r.children].map(k => k.textContent).join('');
+    equal(rows.length, 7, 'tab grows to 7 rows, nothing deleted');
+    equal(rowText(rows[1]), '-/:;()|@+=', '| takes the & slot on row 2');
+    equal(rowText(rows[2]), '. , ? ! " \' * \\ % ^'.replace(/ /g, ''), '\\ takes the # slot on row 3');
+    equal(rowText(rows[3]), '&#°±×÷µ©®™', '& # lead row 4, old row 4 follows');
+    equal(rowText(rows[6]), '[]', 'short tail row carries the old row 6 tail');
+    // 原字符一个没丢：全表拼接仍含旧 60 格的全部字符
+    const all = rows.map(rowText).join('');
+    for (const ch of ['&', '#', '°', '¶', '¦', '`', '{', '}', '[', ']', '§']) {
+        assert(all.includes(ch), ch + ' still reachable');
+    }
+});
+
 console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
     (skipped ? `, ${skipped} skipped (era-gated)` : '') +
     ` [keyboard ${KEYBOARD_VERSION}] ==`);

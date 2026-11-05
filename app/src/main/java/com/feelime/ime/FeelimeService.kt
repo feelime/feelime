@@ -282,6 +282,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     // it - so editor writes must be redirected back into the panel input.
     @Volatile private var panelInputActive = false
     private var panelComposeSupported = false
+    /** #85：键盘页带 onImeGesture* 直连处理器（版本 ≥3.73.79）。 */
+    private var panelGestureSupported = false
     private var panelInputRequested = false
     private var panelRouteGeneration = 0L
     private var panelSession = 0
@@ -2692,6 +2694,37 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         keyboardView?.evaluateJavascript(script, null)
     }
 
+    /** #85 手势路由：面板输入（键盘页）与设置页输入框（同进程
+     *  WebView，ImeSettingsChannel）直连页面 JS。这两处的文字都在
+     *  自家 WebView 里，宿主 IC 路径两头不对——Chromium IC 的文本
+     *  查询不回（先卡秒级再退化为 DEL 连发 48 条 evaluate），恢复
+     *  回落 Ctrl+Z 键事件在浏览器里一次只撤一个字符。返回 false =
+     *  普通宿主，走协调器。 */
+    private fun keyboardVersionAtLeast(version: String, major: Int, minor: Int, patch: Int): Boolean {
+        // 严格解析：段数必须恰为 3 且全为整数——mapNotNull 会吞掉非法
+        // 段造成 3.x.73.79 之类被误收（codex 复审 P2）。
+        val raw = version.split('.')
+        if (raw.size != 3) return false
+        val parts = raw.map { it.toIntOrNull() ?: return false }
+        return (parts[0] > major) || (parts[0] == major && parts[1] > minor) ||
+            (parts[0] == major && parts[1] == minor && parts[2] >= patch)
+    }
+
+    private fun routeImeGesture(handler: String): Boolean {
+        if (panelInputActive) {
+            // 能力协商：未声明 ime-gesture-v1 的旧键盘（热更残留混搭）
+            // 没有处理器，路由只会吞手势——回落宿主路径保持旧行为。
+            if (!panelGestureSupported) return false
+            val payload = JSONObject().put("session", panelSession)
+            evaluate("window.Feelime && window.Feelime.onImeGesture$handler && window.Feelime.onImeGesture$handler($payload)")
+            return true
+        }
+        val settingsEvaluate = ImeSettingsChannel.evaluate ?: return false
+        if (!ImeSettingsChannel.inputFocused || !ImeSettingsChannel.gestureCapable) return false
+        settingsEvaluate("window.Feelime && window.Feelime.onImeGesture$handler && window.Feelime.onImeGesture$handler()")
+        return true
+    }
+
     /** 推送/清空联想词（docs/design/association.md §3）。 */
     private fun requestAssociation(committed: String) {
         val request = ++associationGeneration
@@ -2982,6 +3015,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     val firstReady = !pageReady
                     pageReady = true
                     panelComposeSupported = "panel-compose-v1" in required
+                    // #85 手势直连按键盘版本判定（≥3.73.79 才有
+                    // onImeGesture* 处理器）：不进 REQUIRED——进能力表
+                    // 会让新键盘在旧 APK 上整桥拒握手（height-ack 前车
+                    // 之鉴）；旧键盘混搭新 APK 走版本门闸回落宿主路径。
+                    panelGestureSupported = keyboardVersionAtLeast(keyboardVersion, 3, 73, 79)
                     // Review P2-1: a fresh page never has a band popup open,
                     // but a hot-update reload can arrive while the OLD page
                     // left overlayOpen=true - the new page would then never
@@ -3176,7 +3214,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         @JavascriptInterface
         fun deleteBeforeCursor(token: String) = guarded(token, limited = false) {
             onMain {
-                coordinator.deleteAllBeforeCursor(hostSelectionStart, hostSelectionEnd)
+                if (routeImeGesture("DeleteAll")) {
+                    // 与宿主路径入口同款作废：手势绕过了协调器，词撤销/
+                    // 预期/删除快照不能留着旧现场。
+                    coordinator.onImeGestureRouted()
+                } else {
+                    coordinator.deleteAllBeforeCursor(hostSelectionStart, hostSelectionEnd)
+                }
             }
         }
 
@@ -3185,7 +3229,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             // 无快照（xterm 连发删/删后又输入/部分删除/尾部已变/选区
             // 非折叠或未知）回落宿主自己的 undo。
             onMain {
-                if (!coordinator.undoDeleteBeforeCursor(hostSelectionStart, hostSelectionEnd)) {
+                if (routeImeGesture("Restore")) {
+                    coordinator.onImeGestureRouted()
+                } else if (!coordinator.undoDeleteBeforeCursor(hostSelectionStart, hostSelectionEnd)) {
                     editorPort.sendCtrlZ()
                 }
             }

@@ -321,7 +321,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.77';
+    const KEYBOARD_VERSION = '3.73.79';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -796,13 +796,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     ];
     const EN_COMMON_ROWS = [
         ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-        ['-', '/', ':', ';', '(', ')', '&', '@', '+', '='],
-        ['.', ',', '?', '!', '"', "'", '*', '#', '%', '^'],
-        // 与中文侧同步扩到 60：度量/版权/脚注/序数/货币记号、
-        // 引注与括号补系。
-        ['°', '±', '×', '÷', 'µ', '©', '®', '™', '§', '¶'],
-        ['†', '‡', '•', '‰', '¤', 'ª', 'º', '¨', '¦', '`'],
-        ['–', '—', '‹', '›', '«', '»', '{', '}', '[', ']'],
+        // 2026-11-05 用户定案：& 挪去第 4 行，原位给 |（半角竖线，
+        // 引号 En 页那个 | 藏得太深）。
+        ['-', '/', ':', ';', '(', ')', '|', '@', '+', '='],
+        // # 同挪第 4 行，原位给 \（半角反斜杠，此前整键不可达）。
+        ['.', ',', '?', '!', '"', "'", '*', '\\', '%', '^'],
+        // & # 打头进第 4 行；原 4-6 行字符顺延不删（用户定案：常用
+        // 可以不止 6 行），尾行短行由渲染层补空格垫齐。
+        ['&', '#', '°', '±', '×', '÷', 'µ', '©', '®', '™'],
+        ['§', '¶', '†', '‡', '•', '‰', '¤', 'ª', 'º', '¨'],
+        ['¦', '`', '–', '—', '‹', '›', '«', '»', '{', '}'],
+        ['[', ']'],
     ];
     // The 引号 table's zh side (the only quote table until the 中/En
     // toggle landed): fullwidth CJK quotes and brackets.
@@ -2074,7 +2078,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             editorInput.addEventListener('focus', () => this.setPanelInput(true));
             document.querySelectorAll('.phrase-input').forEach(field => {
                 field.addEventListener('focus', () => this.reportPanelSelection());
-                ['input', 'select', 'click', 'keyup'].forEach(name =>
+                // 真实编辑（input）才作废手势快照：程序化 value 赋值不触发
+                // input（浏览器契约），select/click/keyup 只是位置报告——
+                // 面板写入自身的异步 select 回声不得清掉刚存的快照
+                // （codex 复审 P1，真实 Chromium 复现）。
+                field.addEventListener('input', () => {
+                    field.__imeDeleteSnapshot = null;
+                    this.reportPanelSelection();
+                });
+                ['select', 'click', 'keyup'].forEach(name =>
                     field.addEventListener(name, () => this.reportPanelSelection()));
             });
             editorInput.addEventListener('blur', () => {
@@ -10583,6 +10595,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (changed) {
                 this.panelSession = (this.panelSession || 0) + 1;
                 this.panelSpans = new Map();
+                // 手势快照随会话作废：编辑卡关闭重开是同一批 DOM 元素，
+                // 直接赋值重置的表单不触发 input，不清会把旧前缀写进
+                // 新表单（codex 复审 P1）。
+                if (this.panelSelections) {
+                    for (const field of this.panelSelections.keys()) {
+                        field.__imeDeleteSnapshot = null;
+                    }
+                }
                 this.panelSelections = new Map();
                 this.panelTargets = new Map();
                 this.panelTarget = null;
@@ -10644,6 +10664,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         replacePanelRange(field, start, end, text) {
+            field.__imeDeleteSnapshot = null; // 任何面板写入都作废手势快照
             field.value = field.value.slice(0, start) + text + field.value.slice(end);
             const caret = start + text.length;
             try { field.setSelectionRange(caret, caret); } catch (_) {}
@@ -10729,6 +10750,36 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.panelPayloadCurrent(payload)) this.deleteFromPanelInput(Number((payload && payload.count) || 1), this.panelPayloadField(payload));
         }
 
+        /** #85 面板输入的上滑删/下滑恢复：面板文字在键盘页自己的
+         *  输入框里，宿主 IC 路径查询不回、DEL 连发逐条 evaluate——
+         *  手势由服务直调这里，同步改字段。快照挂在字段上，任何其它
+         *  面板写入（replacePanelRange）都会清掉它。 */
+        onImeGestureDeleteAll(payload) {
+            const field = this.panelPayloadField(payload);
+            if (!field) return;
+            const start = field.selectionStart;
+            const end = field.selectionEnd;
+            if (start == null || end == null) return; // 无选区能力的输入不做
+            if (start !== end) return; // 选中段：与宿主路径同语义，不动
+            if (start === 0) return;   // 空删 no-op：保留既有快照
+            const snap = field.value.slice(0, start);
+            // 组合区间一并清（deleteFromPanelInput 同款）：手势期间迟到
+            // 的组合回声会让后续提交按陈旧 span 写入、丢尾部（codex
+            // 复审 P1）。
+            if (this.panelSpans) this.panelSpans.delete(field);
+            this.replacePanelRange(field, 0, start, '');
+            field.__imeDeleteSnapshot = snap;
+        }
+
+        onImeGestureRestore(payload) {
+            const field = this.panelPayloadField(payload);
+            if (!field || !field.__imeDeleteSnapshot) return;
+            // 现场校验：光标须仍停在删除后的 0 位且无选区。
+            if (field.selectionStart !== 0 || field.selectionEnd !== 0) return;
+            const snap = field.__imeDeleteSnapshot;
+            this.replacePanelRange(field, 0, 0, snap);
+        }
+
         /** The phrase editor is a card floating ABOVE the
          * keyboard view (band area) - the old
          * in-keyboard strip is gone for the favorites flow. Redirect typing
@@ -10749,6 +10800,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const input = document.getElementById('phraseCardInput');
             if (!input) return;
             const value = String(text);
+            input.__imeDeleteSnapshot = null; // 直接赋值不触发 input，显式清
             input.value = [...value].slice(0, 200).join('');
             this.rememberPanelSelection(input);
             this.reportPanelSelection();
@@ -10770,6 +10822,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 item ? t("编辑常用语") : t("添加常用语");
             input.value = item ? item.text : '';
             code.value = (item && item.code) || '';
+            input.__imeDeleteSnapshot = null;
+            code.__imeDeleteSnapshot = null;
+            // 表单（重）开即作废手势快照：编辑卡保持打开时再点「＋添加」
+            // 是 true→true 的输入路由无变化 + 直接赋值不触发 input——
+            // 两条作废通道都不经过，旧前缀会经下滑写进新空表单
+            // （codex round 13 P1，Chromium 复现）。
             document.getElementById('phraseCardRankValue').textContent =
                 String(item ? (item.rank || 1) : 1);
             document.getElementById('panelLayer').hidden = true;
@@ -12207,6 +12265,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onStoresRestored: stores => keyboard.onStoresRestored(stores),
         onPanelCommit: payload => keyboard.onPanelCommit(payload),
         onPanelDelete: payload => keyboard.onPanelDelete(payload),
+        onImeGestureDeleteAll: payload => keyboard.onImeGestureDeleteAll(payload),
+        onImeGestureRestore: payload => keyboard.onImeGestureRestore(payload),
         onPanelComposing: payload => keyboard.onPanelComposing(payload),
         onPanelFinishComposing: payload => keyboard.onPanelFinishComposing(payload),
         onPanelReopen: payload => keyboard.onPanelReopen(payload),

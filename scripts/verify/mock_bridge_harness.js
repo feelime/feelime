@@ -65,9 +65,12 @@ function detachMockNode(node) {
 }
 
 class FakeElement {
-    constructor(tagName) {
+    constructor(tagName, scheduler) {
         this.tagName = String(tagName || 'div').toUpperCase();
         this.nodeType = 1;
+        // select 延迟派发通道挂在每个元素上：innerHTML 解析出的子元素
+        // 从 parent 继承，动态 createElement 从 document 继承。
+        this.__scheduler = scheduler || null;
         this.id = '';
         this.seed = elementSeed++;
         this.children = [];
@@ -75,6 +78,30 @@ class FakeElement {
         this.attributes = {};
         this.dataset = {};
         this.classList = new ClassList(this);
+        // 文本控件的选区能力（#85 手势直连用；真实 DOM 上 INPUT/
+        // TEXTAREA 原生支持，数字等特殊型 selectionStart 为 null——
+        // 由页面代码按契约判断，fake 只提供方法与属性位）。
+        // scheduler：select 事件的延迟派发通道（桥侧 FakeClock、设置侧
+        // timers 队列）。浏览器契约是「当前同步块结束后」才派发——同步
+        // 触发会造出真实浏览器没有的时序（面板写入中途回声把
+        // panelSession 升掉，带旧 session 的 reopen 被拒），故必须延迟。
+        if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA') {
+            this.value = this.value === undefined ? '' : this.value;
+            this.setSelectionRange = (start, end) => {
+                // 浏览器契约：选区实际变化才派发 select（HTML 规范）——
+                // 相同值连设两次不排队，避免比真实浏览器多发电声。
+                const changed = this.selectionStart !== start || this.selectionEnd !== end;
+                this.selectionStart = start;
+                this.selectionEnd = end;
+                if (!changed) return;
+                const fire = () => {
+                    for (const l of (this.listeners || []).filter(x => x.type === 'select')) {
+                        l.handler({ target: this });
+                    }
+                };
+                if (this.__scheduler) this.__scheduler(fire);
+            };
+        }
         // Style as a plain map, plus the standard methods keyboard.js uses
         // on any element (CSS custom properties ride setProperty - the
         // combo card's --combo-cell). documentElement gets the
@@ -477,7 +504,7 @@ function parseFragment(html, parent) {
                 if (stack.length > 1) stack.pop();
                 continue;
             }
-            const el = new FakeElement(tag);
+            const el = new FakeElement(tag, parent && parent.__scheduler);
             const attrRegex = /([\w-]+)(?:="([^"]*)")?/g;
             let attrMatch;
             while ((attrMatch = attrRegex.exec(rawAttrs || ''))) {
@@ -537,11 +564,11 @@ function parseSimpleHtml(html, parent) {
 }
 
 class FakeDocument extends FakeElement {
-    constructor() {
-        super('#document');
+    constructor(scheduler) {
+        super('#document', scheduler);
         this.nodeType = 9;
-        this.body = new FakeElement('body');
-        this.documentElement = new FakeElement('html');
+        this.body = new FakeElement('body', scheduler);
+        this.documentElement = new FakeElement('html', scheduler);
         // CSS custom properties (keyboard.js writes --kb-row-h etc. through
         // setProperty) - a plain map per element.
         this.documentElement.style.setProperty = (name, value) => {
@@ -558,10 +585,10 @@ class FakeDocument extends FakeElement {
         this.activeElement = null;
     }
     createElement(tag) {
-        return new FakeElement(tag);
+        return new FakeElement(tag, this.__scheduler);
     }
     createElementNS(_namespace, tag) {
-        return new FakeElement(tag);
+        return new FakeElement(tag, this.__scheduler);
     }
     getElementById(id) {
         if (this.elementsById.has(id)) return this.elementsById.get(id);
@@ -601,8 +628,8 @@ const OVERFLOW_X_IDS = ['symCats', 'candidates'];
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img',
     'input', 'link', 'meta', 'source', 'track', 'wbr']);
 
-function loadDocument(html) {
-    const doc = new FakeDocument();
+function loadDocument(html, scheduler) {
+    const doc = new FakeDocument(scheduler);
     const stack = [doc.documentElement, doc.body];
     const regex = /<(\/?)(\w+)((?:\s+[\w-]+(?:="[^"]*")?)*)\s*(\/?)>|([^<]+)/g;
     let match;
@@ -613,7 +640,7 @@ function loadDocument(html) {
                 if (stack.length > 1) stack.pop();
                 continue;
             }
-            const el = new FakeElement(tag);
+            const el = new FakeElement(tag, scheduler);
             const attrRegex = /([\w-]+)(?:="([^"]*)")?/g;
             let attrMatch;
             while ((attrMatch = attrRegex.exec(rawAttrs || ''))) {
@@ -972,7 +999,8 @@ class KeyboardWorld {
     }
 
     build() {
-        const doc = loadDocument(this.html);
+        // select 等异步事件走假时钟：advance(0) 即「当前同步块结束」。
+        const doc = loadDocument(this.html, fn => this.clock.setTimeout(fn, 0));
         const world = this;
         // #48 定制宏的 text→key 时间窗用 Date.now 裁决（#6 定罪：文本步
         // 后 300ms 内的键步会被 xterm 掐死）：sandbox 的 Date 接假时钟，

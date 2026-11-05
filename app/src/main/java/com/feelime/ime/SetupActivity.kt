@@ -55,6 +55,9 @@ class SetupActivity : AppCompatActivity() {
      * finishing or has been destroyed. */
     @Volatile private var destroyed = false
 
+    /** #85 设置页手势通道的本实例代际（onPause 只注销自己）。 */
+    private var settingsChannelGen: Int? = null
+
     /** #60：最近一次注入页面的 insets CSS 变量脚本（去重 + 页面重载重放）。
      *  bars（systemBars/cutout）与 ime 分开记：bars 只在旋转/显示形态变化
      *  时变，可即时注入；ime 走 [imeInsetHandler] 去抖。 */
@@ -554,9 +557,27 @@ class SetupActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // #85：先注册设置页脚本通道（IME 上滑删/下滑恢复手势直连页面
+        // JS；代际注册，旋转重建时旧实例的 onPause 不清新实例的通道）
+        // ——再刷新状态：refreshSettingsState→pushHello 会触发页面重报
+        // 焦点/能力，必须落在注册完成的通道上（codex 复审 P2）。
+        settingsChannelGen = ImeSettingsChannel.register { script ->
+            runOnUiThread {
+                if (!canTouchWebView()) return@runOnUiThread
+                runCatching { webView.evaluateJavascript(script, null) }
+            }
+        }
+        bridge.channelGeneration = settingsChannelGen ?: -1
         // Resolve the current preference on every show; the process may have
         // survived while the keyboard or another settings instance changed it.
         refreshSettingsState()
+    }
+
+    override fun onPause() {
+        settingsChannelGen?.let(ImeSettingsChannel::unregister)
+        settingsChannelGen = null
+        bridge.channelGeneration = -1
+        super.onPause()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

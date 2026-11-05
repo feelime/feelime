@@ -54,6 +54,8 @@ class MockSettingsNative {
     ready(...a) { this._rec('ready', a); }
     setQuickSwitchPolicy(...a) { this._rec('setQuickSwitchPolicy', a); }
     enableIme(...a) { this._rec('enableIme', a); }
+    imeInputFocused(...a) { this._rec('imeInputFocused', a); }
+    imeGestureSupport(...a) { this._rec('imeGestureSupport', a); }
     pickIme(...a) { this._rec('pickIme', a); }
     addImeShortcut(...a) { this._rec('addImeShortcut', a); }
     addImeTile(...a) { this._rec('addImeTile', a); }
@@ -191,7 +193,10 @@ class SettingsWorld {
         };
         this.timers = [];
         sandbox.window = sandbox;
-        this.doc = loadDocument(fs.readFileSync(HTML_PATH, 'utf8'));
+        // select 事件的延迟派发与 sandbox setTimeout 同队列（flushTimers
+        // 手动冲洗）——浏览器契约里 select 在当前同步块之后才派发。
+        this.doc = loadDocument(fs.readFileSync(HTML_PATH, 'utf8'),
+            fn => this.timers.push(fn));
         sandbox.document = this.doc;
         const context = vm.createContext(sandbox);
         // The REAL generated data file loads first, exactly as index.html
@@ -3204,9 +3209,165 @@ test('background picker sends undecoded bytes and discards stale file reads', ()
     assert(!world.$('bgImageNote').hidden, 'size error visible');
 });
 
-// 测试时暴露）。
-const failed = RESULTS.filter(([, ok]) => !ok);
+// ------------------------------------------------- #85 IME 手势直连（设置页）
 
+test('#85 imeInputFocused reports editable focus to native for gesture routing', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const doc = world.sandbox.document;
+    const fireDoc = (type, ev) => doc.listeners.filter(l => l.type === type)
+        .forEach(l => l.handler(ev));
+    const reported = () => {
+        const calls = world.native.of('imeInputFocused');
+        return calls.length ? calls[calls.length - 1].args[0] : undefined;
+    };
+    const input = world.$('settingsSearch');
+    world.doc.activeElement = input;
+    fireDoc('focusin', { target: input });
+    equal(reported(), true, 'text input focus reports true');
+    fireDoc('focusout', { target: input });
+    equal(reported(), false, 'blur reports false');
+    // 非文字控件（checkbox）不上报——路由只认会弹键盘的输入框
+    const before = world.native.of('imeInputFocused').length;
+    const cb = world.doc.querySelector('input[type=checkbox]');
+    fireDoc('focusin', { target: cb });
+    equal(world.native.of('imeInputFocused').length, before,
+        'checkbox focus stays unreported');
+});
+
+test('#85 settings-page swipe gestures edit the focused input in-page', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const Feelime = world.sandbox.window.Feelime;
+    const input = world.$('settingsSearch');
+    world.doc.activeElement = input;
+    input.value = '12345';
+    input.setSelectionRange(3, 3);
+    Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'up-swipe deletes everything before the cursor');
+    equal(input.selectionStart, 0, 'cursor rests at 0');
+    Feelime.onImeGestureRestore();
+    equal(input.value, '12345', 'down-swipe restores verbatim');
+    equal(input.selectionStart, 3, 'cursor lands at the pre-delete position');
+    equal(input.selectionEnd, 3, 'restored without a selection');
+    // 删除后输入过 → 快照过期：input 清理后恢复不得回旧内容
+    input.value = '12345'; input.setSelectionRange(3, 3);
+    Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'second delete lands');
+    input.value = 'x45'; input.setSelectionRange(1, 1);
+    world.sandbox.document.listeners.filter(l => l.type === 'input')
+        .forEach(l => l.handler({ target: input }));
+    Feelime.onImeGestureRestore();
+    equal(input.value, 'x45', 'stale snapshot never restores after typing');
+    // 选中段：与宿主路径同语义，手势不动
+    input.value = 'abc'; input.setSelectionRange(1, 3);
+    Feelime.onImeGestureDeleteAll();
+    equal(input.value, 'abc', 'selected range is left alone');
+    // 无焦点目标：安全 no-op
+    world.doc.activeElement = null;
+    Feelime.onImeGestureDeleteAll();
+    Feelime.onImeGestureRestore();
+});
+
+test('#85 gesture edge cases: empty delete keeps snapshot; moved cursor blocks restore', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const Feelime = world.sandbox.window.Feelime;
+    const input = world.$('settingsSearch');
+    world.doc.activeElement = input;
+    // 空删 no-op：第二次上滑不得用空串覆盖第一次的有效快照（codex
+    // 复审 P2——宿主路径同款语义）。
+    input.value = '12345'; input.setSelectionRange(3, 3);
+    Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'first delete lands');
+    Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'empty delete is a no-op');
+    Feelime.onImeGestureRestore();
+    equal(input.value, '12345', 'snapshot survives the empty delete');
+    // 光标移位后：删后现场已不存在，不得恢复（P2：恢复不得折叠选中段）
+    input.setSelectionRange(3, 3);
+    Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'delete again');
+    input.setSelectionRange(1, 2); // 用户重选/移位
+    Feelime.onImeGestureRestore();
+    equal(input.value, '45', 'restore refuses after the cursor moved');
+    equal(input.selectionStart, 1, 'selection untouched by the refusal');
+});
+
+test('#85 number input has no gesture capability: no crash, no value loss', () => {
+    // codex 复审 P1：type=number 的 selectionStart 恒 null，按删光标
+    // 前处理会清空整值且 setSelectionRange 抛 InvalidStateError。
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const Feelime = world.sandbox.window.Feelime;
+    const rank = world.$('phraseRank');
+    assert(rank && rank.getAttribute('type') === 'number', 'number input present');
+    world.doc.activeElement = rank;
+    rank.value = '3';
+    rank.selectionStart = null; rank.selectionEnd = null; // Chromium 契约
+    Feelime.onImeGestureDeleteAll();
+    equal(rank.value, '3', 'value untouched, no exception');
+    Feelime.onImeGestureRestore();
+    equal(rank.value, '3', 'restore is a no-op too');
+});
+
+test('#85 phrase form resets clear gesture snapshots (no cross-form leak)', () => {
+    // codex 复审 P1：resetPhraseForm/startPhraseEdit 直接赋值不触发
+    // input——旧前缀不得借快照写进新表单。
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, customPhrases: {
+        enabled: true, items: [{ text: '你好', code: 'nihao', rank: 1 }],
+    } });
+    const Feelime = world.sandbox.window.Feelime;
+    const input = world.$('phraseText');
+    world.doc.activeElement = input;
+    input.value = '12345'; input.setSelectionRange(3, 3);
+    Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'delete lands in the phrase form');
+    // 编辑态切换（startPhraseEdit 直接赋值重置表单）——快照必须被清
+    const editBtn = world.doc.querySelectorAll('.phrase-edit')[0];
+    assert(editBtn, 'phrase edit button present');
+    editBtn.click();
+    equal(world.$('phraseText').value, '你好', 'startPhraseEdit refilled the form');
+    world.doc.activeElement = input;
+    Feelime.onImeGestureRestore();
+    equal(input.value, '你好', 'stale snapshot never leaks into the reloaded form');
+});
+
+test('#85 user-word form resets clear gesture snapshots too', () => {
+    // codex 复审 P1：resetUserWordForm/startUserWordEdit 也是直接赋值
+    // 路径——自造词表单的旧前缀不得借快照写回。
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, userWords: [{ text: '你好世界', code: 'nihaoshijie' }] });
+    const Feelime = world.sandbox.window.Feelime;
+    const input = world.$('userWordText');
+    world.doc.activeElement = input;
+    input.value = '12345'; input.setSelectionRange(3, 3);
+    Feelime.onImeGestureDeleteAll();
+    equal(input.value, '45', 'delete lands in the user-word form');
+    // 进入编辑态（startUserWordEdit 直接赋值重置表单）
+    const editBtn = world.doc.querySelectorAll('#userWordList .phrase-edit')[0];
+    assert(editBtn, 'user-word edit button present');
+    editBtn.click();
+    equal(input.value, '你好世界', 'startUserWordEdit refilled the form');
+    world.doc.activeElement = input;
+    input.setSelectionRange(0, 0);
+    Feelime.onImeGestureRestore();
+    equal(input.value, '你好世界', 'stale snapshot never leaks into the user-word form');
+});
+
+test('#85 page reports gesture capability to native', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    // 构造期的 hello 已被 world 清账——重推一次 hello 再断言
+    world.FeelimeSettings().onBridgeHello({ token: world.token, theme: 'dark' });
+    assert(world.native.of('imeGestureSupport').length >= 1,
+        'page declares imeGestureSupport on hello');
+});
+
+// 统计必须在全部测试注册之后求值（曾因提前求值吞掉尾部用例的失败，
+// 119/119 假绿实为 118/119——codex 复审 P1）。
+const failed = RESULTS.filter(([, ok]) => !ok);
 console.log(`\n== settings mock-bridge suite: ${RESULTS.length - failed.length}/${RESULTS.length} passed ==`);
 if (failed.length) {
     console.log('failures: ' + failed.map(([name]) => name).join(' | '));

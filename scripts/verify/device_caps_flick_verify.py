@@ -253,7 +253,9 @@ def main():
     time.sleep(1.2)
     panel_open = ev("(() => document.getElementById('settingsPanel')"
                     ".classList.contains('open'))()")
-    focus = d.shell("dumpsys window 2>/dev/null | grep -m1 mCurrentFocus")
+    # ace（ColorOS）在焦点过渡态会打两行 mCurrentFocus：首行恒 null、
+    # 真窗口在第二行——grep -m1 咬住 null 行误报失败，改全量匹配。
+    focus = d.shell("dumpsys window 2>/dev/null | grep mCurrentFocus")
     record("quick-switch tile deep-links to settings",
            panel_open is False and 'Setup' in focus,
            f"panel={panel_open} focus={focus.strip()[:90]}")
@@ -302,10 +304,15 @@ def main():
     time.sleep(1.2)
     d.press(kb, "<123>", 0.5)
     time.sleep(0.4)
-    en_row2 = ev("[...document.getElementById('symGrid').children[1].children]"
-                 ".map(c => c.textContent).join('')")
+    # 3.73.50（f5b28ba）起行被包进 .sym-grid-inner（竖向滚动），旧选择器
+    # symGrid.children[1] 一直读 None——存量烂账，本轮随键表断言一并修。
+    # 3.73.79 起 & 与 # 挪去 row4 打头，原槽位换成 | 与 \（键盘资产三硬门：
+    # 改键表必须同步设备断言；本段只跑当次安装的构建，无版本分支）。
+    en_row2 = ev("(() => { const g = document.getElementById('symGrid');"
+                 " const rows = g.querySelector('.sym-grid-inner') || g;"
+                 " return [...rows.children[1].children].map(c => c.textContent).join(''); })()")
     record("symbol defaults follow the keyboard mode",
-           en_row2 == '-/:;()&@+=', repr(en_row2))
+           en_row2 == '-/:;()|@+=', repr(en_row2))
     mask = ev("(() => { const s = document.getElementById('symCats');"
               " return getComputedStyle(s).maskImage || getComputedStyle(s).webkitMaskImage || 'none'; })()")
     record("category strip shows a scroll affordance", isinstance(mask, str) and mask != 'none',

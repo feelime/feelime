@@ -647,6 +647,10 @@ class SettingsBridge(
 
     @Volatile var pageToken: String = ""
 
+    /** #85：本 bridge 所属设置实例的通道代际（SetupActivity 注册时打
+     *  上；-1=未注册，上报全部 no-op——迟到上报不覆盖新实例）。 */
+    @Volatile var channelGeneration: Int = -1
+
     /** The page reports whether a sub-page is open so the
      * shell's BACK callback returns home first instead of finishing
      * (design §6.2). */
@@ -1197,6 +1201,21 @@ class SettingsBridge(
 
     @JavascriptInterface
     fun enableIme(token: String) = guarded(token) { host.showImeEnableSettings() }
+
+    /** #85：设置页文字输入框焦点上报——IME 的上滑删/下滑恢复手势
+     *  据此路由进设置页 JS（ImeSettingsChannel），绕开 Chromium IC
+     *  的文本查询（不回、卡秒级）与 Ctrl+Z 兜底（一次只撤一个字符）。 */
+    @JavascriptInterface
+    fun imeInputFocused(active: Boolean, token: String) = guarded(token) {
+        ImeSettingsChannel.reportFocus(channelGeneration, active)
+    }
+
+    /** #85：设置页声明手势处理器就绪——服务据此启用直连路由；
+     *  旧页面缓存（无此调用）混搭新 APK 时回落宿主路径。 */
+    @JavascriptInterface
+    fun imeGestureSupport(token: String) = guarded(token) {
+        ImeSettingsChannel.reportGestureSupport(channelGeneration)
+    }
 
     @JavascriptInterface
     fun pickIme(token: String) = guarded(token) { host.showImePicker() }

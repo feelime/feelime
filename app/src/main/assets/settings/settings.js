@@ -1882,6 +1882,8 @@ window.FeelimeSettings = {
     onBridgeHello(payload) {
         payload = payload || {};
         token = payload.token || "";
+        reportImeGestureSupport();
+        resyncImeFocusReport();
         if (payload.theme) setTheme(payload.theme);
         applyAppIcon(payload.appIcon);
         if (payload.uiLanguage !== undefined) uiChoice = normalizeChoice(payload.uiLanguage);
@@ -3548,6 +3550,7 @@ function renderPhraseList() {
 }
 
 function startPhraseEdit(index) {
+    clearImeGestureSnapshots();
     phraseEditing = index;
     $("phraseText").value = phraseItems[index].text;
     $("phraseCode").value = phraseItems[index].code;
@@ -3557,6 +3560,7 @@ function startPhraseEdit(index) {
 }
 
 function resetPhraseForm() {
+    clearImeGestureSnapshots();
     phraseEditing = -1;
     $("phraseText").value = "";
     $("phraseCode").value = "";
@@ -3891,6 +3895,7 @@ function renderUserWordList() {
 }
 
 function startUserWordEdit(index) {
+    clearImeGestureSnapshots();
     userWordEditing = index;
     $("userWordText").value = userWordItems[index].text;
     $("userWordCode").value = userWordItems[index].code;
@@ -3899,6 +3904,7 @@ function startUserWordEdit(index) {
 }
 
 function resetUserWordForm() {
+    clearImeGestureSnapshots();
     userWordEditing = -1;
     $("userWordText").value = "";
     $("userWordCode").value = "";
@@ -6381,3 +6387,93 @@ document.addEventListener("focusin", (event) => {
 // smooth 依赖 rAF，键盘弹起窗口被挤压时 rAF 停摆——滚动静默不动。
     el.scrollIntoView({ block: "center", behavior: "instant" });
 });
+
+// ---- #85 IME 手势直连：上滑删光标前全部 / 下滑恢复 ----
+// 设置页输入框聚焦在自家 WebView：Chromium IC 的文本查询不回（宿主
+// 路径先卡秒级再退化为 DEL 连发）、Ctrl+Z 键事件在浏览器里一次只撤
+// 一个字符。IME 服务经 ImeSettingsChannel 直调这里的处理器，同步
+// 读写输入框——快照语义与宿主路径一致（恢复落删除前位、无选中态）。
+function imeEditableTarget(el) {
+    if (!el) return false;
+    if (el.tagName === "INPUT") {
+        return FOCUS_SCROLL_INPUT_TYPES.has(el.type) && !el.readOnly;
+    }
+    return el.tagName === "TEXTAREA" && !el.readOnly;
+}
+// 手势能力谓词：滚动白名单不等于选区编辑能力——type=number 等输入
+// selectionStart 恒 null（Chromium 契约），按「删光标前」处理会清空
+// 整值且 setSelectionRange 抛 InvalidStateError（codex 复审 P1）。
+function imeGestureField(el) {
+    return imeEditableTarget(el) &&
+        typeof el.setSelectionRange === "function" &&
+        el.selectionStart !== null && el.selectionStart !== undefined;
+}
+// 表单重置/填充是直接赋值，不触发 input——快照必须显式清，否则跨
+// 表单残留把旧前缀写进新表单（codex 复审 P1）。
+function clearImeGestureSnapshots() {
+    document.querySelectorAll("input, textarea").forEach(el => {
+        el.__imeDeleteSnapshot = null;
+    });
+}
+window.Feelime = window.Feelime || {};
+window.Feelime.onImeGestureDeleteAll = function () {
+    const el = document.activeElement;
+    if (!imeGestureField(el)) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start !== end) return; // 选中段：与宿主路径同语义，不动
+    if (start === 0) return;   // 空删 no-op：保留既有快照（宿主路径同款）
+    el.__imeDeleteSnapshot = el.value.slice(0, start);
+    el.value = el.value.slice(start);
+    el.setSelectionRange(0, 0);
+    dispatchImeInput(el);
+};
+window.Feelime.onImeGestureRestore = function () {
+    const el = document.activeElement;
+    if (!imeGestureField(el)) return;
+    const snap = el.__imeDeleteSnapshot;
+    if (!snap) return;
+    // 现场校验：光标须仍停在删除后的 0 位且无选区——移位/改选后
+    // 旧快照不再可信（codex 复审 P2：选中段不得被恢复折叠）。
+    if (el.selectionStart !== 0 || el.selectionEnd !== 0) return;
+    el.__imeDeleteSnapshot = null;
+    el.value = snap + el.value;
+    el.setSelectionRange(snap.length, snap.length);
+    dispatchImeInput(el);
+};
+function dispatchImeInput(el) {
+    // 搜索框等控件靠 input 事件做实时过滤；打上手势标记，别触发快照
+    // 清理（fake DOM 无 Event/dispatchEvent，跳过即静默无过滤）。
+    if (typeof Event !== "function" || typeof el.dispatchEvent !== "function") return;
+    const ev = new Event("input", { bubbles: true });
+    ev.__imeGesture = true;
+    el.dispatchEvent(ev);
+}
+// 删除之后用户又输入过 → 快照过期，下滑不得恢复旧内容
+document.addEventListener("input", (event) => {
+    if (event.__imeGesture) return;
+    const el = event.target;
+    if (el && el.__imeDeleteSnapshot != null) el.__imeDeleteSnapshot = null;
+}, true);
+// 焦点上报：IME 服务据此决定手势是否路由进本页（原生 fixture 不置位）
+document.addEventListener("focusin", (event) => {
+    if (imeEditableTarget(event.target) && token) Native.imeInputFocused(true, token);
+});
+document.addEventListener("focusout", (event) => {
+    if (imeEditableTarget(event.target) && token) Native.imeInputFocused(false, token);
+});
+// 能力上报：服务只在本页声明过手势处理器后才走直连（旧页面缓存
+// 混搭新 APK 时回落宿主路径，不吞手势——codex 复审 P2）。
+function reportImeGestureSupport() {
+    if (token) Native.imeGestureSupport(token);
+}
+// Activity 返回/恢复：DOM 可能保留原焦点（无新 focusin），通道焦点
+// 态在 onPause 已被清——可见时按当前焦点重报（codex 复审 P2）。
+function resyncImeFocusReport() {
+    if (!token) return;
+    Native.imeInputFocused(imeEditableTarget(document.activeElement), token);
+}
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") resyncImeFocusReport();
+});
+window.addEventListener("pageshow", resyncImeFocusReport);

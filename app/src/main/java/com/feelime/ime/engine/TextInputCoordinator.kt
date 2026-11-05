@@ -225,6 +225,20 @@ class TextInputCoordinator(
         invalidateWordUndo()
     }
 
+    /** #85 手势直连路由（面板/设置页 JS）后的现场作废：手势绕开了
+     *  协调器，词撤销、选区预期、删除快照与尾部留档全部按已变更
+     *  处理——与宿主路径入口的作废集对齐。 */
+    fun onImeGestureRouted() {
+        userInputGeneration++
+        expectedSelections.clear()
+        deletedBeforeCursor = null
+        deletedTailBeforeCursor = null
+        // 与删除入口同款：手势跨过了组合区，组合记账同步清零。
+        composingActive = false
+        composingRaw = ""
+        invalidateWordUndo()
+    }
+
     /** 删除快照的精确作废：只挂在真实分歧点上（宿主光标/选区回调
      *  未命中、自身选区操作、输入目标切换、手势恢复写回、新编辑会
      *  话）。键盘收起（onFinishInputView→onExternalEditorMutation）
