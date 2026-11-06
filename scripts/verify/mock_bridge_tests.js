@@ -970,6 +970,39 @@ test('hold voice overlay: no buttons, slide hint only; mic overlay keeps both bu
     equal(getComputedStyleBridge(mic, 'voiceClose') !== 'none', true, '撤销 visible for mic');
 });
 
+test('voice loading state: spinner replaces mic, action buttons hidden, tap cancels the wait', () => {
+    if (!verAtLeast(KEYBOARD_VERSION, '3.73.81')) return;
+    const world = fresh();
+    world.tap(world.$('mic'));
+    world.nativeState({ state: 'loading' });
+    equal(world.$('voiceOverlay').dataset.state, 'loading', 'overlay carries loading state');
+    equal(getComputedStyleBridge(world, 'vc-spinner') !== 'none', true,
+        'spinner visible while loading');
+    equal(getComputedStyleBridge(world, 'vc-mic') === 'none', true,
+        'mic icon hidden while loading (pulse = ready-to-speak signal only)');
+    equal(getComputedStyleBridge(world, 'voiceActions') === 'none', true,
+        '说完了 hidden while loading (nothing to finish yet)');
+    equal(getComputedStyleBridge(world, 'voiceClose') === 'none', true,
+        '撤销 hidden while loading');
+    equal(getComputedStyleBridge(world, 'levelBar') === 'none', true,
+        'level bar hidden while loading');
+    equal(world.$('voiceStatus').textContent, '正在加载语音引擎…', 'loading status text');
+    equal(world.$('voiceHint').textContent, '就绪后自动开始聆听，点击可取消',
+        'loading hint names the cancel path');
+
+    // 加载中点任意位置 = 中止等待（stopVoice 失效待启会话），不是上屏。
+    world.tap(world.$('voiceCard'));
+    equal(world.native.of('stopVoice').length, 1, 'loading tap stops the pending session');
+    equal(world.native.of('cancelVoice').length, 0, 'loading tap does not discard-discard');
+
+    // 就绪后进 listening：按钮回归、spinner 退场。
+    world.nativeState({ state: 'listening', partial: '就绪后说的' });
+    equal(getComputedStyleBridge(world, 'voiceDone') !== 'none', true,
+        '说完了 back once listening');
+    equal(getComputedStyleBridge(world, 'vc-spinner') === 'none', true,
+        'spinner gone once listening');
+});
+
 test('hold voice slide-up: card shrinks+fades with progress; past threshold release cancels', () => {
     if (!verAtLeast(KEYBOARD_VERSION, '3.28.0')) return;
     const world = fresh();
@@ -1011,13 +1044,21 @@ test('hold voice slide-up: card shrinks+fades with progress; past threshold rele
 });
 
 function getComputedStyleBridge(world, id) {
-    // fake DOM 没有样式计算：看类/显隐约定（overlay.hold 的 CSS 规则由
-    // css_lint R2 与真机/preview 截图把关），这里断言状态类本身。
+    // fake DOM 没有样式计算：看类/显隐约定（overlay.hold 与
+    // data-state="loading" 的 CSS 规则由 css_lint R2 与真机/preview 截图
+    // 把关），这里断言状态类本身。
     const overlay = world.$('voiceOverlay');
     const el = world.$(id);
     if (overlay.className.includes('hold')) {
         if (id === 'voiceActions' || id === 'voiceClose') return 'none';
         return 'block';
+    }
+    // 加载态（语音引擎 loading，含首次模型加载）：按钮/电平条收起、
+    // 麦克风换旋转圆环——「还没开始听」不允许出现「说完了」。
+    if (overlay.dataset.state === 'loading') {
+        if (id === 'voiceActions' || id === 'voiceClose' || id === 'levelBar' || id === 'vc-mic') return 'none';
+        if (id === 'vc-spinner') return 'block';
+        return el && el.id ? 'flex' : 'none';
     }
     return el && el.id ? 'flex' : 'none';
 }

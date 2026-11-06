@@ -2245,6 +2245,27 @@ body.landscape #ctrlLayer .ctrl-close svg { width: 12px; height: 12px; }
     animation: none;
     opacity: .45;
 }
+/* 加载态（#90 验收反馈：首次模型加载数秒，旧 UI 只有弱化麦克风 +
+ * 已可点的「说完了」，分不清是在加载还是已就绪）：
+ *   - 麦克风让位给旋转圆环——「正在加载」的通用视觉语言；
+ *   - 说完了/撤销按钮与电平条收起：还没开始听，「说完了」无物可结，
+ *     电平条恒零像坏了；退出走点任意位置（stopVoice 中止待启会话）。
+ * stopping 是亚秒级收尾，维持弱化麦克风不动。 */
+.vc-spinner {
+    display: none;
+    width: 20px;
+    height: 20px;
+    border: 2.5px solid var(--pressed);
+    border-top-color: var(--accent-text);
+    border-radius: 50%;
+    animation: vcSpin .8s linear infinite;
+}
+#voiceOverlay[data-state="loading"] .vc-mic { display: none; }
+#voiceOverlay[data-state="loading"] .vc-spinner { display: block; }
+#voiceOverlay[data-state="loading"] #voiceActions,
+#voiceOverlay[data-state="loading"] #voiceClose,
+#voiceOverlay[data-state="loading"] #levelBar { display: none; }
+@keyframes vcSpin { to { transform: rotate(360deg); } }
 /* Landscape keyboards are short (~170-200px) - compact the
  * card and center it so nothing clips. */
 body.landscape #voiceCard {

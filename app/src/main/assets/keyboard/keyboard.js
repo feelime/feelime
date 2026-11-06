@@ -263,9 +263,7 @@
         "「{0}」来自固定词库，无法删除": "“{0}” is a built-in word and cannot be deleted.",
         "已从自选词词库删除「{0}」": "Deleted “{0}” from learned words.",
         "正在聆听…": "Listening…",
-        "启动识别…": "Starting…",
         "结束识别…": "Finishing…",
-        "请稍候，就绪后开口说话": "Hold on — start speaking when ready",
         "取消": "Cancel",
         "保存": "Save",
         "关闭": "Close",
@@ -309,6 +307,8 @@
         "已撤销本次听写": "Dictation discarded",
         "说完了，结束并上屏": "Done — finish and insert",
         "说完了": "Done",
+        "正在加载语音引擎…": "Loading voice engine…",
+        "就绪后自动开始聆听，点击可取消": "Listening starts automatically — tap to cancel",
         "松手上屏": "Release to insert",
         "上滑撤销": "Slide up to discard",
         "当前版本不支持取消语音输入，请更新 APK": "Update the app to enable voice cancellation.",
@@ -350,7 +350,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.80';
+    const KEYBOARD_VERSION = '3.73.81';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -12077,12 +12077,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!recording) this.resetSlideCancel();
             document.getElementById('voiceStatus').textContent =
                 this.voiceState === 'listening' ? t("正在聆听…")
-                : this.voiceState === 'loading' ? t("启动识别…")
+                : this.voiceState === 'loading' ? t("正在加载语音引擎…")
                 : this.voiceState === 'stopping' ? t("结束识别…")
                 : '';
             document.getElementById('voiceHint').textContent =
                 this.voiceState === 'loading'
-                    ? t("请稍候，就绪后开口说话")
+                    ? t("就绪后自动开始聆听，点击可取消")
                     : this.voiceSession === 'space-hold'
                         ? t("松手上屏")
                         : t("点击任意位置结束");

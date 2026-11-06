@@ -254,9 +254,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u300C{0}\u300D\u6765\u81EA\u56FA\u5B9A\u8BCD\u5E93\uFF0C\u65E0\u6CD5\u5220\u9664": "\u201C{0}\u201D is a built-in word and cannot be deleted.",
     "\u5DF2\u4ECE\u81EA\u9009\u8BCD\u8BCD\u5E93\u5220\u9664\u300C{0}\u300D": "Deleted \u201C{0}\u201D from learned words.",
     "\u6B63\u5728\u8046\u542C\u2026": "Listening\u2026",
-    "\u542F\u52A8\u8BC6\u522B\u2026": "Starting\u2026",
     "\u7ED3\u675F\u8BC6\u522B\u2026": "Finishing\u2026",
-    "\u8BF7\u7A0D\u5019\uFF0C\u5C31\u7EEA\u540E\u5F00\u53E3\u8BF4\u8BDD": "Hold on \u2014 start speaking when ready",
     "\u53D6\u6D88": "Cancel",
     "\u4FDD\u5B58": "Save",
     "\u5173\u95ED": "Close",
@@ -300,6 +298,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u5DF2\u64A4\u9500\u672C\u6B21\u542C\u5199": "Dictation discarded",
     "\u8BF4\u5B8C\u4E86\uFF0C\u7ED3\u675F\u5E76\u4E0A\u5C4F": "Done \u2014 finish and insert",
     "\u8BF4\u5B8C\u4E86": "Done",
+    "\u6B63\u5728\u52A0\u8F7D\u8BED\u97F3\u5F15\u64CE\u2026": "Loading voice engine\u2026",
+    "\u5C31\u7EEA\u540E\u81EA\u52A8\u5F00\u59CB\u8046\u542C\uFF0C\u70B9\u51FB\u53EF\u53D6\u6D88": "Listening starts automatically \u2014 tap to cancel",
     "\u677E\u624B\u4E0A\u5C4F": "Release to insert",
     "\u4E0A\u6ED1\u64A4\u9500": "Slide up to discard",
     "\u5F53\u524D\u7248\u672C\u4E0D\u652F\u6301\u53D6\u6D88\u8BED\u97F3\u8F93\u5165\uFF0C\u8BF7\u66F4\u65B0 APK": "Update the app to enable voice cancellation.",
@@ -341,7 +341,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.80";
+  const KEYBOARD_VERSION = "3.73.81";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -10078,8 +10078,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       else delete overlay.dataset.state;
       overlay.classList.toggle("hold", recording && this.voiceSession === "space-hold");
       if (!recording) this.resetSlideCancel();
-      document.getElementById("voiceStatus").textContent = this.voiceState === "listening" ? t("\u6B63\u5728\u8046\u542C\u2026") : this.voiceState === "loading" ? t("\u542F\u52A8\u8BC6\u522B\u2026") : this.voiceState === "stopping" ? t("\u7ED3\u675F\u8BC6\u522B\u2026") : "";
-      document.getElementById("voiceHint").textContent = this.voiceState === "loading" ? t("\u8BF7\u7A0D\u5019\uFF0C\u5C31\u7EEA\u540E\u5F00\u53E3\u8BF4\u8BDD") : this.voiceSession === "space-hold" ? t("\u677E\u624B\u4E0A\u5C4F") : t("\u70B9\u51FB\u4EFB\u610F\u4F4D\u7F6E\u7ED3\u675F");
+      document.getElementById("voiceStatus").textContent = this.voiceState === "listening" ? t("\u6B63\u5728\u8046\u542C\u2026") : this.voiceState === "loading" ? t("\u6B63\u5728\u52A0\u8F7D\u8BED\u97F3\u5F15\u64CE\u2026") : this.voiceState === "stopping" ? t("\u7ED3\u675F\u8BC6\u522B\u2026") : "";
+      document.getElementById("voiceHint").textContent = this.voiceState === "loading" ? t("\u5C31\u7EEA\u540E\u81EA\u52A8\u5F00\u59CB\u8046\u542C\uFF0C\u70B9\u51FB\u53EF\u53D6\u6D88") : this.voiceSession === "space-hold" ? t("\u677E\u624B\u4E0A\u5C4F") : t("\u70B9\u51FB\u4EFB\u610F\u4F4D\u7F6E\u7ED3\u675F");
       if (payload.message && this.voiceState === "error") {
         document.getElementById("voiceStatus").textContent = payload.message;
       }

@@ -392,6 +392,9 @@
                     <path d="M19 12a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12h-2z"/>
                 </svg>
             </div>
+            <!-- 引擎加载态（含首次模型加载）专属旋转圆环：与麦克风脉冲
+                 （=可以开始说话的信号）严格区分，见 [data-state="loading"]。 -->
+            <div class="vc-spinner" aria-hidden="true"></div>
             <div id="voiceStatus" data-i18n="正在聆听…">正在聆听…</div>
             <div id="partialText" aria-live="polite"></div>
             <div id="levelBar"><i></i></div>
