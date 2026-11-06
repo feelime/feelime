@@ -51,6 +51,10 @@ def verdict(text, start, end, segment=None):
     if nxt is None:
         if pure and len(segment) >= 3:
             return CONVERT
+        # 长组合数值链没有习语形态，句尾也直接转；短组合数值
+        # （一共十二 C vs 别二百五 K）双栖，留分类器
+        if has_unit and not pure and len(segment) >= 4:
+            return CONVERT
         if has_unit and len(segment) >= 2 and not pure:
             return OPEN
         return KEEP

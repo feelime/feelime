@@ -200,7 +200,10 @@ object ChineseNumberItn {
         if (next == null) {
             // 句尾逐位编号（取件码零三六八/车牌）
             if (pure && segment.length >= 3) return Verdict.CONVERT
-            // 句尾组合数值：一共十二 C vs 别二百五 K —— 开放面
+            // 长组合数值链（一亿五千万三千五百六十）没有习语形态，
+            // 句尾也直接转；短组合数值（一共十二 C vs 别二百五 K）
+            // 双栖，留分类器——开放面
+            if (hasUnit && !pure && segment.length >= 4) return Verdict.CONVERT
             if (hasUnit && segment.length >= 2 && !pure) return Verdict.OPEN
             return Verdict.KEEP
         }

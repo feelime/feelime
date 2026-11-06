@@ -78,6 +78,12 @@ class ChineseNumberItnTest {
     fun tailCompoundNumbersConvert() {
         assertEquals("一共12", ChineseNumberItn.apply("一共十二"))
         assertEquals("总共35", ChineseNumberItn.apply("总共三十五"))
+        // 长组合数值链没有习语形态，句尾结构层直转（ace 验收实录：
+        // 一亿五千万三千五百六十 曾被分类器保守 KEEP）
+        assertEquals("人口150003560", ChineseNumberItn.apply("人口一亿五千万三千五百六十"))
+        assertEquals("价值15000", ChineseNumberItn.apply("价值一万五千"))
+        // 短组合数值（≤3字）仍是开放面：习语双栖由分类器裁决
+        assertEquals("别二百五", ChineseNumberItn.apply("别二百五"))
     }
 
     @Test
