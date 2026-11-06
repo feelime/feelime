@@ -1712,10 +1712,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     return@onMain
                 }
                 voiceStartPending = false
-                val selected = runCatching { editorPort.selectedText() }.getOrNull()
                 val selectionKnownNonEmpty =
                     hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
                         hostSelectionEnd != hostSelectionStart
+                // 无选区时跳过宿主选区 IPC：Chromium 系 IC 的 getSelectedText
+                // 卡满 framework 2 秒超时（RemoteInputConnection 警告实录，
+                // 与 #85 手势路由注释同源），主线程跳帧、录音启动被挡在
+                // 后面。本地选区为空/未知时查询结果（""或null）归一同一
+                // 分支，跳过不改变行为（与上方 cursorQueryExecutor 的先查
+                // 本地选区同构）；有选区才查——rollback 还原选区文本要用。
+                val selected = if (selectionKnownNonEmpty) {
+                    runCatching { editorPort.selectedText() }.getOrNull()
+                } else null
                 voiceSession = VoiceSession(
                     editorGeneration = inputConnectionGeneration,
                     originalSelection = if (selected != null) selected
