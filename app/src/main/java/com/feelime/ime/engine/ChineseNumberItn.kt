@@ -27,7 +27,7 @@ object ChineseNumberItn {
     private val SUFFIX_UNITS = setOf(
         '个', '只', '条', '张', '次', '分', '秒', '天', '年', '月', '日', '号', '点',
         '元', '块', '毛', '倍', '周', '层', '楼', '位', '件', '台', '部', '辆',
-        '页', '行', '岁', '斤', '米', '里', '克', '吨', '升', '公', '杯', '碗',
+        '页', '岁', '斤', '米', '克', '吨', '升', '公', '杯', '碗',
         '篇', '章', '节', '课', '题', '字', '句', '词', '人', '家', '种',
         '样', '批', '组', '队', '轮', '遍', '趟', '场', '局', '步',
     )
@@ -151,6 +151,11 @@ object ChineseNumberItn {
      *  一四」这类点后带数字的才按钟点/小数转）。 */
     private fun convertSegment(segment: String, next: Char?, next2: Char? = null): String {
         if (segment.isEmpty()) return segment
+        // 相邻个位概数（两三/三四/三五）：真实语料实证是构词形态
+        // （两三岁/三四个人/三五成群一律汉字），单位跟随也不转。
+        if (segment.length == 2 && segment[0] in "一二两三四五" &&
+            segment[1] in "三四五六七八九"
+        ) return segment
         // 纯数字字形段（无进制词）在编号语境优先按位转：零零七 → 007
         // （codex #9：先走数值解析会丢前导零）。单段（三个）不适用。
         if (segment.length >= 2 && segment.none { it in UNITS } && next != null &&

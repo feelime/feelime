@@ -69,6 +69,12 @@ class ChineseNumberItnTest {
         assertEquals("密码三七", ChineseNumberItn.apply("密码三七"))
         // 「点」非小数语境（钟点表达在带单位时由单位链转换；纯「一点」句尾不动）
         assertEquals("一点", ChineseNumberItn.apply("一点"))
+        // 相邻个位概数保持汉字（真实语料实证：两三岁/三四个人/三五成群）
+        assertEquals("也就两三岁", ChineseNumberItn.apply("也就两三岁"))
+        assertEquals("门口站着三四个人", ChineseNumberItn.apply("门口站着三四个人"))
+        // 白名单剔除里/行后的构词安全
+        assertEquals("差了十万八千里", ChineseNumberItn.apply("差了十万八千里"))
+        assertEquals("三百六十行行行出状元", ChineseNumberItn.apply("三百六十行行行出状元"))
         // 含数字的常用词：后字不在单位白名单，原样（起/共/生 都不是量词）
         assertEquals("我们一起去吧", ChineseNumberItn.apply("我们一起去吧"))
         assertEquals("一共", ChineseNumberItn.apply("一共"))
