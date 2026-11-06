@@ -1,10 +1,32 @@
 package com.feelime.ime.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.BeforeClass
 import org.junit.Test
 
-/** #78 中文数字 ITN：保守白名单转换（宁少转不误转）。 */
+/** #78 中文数字 ITN：结构层三态 + 开放面分类器（真资源）。 */
 class ChineseNumberItnTest {
+
+    companion object {
+        @BeforeClass
+        @JvmStatic
+        fun loadClassifier() {
+            // 开放面（三个/一次/第X 等）走真模型资源；结构层断言不依赖它
+            runCatching {
+                var dir = java.io.File(System.getProperty("user.dir") ?: ".")
+                repeat(6) {
+                    val m = java.io.File(dir, "src/main/assets/itn/itn-model.bin")
+                    val l = java.io.File(dir, "src/main/assets/itn/itn-lexicon.bin")
+                    if (m.isFile && l.isFile) {
+                        ItnClassifier.loadFiles(m, l)
+                        ChineseNumberItn.classifier = ItnClassifier
+                        return@runCatching
+                    }
+                    dir = dir.parentFile ?: return@repeat
+                }
+            }
+        }
+    }
 
     @Test
     fun quantitiesAndDatesConvert() {

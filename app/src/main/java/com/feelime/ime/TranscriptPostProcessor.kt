@@ -3,6 +3,7 @@ package com.feelime.ime
 import android.content.Context
 import android.util.Log
 import com.feelime.ime.engine.ChineseNumberItn
+import com.feelime.ime.engine.ItnClassifier
 import com.k2fsa.sherpa.onnx.OfflinePunctuation
 import com.k2fsa.sherpa.onnx.OfflinePunctuationConfig
 import com.k2fsa.sherpa.onnx.OfflinePunctuationModelConfig
@@ -46,7 +47,14 @@ class TranscriptPostProcessor(
         // 阿拉伯数字的输入同样在域内。关闭开关则原文进标点模型。
         val itnEnabled = appContext.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
             .getBoolean(AsrSettings.KEY_ITN, false)
-        val converted = if (itnEnabled) ChineseNumberItn.apply(normalized) else normalized
+        val converted = if (itnEnabled) {
+            // 开放面分类器随语音后处理器加载（资源缺失静默降级严格 KEEP）
+            if (!ItnClassifier.loaded) {
+                ItnClassifier.load(appContext)
+                ChineseNumberItn.classifier = ItnClassifier
+            }
+            ChineseNumberItn.apply(normalized)
+        } else normalized
         val restored = punctuation?.addPunctuation(converted)?.trim().orEmpty().ifBlank { converted }
         val stripPeriod = appContext.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
             .getBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, true)
