@@ -724,14 +724,19 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     private fun applyLandscapeNavBars() {
         val w = window?.window ?: return
         val ctrl = androidx.core.view.WindowCompat.getInsetsController(w, w.decorView)
+        // WindowInsetsCompat.Type 常量任何 API 可读（低版本走 Compat 的
+        // systemUiVisibility 实现）；framework 的 WindowInsets.Type 是
+        // API 30 类，onCreate 路径裸调在 API 26-29 直接 NoClassDefFound
+        // 崩 service（#89 Android 9/10 键盘不能显示的根因）。
+        val navBars = androidx.core.view.WindowInsetsCompat.Type.navigationBars()
         if (resources.configuration.orientation ==
             android.content.res.Configuration.ORIENTATION_LANDSCAPE
         ) {
             ctrl.systemBarsBehavior =
                 androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            ctrl.hide(android.view.WindowInsets.Type.navigationBars())
+            ctrl.hide(navBars)
         } else {
-            ctrl.show(android.view.WindowInsets.Type.navigationBars())
+            ctrl.show(navBars)
         }
     }
 
