@@ -37,15 +37,22 @@ class EnglishTextNormalizerTest {
 
     @Test
     fun collapsesSpacingAroundPunctuationBetweenDigits() {
-        // 标点模型把 ITN 产物 1.23 排成 "1 . 23"（英文标点空格习惯）。
-        assertEquals("1.23", EnglishTextNormalizer.normalizeDigitPunctSpacing("1 . 23"))
-        assertEquals("价格是1.5元", EnglishTextNormalizer.normalizeDigitPunctSpacing("价格是1 . 5元"))
-        // 环视不消费右侧数字：链式一次压净。
-        assertEquals("1.2.3", EnglishTextNormalizer.normalizeDigitPunctSpacing("1 . 2 . 3"))
-        assertEquals("1,234", EnglishTextNormalizer.normalizeDigitPunctSpacing("1 , 234"))
+        // 标点模型把 ITN 产物 1.23 排成 "1 . 23"（英文标点空格习惯）——
+        // 以 converted 为白名单定向恢复。
+        assertEquals("1.23", EnglishTextNormalizer.normalizeDigitPunctSpacing("1 . 23", "1.23"))
+        assertEquals("价格是1.5元", EnglishTextNormalizer.normalizeDigitPunctSpacing("价格是1 . 5元", "价格是1.5元"))
+        assertEquals("1,234", EnglishTextNormalizer.normalizeDigitPunctSpacing("1 , 234", "1,234"))
+        // 链式由多个 run 依次复原。
+        assertEquals("1.2.3", EnglishTextNormalizer.normalizeDigitPunctSpacing("1 . 2 . 3", "1.2.3"))
+        // converted 里本就连续的才恢复：模型自插的英文句点（相邻两句）
+        // 不能并成小数（codex P2 反例）。
+        assertEquals(
+            "他选1 . 2个人弃权",
+            EnglishTextNormalizer.normalizeDigitPunctSpacing("他选1 . 2个人弃权", "他选一"),
+        )
         // 句尾句点、数字外标点、普通空格不动。
-        assertEquals("ok .", EnglishTextNormalizer.normalizeDigitPunctSpacing("ok ."))
-        assertEquals("hello , world", EnglishTextNormalizer.normalizeDigitPunctSpacing("hello , world"))
-        assertEquals("共 3 项", EnglishTextNormalizer.normalizeDigitPunctSpacing("共 3 项"))
+        assertEquals("ok .", EnglishTextNormalizer.normalizeDigitPunctSpacing("ok .", "ok ."))
+        assertEquals("hello , world", EnglishTextNormalizer.normalizeDigitPunctSpacing("hello , world", "hello, world"))
+        assertEquals("共 3 项", EnglishTextNormalizer.normalizeDigitPunctSpacing("共 3 项", "共 3 项"))
     }
 }

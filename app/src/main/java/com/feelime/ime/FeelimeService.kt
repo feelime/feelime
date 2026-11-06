@@ -1717,15 +1717,21 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     return@onMain
                 }
                 voiceStartPending = false
+                // 三态：已知空（start==end>=0）/ 已知非空 / 未知（-1——
+                // 宿主 EditorInfo 没给有效坐标）。无选区时跳过宿主选区
+                // IPC：Chromium 系 IC 的 getSelectedText 卡满 framework 2
+                // 秒超时（RemoteInputConnection 警告实录，与 #85 手势路由
+                // 注释同源），主线程跳帧、录音启动被挡在后面。已知空的
+                // 查询结果（""或null）归一同一分支，跳过等价；有选区才
+                // 查——rollback 还原选区文本要用；未知不查也不流式
+                // （codex P1：未知态无法证明选区为空，流式替换会在取消
+                // 时删掉取不回来的原文，走缓冲模式）。
                 val selectionKnownNonEmpty =
                     hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
                         hostSelectionEnd != hostSelectionStart
-                // 无选区时跳过宿主选区 IPC：Chromium 系 IC 的 getSelectedText
-                // 卡满 framework 2 秒超时（RemoteInputConnection 警告实录，
-                // 与 #85 手势路由注释同源），主线程跳帧、录音启动被挡在
-                // 后面。本地选区为空/未知时查询结果（""或null）归一同一
-                // 分支，跳过不改变行为（与上方 cursorQueryExecutor 的先查
-                // 本地选区同构）；有选区才查——rollback 还原选区文本要用。
+                val selectionKnownEmpty =
+                    hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
+                        hostSelectionStart == hostSelectionEnd
                 val selected = if (selectionKnownNonEmpty) {
                     runCatching { editorPort.selectedText() }.getOrNull()
                 } else null
@@ -1736,7 +1742,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     else "",
                     // A null selected-text result plus a known non-empty
                     // selection cannot be safely replaced by a composing span.
-                    streamToEditor = selected != null || !selectionKnownNonEmpty,
+                    streamToEditor = selected != null || selectionKnownEmpty,
                 )
                 engine.start()
             }
@@ -4489,8 +4495,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             wm?.maximumWindowMetrics?.bounds?.height() ?: resources.displayMetrics.heightPixels
         } else {
             val real = android.util.DisplayMetrics()
+            // Context.getDisplay 在 <30 是 greylist test-api（codex P2：
+            // 官方清单当前放行，但属非 SDK 依赖，ROM 收紧即崩）——低版本
+            // 走公开的 WindowManager.defaultDisplay。
             @Suppress("DEPRECATION")
-            display?.getRealMetrics(real)
+            getSystemService(android.view.WindowManager::class.java)?.defaultDisplay?.getRealMetrics(real)
             if (real.heightPixels > 0) real.heightPixels else resources.displayMetrics.heightPixels
         }
     }

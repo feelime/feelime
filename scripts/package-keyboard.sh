@@ -33,7 +33,7 @@ fi
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-cp "$KEYBOARD_DIR"/{index.html,keyboard.css,keyboard.js,VERSION} "$WORK/"
+cp "$KEYBOARD_DIR"/{index.html,keyboard.css,keyboard.js,keyboard.legacy.js,VERSION} "$WORK/"
 
 VERSION=$(tr -d '\n' < "$WORK/VERSION")
 python3 - "$WORK" "$VERSION" <<'PYEOF'
@@ -41,7 +41,7 @@ import ast, hashlib, json, os, re, subprocess, sys, zipfile
 
 work, version = sys.argv[1], sys.argv[2]
 key_id = os.environ.get("FEELIME_KEY_ID", "feelime-release-2026-08")
-payloads = ["index.html", "keyboard.css", "keyboard.js", "VERSION"]
+payloads = ["index.html", "keyboard.css", "keyboard.js", "keyboard.legacy.js", "VERSION"]
 
 files = {}
 for name in payloads:

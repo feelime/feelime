@@ -7,6 +7,11 @@
 (() => {
     'use strict';
 
+    // #90 旧 WebView 探针 flag：本文件被成功解析+执行到此（Chrome <80
+    // 拒绝 ES2020 语法时整文件不跑），index.html 由此判断是否改载
+    // keyboard.legacy.js（generate-legacy-web.sh 产物）。
+    window.__feelimeES = 1;
+
     // Chrome 86 才有 replaceChildren；Android 11 出厂 WebView 是 83，setup
     // 首次 renderMode 就 TypeError，整个键盘 DOM 建不出来（#88 白屏根因）。
     // guard 版 polyfill 对新 WebView 零影响。
@@ -14,6 +19,30 @@
         Element.prototype.replaceChildren = function (...nodes) {
             this.textContent = '';
             for (const n of nodes) this.append(n);
+        };
+    }
+
+    // #90 Android 9 兼容带（出厂 WebView 66，BOOX 类设备不可更新）：
+    // flat 是 69、Object.fromEntries 是 73。guard 版 polyfill 零影响新机。
+    if (!Array.prototype.flat) {
+        Array.prototype.flat = function (depth) {
+            const d = depth === undefined ? 1 : Math.floor(depth);
+            const out = [];
+            const walk = (arr, level) => {
+                for (const v of arr) {
+                    if (level > 0 && Array.isArray(v)) walk(v, level - 1);
+                    else out.push(v);
+                }
+            };
+            walk(this, d);
+            return out;
+        };
+    }
+    if (!Object.fromEntries) {
+        Object.fromEntries = function (entries) {
+            const out = {};
+            for (const [k, v] of entries) out[k] = v;
+            return out;
         };
     }
 
@@ -321,7 +350,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.79';
+    const KEYBOARD_VERSION = '3.73.80';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -8606,8 +8635,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             layer.append(wrap);
             // 入场动画：柱状图生长 + 徽章 pop + 大数字滚动。无 rAF 的
             // 环境（Node mock）直接落终态，同步递归会炸栈。
+            // （window 而非 globalThis：后者 Chromium 71 才有，旧 WebView
+            // 静默 ReferenceError——#90 Android 9 兼容带。）
             const raf = typeof requestAnimationFrame === 'function'
-                ? requestAnimationFrame.bind(globalThis) : null;
+                ? requestAnimationFrame.bind(window) : null;
             if (raf) raf(() => raf(() => wrap.classList.add('grown')));
             else wrap.classList.add('grown');
             this.countUp(layer.querySelector('#statsTotal'), total, unit, raf);

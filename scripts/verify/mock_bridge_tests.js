@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { KeyboardWorld, KEYBOARD_VERSION } = require('./mock_bridge_harness');
+require('./check_legacy_web'); // #90 legacy WebView 产物一致性 gate
 
 // 语义化版本比较（En 常用表 3.73.79 重排后，跨版本断言需要分支）。
 function verAtLeast(version, want) {

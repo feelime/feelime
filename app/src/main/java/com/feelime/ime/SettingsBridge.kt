@@ -3220,6 +3220,19 @@ class SettingsBridge(
         pushState()
     }
 
+    /** toggle 拨动即存的窄接口（#90 验收链）：只写两个布尔、不触碰热词
+     *  ——复用 saveAsrSettings 会让成功回执带着旧热词（hotwords 字段），
+     *  校验失败后保留的草稿被回执洗掉（codex P2），热词也随快照陈旧值
+     *  回写。热词仍走 saveAsrSettings 显式保存。 */
+    @JavascriptInterface
+    fun setAsrToggles(stripPeriod: Boolean, itn: Boolean, token: String) = guarded(token) {
+        asrPrefs().edit()
+            .putBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, stripPeriod)
+            .putBoolean(AsrSettings.KEY_ITN, itn)
+            .commit()
+        pushState()
+    }
+
     /** Sub-page presence for the shell's BACK callback. */
     @JavascriptInterface
     fun reportPage(page: String, parent: String?, token: String) = guarded(token) {

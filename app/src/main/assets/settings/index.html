@@ -1535,7 +1535,16 @@
           <button class="btn primary" id="ckApply" type="button" data-i18n="ck.apply">确定</button>
         </div>
       </div>
+<script>window.__feelimeES = 0;</script>
 <script src="dp-data.js"></script>
 <script src="settings.js"></script>
+<!-- #90 旧 WebView 同 keyboard/index.html 的探针：settings.js 解析失败
+     （ES2020 语法被拒）时改载 esbuild chrome66 转译副本（见
+     scripts/generate-legacy-web.sh）。dp-data.js 是生成数据，语法恒旧。 -->
+<script>
+    if (!window.__feelimeES) {
+        document.write('<script src="settings.legacy.js"><\/script>');
+    }
+</script>
 </body>
 </html>

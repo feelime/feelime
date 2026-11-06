@@ -430,6 +430,16 @@
     <div id="flickBlob"></div>
     <div id="toast" role="status"></div>
 </main>
+<script>window.__feelimeES = 0;</script>
 <script src="keyboard.js?v=__KB_VERSION__"></script>
+<!-- #90 旧 WebView（出厂 Chromium <80：Android 9/10、BOOX 类）在解析
+     期拒绝 ES2020 语法，keyboard.js 整文件不执行且不报可捕获错误——
+     flag 未置位即改载 esbuild chrome66 转译副本（见
+     scripts/generate-legacy-web.sh，改动 keyboard.js 后必须重生成）。 -->
+<script>
+    if (!window.__feelimeES) {
+        document.write('<script src="keyboard.legacy.js?v=__KB_VERSION__"><\/script>');
+    }
+</script>
 </body>
 </html>

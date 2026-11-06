@@ -15,6 +15,7 @@ const path = require('path');
 const vm = require('vm');
 
 const { loadDocument } = require('./mock_bridge_harness.js');
+require('./check_legacy_web'); // #90 legacy WebView 产物一致性 gate
 
 const ROOT = path.resolve(__dirname, '../..');
 const HTML_PATH = path.join(ROOT, 'app/src/main/assets/settings/index.html');
@@ -85,6 +86,7 @@ class MockSettingsNative {
     cancelModelDownload(...a) { this._rec('cancelModelDownload', a); }
     deleteModel(...a) { this._rec('deleteModel', a); }
     saveAsrSettings(...a) { this._rec('saveAsrSettings', a); }
+    setAsrToggles(...a) { this._rec('setAsrToggles', a); }
     setAsrIdleUnload(...a) { this._rec('setAsrIdleUnload', a); }
     importBgImage(...a) { this._rec('importBgImage', a); }
     saveCustom(...a) { this._rec('saveCustom', a); }
@@ -582,15 +584,16 @@ test('保存识别设置 sends the checkbox + textarea verbatim', () => {
     assert(world.$('asrNote').textContent.includes('已保存'), 'save note shown');
 });
 
-test('识别 toggle 拨动即存，热词草稿不被顺手提交', () => {
+test('识别 toggle 拨动即存走窄接口，热词草稿不受触碰', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     world.$('hotwords').value = '编辑中的草稿';
     world.$('numItn').checked = true;
     const itn = world.$('numItn');
     itn.listeners.find(listener => listener.type === 'change').handler({ target: itn });
-    equal(world.lastCall('saveAsrSettings').args,
-        [true, true, '', world.token], 'toggle change saves immediately with persisted hotwords');
+    equal(world.lastCall('setAsrToggles').args,
+        [true, true, world.token], 'toggle change saves via setAsrToggles only');
+    equal(world.native.of('saveAsrSettings').length, 0, 'toggle does not route through saveAsrSettings');
     equal(world.$('hotwords').value, '编辑中的草稿', 'draft survives the toggle save');
 });
 

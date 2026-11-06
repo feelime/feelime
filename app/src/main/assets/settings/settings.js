@@ -5,12 +5,38 @@
  * dictionary. User text, URLs, JSON, model titles, and device names are
  * always rendered as received. */
 "use strict";
+// #90 旧 WebView 探针 flag（同 keyboard.js）：本文件执行到此说明现代
+// 语法可解析，index.html 不加载 settings.legacy.js。
+window.__feelimeES = 1;
 // Chrome 86 才有 replaceChildren；Android 11 出厂 WebView 83 上设置页同样
 // 整页渲染中断（#88 同根因）。guard 版 polyfill 对新 WebView 零影响。
 if (typeof Element !== 'undefined' && !Element.prototype.replaceChildren) {
     Element.prototype.replaceChildren = function (...nodes) {
         this.textContent = '';
         for (const n of nodes) this.append(n);
+    };
+}
+// #90 Android 9 兼容带：fromEntries 是 Chrome 73，旧 WebView 上缺位即
+// 整段功能崩。guard 版 polyfill 零影响新机。
+if (!Object.fromEntries) {
+    Object.fromEntries = function (entries) {
+        const out = {};
+        for (const [k, v] of entries) out[k] = v;
+        return out;
+    };
+}
+if (!Array.prototype.flat) {
+    Array.prototype.flat = function (depth) {
+        const d = depth === undefined ? 1 : Math.floor(depth);
+        const out = [];
+        const walk = (arr, level) => {
+            for (const v of arr) {
+                if (level > 0 && Array.isArray(v)) walk(v, level - 1);
+                else out.push(v);
+            }
+        };
+        walk(this, d);
+        return out;
     };
 }
 let keySoundVolumeTimer = 0;
@@ -3055,13 +3081,9 @@ function hideModelConsent() {
 // finishing, another setting changing) would otherwise overwrite the
 // unsaved text with the old prefs while the error note still shows.
 let asrHotwordsDirty = false;
-// 最近一次 prefs 快照：toggle 即存时要带「已持久化」的热词值，
-// 不能把 textarea 里编辑中的草稿顺手存掉（草稿仍走「保存识别设置」）。
-let asrPrefsSnapshot = { hotwords: "" };
 
 function renderAsr(state) {
     const asr = state.asr || {};
-    asrPrefsSnapshot = asr;
     $("asrIdleUnload").checked = asr.idleUnload === true;
     const field = $("hotwords");
     if ((asr.hotwords || "") === field.value) asrHotwordsDirty = false;
@@ -4265,13 +4287,13 @@ let asrHotwordsSubmitted = null;
 $("asrIdleUnload").addEventListener("change", event => call("setAsrIdleUnload", event.target.checked));
 $("hotwords").addEventListener("input", () => { asrHotwordsDirty = true; });
 // toggle 拨动即生效（与 #39-2 同案：此前只随「保存识别设置」提交，拨了
-// 不点保存=从未落盘，重进被回读洗回旧值——1.4.3 验收实录）。热词带已
-// 持久化快照，草稿留给显式保存。
-const savedHotwords = () => asrPrefsSnapshot.hotwords || "";
+// 不点保存=从未落盘，重进被回读洗回旧值——1.4.3 验收实录）。走窄接口
+// setAsrToggles：不携带热词（codex P2：复用 saveAsrSettings 的成功回执带
+// hotwords 字段，会把校验失败后保留的草稿洗成旧值；快照热词也会陈旧回写）。
 $("stripPeriod").addEventListener("change", event =>
-    call("saveAsrSettings", event.target.checked, $("numItn").checked, savedHotwords()));
+    call("setAsrToggles", event.target.checked, $("numItn").checked));
 $("numItn").addEventListener("change", event =>
-    call("saveAsrSettings", $("stripPeriod").checked, event.target.checked, savedHotwords()));
+    call("setAsrToggles", $("stripPeriod").checked, event.target.checked));
 $("btnSaveAsr").addEventListener("click", () => {
     asrHotwordsSubmitted = $("hotwords").value;
     call("saveAsrSettings", $("stripPeriod").checked, $("numItn").checked, $("hotwords").value);
