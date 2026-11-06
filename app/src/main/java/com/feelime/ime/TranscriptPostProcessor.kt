@@ -55,7 +55,9 @@ class TranscriptPostProcessor(
             }
             ChineseNumberItn.apply(normalized)
         } else normalized
-        val restored = punctuation?.addPunctuation(converted)?.trim().orEmpty().ifBlank { converted }
+        val restored = EnglishTextNormalizer.normalizeDigitPunctSpacing(
+            punctuation?.addPunctuation(converted)?.trim().orEmpty().ifBlank { converted },
+        )
         val stripPeriod = appContext.getSharedPreferences("feelime_asr", Context.MODE_PRIVATE)
             .getBoolean(AsrSettings.KEY_STRIP_FINAL_PERIOD, true)
         return if (stripPeriod) EnglishTextNormalizer.ensureTerminalPunctuation(restored) else restored
@@ -111,6 +113,15 @@ object EnglishTextNormalizer {
         }
         return value
     }
+
+    private val digitPunctSpacing = Regex("(\\d) +([.,]) +(?=\\d)")
+
+    /** 标点模型输出归一：数字间标点两侧的空格压掉——口语标点模型把
+     *  ITN 产物 1.23 排成 "1 . 23"（英文标点空格习惯），中文数字排版
+     *  无空格。右侧数字用环视不消费，链式 "1 . 2 . 3" 一次压成 1.2.3；
+     *  标点两侧都须是数字，句尾句点与普通英文短语不误伤。 */
+    fun normalizeDigitPunctSpacing(text: String): String =
+        digitPunctSpacing.replace(text, "$1$2")
 
     fun ensureTerminalPunctuation(text: String): String {
         val clean = text.trim()

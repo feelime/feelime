@@ -34,4 +34,18 @@ class EnglishTextNormalizerTest {
         assertEquals("真的吗？", EnglishTextNormalizer.ensureTerminalPunctuation("真的吗？"))
         assertEquals("等等…", EnglishTextNormalizer.ensureTerminalPunctuation("等等…"))
     }
+
+    @Test
+    fun collapsesSpacingAroundPunctuationBetweenDigits() {
+        // 标点模型把 ITN 产物 1.23 排成 "1 . 23"（英文标点空格习惯）。
+        assertEquals("1.23", EnglishTextNormalizer.normalizeDigitPunctSpacing("1 . 23"))
+        assertEquals("价格是1.5元", EnglishTextNormalizer.normalizeDigitPunctSpacing("价格是1 . 5元"))
+        // 环视不消费右侧数字：链式一次压净。
+        assertEquals("1.2.3", EnglishTextNormalizer.normalizeDigitPunctSpacing("1 . 2 . 3"))
+        assertEquals("1,234", EnglishTextNormalizer.normalizeDigitPunctSpacing("1 , 234"))
+        // 句尾句点、数字外标点、普通空格不动。
+        assertEquals("ok .", EnglishTextNormalizer.normalizeDigitPunctSpacing("ok ."))
+        assertEquals("hello , world", EnglishTextNormalizer.normalizeDigitPunctSpacing("hello , world"))
+        assertEquals("共 3 项", EnglishTextNormalizer.normalizeDigitPunctSpacing("共 3 项"))
+    }
 }
