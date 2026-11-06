@@ -582,6 +582,18 @@ test('保存识别设置 sends the checkbox + textarea verbatim', () => {
     assert(world.$('asrNote').textContent.includes('已保存'), 'save note shown');
 });
 
+test('识别 toggle 拨动即存，热词草稿不被顺手提交', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.$('hotwords').value = '编辑中的草稿';
+    world.$('numItn').checked = true;
+    const itn = world.$('numItn');
+    itn.listeners.find(listener => listener.type === 'change').handler({ target: itn });
+    equal(world.lastCall('saveAsrSettings').args,
+        [true, true, '', world.token], 'toggle change saves immediately with persisted hotwords');
+    equal(world.$('hotwords').value, '编辑中的草稿', 'draft survives the toggle save');
+});
+
 test('保存定制 absorbs the box into the unified save chain; 插入模板 fills valid JSON without calling the bridge', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });

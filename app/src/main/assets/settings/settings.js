@@ -3055,9 +3055,13 @@ function hideModelConsent() {
 // finishing, another setting changing) would otherwise overwrite the
 // unsaved text with the old prefs while the error note still shows.
 let asrHotwordsDirty = false;
+// 最近一次 prefs 快照：toggle 即存时要带「已持久化」的热词值，
+// 不能把 textarea 里编辑中的草稿顺手存掉（草稿仍走「保存识别设置」）。
+let asrPrefsSnapshot = { hotwords: "" };
 
 function renderAsr(state) {
     const asr = state.asr || {};
+    asrPrefsSnapshot = asr;
     $("asrIdleUnload").checked = asr.idleUnload === true;
     const field = $("hotwords");
     if ((asr.hotwords || "") === field.value) asrHotwordsDirty = false;
@@ -4260,6 +4264,14 @@ $("modelConsentConfirm").addEventListener("click", () => {
 let asrHotwordsSubmitted = null;
 $("asrIdleUnload").addEventListener("change", event => call("setAsrIdleUnload", event.target.checked));
 $("hotwords").addEventListener("input", () => { asrHotwordsDirty = true; });
+// toggle 拨动即生效（与 #39-2 同案：此前只随「保存识别设置」提交，拨了
+// 不点保存=从未落盘，重进被回读洗回旧值——1.4.3 验收实录）。热词带已
+// 持久化快照，草稿留给显式保存。
+const savedHotwords = () => asrPrefsSnapshot.hotwords || "";
+$("stripPeriod").addEventListener("change", event =>
+    call("saveAsrSettings", event.target.checked, $("numItn").checked, savedHotwords()));
+$("numItn").addEventListener("change", event =>
+    call("saveAsrSettings", $("stripPeriod").checked, event.target.checked, savedHotwords()));
 $("btnSaveAsr").addEventListener("click", () => {
     asrHotwordsSubmitted = $("hotwords").value;
     call("saveAsrSettings", $("stripPeriod").checked, $("numItn").checked, $("hotwords").value);
