@@ -11,6 +11,7 @@ object KeyboardPackageFixture {
         "index.html" to "<!doctype html><html>Feelime ${version.hashCode()}</html>".toByteArray(),
         "keyboard.css" to "body{background:#0f0f18}".toByteArray(),
         "keyboard.js" to "const KEYBOARD_VERSION='${version}';".toByteArray(),
+        "keyboard.legacy.js" to "window.__feelimeES=1;/*${version}*/".toByteArray(),
         "VERSION" to version.toByteArray(),
     )
 
@@ -64,7 +65,8 @@ object KeyboardPackageFixture {
         if (signed && !skipSignatureEntry) {
             builder.add(KeyboardPackageVerifier.SIGNATURE_ENTRY, TestEd25519Signer.sign(SEED, manifest))
         }
-        for (name in listOf("index.html", "keyboard.css", "keyboard.js", "VERSION")) {
+        // 与 manifest 同源（files.keys）：payload 清单演进时 fixture 不再漏文件
+        for (name in files.keys) {
             builder.add(name, files.getValue(name))
         }
         extraEntries.forEach(builder::addRaw)

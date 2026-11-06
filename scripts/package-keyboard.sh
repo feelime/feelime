@@ -123,6 +123,7 @@ entries += [
     "index.html",
     "keyboard.css",
     "keyboard.js",
+    "keyboard.legacy.js",
     "VERSION",
 ]
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:

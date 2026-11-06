@@ -154,7 +154,7 @@ class KeyboardPackageVerifierTest {
                     .add(KeyboardPackageVerifier.MANIFEST_ENTRY, manifest)
                     .add(KeyboardPackageVerifier.SIGNATURE_ENTRY, TestEd25519Signer.sign(KeyboardPackageFixture.SEED, manifest))
                     .add("index.html", files.getValue("index.html"), declaredUncompressed = 3)
-                    .also { b -> listOf("keyboard.css", "keyboard.js", "VERSION").forEach { n -> b.add(n, files.getValue(n)) } }
+                    .also { b -> files.keys.filter { it != "index.html" }.forEach { n -> b.add(n, files.getValue(n)) } }
                     .build(),
             ),
         )
@@ -250,7 +250,7 @@ class KeyboardPackageVerifierTest {
                     .add(KeyboardPackageVerifier.MANIFEST_ENTRY, manifest)
                     .add(KeyboardPackageVerifier.SIGNATURE_ENTRY, TestEd25519Signer.sign(KeyboardPackageFixture.SEED, manifest))
                     .add("index.html", ByteArray(12 * 1024 * 1024), declaredUncompressed = 12L * 1024 * 1024)
-                    .also { b -> listOf("keyboard.css", "keyboard.js", "VERSION").forEach { n -> b.add(n, files.getValue(n)) } }
+                    .also { b -> files.keys.filter { it != "index.html" }.forEach { n -> b.add(n, files.getValue(n)) } }
                     .build(),
             ),
         )

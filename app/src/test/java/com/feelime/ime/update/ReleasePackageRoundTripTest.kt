@@ -55,7 +55,7 @@ class ReleasePackageRoundTripTest {
         assertTrue(pkg.signed)
         assertEquals(keyId, pkg.manifest.keyId)
         assertEquals(fixtureVersion(), pkg.manifest.keyboardVersion)
-        assertEquals(4, pkg.files.size)
+        assertEquals(5, pkg.files.size)
     }
 
     @Test
@@ -74,6 +74,7 @@ class ReleasePackageRoundTripTest {
                 "index.html" to "old".toByteArray(),
                 "keyboard.css" to "old".toByteArray(),
                 "keyboard.js" to "old".toByteArray(),
+                "keyboard.legacy.js" to "old".toByteArray(),
                 "VERSION" to "0.0.1".toByteArray(),
             )
         }

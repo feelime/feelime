@@ -414,7 +414,10 @@ class KeyboardPackageVerifier(
         const val MANIFEST_ENTRY = "feelime-keyboard.json"
         const val SIGNATURE_ENTRY = "feelime-keyboard.sig"
         val ENVELOPE_ENTRIES = listOf(MANIFEST_ENTRY, SIGNATURE_ENTRY)
-        val PAYLOAD_ENTRIES = listOf("index.html", "keyboard.css", "keyboard.js", "VERSION")
+        // keyboard.legacy.js（#90 旧 WebView 兼容带）随包分发：seedBuiltIn 拷贝、
+        // 热更 payload 清单、manifest 校验三处都从这里取——漏了哪处 built-in
+        // 目录就少文件（API 28 实录：SERVED_FILES 放行后仍 404，种子目录没这文件）。
+        val PAYLOAD_ENTRIES = listOf("index.html", "keyboard.css", "keyboard.js", "keyboard.legacy.js", "VERSION")
         val ALLOWED_ENTRIES = (ENVELOPE_ENTRIES + PAYLOAD_ENTRIES).toSet()
         val SEMVER = Regex("^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$")
 

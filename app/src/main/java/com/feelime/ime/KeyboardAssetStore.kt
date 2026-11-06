@@ -22,8 +22,13 @@ class KeyboardAssetStore(private val root: File) {
         if (!file.isFile || !file.canonicalPath.startsWith(root.canonicalPath + File.separator)) return missing()
         val headers = mutableMapOf("Cache-Control" to "no-store")
         if (relative == "index.html") {
+            // script-src 放行 'unsafe-inline'（#90）：index.html 的旧 WebView 探针
+            // （__feelimeES flag + document.write legacy fallback）是内联脚本，
+            // 'self' 单独会把它拒掉（API 28 实录：探针不执行，键盘只剩静态骨架）。
+            // 本 origin 整域被拦截、connect-src 'none' 断网，页面内容只有 APK
+            // 内置/热更校验资产，无任何用户可控注入面——inline 放行零实际损失。
             headers["Content-Security-Policy"] =
-                "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+                "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self'; img-src 'self' data:; " +
                     // font-src（issue #70）：用户字体经 /keyboard/fonts/<digest>/ 同源路由。
                     "font-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'"
             // 注入当前版本号：index.html 自身 no-store 不被缓存，它引用
@@ -51,7 +56,9 @@ class KeyboardAssetStore(private val root: File) {
     }
 
     companion object {
-        private val SERVED_FILES = setOf("index.html", "keyboard.css", "keyboard.js", "VERSION")
+        // keyboard.legacy.js（#90 旧 WebView 兼容带）随探针 document.write 请求，
+        // 不在白名单会 404——探针跑通了也只剩静态骨架。
+        private val SERVED_FILES = setOf("index.html", "keyboard.css", "keyboard.js", "keyboard.legacy.js", "VERSION")
 
         private fun missing() = WebResourceResponse(
             "text/plain",
