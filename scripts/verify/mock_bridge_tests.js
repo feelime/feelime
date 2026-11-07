@@ -5120,6 +5120,20 @@ test('t9 renders the five-column grid and selects via the menu', {since: '3.35.0
         'space marked for the corner-dot swap');
     assert([...world.$('spaceKey').querySelectorAll('.t9-sup')]
         .some(s => s.textContent === '0'), 'space shows the 0 badge');
+    // #55 紧凑补丁：CJK 双字主字标 t9-cjk——笔画键盘 9 键「分词」在悬浮
+    // 缩窄后五列键 ~42px 放不下 20px 双字会换行（用户实测）；CSS 悬浮态
+    // 降档 13px + 通用 nowrap。fake DOM 不支持 .a.b 复合类选择器，先取
+    // .t9-group 再按 className 串判定。
+    const worldS = fresh({ modes: ['pinyin', 'stroke', 't9'] });
+    worldS.engineState({ mode: 'stroke', revision: 1, candidates: [], composing: '' });
+    const groups = [...worldS.document.querySelectorAll('#qwertyLayer .t9-group')];
+    const marked = groups.filter(g => (g.className || '').includes('t9-cjk'));
+    equal(marked.length, 1, 'exactly the 分词 key carries t9-cjk');
+    equal(marked[0] && marked[0].textContent, '分词', 'the marked main is 分词');
+    const cjkMulti = s => /[一-鿿]/.test(s) && s.length > 1;
+    assert(groups.every(g => !cjkMulti(g.textContent) ||
+        (g.className || '').includes('t9-cjk')),
+        'only CJK multi-char mains carry the marker (latin @#. groups stay bare)');
     // 菜单可选。
     const world2 = fresh();
     world2.touchDown(world2.$('modeToggle'));

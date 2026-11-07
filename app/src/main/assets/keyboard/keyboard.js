@@ -358,7 +358,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.86';
+    const KEYBOARD_VERSION = '3.73.87';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1203,10 +1203,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // Keyboard height (the letter key height) is tunable per
     // orientation; clamped so four rows always stay inside the budget.
     const KB_ROW_MIN = 32;
-    // #55 悬浮顶部操作带（停靠/移动/缩放三件）占用的画布高度：32px
-    // 控件行 + 4px 间距。CSS 尺寸、clampFloatGeom 的 y 下限/高上限、
-    // syncFloatingRect 的 REGION 上扩三处共用此值，改要一起改。
-    const FLOAT_BAR_SPACE = 36;
+    // #55 悬浮顶部操作带（停靠/移动/缩放三件）占用的画布高度：28px
+    // 控件行 + 2px 间距（首版 32+4 被用户反馈与卡片离太远，紧凑化）。
+    // CSS 尺寸、clampFloatGeom 的 y 下限/高上限、syncFloatingRect 的
+    // REGION 上扩三处共用此值，改要一起改。
+    const FLOAT_BAR_SPACE = 30;
     // 手写控制行键高（CSS px）：固定值，不参与 --kb-row-h 预算（键盘
     // 高度调节的弹性全部给书写面板）。
     const INK_CONTROL_ROW_H = 46;
@@ -2867,6 +2868,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             sup.textContent = digit;
             const group = document.createElement('span');
             group.className = 't9-group';
+            // CJK 多字主字（如「分词」）：标类给 CSS 做宽度自适应——悬浮
+            // 缩窄后五列键 ~42px，20px 双字放不下会换行（用户实测）。
+            if (/[一-鿿]/.test(def.main) && def.main.length > 1) {
+                group.classList.add('t9-cjk');
+            }
             // t() 过一遍让「分词」跟界面语言走（其余部件字形无翻译条目，
             // 原样返回）；模块级表不能预求值，locale 切换后重渲染即更新。
             group.textContent = t(def.main);

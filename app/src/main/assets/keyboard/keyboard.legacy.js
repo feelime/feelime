@@ -349,7 +349,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.86";
+  const KEYBOARD_VERSION = "3.73.87";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1417,7 +1417,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     ]
   };
   const KB_ROW_MIN = 32;
-  const FLOAT_BAR_SPACE = 36;
+  const FLOAT_BAR_SPACE = 30;
   const INK_CONTROL_ROW_H = 46;
   const DEFAULT_MENU_MODES = ["direct", "pinyin", "double-pinyin", "t9", "stroke"];
   const THEME_PRESETS = ["classic", "ocean", "violet", "amber", "sakura", "teal"];
@@ -2636,6 +2636,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       sup.textContent = digit;
       const group = document.createElement("span");
       group.className = "t9-group";
+      if (/[一-鿿]/.test(def.main) && def.main.length > 1) {
+        group.classList.add("t9-cjk");
+      }
       group.textContent = t(def.main);
       button.append(hint, sup, group);
       button.addEventListener("click", () => this.strokeActivate(digit));

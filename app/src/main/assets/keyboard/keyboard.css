@@ -3244,22 +3244,23 @@ body[data-floating="on"] #floatHandles { display: block; }
 #floatBar {
     position: absolute;
     /* 卡片上沿操作带：停靠(左)/移动(中)/缩放(右)三件（#55 UI 打磨，
-     * codex 方案——原右下角缩放角压 enter 键误触）。带高 32px + 4px
-     * 间距 = 36px，与 JS FLOAT_BAR_SPACE、REGION 上扩同源。 */
+     * codex 方案——原右下角缩放角压 enter 键误触）。带高 28px + 2px
+     * 间距 = 30px（首版 32+4 被用户反馈离卡片太远，紧凑化），与 JS
+     * FLOAT_BAR_SPACE、REGION 上扩同源。 */
     left: var(--float-x, 40px);
-    top: calc(var(--float-y, 200px) - 36px);
+    top: calc(var(--float-y, 200px) - 30px);
     width: var(--float-w, 300px);
-    height: 36px;
+    height: 30px;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
 }
-/* 底板统一：24px 圆角方 + 轻投影（旧三横线把手又大又厚，用户实测
- * 「太大太丑」）；触摸盒 32px 比视觉大 8px，手指不必精点。 */
+/* 底板统一：22px 圆角方 + 轻投影（旧三横线把手又大又厚，用户实测
+ * 「太大太丑」）；触摸盒 28px 比视觉大 6px，手指不必精点。 */
 #floatDock, #floatResize {
     position: relative;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border: 0;
     padding: 0;
     border-radius: 8px;
@@ -3272,29 +3273,31 @@ body[data-floating="on"] #floatHandles { display: block; }
 #floatDock::before, #floatResize::before {
     content: "";
     position: absolute;
-    left: 4px;
-    top: 4px;
-    width: 24px;
-    height: 24px;
-    border-radius: 7px;
+    left: 3px;
+    top: 3px;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
     background: var(--card-bg, #2a2d33);
     box-shadow: 0 2px 6px rgba(0, 0, 0, .16);
 }
 #floatDock svg, #floatResize svg {
     position: absolute;
-    left: 7px;
-    top: 7px;
+    left: 6px;
+    top: 6px;
+    width: 16px;
+    height: 16px;
 }
 #floatDock:active, #floatResize:active { color: var(--accent-text, #7ed8a0); }
 #floatGrip.float-grip {
     position: absolute;
-    /* 中央短拖动柄：触摸 72×32、视觉 64×16 胶囊（旧全宽 26px 条
+    /* 中央短拖动柄：触摸 72×28、视觉 58×13 胶囊（旧全宽 26px 条
      * 视觉负担大）。绝对居中不参与 flex 分配，压不到两端按钮。 */
     left: 50%;
     top: 0;
     margin-left: -36px;
     width: 72px;
-    height: 32px;
+    height: 28px;
     background: transparent;
     box-shadow: none;
     touch-action: none;
@@ -3302,22 +3305,38 @@ body[data-floating="on"] #floatHandles { display: block; }
 #floatGrip::before {
     content: "";
     position: absolute;
-    left: 4px;
-    top: 8px;
-    width: 64px;
-    height: 16px;
-    border-radius: 8px;
+    left: 7px;
+    top: 7px;
+    width: 58px;
+    height: 13px;
+    border-radius: 7px;
     background: var(--card-bg, #2a2d33);
     box-shadow: 0 2px 6px rgba(0, 0, 0, .16);
 }
 #floatGrip::after {
     content: "";
     position: absolute;
-    left: 20px;
-    top: 14px;
-    width: 32px;
+    left: 22px;
+    top: 12px;
+    width: 28px;
     height: 3px;
     border-radius: 2px;
     background: var(--card-sub, #9aa3ad);
 }
 #floatGrip:active::after, #floatGrip:active::before { filter: brightness(1.15); }
+/* 悬浮缩窄（最小 60% 视口）时工具条一档缩小：32px 圆钮+8px gap 在
+ * 236px 卡上会把右组（含收起）挤出卡片被 overflow 裁掉（用户实测
+ * 点不到）。26px+13px icon+5px gap；放文件尾压过 landscape 30px 档。 */
+body[data-floating="on"] #candidateBar { gap: 5px; }
+body[data-floating="on"] #candidateBar .tool {
+    width: 26px;
+    height: 26px;
+}
+body[data-floating="on"] #candidateBar .tool svg {
+    width: 13px;
+    height: 13px;
+}
+/* T9 CJK 双字主字（「分词」）：窄卡五列键 ~42px，20px 双字放不下会
+ * 换行（用户实测）。悬浮态降档 + 通用 nowrap 兜底断行。 */
+.t9-group { white-space: nowrap; }
+body[data-floating="on"] .t9-group.t9-cjk { font-size: 13px; }
