@@ -157,8 +157,9 @@ body {
      * 逐字回落系统栈。button 等表单元素不吃 body 继承，得显式带回来。 */
     font-family: var(--kb-font, system-ui), "Noto Sans CJK SC", sans-serif;
     /* 键帽字号（issue #70）的缩放基准：--keycap-font-scale 只乘在基准上，
-     * 上限受角标让位约束（见 .kb-main/.t9-group 的 min/max 钳制）。 */
-    --kb-main-base: min(22px, calc(var(--kb-row-h, 44px) * 0.5));
+     * 上限受角标让位约束（.kb-main 的水位线改由 JS applyKeycapMetrics
+     * 算好写 --cap-*：CSS min()/max() 是 Chrome 79+，WebView 66 上整条
+     * font-size 静默失效，#90 遗留盲区）。t9 仍走 CSS 钳制。 */
     --kb-t9-base: min(20px, calc(var(--kb-row-h, 44px) * 0.46));
     user-select: none;
     -webkit-user-select: none;
@@ -789,31 +790,46 @@ body.landscape { --kb-gap: 4px; }
     touch-action: none;
 }
 .kb-key:active, .kb-key.active-touch, .sym-tab:active, .sym-tab.active-touch { background: var(--pressed); }
-.kb-key.kb-letter { flex-direction: column; gap: 2px; }
-/* Glyphs scale with the row height (dragging the keyboard
- * shorter shrinks the font too - nothing overflows the key face). */
-/* 键帽字号（issue #70）：基准 × --keycap-font-scale，再被「行高-16px」
- * 钳制（顶部角标区 12px + 底部留白 4px，#39-3 让位布局不能被大字号
- * 侵占）；max(base, …) 保证过矮行高下缩放退化为不缩放而非缩到基准以下。 */
-.kb-main { font-size: min(calc(var(--kb-main-base) * var(--keycap-font-scale, 1)), max(var(--kb-main-base), calc(var(--kb-row-h, 44px) - 16px))); line-height: 1; font-weight: 400; }
+.kb-key.kb-letter { position: relative; }
+/* 键帽水位线（#55 反馈 5）：上边/角标/主字/下边四段空白由 JS
+ * applyKeycapMetrics 按行高等比分配（3:6:4）——高度变化时三段留白
+ * 一起伸缩，不再让中间空隙独吞增量。角标钉顶槽、主字沉底槽，
+ * 双锚 absolute 使布局不依赖 flex 分配；44px 行高 100% 字号输出与
+ * 旧实现（top3/alt9/main22/bottom4）逐像素一致，存量视觉零跳变。 */
+.kb-key.kb-letter .kb-alt {
+    position: absolute;
+    top: var(--cap-top, 3px);
+    left: 0;
+    right: 0;
+    height: var(--cap-alt-size, 9px);
+    font-size: var(--cap-alt-size, 9px);
+    line-height: 1;
+}
+.kb-key.kb-letter .kb-main {
+    position: absolute;
+    bottom: var(--cap-bottom, 4px);
+    left: 0;
+    right: 0;
+    height: var(--cap-main-size, 22px);
+    font-size: var(--cap-main-size, 22px);
+    line-height: 1;
+    font-weight: 400;
+}
+/* 上下滑互换（issue #29-2）：整套锚点上下镜像（角标钉底、主字浮顶），
+ * 提示的是下滑值；zh-punct 墨形槽随通用镜像一起翻。 */
+body.flick-swap .kb-key.kb-letter .kb-alt { top: auto; bottom: var(--cap-top, 3px); }
+body.flick-swap .kb-key.kb-letter .kb-main { bottom: auto; top: var(--cap-bottom, 4px); }
+/* 极矮行高（<24px，横屏内容钳制兜底）：单行形态——藏角标、主字居中。 */
+body[data-cap-single="on"] .kb-key.kb-letter .kb-alt { display: none; }
+body[data-cap-single="on"] .kb-key.kb-letter .kb-main {
+    top: 0;
+    bottom: 0;
+    height: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 .kb-alt { color: var(--muted); font-size: 9px; line-height: 1; font-weight: 400; }
-/* 上下滑互换（issue #29-2）：小字提示跟着翻到主字下方（提示的是下滑值）；
- * 标点槽是墨形绝对定位，主字（inset 42%/12%）与 alt 要一起上下镜像，
- * 只翻 alt 会两个墨形挤在下半键（验收 2026-09-24 实录）。 */
-body.flick-swap .kb-key.kb-letter { flex-direction: column-reverse; }
-/* #39-3（间距）：角标钉键顶 3px、主字沉键底（上方留 4px）——两者分
- * 离到键的两端，任意行高都不重叠。1.3.1 首版只钉了角标、主字仍居
- * 中，44px 行高下主字上半与角标重叠约 2px（用户实测「y/6 上下间距
- * 也更小了」「显示重叠」）；更早的整体居中布局角标贴主字太近也是同
- * 一诉求（拉开间距）。互换布局（column-reverse）镜像：角标钉底、主
- * 字浮顶。 */
-.kb-key.kb-letter { position: relative; justify-content: flex-end; padding-bottom: 4px; }
-.kb-key.kb-letter .kb-alt { position: absolute; top: 3px; left: 0; right: 0; }
-body.flick-swap .kb-key.kb-letter { justify-content: flex-end; padding-top: 4px; padding-bottom: 0; }
-body.flick-swap .kb-key.kb-letter .kb-alt { top: auto; bottom: 3px; }
-body.flick-swap .kb-key[data-key="."] .kb-alt { top: auto; bottom: 4px; }
-body.flick-swap .kb-key.zh-punct .kb-main { top: 12%; right: 0; bottom: 42%; left: 0; }
-body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
 /* Follow-up: an armed Fn key turns its twelve letter caps into
  * F1..F12. Keep the label on one line and let the single visible glyph use
  * the key's normal centring; F10 is the widest label at the narrowest key. */
@@ -823,14 +839,15 @@ body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
     font-size: min(calc(16px * var(--keycap-font-scale, 1)), max(16px, calc(var(--kb-row-h, 44px) - 16px)));
     white-space: nowrap;
 }
-/* alt 隐藏后回中：flick-swap 起字母键是 alt 上/main 下的底锚
- * （justify-content:flex-end + padding-bottom），沿用初版的「正常
- * 居中」在底锚布局里变成低于键心 ~11px（9m Fn lock 断言抓到的存量
- * 回归）。显式回中，并压掉两个方向的 flick padding。 */
-.kb-key.kb-letter.fn-label {
+/* alt 隐藏后回中：字母键 absolute 双锚化后 flex 回中失效，显式
+ * 整键居中（9m Fn lock 断言的存量回归防线：不能低于键心）。 */
+.kb-key.kb-letter.fn-label .kb-main {
+    top: 0;
+    bottom: 0;
+    height: auto;
+    display: flex;
+    align-items: center;
     justify-content: center;
-    padding-top: 0;
-    padding-bottom: 0;
 }
 .kb-special { background: var(--special); font-size: min(calc(15px * var(--keycap-font-scale, 1)), max(15px, calc(var(--kb-row-h, 44px) - 16px))); font-weight: 500; }
 .kb-mod.active, .kb-mod.locked { color: var(--accent-text); background: var(--mod-active-bg, #103a24); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -1620,32 +1637,24 @@ body.landscape .num-grid { gap: 3px; }
 /* position:relative keeps the absolute spans inside the button - without it
    they resolve against the page and overlay the whole keyboard (every tap
    then hits the punct key - caught by the AVD suite). */
+/* 英文句点键（codex #55 方案 5）：原先主字整键居中+角标 top:4px 的
+ * 特例退役，进 letter 键统一水位线槽位（「.」沉主字槽、角标钉顶槽），
+ * 与字母键一致；flick-swap 镜像由通用规则覆盖。 */
 .kb-key[data-key="."] { position: relative; }
-.kb-key[data-key="."] .kb-main {
-    position: absolute;
-    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
-    top: 0; right: 0; bottom: 0; left: 0;
+
+/* Chinese punctuation uses centered ink shapes instead of font-dependent
+ * fullwidth side bearings. Text remains in the spans for accessibility.
+ * 墨形槽位（#55 反馈 5）：主墨形居中在主字槽、中点居中在角标槽，
+ * 随水位线 var 一起等比伸缩。flick-swap 由通用锚点镜像覆盖。 */
+.kb-key.zh-punct .kb-main {
+    top: auto;
+    bottom: var(--cap-bottom, 4px);
+    left: 0;
+    right: 0;
+    height: var(--cap-main-size, 22px);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: min(22px, calc(var(--kb-row-h, 44px) * 0.5));
-}
-/* Center the alt preview across the key width - the old
- * left-anchored preview read as off-center even after the .3em shift
- * (a 9px glyph barely moves under an em-relative transform). */
-.kb-key[data-key="."] .kb-alt {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 4px;
-    text-align: center;
-}
-
-/* Chinese punctuation uses centered ink shapes instead of font-dependent
- * fullwidth side bearings. Text remains in the spans for accessibility. */
-.kb-key.zh-punct .kb-main {
-    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
-    top: 42%; right: 0; bottom: 12%; left: 0;
     font-size: 0;
 }
 .kb-key.zh-punct .kb-main::after {
@@ -1657,8 +1666,8 @@ body.landscape .num-grid { gap: 3px; }
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 10'%3E%3Cpath d='M3.6 0C1.8 0 .5 1.3 .5 3c0 1.5 1 2.6 2.4 2.8C2.7 7 1.8 8.1 .5 9l.9 1C4.7 8.1 6.5 5.8 6.5 3.2 6.5 1.3 5.3 0 3.6 0Z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .kb-key.zh-punct .kb-alt {
-    top: 12%;
-    height: 22%;
+    top: var(--cap-top, 3px);
+    height: var(--cap-alt-size, 9px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3234,65 +3243,81 @@ body[data-floating="on"] .kb-row { margin-bottom: 4px; }
 body[data-floating="on"] #floatHandles { display: block; }
 #floatBar {
     position: absolute;
-    /* 卡片上沿的拖动条（把手上扩 26px 与 touchableRegion 对齐） */
+    /* 卡片上沿操作带：停靠(左)/移动(中)/缩放(右)三件（#55 UI 打磨，
+     * codex 方案——原右下角缩放角压 enter 键误触）。带高 32px + 4px
+     * 间距 = 36px，与 JS FLOAT_BAR_SPACE、REGION 上扩同源。 */
     left: var(--float-x, 40px);
-    top: calc(var(--float-y, 200px) - 26px);
+    top: calc(var(--float-y, 200px) - 36px);
     width: var(--float-w, 300px);
-    height: 26px;
+    height: 36px;
     display: flex;
-    align-items: center;
-    margin-left: 0;
+    align-items: flex-start;
+    justify-content: space-between;
 }
-#floatGrip.float-grip {
-    flex: 1;
-    height: 26px;
-    border-radius: 13px;
+/* 底板统一：24px 圆角方 + 轻投影（旧三横线把手又大又厚，用户实测
+ * 「太大太丑」）；触摸盒 32px 比视觉大 8px，手指不必精点。 */
+#floatDock, #floatResize {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    padding: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--card-sub, #9aa3ad);
+}
+/* 缩放是拖动面，touch-action:none 走 css_lint 白名单（float-resize，
+ * #55：IME 画布内 absolute 定位，永远不在 overflow-x 滚动容器里）。 */
+#floatResize.float-resize { touch-action: none; }
+#floatDock::before, #floatResize::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
     background: var(--card-bg, #2a2d33);
-    box-shadow: 0 4px 14px #00000044;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .16);
+}
+#floatDock svg, #floatResize svg {
+    position: absolute;
+    left: 7px;
+    top: 7px;
+}
+#floatDock:active, #floatResize:active { color: var(--accent-text, #7ed8a0); }
+#floatGrip.float-grip {
+    position: absolute;
+    /* 中央短拖动柄：触摸 72×32、视觉 64×16 胶囊（旧全宽 26px 条
+     * 视觉负担大）。绝对居中不参与 flex 分配，压不到两端按钮。 */
+    left: 50%;
+    top: 0;
+    margin-left: -36px;
+    width: 72px;
+    height: 32px;
+    background: transparent;
+    box-shadow: none;
     touch-action: none;
 }
-#floatGrip::after {
-    /* 把手视觉：三条短横线居中 */
+#floatGrip::before {
     content: "";
-    display: block;
-    margin: 11px auto 0;
-    width: 44px;
+    position: absolute;
+    left: 4px;
+    top: 8px;
+    width: 64px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--card-bg, #2a2d33);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .16);
+}
+#floatGrip::after {
+    content: "";
+    position: absolute;
+    left: 20px;
+    top: 14px;
+    width: 32px;
     height: 3px;
     border-radius: 2px;
     background: var(--card-sub, #9aa3ad);
-    box-shadow: 0 -7px 0 var(--card-sub, #9aa3ad), 0 7px 0 var(--card-sub, #9aa3ad);
 }
-#floatGrip:active { filter: brightness(1.15); }
-#floatDock {
-    margin-left: 8px;
-    width: 26px;
-    height: 26px;
-    border: 0;
-    border-radius: 13px;
-    background: var(--card-bg, #2a2d33);
-    color: var(--accent-text, #7ed8a0);
-    font-size: 14px;
-    line-height: 1;
-    box-shadow: 0 4px 14px #00000044;
-}
-#floatResize.float-resize {
-    position: absolute;
-    /* 卡片右下角缩放角 */
-    left: calc(var(--float-x, 40px) + var(--float-w, 300px) - 22px);
-    top: calc(var(--float-y, 200px) + var(--float-h, 220px) - 22px);
-    width: 22px;
-    height: 22px;
-    border-radius: 11px;
-    background: var(--card-bg, #2a2d33);
-    box-shadow: 0 4px 14px #00000044;
-    touch-action: none;
-}
-#floatResize::after {
-    content: "";
-    display: block;
-    margin: 9px auto 0;
-    width: 8px;
-    height: 8px;
-    border-right: 2px solid var(--card-sub, #9aa3ad);
-    border-bottom: 2px solid var(--card-sub, #9aa3ad);
-}
+#floatGrip:active::after, #floatGrip:active::before { filter: brightness(1.15); }

@@ -95,6 +95,7 @@
         "拖动缩放": "Drag to resize",
         "悬浮键盘请用右下角把手调整大小": "Use the corner handle to resize the floating keyboard",
         "硬件键盘形态下不支持悬浮键盘": "Floating keyboard is unavailable in hardware-keyboard mode",
+        "屏幕空间不足，无法悬浮": "Not enough screen space for floating keyboard",
         "已截断至 200 字": "Truncated to 200 characters",
         "通配符只能用一个": "Only one wildcard at a time",
         "日本語 Romaji": "Japanese",
@@ -357,7 +358,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.85';
+    const KEYBOARD_VERSION = '3.73.86';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -765,6 +766,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         lang: 'M12 2a10 10 0 100 20 10 10 0 000-20zm7.9 9h-3.4a15 15 0 00-1.2-5.7A8 8 0 0119.9 11zM12 4c.9 1.2 1.9 3.4 2.2 7H9.8c.3-3.6 1.3-5.8 2.2-7zM8.7 5.3A15 15 0 007.5 11H4.1a8 8 0 014.6-5.7zM4.1 13h3.4a15 15 0 001.2 5.7A8 8 0 014.1 13zM12 20c-.9-1.2-1.9-3.4-2.2-7h4.4c-.3 3.6-1.3 5.8-2.2 7zm3.3-1.3a15 15 0 001.2-5.7h3.4a8 8 0 01-4.6 5.7z',
         pad: 'M3 5h18a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V6a1 1 0 011-1zm1 2v8h16V7H4zM2 19h20v2H2v-2z',
         onehand: 'M4 4h10a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1zm1 2v12h8V6H5zm12 3h4v2h-4V9zm0 4h4v2h-4v-2z',
+        // #55 悬浮三件（codex 设计稿）：入口=四角活动范围+与边界分离的
+        // 小键盘（与 onehand 的左右分区拉开）；缩放=东北-西南双箭头
+        // （把手在右上、向外拉=放大）；停靠=上沿开口的窗口+向下箭头
+        // +底条（「下放回底部」，替换歧义的 ⌂）。
+        floating: 'M2 3h5v2H4v3H2zM17 3h5v5h-2V5h-3zM2 16h2v3h3v2H2zM20 16h2v5h-5v-2h3zM6 7h12v10H6zM8 9v6h8V9zM9 10h2v2H9zM13 10h2v2h-2zM9 13h6v1H9z',
+        resize: 'M14 3h7v7h-2V6.4l-4.8 4.8-1.4-1.4L17.6 5H14zM3 14h2v3.6l4.8-4.8 1.4 1.4L6.4 19H10v2H3z',
+        dock: 'M3 3h4v2H5v14h14V5h-2V3h4v18H3zM11 3h2v8h3l-4 4-4-4h3zM7 17h10v2H7z',
         timer: 'M12 3a9 9 0 100 18 9 9 0 000-18zm0 2a7 7 0 110 14 7 7 0 010-14zm-1 2h2v5.4l4 2.4-1 1.6-5-3V7z',
         snap: 'M12 8a2 2 0 110 4 2 2 0 010-4zM2 11h5v2H2v-2zm15 0h5v2h-5v-2zM11 3h2v5h-2V3zm0 13h2v5h-2v-5z',
         menu: 'M5 4h3v3H5V4zm5.5 0h3v3h-3V4zM16 4h3v3h-3V4zM5 10.5h3v3H5v-3zm5.5 0h3v3h-3v-3zm5.5 0h3v3h-3v-3zM5 17h3v3H5v-3zm5.5 0h3v3h-3v-3zm5.5 0h3v3h-3v-3z',
@@ -1195,6 +1203,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     // Keyboard height (the letter key height) is tunable per
     // orientation; clamped so four rows always stay inside the budget.
     const KB_ROW_MIN = 32;
+    // #55 悬浮顶部操作带（停靠/移动/缩放三件）占用的画布高度：32px
+    // 控件行 + 4px 间距。CSS 尺寸、clampFloatGeom 的 y 下限/高上限、
+    // syncFloatingRect 的 REGION 上扩三处共用此值，改要一起改。
+    const FLOAT_BAR_SPACE = 36;
     // 手写控制行键高（CSS px）：固定值，不参与 --kb-row-h 预算（键盘
     // 高度调节的弹性全部给书写面板）。
     const INK_CONTROL_ROW_H = 46;
@@ -7328,6 +7340,50 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const clamped = Number.isFinite(pct) ? Math.min(150, Math.max(50, pct)) : 100;
             document.body.dataset.keycapFont = clamped === 100 ? 'normal' : 'scaled';
             document.body.style.setProperty('--keycap-font-scale', String(clamped / 100));
+            this.applyKeycapMetrics();
+        }
+
+        /** 键帽水位线（#55 用户反馈 5）：按键上边/角标/主字/下边四段
+         * 空白按 3:6:4 分摊行高余量——高度变化（悬浮缩放、停靠高度
+         * 设置）时三段留白等比伸缩，不再让中间空隙独吞增量。44px 行
+         * 高 100% 字号的输出与旧实现逐像素一致（3/9/22/4px），存量
+         * 视觉零跳变。字号由 JS 算好写 var：CSS min()/max() 要
+         * Chrome 79+，WebView 66 上整条 font-size 静默失效（#90 遗留
+         * 盲区，顺手修掉）。 */
+        applyKeycapMetrics(H) {
+            const root = document.documentElement.style;
+            if (!(H > 0)) {
+                // 无参调用（字号变化等）：读回 --kb-row-h。fake DOM 测试
+                // 环境没有 getComputedStyle，回落 44 基准。
+                const rowStr = (typeof getComputedStyle === 'function')
+                    ? getComputedStyle(document.documentElement).getPropertyValue('--kb-row-h')
+                    : '';
+                H = parseFloat(rowStr) || 44;
+            }
+            const pct = Number(this.keycapFont);
+            const S = (Number.isFinite(pct) ? Math.min(150, Math.max(50, pct)) : 100) / 100;
+            const px = v => (Math.round(v * 100) / 100) + 'px';
+            if (H < 24) {
+                // 极矮行高（横屏内容钳制可到很低）：单行形态——藏角标、
+                // 主字居中，不硬塞 9px 角标 + 双行留白。
+                root.setProperty('--cap-alt-size', '0px');
+                root.setProperty('--cap-main-size', px(Math.min(Math.min(22, H * 0.5) * S, H * 0.8)));
+                document.body.dataset.capSingle = 'on';
+                return;
+            }
+            document.body.dataset.capSingle = 'off';
+            // 角标：9→11px 随行高缓涨（可读下限 9），不乘用户字号——
+            // 字号设置管主字，也避免角标变大反噬主字预算。
+            const A = Math.max(9, Math.min(11, 9 * H / 44));
+            // 主字：基准随行高（22px 封顶）×用户字号；总留白至少 20%
+            // 行高（大字号在矮键上提前触顶，留白的固定取舍）。
+            const M = Math.min(Math.min(22, H * 0.5) * S, H * 0.8 - A);
+            const R = H - A - M;
+            root.setProperty('--cap-alt-size', px(A));
+            root.setProperty('--cap-main-size', px(M));
+            root.setProperty('--cap-top', px(R * 3 / 13));
+            root.setProperty('--cap-gap', px(R * 6 / 13));
+            root.setProperty('--cap-bottom', px(R * 4 / 13));
         }
 
         // 用户字体（issue #70）：digest 非空时挂同源 face.css（@font-face
@@ -7389,6 +7445,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.showToast(t("硬件键盘形态下不支持悬浮键盘"));
                 return;
             }
+            // 空间门：内容下限+顶部操作带放不进画布时拒绝进入（codex
+            // 方案 4——min 尺寸覆盖画布上限会把操作带推出屏幕外）。
+            if (on) {
+                const probeW = Math.max(this.floatMinW(), Math.round(window.innerWidth * 0.82));
+                if (this.floatMinH(probeW) + FLOAT_BAR_SPACE + 8 > window.innerHeight) {
+                    this.showToast(t("屏幕空间不足，无法悬浮"));
+                    return;
+                }
+            }
             this.floating = on;
             if (on && !this.floatGeom) {
                 // 安全自动初值：宽度 82% 视口，高 55% 但不低于内容下限
@@ -7441,8 +7506,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         syncFloatingRect() {
             if (!this.floating || !this.floatGeom) return;
             const g = this.floatGeom;
-            // 把手也算可触摸区：上扩拖动条高度、外扩 4px。
-            const pad = 4, barH = 26;
+            // 顶部操作带（停靠/移动/缩放）也算可触摸区：上扩操作带
+            // 高度、四周外扩 4px——REGION 是单个包围矩形，带内控件
+            // 之间的透明间隙随之不可穿透（codex 方案 4 接受项）。
+            const pad = 4, barH = FLOAT_BAR_SPACE;
             this.call(() => {
                 if (typeof Native.setFloatingRect === 'function') {
                     Native.setFloatingRect(
@@ -7459,27 +7526,37 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (document.getElementById('floatBar')) return;
             const bar = document.createElement('div');
             bar.id = 'floatBar';
-            const grip = document.createElement('div');
-            grip.id = 'floatGrip';
-            grip.className = 'float-grip';
-            grip.setAttribute('aria-label', t("拖动移动"));
+            // #55 UI 打磨（codex 方案）：顶部操作带三件——停靠(左)/移动(中)
+            // /缩放(右)。缩放角从卡片右下角移上来，不再压住 enter 键
+            // （用户实测误触）；视觉小/触摸大分离（24px 底板、32px 触摸盒）。
             const dock = document.createElement('button');
             dock.id = 'floatDock';
             dock.type = 'button';
-            dock.textContent = '⌂';
             dock.setAttribute('aria-label', t("恢复停靠"));
+            const dockIcon = ICONS.dock.cloneNode(true);
+            dockIcon.setAttribute('width', '18');
+            dockIcon.setAttribute('height', '18');
+            dock.append(dockIcon);
             dock.addEventListener('click', e => {
                 e.stopPropagation();
                 this.setFloatingMode(false);
             });
+            const grip = document.createElement('div');
+            grip.id = 'floatGrip';
+            grip.className = 'float-grip';
+            grip.setAttribute('aria-label', t("拖动移动"));
             const resize = document.createElement('div');
             resize.id = 'floatResize';
             resize.className = 'float-resize';
             resize.setAttribute('aria-label', t("拖动缩放"));
-            bar.append(grip, dock);
+            const rzIcon = ICONS.resize.cloneNode(true);
+            rzIcon.setAttribute('width', '18');
+            rzIcon.setAttribute('height', '18');
+            resize.append(rzIcon);
+            bar.append(dock, grip, resize);
             const layer = document.createElement('div');
             layer.id = 'floatHandles';
-            layer.append(bar, resize);
+            layer.append(bar);
             document.body.append(layer);
 
             // 拖动：bar 的 grip 区。会话挂实例（cancelFloatGestures 可清，
@@ -7516,13 +7593,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             grip.addEventListener('touchend', endDrag);
             grip.addEventListener('touchcancel', endDrag);
 
-            // 缩放：右下角把手，宽高联动；先钳上限再抬下限，包围盒重钳位置
-            // （codex P2-5：max(min,…) 不得覆盖画布上限）。
+            // 缩放：右上把手（原右下角压 enter 键，用户实测误触）。锚定
+            // 卡片左下角——向右拖加宽、向上拖增高，左/下边不动；先钳
+            // 上限再抬下限，包围盒重钳位置（codex P2-5）。
             resize.addEventListener('touchstart', e => {
                 if (this.floatDragSession || this.floatResizeSession) return;
                 if (this.pressedKeys.size > 0) return;
                 const t0 = e.changedTouches[0];
                 this.floatResizeSession = { id: t0.identifier, sx: t0.clientX, sy: t0.clientY,
+                    gx: this.floatGeom.x, gy: this.floatGeom.y,
                     gw: this.floatGeom.w, gh: this.floatGeom.h };
                 e.preventDefault();
             }, { passive: false });
@@ -7532,8 +7611,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 for (const tch of e.changedTouches) {
                     if (tch.identifier !== rz.id) continue;
                     const g = this.floatGeom;
+                    const bottom = rz.gy + rz.gh;
                     g.w = rz.gw + tch.clientX - rz.sx;
-                    g.h = rz.gh + tch.clientY - rz.sy;
+                    g.h = rz.gh - (tch.clientY - rz.sy);
+                    g.x = rz.gx;
+                    // 先钳 w/h（上限由锚点两侧的剩余空间决定），再钉回
+                    // 左下角——max(min,…) 不得覆盖画布上限（P2-5）。
+                    g.w = Math.max(this.floatMinW(), Math.min(window.innerWidth - rz.gx - 4, g.w));
+                    g.h = Math.max(this.floatMinH(g.w), Math.min(bottom - FLOAT_BAR_SPACE, g.h));
+                    g.y = bottom - g.h;
                     this.clampFloatGeom();
                     this.applyFloatingGeom();
                 }
@@ -7565,9 +7651,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const g = this.floatGeom;
             const H = window.innerHeight, W = window.innerWidth;
             g.w = Math.max(this.floatMinW(), Math.min(W - 8, g.w));
-            g.h = Math.max(this.floatMinH(g.w), Math.min(H - 34, g.h));
+            // 高度上限留出顶部操作带（FLOAT_BAR_SPACE）+底部余量。
+            g.h = Math.max(this.floatMinH(g.w), Math.min(H - FLOAT_BAR_SPACE - 8, g.h));
             g.x = Math.max(0, Math.min(W - g.w - 4, g.x));
-            g.y = Math.max(26, Math.min(H - g.h - 4, g.y));
+            // 顶边下限=操作带整体（含间距）必须在画布内。
+            g.y = Math.max(FLOAT_BAR_SPACE + 4, Math.min(H - g.h - 4, g.y));
         }
 
         onFloatingResize() {
@@ -7876,7 +7964,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 { key: 'sound', id: 'toolSound', icon: 'sound', label: '按键声音' },
                 { key: 'assoc', id: 'toolAssoc', icon: 'assoc', label: '中文联想' },
                 { key: 'onehand', id: 'toolOneHand', icon: 'onehand', label: '单手模式' },
-                { key: 'floating', id: 'toolFloating', icon: 'onehand', label: '悬浮键盘' },
+                { key: 'floating', id: 'toolFloating', icon: 'floating', label: '悬浮键盘' },
                 { key: 'numpad', id: 'toolNumpad', icon: 'numpad', label: '数字键盘' },
                 { key: 'emoji', id: 'toolEmoji', icon: 'smiley', label: 'Emoji' },
                 { key: 'edit', id: 'editTool', icon: 'edit', label: '编辑工具' },
@@ -8328,6 +8416,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 });
             }
             this._lastHeightSig = signature;
+            // 水位线跟行高走（#55 反馈 5：四段空白等比分摊）。
+            this.applyKeycapMetrics(rowHeight);
             // Keep the floating card attached to the keyboard after the
             // native resize or a preview bridge changes its height.
             if (document.getElementById('heightCard').classList.contains('open')) {
@@ -12579,6 +12669,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             keyboard.applyModeHeight();
             keyboard.applyHeight();
         },
+        // 键帽水位线探针/驱动（#55）：无参=按当前 --kb-row-h 重算。
+        applyKeycapMetrics: H => keyboard.applyKeycapMetrics(H),
         onHeightSaved: ok => keyboard.onHeightSaved(ok),
         // Native all-up audit probe: read-only per call, but a reported
         // residue now triggers native-side remediation (cancelTouches

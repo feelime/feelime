@@ -1135,6 +1135,9 @@ test('cn-en composing guard is opt-in (#89): default keeps composing switch, gua
 
 test('floating keyboard: toggle enters canvas mode, rect reports, dock exits (#55 spike)', {since: '3.73.85'}, () => {
     const world = fresh();
+    // 悬浮画布铺满后的窗口（真实链路 setFloating→native 扩窗→resize；
+    // mock 先撑高，空间门按全屏高度放行）。
+    world.context.window.innerHeight = 830;
     world.tap(world.$('toolFloating'));
     equal(world.native.of('setFloating').length, 1, 'toggle notifies native canvas mode');
     equal(world.native.of('setFloating').slice(-1)[0].args[0], true, 'enters floating');
@@ -1143,11 +1146,45 @@ test('floating keyboard: toggle enters canvas mode, rect reports, dock exits (#5
     equal(rect.args[2] > 0 && rect.args[3] > 0, true, 'rect has positive size');
     equal(world.document.body.dataset.floating, 'on', 'canvas data-state on');
     equal(!!world.$('floatGrip'), true, 'drag handle built');
-    equal(!!world.$('floatDock'), true, 'dock button built');
-    equal(!!world.$('floatResize'), true, 'resize handle built');
-    world.tap(world.$('floatDock'));
+    // #55 UI 打磨：顶部操作带三件——停靠(左)/移动(中)/缩放(右，从
+    // 卡片右下角上移，不再压 enter）；dock/resize 用 SVG icon（⌂ 退役）。
+    const dock = world.$('floatDock');
+    const rz = world.$('floatResize');
+    equal(!!dock && !!rz, true, 'dock/resize handles built');
+    equal(dock.querySelector('svg') !== null, true, 'dock carries SVG icon');
+    equal(rz.querySelector('svg') !== null, true, 'resize carries SVG icon');
+    equal(rz.parentElement.id, 'floatBar', 'resize rides the top bar, off the enter key');
+    world.tap(dock);
     equal(world.native.of('setFloating').slice(-1)[0].args[0], false, 'dock exits floating');
     equal(world.document.body.dataset.floating, 'off', 'canvas data-state off');
+});
+
+test('keycap waterlines keep T:G:B proportional across row heights (#55 polish)', {since: '3.73.86'}, () => {
+    const world = fresh();
+    const root = world.document.documentElement.style;
+    const Feelime = world.context.window.Feelime;
+    for (const H of [32, 44, 60, 76]) {
+        Feelime.applyKeycapMetrics(H);
+        const T = parseFloat(root.getPropertyValue('--cap-top'));
+        const A = parseFloat(root.getPropertyValue('--cap-alt-size'));
+        const M = parseFloat(root.getPropertyValue('--cap-main-size'));
+        const G = parseFloat(root.getPropertyValue('--cap-gap'));
+        const B = parseFloat(root.getPropertyValue('--cap-bottom'));
+        equal(A >= 9 && A <= 11, true, H + 'px: alt hint stays in the readable 9-11px band');
+        equal(Math.abs(T + A + G + M + B - H) < 0.05, true, H + 'px: waterlines sum to the row height');
+        // 3:6:4 —— 高度变化时三段留白等比伸缩（用户反馈 5 的核心诉求）。
+        equal(Math.abs(G / T - 2) < 0.02 && Math.abs(B / T - 4 / 3) < 0.02, true,
+            H + 'px: T:G:B stays 3:6:4');
+    }
+    // 44px/100% 基准=旧实现逐像素一致（top3/alt9/main22/bottom4），存量零跳变。
+    Feelime.applyKeycapMetrics(44);
+    equal(root.getPropertyValue('--cap-top'), '3px', '44px baseline top=3px');
+    equal(root.getPropertyValue('--cap-alt-size'), '9px', '44px baseline alt=9px');
+    equal(root.getPropertyValue('--cap-main-size'), '22px', '44px baseline main=22px');
+    equal(root.getPropertyValue('--cap-bottom'), '4px', '44px baseline bottom=4px');
+    // 极矮行高：单行形态（藏角标、主字居中），不硬塞双行。
+    Feelime.applyKeycapMetrics(20);
+    equal(world.document.body.dataset.capSingle, 'on', 'sub-24px rows collapse to single-line caps');
 });
 
 test('backspace vertical gestures: down after up restores via native snapshot (3.73.77)', {since: '3.73.77'}, () => {
