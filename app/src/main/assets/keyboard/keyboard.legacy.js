@@ -349,7 +349,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.89";
+  const KEYBOARD_VERSION = "3.73.92";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -7019,6 +7019,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      *  prune 放行超量）；gap 同步实测（chrome66 上 flex gap 失效
      *  读出 0，预算反而更宽裕，自洽）。 */
     toolbarCapacity() {
+      if (this.floating && this._ftoolPruneCap != null) return this._ftoolPruneCap;
       const bar = document.getElementById("candidateBar");
       const setup = document.getElementById("setupButton");
       const hide = document.getElementById("hide");
@@ -7040,24 +7041,26 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (!this.floating) {
         root.removeProperty("--ftool-s");
         root.removeProperty("--ftool-icon");
+        this._ftoolPruneCap = null;
+        this.pruneOverflowTools();
         return;
       }
       const bar = document.getElementById("candidateBar");
       if (!bar || !bar.clientWidth) return;
-      const cand = document.getElementById("candidates");
-      if (cand && !cand.hidden && (cand.textContent || "").length > 0) return;
-      const tools = [...bar.querySelectorAll(".tool")].filter((el) => !el.hidden && el.offsetWidth > 0);
-      const N = tools.length;
+      const domIds = Object.values(TOOL_CATALOG);
+      const fixedCount = [...bar.querySelectorAll(".tool")].filter((el) => !el.hidden && el.id && domIds.indexOf(el.id) < 0).length;
+      const nCfg = this.toolbarLeft.length + this.toolbarRight.length;
+      const N = fixedCount + nCfg;
       if (N < 1) return;
       const gapRaw = typeof getComputedStyle === "function" ? getComputedStyle(bar).gap : "";
       const G = Math.max(2, parseFloat(gapRaw) || 0);
-      const B = bar.clientWidth;
-      const K = Math.floor(B / (18 + G));
-      const M = Math.min(N, K);
-      if (M < 1) return;
-      const size = Math.max(18, Math.min(26, (B - M * G) / M));
-      root.setProperty("--ftool-s", Math.round(size * 10) / 10 + "px");
-      root.setProperty("--ftool-icon", Math.round(size / 2 * 10) / 10 + "px");
+      const B = Math.max(0, bar.clientWidth - G - 8);
+      const K = Math.floor((B + G) / (18 + G));
+      const M = Math.max(fixedCount, Math.min(N, K));
+      const size = Math.max(18, Math.min(26, (B - (M - 1) * G) / M));
+      root.setProperty("--ftool-s", Math.floor(size * 10) / 10 + "px");
+      root.setProperty("--ftool-icon", Math.floor(size / 2 * 10) / 10 + "px");
+      this._ftoolPruneCap = Math.max(1, M - fixedCount);
       this.pruneOverflowTools();
     }
     /** 编辑态下按组内索引移动 id（拖拽落位）。跨组拖入满组（4）时

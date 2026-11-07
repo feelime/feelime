@@ -137,6 +137,13 @@ class AsrEngine(
     @Volatile var lastHardLoadAtMs: Long = 0
         private set
 
+    /** 引擎当前是否已就绪（recognizer 在内存且与当前模型选择一致）。
+     *  startVoice 据此跳过例行的 loading 态推送——例行等待只有
+     *  ~100ms，推 loading 会让语音浮层「闪一下」（用户实测），引擎
+     *  已热时 UI 直接从 idle 到聆听。 */
+    @Synchronized fun isWarm(): Boolean =
+        recognizer != null && loadedModels == selectedModels()
+
     @Synchronized fun start() {
         if (released.get()) return
         if (running.get() || !starting.compareAndSet(false, true)) return
@@ -228,9 +235,12 @@ class AsrEngine(
     /** Resolve all roles at each start: optional downloads and backend
      * changes must take effect without restarting the IME service. */
     private fun ensureRecognizer(): Boolean {
-        listener.onLoading()
         val selected = selectedModels()
         if (recognizer != null && loadedModels == selected) return true
+        // onLoading 只在真要加载时推（缓存命中的热启动不推）——例行
+        // 等待 ~100ms 就转聆听，推 loading 只会让浮层「闪一下」（用户
+        // 实测）。startVoice 侧同口径（isWarm 时跳过 loading 态推送）。
+        listener.onLoading()
         releaseRecognizerChain()
         val started = SystemClock.elapsedRealtime()
         val source = selected.sourceFor("asr-streaming")

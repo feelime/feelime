@@ -358,7 +358,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.89';
+    const KEYBOARD_VERSION = '3.73.92';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -8147,6 +8147,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          *  prune 放行超量）；gap 同步实测（chrome66 上 flex gap 失效
          *  读出 0，预算反而更宽裕，自洽）。 */
         toolbarCapacity() {
+            // 悬浮态与 fitFloatingToolbar 同源：fit 已按连续缩放后的
+            // 尺寸算好配置组名额，直接用——旧实测口径（26px 档）会把
+            // fit 刚算出「19px 全放下」的场景再裁一轮（循环锁死）。
+            if (this.floating && this._ftoolPruneCap != null) return this._ftoolPruneCap;
             const bar = document.getElementById('candidateBar');
             const setup = document.getElementById('setupButton');
             const hide = document.getElementById('hide');
@@ -8171,36 +8175,49 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!this.floating) {
                 root.removeProperty('--ftool-s');
                 root.removeProperty('--ftool-icon');
+                this._ftoolPruneCap = null;
+                this.pruneOverflowTools();
                 return;
             }
             const bar = document.getElementById('candidateBar');
             if (!bar || !bar.clientWidth) return;
-            // 互斥语义（#47 复盘）：空闲态候选只是 flex 弹性空壳（宽度=
-            // 工具吃剩的），组合态工具让位全藏——正常态下候选都不挤占
-            // 工具预算。**不能扣壳宽**：它是弹性值，扣掉后 B 恒等于工具
-            // 当前占宽，size 自锁在上一轮结果（用户实测「拉宽 icon 不
-            // 变大」的根因）。候选真有内容=让位破态/组合中，工具该藏，
-            // 不拟合。
-            const cand = document.getElementById('candidates');
-            if (cand && !cand.hidden && (cand.textContent || '').length > 0) return;
-            // 可见工具（audit/让位对账后）：含固定键与配置组
-            const tools = [...bar.querySelectorAll('.tool')]
-                .filter(el => !el.hidden && el.offsetWidth > 0);
-            const N = tools.length;
+            // 互斥语义（#47 复盘）：候选与工具永不同时有内容——组合中
+            // 工具已被让位对账全藏（配置组仍会被 prune 用名额对账），
+            // 候选壳是 flex 弹性（宽度=工具吃剩的），不扣也不做早退
+            // （旧版「候选有内容就 return」在真机上被残留文本全程跳过，
+            // var 从未写、fallback 恒 26px——用户实测 icon 从没变过）。
+            //
+            // 需求从**配置数组**推（DOM 可见数会被上一轮 prune 裁掉，
+            // fit→prune→fit 循环引用把尺寸锁死在 26px——用户三报的
+            // 根因）：N = 固定键（setup/hide 等，不在 TOOL_CATALOG 映射
+            // 的栏上 .tool）+ toolbarLeft/Right 配置数。
+            const domIds = Object.values(TOOL_CATALOG);
+            const fixedCount = [...bar.querySelectorAll('.tool')]
+                .filter(el => !el.hidden && el.id && domIds.indexOf(el.id) < 0).length;
+            const nCfg = this.toolbarLeft.length + this.toolbarRight.length;
+            const N = fixedCount + nCfg;
             if (N < 1) return;
             const gapRaw = typeof getComputedStyle === 'function'
                 ? getComputedStyle(bar).gap : '';
             const G = Math.max(2, parseFloat(gapRaw) || 0);
-            const B = bar.clientWidth;
-            // 先按 18px 下限求最大可容数，再在名额内均分剩余宽（上限 26）
-            const K = Math.floor(B / (18 + G));
-            const M = Math.min(N, K);
-            if (M < 1) return;
-            const size = Math.max(18, Math.min(26, (B - M * G) / M));
-            root.setProperty('--ftool-s', (Math.round(size * 10) / 10) + 'px');
-            root.setProperty('--ftool-icon', (Math.round(size / 2 * 10) / 10) + 'px');
-            // 尺寸变了容量跟着变：按新实测重截尾（var 生效后的
-            // offsetWidth 同步可读；M 名额外多出的由 prune 藏）。
+            // 预算预留候选壳位：壳与工具间还有一个 flex gap + 壳被挤压
+            // 后的 ~4px 残留（AVD 实测：不预留时 9×18.6+8G 放得下、却
+            // 仍把收起键顶出卡片）。
+            const B = Math.max(0, bar.clientWidth - G - 8);
+            // M 个按钮 M-1 个间隔：M×S+(M-1)×G ≤ B → 18px 触摸下限
+            // 的最大可容数 K；名额内均分得 size（上限 26 与首版档位齐）。
+            const K = Math.floor((B + G) / (18 + G));
+            // 极窄时至少保固定键（setup/收起）本体显示。
+            const M = Math.max(fixedCount, Math.min(N, K));
+            const size = Math.max(18, Math.min(26, (B - (M - 1) * G) / M));
+            // 尺寸向下取整（0.1px）：均分值 round 后 M 项累加会超出 B
+            // 0.1-1px（AVD 实测 9×18.7+40=208.3>208），flex:none 的
+            // 工具不缩、把收起键顶出卡片。
+            root.setProperty('--ftool-s', (Math.floor(size * 10) / 10) + 'px');
+            root.setProperty('--ftool-icon', (Math.floor(size / 2 * 10) / 10) + 'px');
+            // prune 的名额与 fit 同源：配置组可显示 M-fixedCount 个，
+            // 杜绝 capacity 按 26px 实测口径二次裁剪。
+            this._ftoolPruneCap = Math.max(1, M - fixedCount);
             this.pruneOverflowTools();
         }
 

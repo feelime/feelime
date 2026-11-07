@@ -140,6 +140,9 @@ class FakeElement {
         this._scrollLeft = 0;
     }
     get clientWidth() {
+        // 测试专用覆盖洞（#55 fit 用例：fake DOM 无布局引擎，窄卡场景
+        // 靠它喂桩宽；正常元素不受影响）。
+        if (this._clientWidthOverride != null) return this._clientWidthOverride;
         if (!this._scrollable) return 0;
         // 翻页条（.qs-pages，tile 网格）：视口宽 = 一页宽，scrollLeft
         // 以「页」为单位（2 页内容 → max 只有一页的余量）。

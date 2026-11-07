@@ -1738,8 +1738,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         voiceCancelRequested = false
         acceptAsrResults = true
         currentPartial = ""
+        // 例行的 loading 态推送只发生在引擎未热时（真加载要给用户看
+        // 「正在加载」）；已热时跳过——例行等待只有 ~100ms，推 loading
+        // 只会让浮层「闪一下」还看不清内容（用户实测反馈）。冷启动
+        // 的 loading 仍由 ensureRecognizer 的 onLoading 推。
         state = VoiceState.LOADING
-        pushState()
+        if (!engine.isWarm()) pushState()
         coordinator.beginVoiceSession(
             isCurrent = { inputConnectionGeneration == editorGeneration },
         ) {
