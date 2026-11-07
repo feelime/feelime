@@ -130,6 +130,13 @@ class AsrEngine(
     private var postProcessor: TranscriptPostProcessor? = null
     private var loadedModels: AsrModelSnapshot? = null
 
+    /** 最近一次「真加载」（recognizer 缓存未命中、从盘重建链）完成的
+     *  时间戳（elapsedRealtime，0=尚未加载过）。语音就绪震动（公众号
+     *  NULL）用它区分「未加载→已加载」与「每次 startVoice 例行走的
+     *  loading 态」——后者不震。空闲卸载后的重载同样算真加载。 */
+    @Volatile var lastHardLoadAtMs: Long = 0
+        private set
+
     @Synchronized fun start() {
         if (released.get()) return
         if (running.get() || !starting.compareAndSet(false, true)) return
@@ -244,6 +251,7 @@ class AsrEngine(
                 .getOrNull()
             postProcessor = TranscriptPostProcessor(context, modelStore, selected.sourceFor("punctuation"))
             loadedModels = selected
+            lastHardLoadAtMs = SystemClock.elapsedRealtime()
         } catch (failure: Throwable) {
             releaseRecognizerChain()
             throw failure

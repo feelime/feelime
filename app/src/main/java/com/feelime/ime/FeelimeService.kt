@@ -48,6 +48,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      * main thread; one scrub call handles its whole bounded delta. */
     private val cursorQueryExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private lateinit var engine: AsrEngine
+    /** 语音就绪震动（公众号 NULL）已消费过的真加载时间戳：与
+     *  AsrEngine.lastHardLoadAtMs 比对，每次真加载至多震一次。 */
+    private val lastVoiceReadyHapticLoadMs = java.util.concurrent.atomic.AtomicLong(0L)
     /** 手写识别（design/handwriting.md）：独立于 EngineCoordinator，见 §5.1。 */
     private var handwritingEngine: InkEngine? = null
     private lateinit var editorPort: InputConnectionEditorPort
@@ -3326,10 +3329,18 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         }
 
         /** 语音就绪震动（公众号 NULL）：模型加载完成转聆听那一刻的提示震，
-         *  独立于按键震动开关；震感曲线复用 playKeyHaptic（跟用户的强度档）。 */
+         *  独立于按键震动开关；震感曲线复用 playKeyHaptic（跟用户的强度档）。
+         *  只对「新一次真加载」震——startVoice 每次都例行走 loading 态
+         *  （等 mic/引擎 warm-up），模型已在内存的再次进入不震（用户
+         *  实测「再次进入仍震」）；空闲卸载后的重载算新加载，会震。 */
         @JavascriptInterface
         fun voiceReadyHaptic(token: String) = guarded(token, limited = false) {
-            if (readVoiceReadyHapticEnabled(this@FeelimeService)) playKeyHaptic()
+            if (!readVoiceReadyHapticEnabled(this@FeelimeService)) return@guarded
+            val loaded = engine.lastHardLoadAtMs
+            if (loaded > 0L && loaded != lastVoiceReadyHapticLoadMs.get()) {
+                lastVoiceReadyHapticLoadMs.set(loaded)
+                playKeyHaptic()
+            }
         }
 
         private fun playKeyHaptic() {

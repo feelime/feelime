@@ -358,7 +358,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.88';
+    const KEYBOARD_VERSION = '3.73.89';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -8175,7 +8175,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             const bar = document.getElementById('candidateBar');
             if (!bar || !bar.clientWidth) return;
+            // 互斥语义（#47 复盘）：空闲态候选只是 flex 弹性空壳（宽度=
+            // 工具吃剩的），组合态工具让位全藏——正常态下候选都不挤占
+            // 工具预算。**不能扣壳宽**：它是弹性值，扣掉后 B 恒等于工具
+            // 当前占宽，size 自锁在上一轮结果（用户实测「拉宽 icon 不
+            // 变大」的根因）。候选真有内容=让位破态/组合中，工具该藏，
+            // 不拟合。
             const cand = document.getElementById('candidates');
+            if (cand && !cand.hidden && (cand.textContent || '').length > 0) return;
             // 可见工具（audit/让位对账后）：含固定键与配置组
             const tools = [...bar.querySelectorAll('.tool')]
                 .filter(el => !el.hidden && el.offsetWidth > 0);
@@ -8184,8 +8191,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const gapRaw = typeof getComputedStyle === 'function'
                 ? getComputedStyle(bar).gap : '';
             const G = Math.max(2, parseFloat(gapRaw) || 0);
-            const candW = cand && !cand.hidden ? cand.offsetWidth : 0;
-            const B = bar.clientWidth - candW;
+            const B = bar.clientWidth;
             // 先按 18px 下限求最大可容数，再在名额内均分剩余宽（上限 26）
             const K = Math.floor(B / (18 + G));
             const M = Math.min(N, K);

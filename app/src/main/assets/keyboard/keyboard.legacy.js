@@ -349,7 +349,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.88";
+  const KEYBOARD_VERSION = "3.73.89";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -7045,13 +7045,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const bar = document.getElementById("candidateBar");
       if (!bar || !bar.clientWidth) return;
       const cand = document.getElementById("candidates");
+      if (cand && !cand.hidden && (cand.textContent || "").length > 0) return;
       const tools = [...bar.querySelectorAll(".tool")].filter((el) => !el.hidden && el.offsetWidth > 0);
       const N = tools.length;
       if (N < 1) return;
       const gapRaw = typeof getComputedStyle === "function" ? getComputedStyle(bar).gap : "";
       const G = Math.max(2, parseFloat(gapRaw) || 0);
-      const candW = cand && !cand.hidden ? cand.offsetWidth : 0;
-      const B = bar.clientWidth - candW;
+      const B = bar.clientWidth;
       const K = Math.floor(B / (18 + G));
       const M = Math.min(N, K);
       if (M < 1) return;
