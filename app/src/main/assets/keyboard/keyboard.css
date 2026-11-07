@@ -569,7 +569,8 @@ body[data-side-content="blank"] #sideGrid { display: none; }
 #softKeyboard { isolation: isolate; }
 #bgImage {
     position: absolute;
-    inset: 0;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: 0; right: 0; bottom: 0; left: 0;
     /* 负 z-index:画在容器背景之上、键区等普通流内容之下（z-index:0
      * 的定位元素会画到普通流之上，把键全盖住）。isolate 把 context
      * 锁在 softKeyboard 内，图不会沉到键盘窗口之外。 */
@@ -811,7 +812,7 @@ body.flick-swap .kb-key.kb-letter { flex-direction: column-reverse; }
 body.flick-swap .kb-key.kb-letter { justify-content: flex-end; padding-top: 4px; padding-bottom: 0; }
 body.flick-swap .kb-key.kb-letter .kb-alt { top: auto; bottom: 3px; }
 body.flick-swap .kb-key[data-key="."] .kb-alt { top: auto; bottom: 4px; }
-body.flick-swap .kb-key.zh-punct .kb-main { inset: 12% 0 42%; }
+body.flick-swap .kb-key.zh-punct .kb-main { top: 12%; right: 0; bottom: 42%; left: 0; }
 body.flick-swap .kb-key.zh-punct .kb-alt { top: auto; bottom: 12%; }
 /* Follow-up: an armed Fn key turns its twelve letter caps into
  * F1..F12. Keep the label on one line and let the single visible glyph use
@@ -1445,7 +1446,8 @@ body.landscape .ink-rail .kb-key {
      * 固有高度顶进 flex——键盘窗口变矮后（编辑框上移/旋转/拖高）书写区
      * 缩不回去，底行被推出窗外（AVD 实测 pad 底到 567 > 视口 472）。 */
     position: absolute;
-    inset: 0;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: 0; right: 0; bottom: 0; left: 0;
     width: 100%;
     height: 100%;
     /* 书写区不是滚动容器：封死浏览器默认手势（长按选择/双击缩放），
@@ -1621,7 +1623,8 @@ body.landscape .num-grid { gap: 3px; }
 .kb-key[data-key="."] { position: relative; }
 .kb-key[data-key="."] .kb-main {
     position: absolute;
-    inset: 0;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: 0; right: 0; bottom: 0; left: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1641,7 +1644,8 @@ body.landscape .num-grid { gap: 3px; }
 /* Chinese punctuation uses centered ink shapes instead of font-dependent
  * fullwidth side bearings. Text remains in the spans for accessibility. */
 .kb-key.zh-punct .kb-main {
-    inset: 42% 0 12%;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: 42%; right: 0; bottom: 12%; left: 0;
     font-size: 0;
 }
 .kb-key.zh-punct .kb-main::after {
@@ -2116,14 +2120,16 @@ body.landscape #ctrlLayer .ctrl-close svg { width: 12px; height: 12px; }
 #voiceOverlay {
     display: none;
     position: absolute;
-    inset: 0;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: 0; right: 0; bottom: 0; left: 0;
     z-index: 39;
     pointer-events: auto;
 }
 #voiceOverlay.open { display: block; }
 #voiceScrim {
     position: absolute;
-    inset: 0;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: 0; right: 0; bottom: 0; left: 0;
     z-index: 0;
     background: var(--scrim);
 }
@@ -2145,9 +2151,13 @@ body.landscape #ctrlLayer .ctrl-close svg { width: 12px; height: 12px; }
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 9px;
     max-height: calc(100% - 12px);
 }
+
+/* #90 兼容：flex gap 是 84+，旧 WebView 忽略后纵向间距塌零——改子
+ * 元素 margin 等价模拟（flex 无 margin 折叠；display:none 的相邻兄弟
+ * 不占位，与 gap 语义一致）。撤销按钮 absolute 脱流不参与。 */
+#voiceCard > * + *:not(#voiceClose) { margin-top: 9px; }
 /* mic 浮层：撤销回右上角（小、描边、能看明白即可），
  * 说完了居中实心大按钮（主要出口）。 */
 #voiceActions {
@@ -2160,7 +2170,6 @@ body.landscape #ctrlLayer .ctrl-close svg { width: 12px; height: 12px; }
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 5px;
     width: 58%;
     min-height: 36px;
     padding: 0 12px;
@@ -2172,6 +2181,7 @@ body.landscape #ctrlLayer .ctrl-close svg { width: 12px; height: 12px; }
     font-weight: 650;
     line-height: 1;
 }
+#voiceDone > * + * { margin-left: 5px; } /* gap 兼容（#90） */
 #voiceDone:active, #voiceDone.active-touch {
     background: var(--accent-text);
 }
@@ -2181,7 +2191,6 @@ body.landscape #ctrlLayer .ctrl-close svg { width: 12px; height: 12px; }
     right: 6px;
     display: flex;
     align-items: center;
-    gap: 4px;
     height: 24px;
     padding: 0 8px;
     border: 1px solid var(--line);
@@ -2191,6 +2200,7 @@ body.landscape #ctrlLayer .ctrl-close svg { width: 12px; height: 12px; }
     font-size: 11px;
     line-height: 1;
 }
+#voiceClose > * + * { margin-left: 4px; } /* gap 兼容（#90） */
 #voiceClose:active, #voiceClose.active-touch {
     background: var(--pressed);
     color: var(--card-text);
@@ -2224,9 +2234,9 @@ body.landscape #ctrlLayer .ctrl-close svg { width: 12px; height: 12px; }
 #voiceOverlay.hold #voiceClose { display: none; }
 #voiceOverlay.hold #voiceCard {
     /* 提示挪到卡片外，卡片收紧：框住状态+识别内容+松手上屏即可。 */
-    gap: 6px;
     padding-bottom: 11px;
 }
+#voiceOverlay.hold #voiceCard > * + *:not(#voiceClose) { margin-top: 6px; }
 #voiceOverlay.hold #voiceHint { min-height: 0; }
 /* The recording dot became a half-height mic icon (20px) - the
  * pulse animates the icon itself (colour pulse via opacity), both themes. */
@@ -2272,8 +2282,8 @@ body.landscape #voiceCard {
     top: 50%;
     width: 200px;
     padding: 10px 12px 9px;
-    gap: 5px;
 }
+body.landscape #voiceCard > * + *:not(#voiceClose) { margin-top: 5px; }
 body.landscape #voiceDone { min-height: 30px; font-size: 13px; width: 58%; }
 body.landscape #voiceClose { top: 4px; right: 4px; height: 21px; padding: 0 7px; font-size: 10px; }
 /* 横屏卡片同锚点 42%（原 50% 会把下方胶囊挤进空格键行）。 */
@@ -2448,7 +2458,8 @@ body.editing .phrase-add, body.editing .phrase-cancel { padding: 6px 10px; }
  * type sizes reuse the main candidate/key language. */
 #expandLayer {
     position: absolute;
-    inset: 0;
+    /* inset 简写展开（#90）：inset 是 Chromium 87+，旧 WebView 忽略整条声明 */
+    top: 0; right: 0; bottom: 0; left: 0;
     display: flex;
     flex-direction: column;
     background: var(--bg);
@@ -2458,8 +2469,8 @@ body.editing .phrase-add, body.editing .phrase-cancel { padding: 6px 10px; }
 #expandLayer[hidden] { display: none; }
 /* 候选展开模式避让侧边条（issue #15）：让位的侧边条继续可用——浏览
  * 候选时正好用得上复制/剪切/光标键。 */
-body[data-one-hand="left"] #expandLayer { inset: 0 var(--side-pad-w, 64px) 0 0; }
-body[data-one-hand="right"] #expandLayer { inset: 0 0 0 var(--side-pad-w, 64px); }
+body[data-one-hand="left"] #expandLayer { top: 0; right: var(--side-pad-w, 64px); bottom: 0; left: 0; }
+body[data-one-hand="right"] #expandLayer { top: 0; right: 0; bottom: 0; left: var(--side-pad-w, 64px); }
 body.expanded #preeditLine { display: none; }
 .expand-head {
     flex: none;
