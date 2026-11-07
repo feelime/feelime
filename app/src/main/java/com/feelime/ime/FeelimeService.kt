@@ -331,6 +331,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     // band is transparent and NOT touchable until this flips (see
     // onComputeInsets).
     private var overlayOpen = false
+    // #55 悬浮键盘：画布模式（IME 窗口铺满可用区、零占位 REGION 触摸）。
+    // floatingRect 是 JS 上报的卡片矩形（css px，WebView 口径）。
+    private var floatingActive = false
+    private var floatingRect: android.graphics.RectF? = null
     // Last notified bottom safe area; never used as the current measurement.
     private var lastSafeBottom = -1
     // #39：最近一次已采纳的挖孔侧安全区（onBottomInsetChanged 比较键之一）。
@@ -3917,6 +3921,29 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         fun setKeyboardHeight(heightCssPx: Int, token: String) =
             guarded(token, limited = false) { setKeyboardHeightInternal(heightCssPx, immediate = false) }
 
+        /** #55 悬浮键盘开关（spike）：切画布模式并强制重测窗口。 */
+        @JavascriptInterface
+        fun setFloating(on: Boolean, token: String) {
+            guarded(token, limited = false) {
+                if (floatingActive != on) {
+                    floatingActive = on
+                    if (!on) floatingRect = null
+                    onMain {
+                        inputViewHost?.requestLayout()
+                        keyboardView?.requestApplyInsets()
+                    }
+                }
+            }
+        }
+
+        /** #55 悬浮卡片矩形上报（css px）：驱动 touchableRegion。 */
+        @JavascriptInterface
+        fun setFloatingRect(left: Float, top: Float, width: Float, height: Float, token: String) =
+            guarded(token, limited = false) {
+                floatingRect = android.graphics.RectF(left, top, left + width, top + height)
+                onMain { keyboardView?.requestApplyInsets() }
+            }
+
         /** 高度卡「保存」按钮的显式提交：立即落盘。debounce 的 300ms
          *  窗口内收起键盘，IME 进程会被冻结/杀，pending 的 flush 永不
          *  执行——pref 丢、弹出（re-create）读回旧高度，用户看到的正是
@@ -4965,7 +4992,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
  // The view carries the transparent popup band on
             // top; onComputeInsets keeps the app sized to the keyboard
             // alone (contentTopInsets = band).
-            val total = height + floatBandPx()
+            // #55 悬浮：画布铺满真屏可用区（卡片在画布内浮动，REGION
+            // 触摸限定卡片矩形——宿主零占位）。
+            val total = if (floatingActive) {
+                realHeightPixels()
+            } else {
+                height + floatBandPx()
+            }
             // Height settled at a new value: tell the JS once more AFTER the
             // layout. Hello's deferred re-derives land at arbitrary offsets
             // from this measure and can bake a mid-flight row budget that

@@ -759,6 +759,12 @@ class MockNative {
     setKeyboardHeight(totalCssPx, token) {
         this._record('setKeyboardHeight', [totalCssPx, token]);
     }
+    setFloating(on, token) {
+        this._record('setFloating', [on, token]);
+    }
+    setFloatingRect(left, top, width, height, token) {
+        this._record('setFloatingRect', [left, top, width, height, token]);
+    }
     // design §15: the settings page's native table mirror.
     customKeys(token) {
         this._record('customKeys', [token]);

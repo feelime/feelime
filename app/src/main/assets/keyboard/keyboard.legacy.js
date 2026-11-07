@@ -80,6 +80,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u91CD\u8F93": "Restart",
     "\u8BE5\u952E\u76D8\u8FD8\u5728\u51C6\u5907\u4E2D": "That keyboard is still preparing",
     "\u62FC\u97F3\u7EC4\u5408\u4E2D\uFF0C\u5148\u4E0A\u5C4F\u518D\u5207\u6362": "Finish the composition before switching",
+    "\u60AC\u6D6E\u952E\u76D8": "Floating keyboard",
+    "\u6062\u590D\u505C\u9760": "Dock keyboard",
+    "\u62D6\u52A8\u79FB\u52A8": "Drag to move",
+    "\u62D6\u52A8\u7F29\u653E": "Drag to resize",
     "\u5DF2\u622A\u65AD\u81F3 200 \u5B57": "Truncated to 200 characters",
     "\u901A\u914D\u7B26\u53EA\u80FD\u7528\u4E00\u4E2A": "Only one wildcard at a time",
     "\u65E5\u672C\u8A9E Romaji": "Japanese",
@@ -342,7 +346,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.84";
+  const KEYBOARD_VERSION = "3.73.85";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -671,6 +675,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     sound: "toolSound",
     assoc: "toolAssoc",
     onehand: "toolOneHand",
+    // #55 悬浮键盘：动作型工具（默认不上栏，编辑仓库自选）。
+    floating: "toolFloating",
     numpad: "toolNumpad",
     emoji: "toolEmoji",
     // #39-10 编辑工具条：替换键区的编辑面板（方向键/扩选/全选/
@@ -1751,6 +1757,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.landscapeOpacity = 100;
       this.keyBubble = false;
       this.cnEnGuard = false;
+      this.floating = false;
+      this.floatGeom = null;
       this.bubbleLinger = 400;
       this.themeMode = "auto";
       this.toolbarLeft = TOOLBAR_DEFAULT.left.slice();
@@ -2147,6 +2155,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           if (!this.helloOrientation) {
             this.applyOrientation(window.innerWidth > window.innerHeight);
           }
+          this.onFloatingResize();
           this.applyHeight();
           if ((this.oneHand || 0) !== 0) this.applyOneHand();
           document.querySelectorAll(".sym-custom-row").forEach((strip) => this.fitCustomRow(strip));
@@ -6343,6 +6352,190 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     // 单手模式（issue #15）：data 属性驱动 CSS 布局（键区同侧让位 +
     // #sidePad 贴另一侧占满让位条），侧边内容三态与自定义图在这里一并
     // 落地。位置纯 CSS（含安全区对齐），无需 JS 定位。
+    /* ===== #55 悬浮键盘（spike：画布模式） =====
+     * native 把 IME 窗口铺满可用区（零占位，REGION 触摸限定卡片），
+     * JS 在画布内移动/缩放真实布局（不用 transform scale——字体和
+     * 触摸目标会一起缩水，clientHeight 口径也会漂）。几何上报 native
+     * 驱动 touchableRegion；spike 首版内存态，松手上报一次。 */
+    setFloatingMode(on) {
+      if (on === this.floating) return;
+      this.floating = on;
+      if (on && !this.floatGeom) {
+        const w = Math.round(window.innerWidth * 0.82);
+        const h = Math.min(
+          Math.round(window.innerHeight * 0.55),
+          Math.round(w * 0.72)
+        );
+        this.floatGeom = {
+          x: window.innerWidth - w - 8,
+          y: window.innerHeight - h - 8,
+          w,
+          h
+        };
+      }
+      document.body.dataset.floating = on ? "on" : "off";
+      if (on) this.buildFloatHandles();
+      this.applyFloatingGeom();
+      this.syncFloatingRect();
+      this.call(() => {
+        if (typeof Native.setFloating === "function") {
+          Native.setFloating(on, this.token);
+        }
+      });
+      if (on) {
+        this.applyOneHand();
+        this.closeOtherViews();
+      } else {
+        this.applyHeight();
+      }
+      this.hwNotifyPanelHeight();
+    }
+    /** 几何写 CSS 变量；卡片真实重排（行高等预算随高度走）。 */
+    applyFloatingGeom() {
+      const g = this.floatGeom;
+      if (!g) return;
+      const st = document.documentElement.style;
+      st.setProperty("--float-x", g.x + "px");
+      st.setProperty("--float-y", g.y + "px");
+      st.setProperty("--float-w", g.w + "px");
+      st.setProperty("--float-h", g.h + "px");
+    }
+    /** 卡片矩形上报 native（css px→REGION 物理px换算在 native）。 */
+    syncFloatingRect() {
+      if (!this.floating || !this.floatGeom) return;
+      const g = this.floatGeom;
+      const pad = 4, barH = 26;
+      this.call(() => {
+        if (typeof Native.setFloatingRect === "function") {
+          Native.setFloatingRect(
+            g.x - pad,
+            g.y - barH,
+            g.w + pad * 2,
+            g.h + barH + pad,
+            this.token
+          );
+        }
+      });
+    }
+    /** 悬浮卡片把手层（拖动条+停靠+右下缩放角）。独立手势：不走
+     *  bindTouch/touchOrigin（字母键手势所有权），touch identifier
+     *  认手。 */
+    buildFloatHandles() {
+      if (document.getElementById("floatBar")) return;
+      const bar = document.createElement("div");
+      bar.id = "floatBar";
+      const grip = document.createElement("div");
+      grip.id = "floatGrip";
+      grip.className = "float-grip";
+      grip.setAttribute("aria-label", t("\u62D6\u52A8\u79FB\u52A8"));
+      const dock = document.createElement("button");
+      dock.id = "floatDock";
+      dock.type = "button";
+      dock.textContent = "\u2302";
+      dock.setAttribute("aria-label", t("\u6062\u590D\u505C\u9760"));
+      dock.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.setFloatingMode(false);
+      });
+      const resize = document.createElement("div");
+      resize.id = "floatResize";
+      resize.className = "float-resize";
+      resize.setAttribute("aria-label", t("\u62D6\u52A8\u7F29\u653E"));
+      bar.append(grip, dock);
+      const layer = document.createElement("div");
+      layer.id = "floatHandles";
+      layer.append(bar, resize);
+      document.body.append(layer);
+      let drag = null;
+      grip.addEventListener("touchstart", (e) => {
+        if (drag) return;
+        const t0 = e.changedTouches[0];
+        drag = {
+          id: t0.identifier,
+          sx: t0.clientX,
+          sy: t0.clientY,
+          gx: this.floatGeom.x,
+          gy: this.floatGeom.y
+        };
+        e.preventDefault();
+      }, { passive: false });
+      grip.addEventListener("touchmove", (e) => {
+        if (!drag) return;
+        for (const tch of e.changedTouches) {
+          if (tch.identifier !== drag.id) continue;
+          const g = this.floatGeom;
+          g.x = Math.max(0, Math.min(
+            window.innerWidth - g.w,
+            drag.gx + tch.clientX - drag.sx
+          ));
+          g.y = Math.max(0, Math.min(
+            window.innerHeight - g.h,
+            drag.gy + tch.clientY - drag.sy
+          ));
+          this.applyFloatingGeom();
+          this.syncFloatingRect();
+        }
+        e.preventDefault();
+      }, { passive: false });
+      const endDrag = /* @__PURE__ */ __name((e) => {
+        if (!drag) return;
+        drag = null;
+        this.syncFloatingRect();
+      }, "endDrag");
+      grip.addEventListener("touchend", endDrag);
+      grip.addEventListener("touchcancel", endDrag);
+      let rz = null;
+      resize.addEventListener("touchstart", (e) => {
+        if (rz) return;
+        const t0 = e.changedTouches[0];
+        rz = {
+          id: t0.identifier,
+          sx: t0.clientX,
+          sy: t0.clientY,
+          gw: this.floatGeom.w,
+          gh: this.floatGeom.h
+        };
+        e.preventDefault();
+      }, { passive: false });
+      resize.addEventListener("touchmove", (e) => {
+        if (!rz) return;
+        for (const tch of e.changedTouches) {
+          if (tch.identifier !== rz.id) continue;
+          const g = this.floatGeom;
+          const minW = Math.round(window.innerWidth * 0.5);
+          const minH = Math.round(window.innerHeight * 0.3);
+          g.w = Math.max(minW, Math.min(
+            window.innerWidth - g.x - 4,
+            rz.gw + tch.clientX - rz.sx
+          ));
+          g.h = Math.max(minH, Math.min(
+            window.innerHeight - g.y - 4,
+            rz.gh + tch.clientY - rz.sy
+          ));
+          this.applyFloatingGeom();
+          this.syncFloatingRect();
+        }
+        e.preventDefault();
+      }, { passive: false });
+      const endRz = /* @__PURE__ */ __name(() => {
+        if (rz) {
+          rz = null;
+          this.syncFloatingRect();
+        }
+      }, "endRz");
+      resize.addEventListener("touchend", endRz);
+      resize.addEventListener("touchcancel", endRz);
+    }
+    onFloatingResize() {
+      if (!this.floating || !this.floatGeom) return;
+      const g = this.floatGeom;
+      g.w = Math.min(g.w, window.innerWidth - 8);
+      g.h = Math.min(g.h, window.innerHeight - 8);
+      g.x = Math.max(0, Math.min(window.innerWidth - g.w, g.x));
+      g.y = Math.max(0, Math.min(window.innerHeight - g.h, g.y));
+      this.applyFloatingGeom();
+      this.syncFloatingRect();
+    }
     applyOneHand() {
       const level = Number(this.oneHand) || 0;
       if (level === 1 || level === 2) {
@@ -6586,6 +6779,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         { key: "sound", id: "toolSound", icon: "sound", label: "\u6309\u952E\u58F0\u97F3" },
         { key: "assoc", id: "toolAssoc", icon: "assoc", label: "\u4E2D\u6587\u8054\u60F3" },
         { key: "onehand", id: "toolOneHand", icon: "onehand", label: "\u5355\u624B\u6A21\u5F0F" },
+        { key: "floating", id: "toolFloating", icon: "onehand", label: "\u60AC\u6D6E\u952E\u76D8" },
         { key: "numpad", id: "toolNumpad", icon: "numpad", label: "\u6570\u5B57\u952E\u76D8" },
         { key: "emoji", id: "toolEmoji", icon: "smiley", label: "Emoji" },
         { key: "edit", id: "editTool", icon: "edit", label: "\u7F16\u8F91\u5DE5\u5177" },
@@ -6687,6 +6881,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         this.quickPending["oneHand"] = this.oneHand;
         this.applyOneHand();
         setNative("oneHand", this.oneHand);
+      } else if (key === "floating") {
+        this.setFloatingMode(!this.floating);
       }
       if (this.settingsPage === null) this.renderSettingsPanel();
       this.syncToolStates();
@@ -10294,6 +10490,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     // Debug/automation hooks: the mode menu and settings panel render
     // lazily, so DOM-only openers would show an empty container.
     toggleModeMenu: /* @__PURE__ */ __name(() => keyboard.toggleModeMenu(), "toggleModeMenu"),
+    // #55 悬浮键盘（spike）：CDP/自动化直调（工具栏入口照常可用）。
+    setFloatingMode: /* @__PURE__ */ __name((on) => keyboard.setFloatingMode(on), "setFloatingMode"),
     closeModeMenu: /* @__PURE__ */ __name(() => keyboard.closeModeMenu(), "closeModeMenu"),
     toggleSettingsPanel: /* @__PURE__ */ __name(() => keyboard.toggleSettingsPanel(), "toggleSettingsPanel"),
     closeSettingsPanel: /* @__PURE__ */ __name(() => keyboard.closeSettingsPanel(), "closeSettingsPanel"),

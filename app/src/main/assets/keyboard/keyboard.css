@@ -3211,3 +3211,88 @@ button:disabled { cursor: default; }
     body.landscape #heightCard .pc-btn { min-height: 32px; padding: 6px 0; }
 
 }
+
+/* ===== #55 悬浮键盘（画布模式）=====
+ * 兼容自检（chrome66）：仅 absolute+四边定位/px 尺寸/flex+margin/rgba/
+ * border-radius/box-shadow；无 inset 简写、无 flex gap、无新单位。 */
+body[data-floating="on"] #softKeyboard {
+    position: absolute;
+    left: var(--float-x, 40px);
+    top: var(--float-y, 200px);
+    width: var(--float-w, 300px);
+    height: var(--float-h, 220px);
+    border-radius: 14px;
+    box-shadow: 0 18px 44px #00000055, 0 4px 12px #00000033;
+    overflow: hidden;
+    /* 画布底部安全区/停靠留白不再适用于卡片内部 */
+    padding-bottom: 0;
+}
+/* 画布透明：主窗口铺满可用区，卡片外的区域透传给宿主（REGION 触摸）。 */
+body[data-floating="on"] { background: transparent; }
+body[data-floating="on"] .kb-row { margin-bottom: 4px; }
+#floatHandles { display: none; }
+body[data-floating="on"] #floatHandles { display: block; }
+#floatBar {
+    position: absolute;
+    /* 卡片上沿的拖动条（把手上扩 26px 与 touchableRegion 对齐） */
+    left: var(--float-x, 40px);
+    top: calc(var(--float-y, 200px) - 26px);
+    width: var(--float-w, 300px);
+    height: 26px;
+    display: flex;
+    align-items: center;
+    margin-left: 0;
+}
+#floatGrip.float-grip {
+    flex: 1;
+    height: 26px;
+    border-radius: 13px;
+    background: var(--card-bg, #2a2d33);
+    box-shadow: 0 4px 14px #00000044;
+    touch-action: none;
+}
+#floatGrip::after {
+    /* 把手视觉：三条短横线居中 */
+    content: "";
+    display: block;
+    margin: 11px auto 0;
+    width: 44px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--card-sub, #9aa3ad);
+    box-shadow: 0 -7px 0 var(--card-sub, #9aa3ad), 0 7px 0 var(--card-sub, #9aa3ad);
+}
+#floatGrip:active { filter: brightness(1.15); }
+#floatDock {
+    margin-left: 8px;
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 13px;
+    background: var(--card-bg, #2a2d33);
+    color: var(--accent-text, #7ed8a0);
+    font-size: 14px;
+    line-height: 1;
+    box-shadow: 0 4px 14px #00000044;
+}
+#floatResize.float-resize {
+    position: absolute;
+    /* 卡片右下角缩放角 */
+    left: calc(var(--float-x, 40px) + var(--float-w, 300px) - 22px);
+    top: calc(var(--float-y, 200px) + var(--float-h, 220px) - 22px);
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--card-bg, #2a2d33);
+    box-shadow: 0 4px 14px #00000044;
+    touch-action: none;
+}
+#floatResize::after {
+    content: "";
+    display: block;
+    margin: 9px auto 0;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--card-sub, #9aa3ad);
+    border-bottom: 2px solid var(--card-sub, #9aa3ad);
+}
