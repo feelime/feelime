@@ -88,6 +88,7 @@
         "笔画 Stroke": "Stroke",
         "重输": "Restart",
         "该键盘还在准备中": "That keyboard is still preparing",
+        "拼音组合中，先上屏再切换": "Finish the composition before switching",
         "已截断至 200 字": "Truncated to 200 characters",
         "通配符只能用一个": "Only one wildcard at a time",
         "日本語 Romaji": "Japanese",
@@ -350,7 +351,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.82';
+    const KEYBOARD_VERSION = '3.73.83';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3858,6 +3859,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         toggleChineseEnglish() {
+            // #89 误触语言切换：拼音组词中（常规 26 键打快了拇指带到的
+            // 单击）不切换——组合串被切走直接变英文直出，用户要删掉重打。
+            // 先上屏（或清组合）再切。长按完整模式菜单不受此限（选择
+            // 性操作，误触概率低，保留组词中主动换模式的自由）。
+            if (this.composing) {
+                this.showToast(t("拼音组合中，先上屏再切换"));
+                return;
+            }
             if (this.degrade && this.degrade.active && this.degrade.failedMode) {
                 this.call(() => Native.selectMode(this.degrade.failedMode, this.token));
                 return;

@@ -79,6 +79,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u7B14\u753B Stroke": "Stroke",
     "\u91CD\u8F93": "Restart",
     "\u8BE5\u952E\u76D8\u8FD8\u5728\u51C6\u5907\u4E2D": "That keyboard is still preparing",
+    "\u62FC\u97F3\u7EC4\u5408\u4E2D\uFF0C\u5148\u4E0A\u5C4F\u518D\u5207\u6362": "Finish the composition before switching",
     "\u5DF2\u622A\u65AD\u81F3 200 \u5B57": "Truncated to 200 characters",
     "\u901A\u914D\u7B26\u53EA\u80FD\u7528\u4E00\u4E2A": "Only one wildcard at a time",
     "\u65E5\u672C\u8A9E Romaji": "Japanese",
@@ -341,7 +342,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.82";
+  const KEYBOARD_VERSION = "3.73.83";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -3483,6 +3484,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       return "direct";
     }
     toggleChineseEnglish() {
+      if (this.composing) {
+        this.showToast(t("\u62FC\u97F3\u7EC4\u5408\u4E2D\uFF0C\u5148\u4E0A\u5C4F\u518D\u5207\u6362"));
+        return;
+      }
       if (this.degrade && this.degrade.active && this.degrade.failedMode) {
         this.call(() => Native.selectMode(this.degrade.failedMode, this.token));
         return;
