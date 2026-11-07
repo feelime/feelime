@@ -349,7 +349,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.87";
+  const KEYBOARD_VERSION = "3.73.88";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1666,6 +1666,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.caps = false;
       this.lastShiftTapAt = -Infinity;
       this.voiceState = "idle";
+      this.voiceReadyHaptic = false;
       this.editorSensitive = false;
       this.composing = false;
       this.expanded = false;
@@ -6463,6 +6464,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       st.setProperty("--float-y", g.y + "px");
       st.setProperty("--float-w", g.w + "px");
       st.setProperty("--float-h", g.h + "px");
+      this.fitFloatingToolbar();
     }
     /** 卡片矩形上报 native（css px→REGION 物理px换算在 native）。 */
     syncFloatingRect() {
@@ -6753,7 +6755,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (dom === "mic") return;
         const el = document.getElementById(dom);
         if (!el) return;
-        el.hidden = el.closest("#toolbarEditorGrid") ? false : this.toolbarYield || composeHidden || overflow.has(dom);
+        el.hidden = el.closest("#toolbarEditorGrid") ? false : this.toolbarYield || composeHidden || overflow.has(id);
       });
       const mic = document.getElementById("mic");
       if (mic) mic.hidden = this.toolbarYield || composeHidden && this.voiceState === "idle";
@@ -7011,15 +7013,52 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      *  容量自动变小）。候选词与工具栏**互斥**（让位机制）：候选显示
      *  时整行归候选、工具全组隐藏；空闲时整行归工具——不存在「给
      *  候选留底」的预算，只扣 F 与收起键（issue #47 复盘修正）。
-     *  布局塌陷时（宽度 0）放宽到 8，不挡编辑。 */
+     *  布局塌陷时（宽度 0）放宽到 8，不挡编辑。
+     *  尺寸实测化（#55 窄卡溢出返工）：按钮宽读 DOM 实值（悬浮态
+     *  fitFloatingToolbar 会连续缩到 18-26px，32 常量预算偏大导致
+     *  prune 放行超量）；gap 同步实测（chrome66 上 flex gap 失效
+     *  读出 0，预算反而更宽裕，自洽）。 */
     toolbarCapacity() {
       const bar = document.getElementById("candidateBar");
       const setup = document.getElementById("setupButton");
       const hide = document.getElementById("hide");
       if (!bar || !setup || !hide || !bar.clientWidth) return 8;
-      const BTN = 32, GAP = 5;
+      const gapRaw = typeof getComputedStyle === "function" ? getComputedStyle(bar).gap : "";
+      const GAP = parseFloat(gapRaw) || 0;
+      const BTN = setup.offsetWidth || 32;
       const avail = bar.clientWidth - setup.offsetWidth - hide.offsetWidth - GAP * 2;
       return Math.max(1, Math.floor(avail / (BTN + GAP)));
+    }
+    /** 悬浮窄卡工具尺寸连续缩放（#55 用户二报溢出，codex 方案修正版：
+     *  候选/工具互斥让位下不存在「候选保底」，空闲态整行归工具）。
+     *  随卡片宽按比例缩（32×r 起步、上限 26 与首版档位一致、下限
+     *  18 保触摸），N 个按钮装不下时由 pruneOverflowTools 按（实测
+     *  化后的）容量截尾隐藏——固定键 setup/hide 不进截断，收起键
+     *  永远可点。停靠态不跑（32px 档原生）。 */
+    fitFloatingToolbar() {
+      const root = document.documentElement.style;
+      if (!this.floating) {
+        root.removeProperty("--ftool-s");
+        root.removeProperty("--ftool-icon");
+        return;
+      }
+      const bar = document.getElementById("candidateBar");
+      if (!bar || !bar.clientWidth) return;
+      const cand = document.getElementById("candidates");
+      const tools = [...bar.querySelectorAll(".tool")].filter((el) => !el.hidden && el.offsetWidth > 0);
+      const N = tools.length;
+      if (N < 1) return;
+      const gapRaw = typeof getComputedStyle === "function" ? getComputedStyle(bar).gap : "";
+      const G = Math.max(2, parseFloat(gapRaw) || 0);
+      const candW = cand && !cand.hidden ? cand.offsetWidth : 0;
+      const B = bar.clientWidth - candW;
+      const K = Math.floor(B / (18 + G));
+      const M = Math.min(N, K);
+      if (M < 1) return;
+      const size = Math.max(18, Math.min(26, (B - M * G) / M));
+      root.setProperty("--ftool-s", Math.round(size * 10) / 10 + "px");
+      root.setProperty("--ftool-icon", Math.round(size / 2 * 10) / 10 + "px");
+      this.pruneOverflowTools();
     }
     /** 编辑态下按组内索引移动 id（拖拽落位）。跨组拖入满组（4）时
      *  与落点按钮交换——拖动是调序手段，静默拒绝会让用户以为坏了。
@@ -7245,6 +7284,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         this.placeHeightCard();
       }
       this.auditToolbarTools();
+      this.fitFloatingToolbar();
       if (this.mode === "handwriting") this.inkSyncViewport();
     }
     /** native 落盘回执（setKeyboardHeightNow 的 commit 结果）：提示
@@ -9992,6 +10032,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       if (typeof payload.keySound === "boolean") this.keySound = payload.keySound;
       if (typeof payload.keyHaptic === "boolean") this.keyHaptic = payload.keyHaptic;
+      if (typeof payload.voiceReadyHaptic === "boolean") this.voiceReadyHaptic = payload.voiceReadyHaptic;
       this.qConfirm("association", this.associationOn);
       this.qConfirm("keySound", this.keySound);
       this.qConfirm("keyHaptic", this.keyHaptic);
@@ -10364,7 +10405,15 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.querySelector("#levelBar i").style.transform = `scaleX(${Math.max(0, Math.min(1, level || 0))})`;
     }
     onNativeState(payload) {
+      const prevVoiceState = this.voiceState;
       this.voiceState = payload.state || "idle";
+      if (prevVoiceState === "loading" && this.voiceState === "listening" && this.voiceReadyHaptic) {
+        this.call(() => {
+          if (typeof Native.voiceReadyHaptic === "function") {
+            Native.voiceReadyHaptic(this.token);
+          }
+        });
+      }
       if (this.voiceState === "idle" || this.voiceState === "error") {
         this.voiceSession = null;
       }
@@ -10608,6 +10657,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }, "applyHeightNow"),
     // 键帽水位线探针/驱动（#55）：无参=按当前 --kb-row-h 重算。
     applyKeycapMetrics: /* @__PURE__ */ __name((H) => keyboard.applyKeycapMetrics(H), "applyKeycapMetrics"),
+    // 悬浮工具条拟合探针/驱动（#55 窄卡溢出返工）。
+    fitToolbar: /* @__PURE__ */ __name(() => keyboard.fitFloatingToolbar(), "fitToolbar"),
     onHeightSaved: /* @__PURE__ */ __name((ok) => keyboard.onHeightSaved(ok), "onHeightSaved"),
     // Native all-up audit probe: read-only per call, but a reported
     // residue now triggers native-side remediation (cancelTouches

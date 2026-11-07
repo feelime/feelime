@@ -784,6 +784,10 @@ class MockNative {
     keyFeedback(token) {
         this._record('keyFeedback', [token]);
     }
+    // 语音就绪震动（公众号 NULL）：loading→listening 转换时 JS 回敲。
+    voiceReadyHaptic(token) {
+        this._record('voiceReadyHaptic', [token]);
+    }
     setComposition(keys, token) {
         this._record('setComposition', [keys, token]);
     }

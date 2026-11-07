@@ -358,7 +358,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.87';
+    const KEYBOARD_VERSION = '3.73.88';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1509,6 +1509,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // （真实墙钟是大纪元值不会踩，但语义上也要「从未 tap 过」）。
             this.lastShiftTapAt = -Infinity;
             this.voiceState = 'idle';
+            this.voiceReadyHaptic = false;
             this.editorSensitive = false;
             this.composing = false;
             this.expanded = false;
@@ -7506,6 +7507,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             st.setProperty('--float-y', g.y + 'px');
             st.setProperty('--float-w', g.w + 'px');
             st.setProperty('--float-h', g.h + 'px');
+            // 宽度变了工具预算跟着变（#55 窄卡连续缩放）
+            this.fitFloatingToolbar();
         }
 
         /** 卡片矩形上报 native（css px→REGION 物理px换算在 native）。 */
@@ -7835,7 +7838,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     ? false
                     // 让位态（手写候选整行互斥/T9 符号行/联想）优先：
                     // 重唤键盘触发的对账不得把工具插回让位中的候选行。
-                    : (this.toolbarYield || composeHidden || overflow.has(dom));
+                    // overflow 的口径=配置 id（pruneOverflowTools 存的是
+                    // left/right 数组元素，非 DOM id）——codex 定位的存量
+                    // bug：旧代码 has(dom) 恒假，applyHeight 尾的本次对账
+                    // 把 prune 刚藏的溢出工具翻回去，窄卡溢出复发。
+                    : (this.toolbarYield || composeHidden || overflow.has(id));
             });
             const mic = document.getElementById('mic');
             // 工具栏 mic 的显隐只跟布局/让位走：长按空格动作是空格键
@@ -8134,16 +8141,61 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          *  容量自动变小）。候选词与工具栏**互斥**（让位机制）：候选显示
          *  时整行归候选、工具全组隐藏；空闲时整行归工具——不存在「给
          *  候选留底」的预算，只扣 F 与收起键（issue #47 复盘修正）。
-         *  布局塌陷时（宽度 0）放宽到 8，不挡编辑。 */
+         *  布局塌陷时（宽度 0）放宽到 8，不挡编辑。
+         *  尺寸实测化（#55 窄卡溢出返工）：按钮宽读 DOM 实值（悬浮态
+         *  fitFloatingToolbar 会连续缩到 18-26px，32 常量预算偏大导致
+         *  prune 放行超量）；gap 同步实测（chrome66 上 flex gap 失效
+         *  读出 0，预算反而更宽裕，自洽）。 */
         toolbarCapacity() {
             const bar = document.getElementById('candidateBar');
             const setup = document.getElementById('setupButton');
             const hide = document.getElementById('hide');
             if (!bar || !setup || !hide || !bar.clientWidth) return 8;
-            const BTN = 32, GAP = 5;
+            const gapRaw = typeof getComputedStyle === 'function'
+                ? getComputedStyle(bar).gap : '';
+            const GAP = parseFloat(gapRaw) || 0;
+            const BTN = setup.offsetWidth || 32;
             const avail = bar.clientWidth - setup.offsetWidth - hide.offsetWidth
                 - GAP * 2;
             return Math.max(1, Math.floor(avail / (BTN + GAP)));
+        }
+
+        /** 悬浮窄卡工具尺寸连续缩放（#55 用户二报溢出，codex 方案修正版：
+         *  候选/工具互斥让位下不存在「候选保底」，空闲态整行归工具）。
+         *  随卡片宽按比例缩（32×r 起步、上限 26 与首版档位一致、下限
+         *  18 保触摸），N 个按钮装不下时由 pruneOverflowTools 按（实测
+         *  化后的）容量截尾隐藏——固定键 setup/hide 不进截断，收起键
+         *  永远可点。停靠态不跑（32px 档原生）。 */
+        fitFloatingToolbar() {
+            const root = document.documentElement.style;
+            if (!this.floating) {
+                root.removeProperty('--ftool-s');
+                root.removeProperty('--ftool-icon');
+                return;
+            }
+            const bar = document.getElementById('candidateBar');
+            if (!bar || !bar.clientWidth) return;
+            const cand = document.getElementById('candidates');
+            // 可见工具（audit/让位对账后）：含固定键与配置组
+            const tools = [...bar.querySelectorAll('.tool')]
+                .filter(el => !el.hidden && el.offsetWidth > 0);
+            const N = tools.length;
+            if (N < 1) return;
+            const gapRaw = typeof getComputedStyle === 'function'
+                ? getComputedStyle(bar).gap : '';
+            const G = Math.max(2, parseFloat(gapRaw) || 0);
+            const candW = cand && !cand.hidden ? cand.offsetWidth : 0;
+            const B = bar.clientWidth - candW;
+            // 先按 18px 下限求最大可容数，再在名额内均分剩余宽（上限 26）
+            const K = Math.floor(B / (18 + G));
+            const M = Math.min(N, K);
+            if (M < 1) return;
+            const size = Math.max(18, Math.min(26, (B - M * G) / M));
+            root.setProperty('--ftool-s', (Math.round(size * 10) / 10) + 'px');
+            root.setProperty('--ftool-icon', (Math.round(size / 2 * 10) / 10) + 'px');
+            // 尺寸变了容量跟着变：按新实测重截尾（var 生效后的
+            // offsetWidth 同步可读；M 名额外多出的由 prune 藏）。
+            this.pruneOverflowTools();
         }
 
         /** 编辑态下按组内索引移动 id（拖拽落位）。跨组拖入满组（4）时
@@ -8432,6 +8484,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // native show/resize 必经 applyHeightNow→这里：工具栏对账的
             // 兜底触发点（同输入框收起再弹不走 onStartInputView/resetToHome）。
             this.auditToolbarTools();
+            // 悬浮窄卡工具尺寸跟显隐后的实际名额走（audit 先跑完让位/
+            // 溢出对账再量宽，隐藏项不占预算）。
+            this.fitFloatingToolbar();
             // 手写：总高/画布分辨率跟视图几何走（重唤键盘的兜底再推——
             // 高度在收起期间被改过的话，靠 renderMode 的推送接不住）。
             if (this.mode === 'handwriting') this.inkSyncViewport();
@@ -11827,6 +11882,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 按键反馈开关（快捷设置方块回读；旧 APK 不带字段=不覆盖）。
             if (typeof payload.keySound === 'boolean') this.keySound = payload.keySound;
             if (typeof payload.keyHaptic === 'boolean') this.keyHaptic = payload.keyHaptic;
+            // 语音就绪震动（公众号 NULL）：loading→listening 转换时回敲
+            // native；独立于按键震动开关。
+            if (typeof payload.voiceReadyHaptic === 'boolean') this.voiceReadyHaptic = payload.voiceReadyHaptic;
             // hello 快照是确认：只有等于未决意图才清除（否则连点中的
             // 旧快照不得覆盖本地意图，见 quickTileDefs）。
             this.qConfirm('association', this.associationOn);
@@ -12408,7 +12466,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         onNativeState(payload) {
+            const prevVoiceState = this.voiceState;
             this.voiceState = payload.state || 'idle';
+            // 语音就绪震动（公众号 NULL）：只在「未加载→已加载」转换震——
+            // 本次进入经历了 loading 才提示；模型已就绪的后续进入直接
+            // listening，无 loading 前态，不震。
+            if (prevVoiceState === 'loading' && this.voiceState === 'listening' &&
+                this.voiceReadyHaptic) {
+                this.call(() => {
+                    if (typeof Native.voiceReadyHaptic === 'function') {
+                        Native.voiceReadyHaptic(this.token);
+                    }
+                });
+            }
             if (this.voiceState === 'idle' || this.voiceState === 'error') {
                 this.voiceSession = null;
             }
@@ -12677,6 +12747,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         },
         // 键帽水位线探针/驱动（#55）：无参=按当前 --kb-row-h 重算。
         applyKeycapMetrics: H => keyboard.applyKeycapMetrics(H),
+        // 悬浮工具条拟合探针/驱动（#55 窄卡溢出返工）。
+        fitToolbar: () => keyboard.fitFloatingToolbar(),
         onHeightSaved: ok => keyboard.onHeightSaved(ok),
         // Native all-up audit probe: read-only per call, but a reported
         // residue now triggers native-side remediation (cancelTouches

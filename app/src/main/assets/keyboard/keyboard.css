@@ -3324,17 +3324,18 @@ body[data-floating="on"] #floatHandles { display: block; }
     background: var(--card-sub, #9aa3ad);
 }
 #floatGrip:active::after, #floatGrip:active::before { filter: brightness(1.15); }
-/* 悬浮缩窄（最小 60% 视口）时工具条一档缩小：32px 圆钮+8px gap 在
- * 236px 卡上会把右组（含收起）挤出卡片被 overflow 裁掉（用户实测
- * 点不到）。26px+13px icon+5px gap；放文件尾压过 landscape 30px 档。 */
+/* 悬浮缩窄（最小 60% 视口）时工具条随卡片宽连续缩放：尺寸由
+ * fitFloatingToolbar 写 --ftool-s/--ftool-icon（26 上限→18 触摸下限），
+ * 装不下的工具按容量截尾隐藏（pruneOverflowTools，setup/hide 不截，
+ * 收起键永远可点）。放文件尾压过 landscape 30px 档。 */
 body[data-floating="on"] #candidateBar { gap: 5px; }
 body[data-floating="on"] #candidateBar .tool {
-    width: 26px;
-    height: 26px;
+    width: var(--ftool-s, 26px);
+    height: var(--ftool-s, 26px);
 }
 body[data-floating="on"] #candidateBar .tool svg {
-    width: 13px;
-    height: 13px;
+    width: var(--ftool-icon, 13px);
+    height: var(--ftool-icon, 13px);
 }
 /* T9 CJK 双字主字（「分词」）：窄卡五列键 ~42px，20px 双字放不下会
  * 换行（用户实测）。悬浮态降档 + 通用 nowrap 兜底断行。 */

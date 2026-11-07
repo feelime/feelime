@@ -997,6 +997,13 @@
           <span class="row-label"><span data-i18n="voice.mic.permission">麦克风权限</span><small data-i18n="voice.mic.hint">语音输入必需，全程本地处理</small></span>
           <button class="btn" id="btnMic" type="button" data-i18n="voice.mic.action">去授权</button>
         </div>
+        <label class="row switch-row" for="voiceReadyHaptic">
+          <span class="row-label">
+            <span data-i18n="voice.readyHaptic">语音就绪震动</span>
+            <small data-i18n="voice.readyHapticHint">语音模型加载完成、开始聆听时震动提示一下；模型已就绪的再次进入不震（默认关闭）。</small>
+          </span>
+          <input type="checkbox" id="voiceReadyHaptic" data-keywords="语音 震动 加载 就绪 聆听 voice vibrate ready haptic" class="toggle">
+        </label>
       </div>
       <div class="rows">
         <label class="row" for="modelBackend">

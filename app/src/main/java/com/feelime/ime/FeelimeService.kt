@@ -2663,6 +2663,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             // 开/关状态要跟原生偏好走（设置页改动同样经这里回读）。
             .put("keySound", readKeySoundEnabled(this))
             .put("keyHaptic", readKeyHapticEnabled(this))
+            // 语音就绪震动（公众号 NULL，默认关）：JS 在 loading→listening
+            // 转换时回敲本桥。
+            .put("voiceReadyHaptic", readVoiceReadyHapticEnabled(this))
             .put(
                 "engineDataReady",
                 JSONObject().apply {
@@ -3320,6 +3323,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         fun keyFeedback(token: String) = guarded(token, limited = false) {
             if (readKeyHapticEnabled(this@FeelimeService)) playKeyHaptic()
             if (readKeySoundEnabled(this@FeelimeService)) playKeySound()
+        }
+
+        /** 语音就绪震动（公众号 NULL）：模型加载完成转聆听那一刻的提示震，
+         *  独立于按键震动开关；震感曲线复用 playKeyHaptic（跟用户的强度档）。 */
+        @JavascriptInterface
+        fun voiceReadyHaptic(token: String) = guarded(token, limited = false) {
+            if (readVoiceReadyHapticEnabled(this@FeelimeService)) playKeyHaptic()
         }
 
         private fun playKeyHaptic() {

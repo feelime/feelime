@@ -1133,6 +1133,80 @@ test('cn-en composing guard is opt-in (#89): default keeps composing switch, gua
     equal(world.native.of('selectMode').length, 1, 'guard ON, idle tap still toggles');
 });
 
+test('voice ready haptic: buzz only on loading→listening transition (NULL, 3.73.88)', {since: '3.73.88'}, () => {
+    const drive = (world, state) =>
+        world.context.window.Feelime.onNativeState({ state });
+    // 开关关（默认）：转换也不震
+    const off = fresh();
+    drive(off, 'loading');
+    drive(off, 'listening');
+    equal(off.native.of('voiceReadyHaptic').length, 0, 'off by default: no buzz');
+
+    // 开关开：loading→listening 震一次；已就绪的再次进入（idle→listening
+    // 无 loading 前态）不震——留言的语义边界。
+    const on = fresh();
+    on.hello({ voiceReadyHaptic: true });
+    drive(on, 'idle');
+    drive(on, 'listening');
+    equal(on.native.of('voiceReadyHaptic').length, 0,
+        'already-loaded entry (no loading preamble) stays silent');
+    drive(on, 'idle');
+    drive(on, 'loading');
+    drive(on, 'listening');
+    equal(on.native.of('voiceReadyHaptic').length, 1,
+        'loading→listening transition buzzes exactly once');
+});
+
+test('floating toolbar fit: continuous shrink + prune survives audit (narrow-card, 3.73.88)', {since: '3.73.88'}, () => {
+    // #55 窄卡溢出返工（用户二报）：9 颗工具 216px 卡溢出。三个修复面：
+    // 1) fitFloatingToolbar 连续缩放（18-26px 写 --ftool-s）
+    // 2) toolbarCapacity 实测化（32 常量预算偏大放行超量）
+    // 3) audit 口径 bug（codex 定位）：_overflowTools 存配置 id，旧
+    //    auditToolbarTools has(dom) 恒假，applyHeight 尾审计把 prune 刚
+    //    藏的工具翻回去——溢出复发的放大器。
+    // fake DOM 无布局引擎：bar._scrollable=true 喂 clientWidth=360、
+    // offsetWidth 恒 44，数字断言按桩值推。
+    const world = fresh({ toolbarLayout: JSON.stringify({
+        left: ['ctrl', 'ime', 'clipboard', 'favorites'],
+        right: ['mic', 'kaomoji', 'floating', 'onehand'],
+    }) });
+    const bar = world.document.getElementById('candidateBar');
+    bar._scrollable = true; // clientWidth 桩 360
+    const st = world.document.documentElement.style;
+    st.removeProperty('--ftool-s');
+    world.context.window.innerHeight = 830; // 悬浮空间门按全屏高度放行
+
+    world.context.window.Feelime.setFloatingMode(true);
+    world.context.window.Feelime.fitToolbar();
+
+    // fit 写了尺寸 var（桩宽 360-候选壳 44、8 颗、G=2 无 computed gap：
+    // (316-14)/8=37.7 → 钳 26 上限）
+    equal(st.getPropertyValue('--ftool-s'), '26px',
+        'fit caps at the 26px tier for wide stub bars');
+
+    // prune 按实测容量截尾：capacity=(360-44-44)/44=6，8 颗藏 2
+    const domId = id => world.document.getElementById(
+        { ctrl: 'ctrlTool', ime: 'imeSwitchButton', clipboard: 'clipboardButton',
+          favorites: 'favoritesButton', mic: 'mic', kaomoji: 'toolKaomoji',
+          floating: 'toolFloating', onehand: 'toolOneHand' }[id]);
+    const cfg = ['ctrl', 'ime', 'clipboard', 'favorites', 'mic', 'kaomoji', 'floating', 'onehand'];
+    const hiddenAfterPrune = cfg.filter(id => domId(id).hidden);
+    equal(hiddenAfterPrune.length, 2, 'prune hides the tail 2 (capacity 6 of 8)');
+    equal(domId('ctrl').hidden, false, 'fixed ctrl stays');
+    equal(world.document.getElementById('hide').hidden, false, 'hide key never pruned');
+
+    // 口径回归核心：applyHeight 尾的 audit 不得翻回 prune 的隐藏
+    world.context.window.Feelime.applyHeightNow();
+    const hiddenAfterAudit = cfg.filter(id => domId(id).hidden);
+    equal(hiddenAfterAudit.length, 2,
+        'audit keeps the pruned tools hidden (has(id) fix, regression)');
+
+    // 退出悬浮清理尺寸 var 回停靠 32 档
+    world.context.window.Feelime.setFloatingMode(false);
+    equal(!st.getPropertyValue('--ftool-s'), true,
+        'docking clears the floating tool size var');
+});
+
 test('floating keyboard: toggle enters canvas mode, rect reports, dock exits (#55 spike)', {since: '3.73.85'}, () => {
     const world = fresh();
     // 悬浮画布铺满后的窗口（真实链路 setFloating→native 扩窗→resize；

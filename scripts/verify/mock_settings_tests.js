@@ -142,6 +142,7 @@ class MockSettingsNative {
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
     setCnEnComposingGuard(...a) { this._rec('setCnEnComposingGuard', a); }
+    setVoiceReadyHaptic(...a) { this._rec('setVoiceReadyHaptic', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
@@ -2355,6 +2356,17 @@ test('appearance page reflects state and commits themeMode / keyOpacity with the
         .handler({ target: { checked: true } });
     equal(world.lastCall('setCnEnComposingGuard').args, [true, world.token],
         'composing guard commit + token');
+
+    // 语音就绪震动（公众号 NULL）：默认关、回显、拨动即过桥
+    const vrhToggle = world.$('voiceReadyHaptic');
+    world.push({ ...BASE_STATE });
+    equal(vrhToggle.checked, false, 'voice ready haptic default off');
+    world.push({ ...BASE_STATE, voiceReadyHaptic: true });
+    equal(vrhToggle.checked, true, 'voice ready haptic follows state');
+    vrhToggle.listeners.find(l => l.type === 'change')
+        .handler({ target: { checked: true } });
+    equal(world.lastCall('setVoiceReadyHaptic').args, [true, world.token],
+        'voice ready haptic commit + token');
 
     // 气泡停留档（验收 2026-09-24）：回显 + 换档过桥。
     const lingerSel = world.$('bubbleLinger');

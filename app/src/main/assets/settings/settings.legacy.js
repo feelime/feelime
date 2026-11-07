@@ -903,6 +903,8 @@ const I18N = {
     "input.feel.keyBubble": "\u6309\u952E\u6C14\u6CE1",
     "input.feel.cnEnComposingGuard": "\u62FC\u97F3\u7EC4\u8BCD\u4E2D\u7981\u6B62\u5207\u6362\u8BED\u8A00",
     "input.feel.cnEnComposingGuardHint": "\u9632\u6B62\u5FEB\u901F\u6253\u5B57\u8BEF\u89E6\u4E2D\u82F1\u5207\u6362\u952E\u628A\u7EC4\u8BCD\u6253\u65AD\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF0C\u5F00\u542F\u540E\u7EC4\u8BCD\u4E2D\u5355\u51FB\u5207\u6362\u952E\u4E0D\u751F\u6548\uFF09\u3002",
+    "voice.readyHaptic": "\u8BED\u97F3\u5C31\u7EEA\u9707\u52A8",
+    "voice.readyHapticHint": "\u8BED\u97F3\u6A21\u578B\u52A0\u8F7D\u5B8C\u6210\u3001\u5F00\u59CB\u8046\u542C\u65F6\u9707\u52A8\u63D0\u793A\u4E00\u4E0B\uFF1B\u6A21\u578B\u5DF2\u5C31\u7EEA\u7684\u518D\u6B21\u8FDB\u5165\u4E0D\u9707\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09\u3002",
     "input.feel.keyBubbleHint": "\u6309\u4E0B\u6309\u952E\u65F6\u5728\u952E\u5E3D\u4E0A\u65B9\u653E\u5927\u663E\u793A\u6240\u6309\u7684\u5B57\u7B26\uFF0C\u65B9\u4FBF\u786E\u8BA4\u6709\u6CA1\u6709\u6309\u9519\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09\u3002",
     "entry.appearance.title": "\u5916\u89C2",
     "entry.appearance.subtitle": "\u8272\u5F69\u6A21\u5F0F \xB7 \u80CC\u666F\u56FE\u7247 \xB7 \u900F\u660E\u5EA6",
@@ -1709,6 +1711,8 @@ const I18N = {
     "input.feel.keyBubble": "Key bubble",
     "input.feel.cnEnComposingGuard": "Block language switch while composing",
     "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
+    "voice.readyHaptic": "Vibrate when voice is ready",
+    "voice.readyHapticHint": "A short buzz once the speech model finishes loading and listening starts; re-entering with the model already loaded does not buzz (off by default).",
     "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
     "entry.appearance.title": "Appearance",
     "entry.appearance.subtitle": "Color mode \xB7 Background \xB7 Opacity",
@@ -2599,6 +2603,8 @@ function renderFeel(state) {
   if (bubble) bubble.checked = state.keyBubble === true;
   const guard = $("cnEnComposingGuard");
   if (guard) guard.checked = state.cnEnComposingGuard === true;
+  const vrh = $("voiceReadyHaptic");
+  if (vrh) vrh.checked = state.voiceReadyHaptic === true;
   const lingerSel = $("bubbleLinger");
   if (lingerSel && document.activeElement !== lingerSel) {
     lingerSel.value = String((_j = state.bubbleLinger) != null ? _j : 400);
@@ -3989,6 +3995,7 @@ $("keyOpacity").addEventListener("change", (event) => {
 });
 $("keyBubble").addEventListener("change", (event) => call("setKeyBubble", event.target.checked));
 $("cnEnComposingGuard").addEventListener("change", (event) => call("setCnEnComposingGuard", event.target.checked));
+$("voiceReadyHaptic").addEventListener("change", (event) => call("setVoiceReadyHaptic", event.target.checked));
 $("bubbleLinger").addEventListener("change", (event) => {
   call("setBubbleLinger", parseInt(event.target.value, 10) || 0);
 });

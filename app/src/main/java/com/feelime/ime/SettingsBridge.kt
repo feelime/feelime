@@ -237,6 +237,14 @@ const val PREF_KEY_OPACITY = "key_opacity"
 const val PREF_KEY_BUBBLE = "key_bubble"
 /** #89 拼音组词中防误触切换（默认关：组词中仍可切换，不改存量行为）。 */
 const val PREF_CN_EN_COMPOSING_GUARD = "cn_en_composing_guard"
+/** 语音就绪震动（公众号 NULL 留言，默认关）：语音模型加载完成、开始
+ *  聆听那一刻震动提示——仅「未加载→已加载」的转换震；模型已加载的
+ *  后续进入不震（JS 侧只在 loading→listening 转换时调桥）。 */
+const val PREF_VOICE_READY_HAPTIC = "voice_ready_haptic"
+
+fun readVoiceReadyHapticEnabled(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_VOICE_READY_HAPTIC, false)
 /** 气泡停留时长（验收 2026-09-24：松手立即消失看不清）。0/250/400/600ms。 */
 const val PREF_BUBBLE_LINGER = "bubble_linger_ms"
 val BUBBLE_LINGER_STEPS = intArrayOf(0, 250, 400, 600)
@@ -931,6 +939,7 @@ class SettingsBridge(
             .put("landscapeOpacity", readLandscapeOpacity(context))
             .put("keyBubble", readKeyBubble(context))
             .put("cnEnComposingGuard", readCnEnComposingGuard(context))
+            .put("voiceReadyHaptic", readVoiceReadyHapticEnabled(context))
             .put("bubbleLinger", readBubbleLinger(context))
             // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
             // 点开开关后 pushState 一到就弹回——「开了看不出开」。
@@ -1906,6 +1915,17 @@ class SettingsBridge(
     fun setCnEnComposingGuard(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_CN_EN_COMPOSING_GUARD, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 语音就绪震动（公众号 NULL，默认关）。 */
+    @JavascriptInterface
+    fun setVoiceReadyHaptic(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_VOICE_READY_HAPTIC, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
