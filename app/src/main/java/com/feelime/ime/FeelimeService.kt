@@ -1056,6 +1056,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     override fun onCreateInputView(): View {
         pageToken = newToken()
         pageReady = false
+        // #55 页面换代（冷启/热更重载）：新 JS 实例的悬浮态是内存态
+        // false——native 侧必须同步复位，否则新页按停靠渲染而窗口仍
+        // 整屏测量（codex review P1：巨大停靠键盘）。
+        floatingActive = false
+        floatingRect = null
         // #H：页面换代（冷启动/热更重载）——硬键能力声明复位，新页
         // 重新握手+上报后才接管（design §6）；面板高度态一并回落
         // （design §7：换页由 hello 重推触发 JS 重算）。
@@ -1243,6 +1248,32 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      */
     override fun onComputeInsets(outInsets: android.inputmethodservice.InputMethodService.Insets) {
         super.onComputeInsets(outInsets)
+        if (floatingActive) {
+            // #55 悬浮：零占位（insets=decor 高 → 宿主可用区不受限，
+            // 不能设 0——那表达整窗从顶占用），触摸只保留卡片∪把手
+            // （REGION 模式，窗口坐标系：css×density + WebView 窗口偏移，
+            // codex review P1：MATCH_PARENT 不保证与窗口原点重合）。
+            val decorH = window?.window?.decorView?.height ?: 0
+            outInsets.contentTopInsets = decorH
+            outInsets.visibleTopInsets = decorH
+            outInsets.touchableInsets =
+                android.inputmethodservice.InputMethodService.Insets.TOUCHABLE_INSETS_REGION
+            val rect = floatingRect
+            if (rect != null && decorH > 0) {
+                val density = resources.displayMetrics.density
+                val origin = IntArray(2)
+                keyboardView?.getLocationInWindow(origin)
+                // touchableRegion 是 final 字段（API 30 实测赋值=
+                // IllegalAccessError 崩 service）——只能改其内容。
+                outInsets.touchableRegion.set(
+                    (origin[0] + rect.left * density).toInt(),
+                    (origin[1] + rect.top * density).toInt(),
+                    (origin[0] + rect.right * density).toInt(),
+                    (origin[1] + rect.bottom * density).toInt(),
+                )
+            }
+            return
+        }
         val band = floatBandPx()
         if (band <= 0) return
         outInsets.contentTopInsets = band

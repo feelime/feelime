@@ -93,6 +93,8 @@
         "恢复停靠": "Dock keyboard",
         "拖动移动": "Drag to move",
         "拖动缩放": "Drag to resize",
+        "悬浮键盘请用右下角把手调整大小": "Use the corner handle to resize the floating keyboard",
+        "硬件键盘形态下不支持悬浮键盘": "Floating keyboard is unavailable in hardware-keyboard mode",
         "已截断至 200 字": "Truncated to 200 characters",
         "通配符只能用一个": "Only one wildcard at a time",
         "日本語 Romaji": "Japanese",
@@ -4364,6 +4366,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (button._cancelSpaceHold) button._cancelSpaceHold();
             };
             button.addEventListener('touchstart', event => {
+                // #55 悬浮几何手势（拖动/缩放）在场时新按键让位
+                //（codex review P2-7：拖动中第二指不得打字）。
+                if (this.floatDragSession || this.floatResizeSession) { event.preventDefault(); return; }
                 event.preventDefault();
                 // 同键再次按下会重挂长按/连发；先清上一轮，避免覆盖 timer
                 // 后松手只能清新 timer，旧 timer 在松手后弹出无人能收的层。
@@ -4549,6 +4554,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         cancelTouches() {
             this.traceTouch('cancel-all');
             this.inkCancelTouch();
+            // #55 悬浮几何手势会话一并作废（codex review P2-6）：收起/
+            // 取消后迟到的 move 不得再移动卡片。
+            this.cancelFloatGestures();
             // 在途定制宏链一并作废（#48 双击/换代防线）：键盘都收走了，
             // 台阶里的延迟键步没有合法去处。
             this.cancelCustomChain();
@@ -7375,20 +7383,27 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 驱动 touchableRegion；spike 首版内存态，松手上报一次。 */
         setFloatingMode(on) {
             if (on === this.floating) return;
+            // #55 硬键盘候选条形态（#H）与悬浮的组合暂不支持（codex
+            // review P2-12：面板高度态不驱动卡片尺寸，挤在候选条里）。
+            if (on && document.body.classList.contains('hwkb')) {
+                this.showToast(t("硬件键盘形态下不支持悬浮键盘"));
+                return;
+            }
             this.floating = on;
             if (on && !this.floatGeom) {
-                // 安全自动初值：宽度 82% 视口、高 55%（不小于四行键预算），
-                // 右下角留 8px 边距。方向变化后重算见 onFloatingResize。
-                const w = Math.round(window.innerWidth * 0.82);
-                const h = Math.min(
-                    Math.round(window.innerHeight * 0.55),
-                    Math.round(w * 0.72));
+                // 安全自动初值：宽度 82% 视口，高 55% 但不低于内容下限
+                // （候选+预编辑+4×32 行键+chrome，codex review P2-3：
+                // 189px 会被 overflow:hidden 裁掉第四行）。
+                const w = Math.max(this.floatMinW(), Math.round(window.innerWidth * 0.82));
+                const h = Math.max(this.floatMinH(w),
+                    Math.min(Math.round(window.innerHeight * 0.55), Math.round(w * 0.72)));
                 this.floatGeom = {
                     x: window.innerWidth - w - 8,
                     y: window.innerHeight - h - 8,
                     w, h,
                 };
             }
+            this.cancelFloatGestures();
             document.body.dataset.floating = on ? 'on' : 'off';
             if (on) this.buildFloatHandles();
             this.applyFloatingGeom();
@@ -7467,77 +7482,107 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             layer.append(bar, resize);
             document.body.append(layer);
 
-            // 拖动：bar 的 grip 区（pointer 事件+identifier 认手）
-            let drag = null;
+            // 拖动：bar 的 grip 区。会话挂实例（cancelFloatGestures 可清，
+            // codex P2-6）；identifier 认手（touchend 只认 owner，P2-8）；
+            // 与按键手势互斥（P2-7）：几何手势期间按 touchstart 直接忽略。
             grip.addEventListener('touchstart', e => {
-                if (drag) return;
+                if (this.floatDragSession || this.floatResizeSession) return;
+                if (this.pressedKeys.size > 0) return; // 按键手势在场，让位
                 const t0 = e.changedTouches[0];
-                drag = { id: t0.identifier, sx: t0.clientX, sy: t0.clientY,
-                         gx: this.floatGeom.x, gy: this.floatGeom.y };
+                this.floatDragSession = { id: t0.identifier, sx: t0.clientX, sy: t0.clientY,
+                    gx: this.floatGeom.x, gy: this.floatGeom.y };
                 e.preventDefault();
             }, { passive: false });
             grip.addEventListener('touchmove', e => {
+                const drag = this.floatDragSession;
                 if (!drag) return;
                 for (const tch of e.changedTouches) {
                     if (tch.identifier !== drag.id) continue;
                     const g = this.floatGeom;
-                    g.x = Math.max(0, Math.min(window.innerWidth - g.w,
-                        drag.gx + tch.clientX - drag.sx));
-                    g.y = Math.max(0, Math.min(window.innerHeight - g.h,
-                        drag.gy + tch.clientY - drag.sy));
+                    g.x = drag.gx + tch.clientX - drag.sx;
+                    g.y = drag.gy + tch.clientY - drag.sy;
+                    this.clampFloatGeom();
                     this.applyFloatingGeom();
-                    this.syncFloatingRect();
                 }
                 e.preventDefault();
             }, { passive: false });
             const endDrag = e => {
+                const drag = this.floatDragSession;
                 if (!drag) return;
-                drag = null;
+                if (![...(e.changedTouches || [])].some(t => t.identifier === drag.id)) return;
+                this.floatDragSession = null;
                 this.syncFloatingRect();
             };
             grip.addEventListener('touchend', endDrag);
             grip.addEventListener('touchcancel', endDrag);
 
-            // 缩放：右下角把手，宽高联动（保持可输入的最小尺寸）
-            let rz = null;
+            // 缩放：右下角把手，宽高联动；先钳上限再抬下限，包围盒重钳位置
+            // （codex P2-5：max(min,…) 不得覆盖画布上限）。
             resize.addEventListener('touchstart', e => {
-                if (rz) return;
+                if (this.floatDragSession || this.floatResizeSession) return;
+                if (this.pressedKeys.size > 0) return;
                 const t0 = e.changedTouches[0];
-                rz = { id: t0.identifier, sx: t0.clientX, sy: t0.clientY,
-                       gw: this.floatGeom.w, gh: this.floatGeom.h };
+                this.floatResizeSession = { id: t0.identifier, sx: t0.clientX, sy: t0.clientY,
+                    gw: this.floatGeom.w, gh: this.floatGeom.h };
                 e.preventDefault();
             }, { passive: false });
             resize.addEventListener('touchmove', e => {
+                const rz = this.floatResizeSession;
                 if (!rz) return;
                 for (const tch of e.changedTouches) {
                     if (tch.identifier !== rz.id) continue;
                     const g = this.floatGeom;
-                    const minW = Math.round(window.innerWidth * 0.5);
-                    const minH = Math.round(window.innerHeight * 0.3);
-                    g.w = Math.max(minW, Math.min(window.innerWidth - g.x - 4,
-                        rz.gw + tch.clientX - rz.sx));
-                    g.h = Math.max(minH, Math.min(window.innerHeight - g.y - 4,
-                        rz.gh + tch.clientY - rz.sy));
+                    g.w = rz.gw + tch.clientX - rz.sx;
+                    g.h = rz.gh + tch.clientY - rz.sy;
+                    this.clampFloatGeom();
                     this.applyFloatingGeom();
-                    this.syncFloatingRect();
                 }
                 e.preventDefault();
             }, { passive: false });
-            const endRz = () => { if (rz) { rz = null; this.syncFloatingRect(); } };
+            const endRz = e => {
+                const rz = this.floatResizeSession;
+                if (!rz) return;
+                if (![...(e.changedTouches || [])].some(t => t.identifier === rz.id)) return;
+                this.floatResizeSession = null;
+                this.syncFloatingRect();
+            };
             resize.addEventListener('touchend', endRz);
             resize.addEventListener('touchcancel', endRz);
+        }
+
+        /** 悬浮卡片最小尺寸：宽 60% 视口；高=内容下限（codex P2-3）。 */
+        floatMinW() { return Math.round(window.innerWidth * 0.6); }
+        floatMinH(w) {
+            // 候选/预编辑/工具条 chrome 与 applyHeight 同源的行预算：四行
+            // 32px + chrome 紧凑预算（layoutChrome 已含 bar/margins）。
+            return Math.round(this.layoutChrome() + 4 * KB_ROW_MIN + 8);
+        }
+
+        /** 几何钳制（codex P2-4/5）：顶边至少留把手高度 26px；尺寸在
+         * 画布内先钳上限再抬下限；尺寸抬升可能越界——最后按包围盒
+         * 重钳位置，保证把手与缩放角始终在画布内。 */
+        clampFloatGeom() {
+            const g = this.floatGeom;
+            const H = window.innerHeight, W = window.innerWidth;
+            g.w = Math.max(this.floatMinW(), Math.min(W - 8, g.w));
+            g.h = Math.max(this.floatMinH(g.w), Math.min(H - 34, g.h));
+            g.x = Math.max(0, Math.min(W - g.w - 4, g.x));
+            g.y = Math.max(26, Math.min(H - g.h - 4, g.y));
         }
 
         onFloatingResize() {
             // 画布尺寸变化（进悬浮后的窗口铺满、旋转）：钳制几何回界内。
             if (!this.floating || !this.floatGeom) return;
-            const g = this.floatGeom;
-            g.w = Math.min(g.w, window.innerWidth - 8);
-            g.h = Math.min(g.h, window.innerHeight - 8);
-            g.x = Math.max(0, Math.min(window.innerWidth - g.w, g.x));
-            g.y = Math.max(0, Math.min(window.innerHeight - g.h, g.y));
+            this.clampFloatGeom();
             this.applyFloatingGeom();
             this.syncFloatingRect();
+        }
+
+        /** 悬浮几何手势会话（codex P2-6：提为实例字段，取消/隐藏/旋转
+         * 链路可清；P2-7：与按键手势互斥的占用标志）。 */
+        cancelFloatGestures() {
+            this.floatDragSession = null;
+            this.floatResizeSession = null;
         }
 
         applyOneHand() {
@@ -7558,8 +7603,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         'oneHandSide', String(level), this.token));
                 }
             }
+            // #55 悬浮态布局层面停用单手让位（codex review P2-9：不改
+            // pref、退出悬浮即恢复）。
+            const eff = this.floating ? 0 : level;
             document.body.dataset.oneHand =
-                level === 1 ? 'left' : level === 2 ? 'right' : 'off';
+                eff === 1 ? 'left' : eff === 2 ? 'right' : 'off';
             const content = Number(this.sideContent) || 0;
             document.body.dataset.sideContent = content === 1 ? 'blank' : 'cursor';
             // 压缩比例：让位宽度 = 屏宽的百分比（大屏单手靠它收窄键区）。
@@ -8233,11 +8281,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         applyHeight() {
             const view = document.getElementById('softKeyboard');
             const total = (view && view.clientHeight) || window.innerHeight;
-            const safe = this.safeBottomPx();
+            const safe = this.floating ? 0 : this.safeBottomPx();
             // The user's bottom blank strip rides INSIDE the view (CSS
             // padding-bottom owns it); the row budget excludes it so rows
             // keep their height and the strip stays blank (mode-fallback §3).
-            const pad = this.bottomPadPx();
+            const pad = this.floating ? 0 : this.bottomPadPx();
             const available = Math.max(0, total - safe - pad);
             const root = document.documentElement;
             if (root && root.style && typeof root.style.setProperty === 'function') {
@@ -8383,6 +8431,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.heightPreview = capped
                 ? this.heightEditSaved
                 : Math.max(bounds.min, this.heightEditSaved);
+            if (this.floating) {
+                // #55 悬浮尺寸由缩放角负责（codex review P2-10）：高度卡
+                // 写的是停靠设置，悬浮时打开只会误导。
+                this.showToast(t("悬浮键盘请用右下角把手调整大小"));
+                return;
+            }
             this.closeOtherViews();
             const card = document.getElementById('heightCard');
             card.hidden = false;

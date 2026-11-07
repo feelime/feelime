@@ -84,6 +84,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u6062\u590D\u505C\u9760": "Dock keyboard",
     "\u62D6\u52A8\u79FB\u52A8": "Drag to move",
     "\u62D6\u52A8\u7F29\u653E": "Drag to resize",
+    "\u60AC\u6D6E\u952E\u76D8\u8BF7\u7528\u53F3\u4E0B\u89D2\u628A\u624B\u8C03\u6574\u5927\u5C0F": "Use the corner handle to resize the floating keyboard",
+    "\u786C\u4EF6\u952E\u76D8\u5F62\u6001\u4E0B\u4E0D\u652F\u6301\u60AC\u6D6E\u952E\u76D8": "Floating keyboard is unavailable in hardware-keyboard mode",
     "\u5DF2\u622A\u65AD\u81F3 200 \u5B57": "Truncated to 200 characters",
     "\u901A\u914D\u7B26\u53EA\u80FD\u7528\u4E00\u4E2A": "Only one wildcard at a time",
     "\u65E5\u672C\u8A9E Romaji": "Japanese",
@@ -3898,6 +3900,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (button._cancelSpaceHold) button._cancelSpaceHold();
       };
       button.addEventListener("touchstart", (event) => {
+        if (this.floatDragSession || this.floatResizeSession) {
+          event.preventDefault();
+          return;
+        }
         event.preventDefault();
         clear();
         this.pressedKeys.add(button);
@@ -4047,6 +4053,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     cancelTouches() {
       this.traceTouch("cancel-all");
       this.inkCancelTouch();
+      this.cancelFloatGestures();
       this.cancelCustomChain();
       this.hideKeyBubble();
       for (const button of this.pressedKeys) {
@@ -6359,12 +6366,16 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * 驱动 touchableRegion；spike 首版内存态，松手上报一次。 */
     setFloatingMode(on) {
       if (on === this.floating) return;
+      if (on && document.body.classList.contains("hwkb")) {
+        this.showToast(t("\u786C\u4EF6\u952E\u76D8\u5F62\u6001\u4E0B\u4E0D\u652F\u6301\u60AC\u6D6E\u952E\u76D8"));
+        return;
+      }
       this.floating = on;
       if (on && !this.floatGeom) {
-        const w = Math.round(window.innerWidth * 0.82);
-        const h = Math.min(
-          Math.round(window.innerHeight * 0.55),
-          Math.round(w * 0.72)
+        const w = Math.max(this.floatMinW(), Math.round(window.innerWidth * 0.82));
+        const h = Math.max(
+          this.floatMinH(w),
+          Math.min(Math.round(window.innerHeight * 0.55), Math.round(w * 0.72))
         );
         this.floatGeom = {
           x: window.innerWidth - w - 8,
@@ -6373,6 +6384,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           h
         };
       }
+      this.cancelFloatGestures();
       document.body.dataset.floating = on ? "on" : "off";
       if (on) this.buildFloatHandles();
       this.applyFloatingGeom();
@@ -6446,11 +6458,11 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       layer.id = "floatHandles";
       layer.append(bar, resize);
       document.body.append(layer);
-      let drag = null;
       grip.addEventListener("touchstart", (e) => {
-        if (drag) return;
+        if (this.floatDragSession || this.floatResizeSession) return;
+        if (this.pressedKeys.size > 0) return;
         const t0 = e.changedTouches[0];
-        drag = {
+        this.floatDragSession = {
           id: t0.identifier,
           sx: t0.clientX,
           sy: t0.clientY,
@@ -6460,35 +6472,32 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         e.preventDefault();
       }, { passive: false });
       grip.addEventListener("touchmove", (e) => {
+        const drag = this.floatDragSession;
         if (!drag) return;
         for (const tch of e.changedTouches) {
           if (tch.identifier !== drag.id) continue;
           const g = this.floatGeom;
-          g.x = Math.max(0, Math.min(
-            window.innerWidth - g.w,
-            drag.gx + tch.clientX - drag.sx
-          ));
-          g.y = Math.max(0, Math.min(
-            window.innerHeight - g.h,
-            drag.gy + tch.clientY - drag.sy
-          ));
+          g.x = drag.gx + tch.clientX - drag.sx;
+          g.y = drag.gy + tch.clientY - drag.sy;
+          this.clampFloatGeom();
           this.applyFloatingGeom();
-          this.syncFloatingRect();
         }
         e.preventDefault();
       }, { passive: false });
       const endDrag = /* @__PURE__ */ __name((e) => {
+        const drag = this.floatDragSession;
         if (!drag) return;
-        drag = null;
+        if (![...e.changedTouches || []].some((t2) => t2.identifier === drag.id)) return;
+        this.floatDragSession = null;
         this.syncFloatingRect();
       }, "endDrag");
       grip.addEventListener("touchend", endDrag);
       grip.addEventListener("touchcancel", endDrag);
-      let rz = null;
       resize.addEventListener("touchstart", (e) => {
-        if (rz) return;
+        if (this.floatDragSession || this.floatResizeSession) return;
+        if (this.pressedKeys.size > 0) return;
         const t0 = e.changedTouches[0];
-        rz = {
+        this.floatResizeSession = {
           id: t0.identifier,
           sx: t0.clientX,
           sy: t0.clientY,
@@ -6498,43 +6507,57 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         e.preventDefault();
       }, { passive: false });
       resize.addEventListener("touchmove", (e) => {
+        const rz = this.floatResizeSession;
         if (!rz) return;
         for (const tch of e.changedTouches) {
           if (tch.identifier !== rz.id) continue;
           const g = this.floatGeom;
-          const minW = Math.round(window.innerWidth * 0.5);
-          const minH = Math.round(window.innerHeight * 0.3);
-          g.w = Math.max(minW, Math.min(
-            window.innerWidth - g.x - 4,
-            rz.gw + tch.clientX - rz.sx
-          ));
-          g.h = Math.max(minH, Math.min(
-            window.innerHeight - g.y - 4,
-            rz.gh + tch.clientY - rz.sy
-          ));
+          g.w = rz.gw + tch.clientX - rz.sx;
+          g.h = rz.gh + tch.clientY - rz.sy;
+          this.clampFloatGeom();
           this.applyFloatingGeom();
-          this.syncFloatingRect();
         }
         e.preventDefault();
       }, { passive: false });
-      const endRz = /* @__PURE__ */ __name(() => {
-        if (rz) {
-          rz = null;
-          this.syncFloatingRect();
-        }
+      const endRz = /* @__PURE__ */ __name((e) => {
+        const rz = this.floatResizeSession;
+        if (!rz) return;
+        if (![...e.changedTouches || []].some((t2) => t2.identifier === rz.id)) return;
+        this.floatResizeSession = null;
+        this.syncFloatingRect();
       }, "endRz");
       resize.addEventListener("touchend", endRz);
       resize.addEventListener("touchcancel", endRz);
     }
+    /** 悬浮卡片最小尺寸：宽 60% 视口；高=内容下限（codex P2-3）。 */
+    floatMinW() {
+      return Math.round(window.innerWidth * 0.6);
+    }
+    floatMinH(w) {
+      return Math.round(this.layoutChrome() + 4 * KB_ROW_MIN + 8);
+    }
+    /** 几何钳制（codex P2-4/5）：顶边至少留把手高度 26px；尺寸在
+     * 画布内先钳上限再抬下限；尺寸抬升可能越界——最后按包围盒
+     * 重钳位置，保证把手与缩放角始终在画布内。 */
+    clampFloatGeom() {
+      const g = this.floatGeom;
+      const H = window.innerHeight, W = window.innerWidth;
+      g.w = Math.max(this.floatMinW(), Math.min(W - 8, g.w));
+      g.h = Math.max(this.floatMinH(g.w), Math.min(H - 34, g.h));
+      g.x = Math.max(0, Math.min(W - g.w - 4, g.x));
+      g.y = Math.max(26, Math.min(H - g.h - 4, g.y));
+    }
     onFloatingResize() {
       if (!this.floating || !this.floatGeom) return;
-      const g = this.floatGeom;
-      g.w = Math.min(g.w, window.innerWidth - 8);
-      g.h = Math.min(g.h, window.innerHeight - 8);
-      g.x = Math.max(0, Math.min(window.innerWidth - g.w, g.x));
-      g.y = Math.max(0, Math.min(window.innerHeight - g.h, g.y));
+      this.clampFloatGeom();
       this.applyFloatingGeom();
       this.syncFloatingRect();
+    }
+    /** 悬浮几何手势会话（codex P2-6：提为实例字段，取消/隐藏/旋转
+     * 链路可清；P2-7：与按键手势互斥的占用标志）。 */
+    cancelFloatGestures() {
+      this.floatDragSession = null;
+      this.floatResizeSession = null;
     }
     applyOneHand() {
       const level = Number(this.oneHand) || 0;
@@ -6552,7 +6575,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           ));
         }
       }
-      document.body.dataset.oneHand = level === 1 ? "left" : level === 2 ? "right" : "off";
+      const eff = this.floating ? 0 : level;
+      document.body.dataset.oneHand = eff === 1 ? "left" : eff === 2 ? "right" : "off";
       const content = Number(this.sideContent) || 0;
       document.body.dataset.sideContent = content === 1 ? "blank" : "cursor";
       const padPct = Number(this.oneHandPad) || 0;
@@ -7126,8 +7150,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     applyHeight() {
       const view = document.getElementById("softKeyboard");
       const total = view && view.clientHeight || window.innerHeight;
-      const safe = this.safeBottomPx();
-      const pad = this.bottomPadPx();
+      const safe = this.floating ? 0 : this.safeBottomPx();
+      const pad = this.floating ? 0 : this.bottomPadPx();
       const available = Math.max(0, total - safe - pad);
       const root = document.documentElement;
       if (root && root.style && typeof root.style.setProperty === "function") {
@@ -7222,6 +7246,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const bounds = this.heightBounds();
       const capped = bounds.max <= bounds.min + 2;
       this.heightPreview = capped ? this.heightEditSaved : Math.max(bounds.min, this.heightEditSaved);
+      if (this.floating) {
+        this.showToast(t("\u60AC\u6D6E\u952E\u76D8\u8BF7\u7528\u53F3\u4E0B\u89D2\u628A\u624B\u8C03\u6574\u5927\u5C0F"));
+        return;
+      }
       this.closeOtherViews();
       const card = document.getElementById("heightCard");
       card.hidden = false;
