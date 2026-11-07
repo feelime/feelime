@@ -24,6 +24,10 @@ object ChineseNumberItn {
     private val DIGIT_MAP = mapOf(
         '零' to 0L, '一' to 1L, '二' to 2L, '两' to 2L, '三' to 3L, '四' to 4L,
         '五' to 5L, '六' to 6L, '七' to 7L, '八' to 8L, '九' to 9L,
+        // 幺=1：电话号/证件号读法（#78 反馈：报手机号「幺三八」应转 138）。
+        // 单字成段（幺妹/幺蛾子）不满足任何转换门槛（纯位 len≥3/带量词/
+        // 带单位），天然 KEEP，无需额外排除表。
+        '幺' to 1L,
     )
     private const val UNITS = "十百千万亿"
 

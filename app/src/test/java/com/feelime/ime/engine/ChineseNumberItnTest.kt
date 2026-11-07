@@ -87,6 +87,16 @@ class ChineseNumberItnTest {
     }
 
     @Test
+    fun yaoReadsAsOneInDigitStrings() {
+        // #78 反馈：报手机号/身份证用「幺」读 1——逐位编号段照转
+        assertEquals("13800138000", ChineseNumberItn.apply("幺三八零零幺三八零零零"))
+        assertEquals("尾号1102", ChineseNumberItn.apply("尾号幺幺零二"))
+        // 幺单字成段（幺妹/幺蛾子）不满足任何转换门槛，保持原文
+        assertEquals("我家幺妹属兔", ChineseNumberItn.apply("我家幺妹属兔"))
+        assertEquals("净出幺蛾子", ChineseNumberItn.apply("净出幺蛾子"))
+    }
+
+    @Test
     fun idiomsAndBareDigitsStay() {
         // 成语：段后无单位白名单词，原样
         assertEquals("一五一十地说", ChineseNumberItn.apply("一五一十地说"))
