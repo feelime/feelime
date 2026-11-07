@@ -1111,18 +1111,26 @@ test('bottom row: toggle flips the quick keyboard pair', () => {
         verAtLeast(KEYBOARD_VERSION, '3.73.55') ? 'french toggles straight to English' : 'french falls back to pair end (pre-3.73.55)');
 });
 
-test('cn-en toggle is a no-op while composing (#89 misclick guard)', {since: '3.73.83'}, () => {
+test('cn-en composing guard is opt-in (#89): default keeps composing switch, guard blocks it', {since: '3.73.83'}, () => {
+    // 默认关（存量行为）：组词中单击照常切换——不给其他用户改行为
+    const stock = fresh();
+    stock.engineState({ phase: 'READY', revision: 1, mode: 'pinyin', composing: 'nihao', candidates: ['你好'] });
+    stock.tap(stock.$('modeToggle'));
+    equal(stock.native.of('selectMode').length, 1,
+        'guard OFF (default): composing tap still switches (1.4.5 behavior)');
+
+    // 开启守卫：组词中单击被拦 + toast 说明；组合清空后恢复
     const world = fresh();
+    world.hello({ cnEnComposingGuard: true });
     world.engineState({ phase: 'READY', revision: 1, mode: 'pinyin', composing: 'nihao', candidates: ['你好'] });
     world.tap(world.$('modeToggle'));
     equal(world.native.of('selectMode').length, 0,
-        'composing tap does not switch (misclick would destroy the composition)');
+        'guard ON: composing tap does not switch (misclick would destroy the composition)');
     equal(world.$('toast').textContent, '拼音组合中，先上屏再切换',
         'guard explains itself instead of looking dead');
-    // 组合上屏后恢复正常切换
     world.engineState({ phase: 'READY', revision: 2, mode: 'pinyin', composing: '', candidates: [] });
     world.tap(world.$('modeToggle'));
-    equal(world.native.of('selectMode').length, 1, 'idle tap still toggles');
+    equal(world.native.of('selectMode').length, 1, 'guard ON, idle tap still toggles');
 });
 
 test('backspace vertical gestures: down after up restores via native snapshot (3.73.77)', {since: '3.73.77'}, () => {

@@ -2594,6 +2594,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("bgImageDarkSource", readBgImageSource(this, "dark"))
             .put("keyOpacity", readKeyOpacity(this))
             .put("keyBubble", readKeyBubble(this))
+            .put("cnEnComposingGuard", readCnEnComposingGuard(this))
             .put("bubbleLinger", readBubbleLinger(this))
             // #39 横屏三级页三项 + 挖孔安全区实测值（css px，竖屏恒 0）。
             // safeSide 只有横屏需要（SHORT_EDGES 铺进挖孔区后键区让位用），
@@ -3450,6 +3451,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 }
                 "keyBubble" -> {
                     keyboardPrefs.edit().putBoolean(PREF_KEY_BUBBLE, value == "1" || value == "true").commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
+                "cnEnComposingGuard" -> {
+                    // #89 键盘页内嵌快捷设置同源（setQuickPref 布尔只认 1/0）
+                    keyboardPrefs.edit().putBoolean(PREF_CN_EN_COMPOSING_GUARD, value == "1" || value == "true").commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "themeMode" -> {

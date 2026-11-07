@@ -901,6 +901,8 @@ const I18N = {
     "input.feel.kbHeightReset": "\u6062\u590D\u9ED8\u8BA4",
     "input.feel.keyOpacityHint": "\u952E\u5E3D\u5728\u80CC\u666F\u56FE\u4E0A\u7684\u900F\u660E\u7A0B\u5EA6\uFF0C\u6587\u5B57\u59CB\u7EC8\u5B9E\u8272\u3002",
     "input.feel.keyBubble": "\u6309\u952E\u6C14\u6CE1",
+    "input.feel.cnEnComposingGuard": "\u62FC\u97F3\u7EC4\u8BCD\u4E2D\u7981\u6B62\u5207\u6362\u8BED\u8A00",
+    "input.feel.cnEnComposingGuardHint": "\u9632\u6B62\u5FEB\u901F\u6253\u5B57\u8BEF\u89E6\u4E2D\u82F1\u5207\u6362\u952E\u628A\u7EC4\u8BCD\u6253\u65AD\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF0C\u5F00\u542F\u540E\u7EC4\u8BCD\u4E2D\u5355\u51FB\u5207\u6362\u952E\u4E0D\u751F\u6548\uFF09\u3002",
     "input.feel.keyBubbleHint": "\u6309\u4E0B\u6309\u952E\u65F6\u5728\u952E\u5E3D\u4E0A\u65B9\u653E\u5927\u663E\u793A\u6240\u6309\u7684\u5B57\u7B26\uFF0C\u65B9\u4FBF\u786E\u8BA4\u6709\u6CA1\u6709\u6309\u9519\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09\u3002",
     "entry.appearance.title": "\u5916\u89C2",
     "entry.appearance.subtitle": "\u8272\u5F69\u6A21\u5F0F \xB7 \u80CC\u666F\u56FE\u7247 \xB7 \u900F\u660E\u5EA6",
@@ -1705,6 +1707,8 @@ const I18N = {
     "input.feel.kbHeightReset": "Reset",
     "input.feel.keyOpacityHint": "How transparent the keycaps sit over the background image; labels stay solid.",
     "input.feel.keyBubble": "Key bubble",
+    "input.feel.cnEnComposingGuard": "Block language switch while composing",
+    "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
     "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
     "entry.appearance.title": "Appearance",
     "entry.appearance.subtitle": "Color mode \xB7 Background \xB7 Opacity",
@@ -2593,6 +2597,8 @@ function renderFeel(state) {
   updateThemePreview();
   const bubble = $("keyBubble");
   if (bubble) bubble.checked = state.keyBubble === true;
+  const guard = $("cnEnComposingGuard");
+  if (guard) guard.checked = state.cnEnComposingGuard === true;
   const lingerSel = $("bubbleLinger");
   if (lingerSel && document.activeElement !== lingerSel) {
     lingerSel.value = String((_j = state.bubbleLinger) != null ? _j : 400);
@@ -3982,6 +3988,7 @@ $("keyOpacity").addEventListener("change", (event) => {
   call("setKeyOpacity", parseInt(event.target.value, 10));
 });
 $("keyBubble").addEventListener("change", (event) => call("setKeyBubble", event.target.checked));
+$("cnEnComposingGuard").addEventListener("change", (event) => call("setCnEnComposingGuard", event.target.checked));
 $("bubbleLinger").addEventListener("change", (event) => {
   call("setBubbleLinger", parseInt(event.target.value, 10) || 0);
 });

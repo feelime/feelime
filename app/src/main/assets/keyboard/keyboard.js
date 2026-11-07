@@ -351,7 +351,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.83';
+    const KEYBOARD_VERSION = '3.73.84';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1695,6 +1695,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // key_bubble，外观页开关经 hello 下发；开着才在按下时放大
             // 预览所按字符。
             this.keyBubble = false;
+            this.cnEnGuard = false; // #89 组词中防误触切换（默认关）
             this.bubbleLinger = 400;
             // 色彩模式（auto/light/dark）：真相源是 native pref theme_mode，
             // hello 下发、tile 循环上报。AGENTS.md「设置不走 localStorage」。
@@ -3859,11 +3860,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         toggleChineseEnglish() {
-            // #89 误触语言切换：拼音组词中（常规 26 键打快了拇指带到的
-            // 单击）不切换——组合串被切走直接变英文直出，用户要删掉重打。
-            // 先上屏（或清组合）再切。长按完整模式菜单不受此限（选择
-            // 性操作，误触概率低，保留组词中主动换模式的自由）。
-            if (this.composing) {
+            // #89 误触语言切换（开关默认关，不改变存量「组词中可切换」
+            // 行为）：开启后拼音组词中（常规 26 键打快了拇指带到的单击）
+            // 不切换——组合串被切走直接变英文直出，只能删掉重打。先上屏
+            // （或清组合）再切。长按完整模式菜单不受此限（选择性操作，
+            // 误触概率低，保留组词中主动换模式的自由）。
+            if (this.cnEnGuard && this.composing) {
                 this.showToast(t("拼音组合中，先上屏再切换"));
                 return;
             }
@@ -11341,6 +11343,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const landOpacity = Number(payload.landscapeOpacity);
             if (landOpacity >= 10 && landOpacity <= 100) this.landscapeOpacity = landOpacity;
             if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
+            if (typeof payload.cnEnComposingGuard === 'boolean') this.cnEnGuard = payload.cnEnComposingGuard;
             const lingerMs = Number(payload.bubbleLinger);
             if (lingerMs >= 0) this.bubbleLinger = lingerMs;
             this.applyOneHand();

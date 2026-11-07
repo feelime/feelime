@@ -235,6 +235,8 @@ fun readKbLayout(context: Context): String {
 const val PREF_KEY_OPACITY = "key_opacity"
 /** 按键气泡（issue #30-1，默认关）：按下时放大预览所按字符。 */
 const val PREF_KEY_BUBBLE = "key_bubble"
+/** #89 拼音组词中防误触切换（默认关：组词中仍可切换，不改存量行为）。 */
+const val PREF_CN_EN_COMPOSING_GUARD = "cn_en_composing_guard"
 /** 气泡停留时长（验收 2026-09-24：松手立即消失看不清）。0/250/400/600ms。 */
 const val PREF_BUBBLE_LINGER = "bubble_linger_ms"
 val BUBBLE_LINGER_STEPS = intArrayOf(0, 250, 400, 600)
@@ -317,6 +319,12 @@ fun readLandscapeOpacity(context: Context): Int =
 fun readKeyBubble(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_KEY_BUBBLE, false)
+
+/** #89：默认 false——组词中切换保持 1.4.5 及之前行为，开启才拦误触。 */
+fun readCnEnComposingGuard(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_CN_EN_COMPOSING_GUARD, false)
+
 
 /** 键盘高度（竖屏存值；pref 物理px，对外统一转 CSS px；0=默认）。 */
 fun readKbHeightPortrait(context: Context): Int {
@@ -922,6 +930,7 @@ class SettingsBridge(
             .put("quickReturnMode", readQuickReturnMode(context))
             .put("landscapeOpacity", readLandscapeOpacity(context))
             .put("keyBubble", readKeyBubble(context))
+            .put("cnEnComposingGuard", readCnEnComposingGuard(context))
             .put("bubbleLinger", readBubbleLinger(context))
             // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
             // 点开开关后 pushState 一到就弹回——「开了看不出开」。
@@ -1894,6 +1903,15 @@ class SettingsBridge(
 
     /** 按键气泡开关（issue #30-1，默认关）。 */
     @JavascriptInterface
+    fun setCnEnComposingGuard(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_CN_EN_COMPOSING_GUARD, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
     fun setKeyBubble(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_KEY_BUBBLE, on).commit()

@@ -812,6 +812,8 @@ const I18N = {
         "input.feel.kbHeightReset": "恢复默认",
         "input.feel.keyOpacityHint": "键帽在背景图上的透明程度，文字始终实色。",
         "input.feel.keyBubble": "按键气泡",
+        "input.feel.cnEnComposingGuard": "拼音组词中禁止切换语言",
+        "input.feel.cnEnComposingGuardHint": "防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。",
         "input.feel.keyBubbleHint": "按下按键时在键帽上方放大显示所按的字符，方便确认有没有按错（默认关闭）。",
         "entry.appearance.title": "外观",
         "entry.appearance.subtitle": "色彩模式 · 背景图片 · 透明度",
@@ -1614,6 +1616,8 @@ const I18N = {
         "input.feel.kbHeightReset": "Reset",
         "input.feel.keyOpacityHint": "How transparent the keycaps sit over the background image; labels stay solid.",
         "input.feel.keyBubble": "Key bubble",
+        "input.feel.cnEnComposingGuard": "Block language switch while composing",
+        "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
         "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
         "entry.appearance.title": "Appearance",
         "entry.appearance.subtitle": "Color mode · Background · Opacity",
@@ -2646,6 +2650,8 @@ function renderFeel(state) {
     updateThemePreview();
     const bubble = $("keyBubble");
     if (bubble) bubble.checked = state.keyBubble === true;
+    const guard = $("cnEnComposingGuard");
+    if (guard) guard.checked = state.cnEnComposingGuard === true;
     const lingerSel = $("bubbleLinger");
     if (lingerSel && document.activeElement !== lingerSel) {
         lingerSel.value = String(state.bubbleLinger ?? 400);
@@ -4183,6 +4189,7 @@ $("keyOpacity").addEventListener("change", event => {
 // 按键气泡（issue #30-1）：外观页开关，默认关；广播→hello 实时作用到
 // 底下弹出的预览键盘。
 $("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
+$("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposingGuard", event.target.checked));
 $("bubbleLinger").addEventListener("change", event => {
     call("setBubbleLinger", parseInt(event.target.value, 10) || 0);
 });

@@ -342,7 +342,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.83";
+  const KEYBOARD_VERSION = "3.73.84";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1750,6 +1750,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.safeSideR = 0;
       this.landscapeOpacity = 100;
       this.keyBubble = false;
+      this.cnEnGuard = false;
       this.bubbleLinger = 400;
       this.themeMode = "auto";
       this.toolbarLeft = TOOLBAR_DEFAULT.left.slice();
@@ -3484,7 +3485,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       return "direct";
     }
     toggleChineseEnglish() {
-      if (this.composing) {
+      if (this.cnEnGuard && this.composing) {
         this.showToast(t("\u62FC\u97F3\u7EC4\u5408\u4E2D\uFF0C\u5148\u4E0A\u5C4F\u518D\u5207\u6362"));
         return;
       }
@@ -9585,6 +9586,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const landOpacity = Number(payload.landscapeOpacity);
       if (landOpacity >= 10 && landOpacity <= 100) this.landscapeOpacity = landOpacity;
       if (typeof payload.keyBubble === "boolean") this.keyBubble = payload.keyBubble;
+      if (typeof payload.cnEnComposingGuard === "boolean") this.cnEnGuard = payload.cnEnComposingGuard;
       const lingerMs = Number(payload.bubbleLinger);
       if (lingerMs >= 0) this.bubbleLinger = lingerMs;
       this.applyOneHand();

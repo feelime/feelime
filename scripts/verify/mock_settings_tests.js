@@ -141,6 +141,7 @@ class MockSettingsNative {
     setCustomEnabled(...a) { this._rec('setCustomEnabled', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
+    setCnEnComposingGuard(...a) { this._rec('setCnEnComposingGuard', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
@@ -2343,6 +2344,17 @@ test('appearance page reflects state and commits themeMode / keyOpacity with the
         .handler({ target: { checked: true } });
     equal(world.lastCall('setKeyBubble').args, [true, world.token],
         'key bubble commit + token');
+
+    // #89 组词防误触开关：默认关、回显、拨动即过桥
+    const guardToggle = world.$('cnEnComposingGuard');
+    world.push({ ...BASE_STATE });
+    equal(guardToggle.checked, false, 'composing guard default off');
+    world.push({ ...BASE_STATE, cnEnComposingGuard: true });
+    equal(guardToggle.checked, true, 'composing guard follows state');
+    guardToggle.listeners.find(l => l.type === 'change')
+        .handler({ target: { checked: true } });
+    equal(world.lastCall('setCnEnComposingGuard').args, [true, world.token],
+        'composing guard commit + token');
 
     // 气泡停留档（验收 2026-09-24）：回显 + 换档过桥。
     const lingerSel = world.$('bubbleLinger');
