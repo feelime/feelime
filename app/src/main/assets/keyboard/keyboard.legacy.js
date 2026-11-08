@@ -349,7 +349,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.92";
+  const KEYBOARD_VERSION = "3.73.95";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -6273,6 +6273,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.kbHeight = this.storedKbHeight();
       this.renderMode();
       this.applyHeight();
+      const memKey = this.floatMemoryKey();
+      if (this._floatOrientKey === void 0) {
+        this._floatOrientKey = memKey;
+      } else if (this._floatOrientKey !== memKey) {
+        this._floatOrientKey = memKey;
+        this.applyFloatMemory(true);
+      }
     }
     /** Saved CONTENT keyboard height (CSS px) for the current orientation;
      * 0 = native default (272). Legacy keys held a per-row height (<100)
@@ -6412,6 +6419,11 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * 驱动 touchableRegion；spike 首版内存态，松手上报一次。 */
     setFloatingMode(on) {
       if (on === this.floating) return;
+      try {
+        throw new Error("SFM|" + on + "|" + this.floatMemoryKey() + "|" + new Error().stack.split("\n").slice(2, 5).join(" <- "));
+      } catch (e) {
+        (window.__sfm = window.__sfm || []).push(e.message);
+      }
       if (on && document.body.classList.contains("hwkb")) {
         this.showToast(t("\u786C\u4EF6\u952E\u76D8\u5F62\u6001\u4E0B\u4E0D\u652F\u6301\u60AC\u6D6E\u952E\u76D8"));
         return;
@@ -6425,23 +6437,23 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       this.floating = on;
       if (on && !this.floatGeom) {
-        const w = Math.max(this.floatMinW(), Math.round(window.innerWidth * 0.82));
-        const h = Math.max(
-          this.floatMinH(w),
-          Math.min(Math.round(window.innerHeight * 0.55), Math.round(w * 0.72))
-        );
-        this.floatGeom = {
-          x: window.innerWidth - w - 8,
-          y: window.innerHeight - h - 8,
-          w,
-          h
-        };
+        const mem = this.loadFloatMemory();
+        if (mem && mem.on && mem.w > 0) {
+          this.floatGeom = { x: mem.x, y: mem.y, w: mem.w, h: mem.h };
+          this._floatGeomTouched = true;
+        }
       }
+      if (on && !this.floatGeom) this.setFloatInitialGeom();
       this.cancelFloatGestures();
       document.body.dataset.floating = on ? "on" : "off";
       if (on) this.buildFloatHandles();
       this.applyFloatingGeom();
       this.syncFloatingRect();
+      this._floatOrientKey = this.floatMemoryKey();
+      if (on) {
+        if (this._floatGeomTouched) this.saveFloatMemory();
+        else this.saveFloatMemoryOn();
+      } else this.saveFloatMemoryOff();
       this.call(() => {
         if (typeof Native.setFloating === "function") {
           Native.setFloating(on, this.token);
@@ -6550,7 +6562,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (!drag) return;
         if (![...e.changedTouches || []].some((t2) => t2.identifier === drag.id)) return;
         this.floatDragSession = null;
+        this._floatGeomTouched = true;
         this.syncFloatingRect();
+        this.saveFloatMemory();
       }, "endDrag");
       grip.addEventListener("touchend", endDrag);
       grip.addEventListener("touchcancel", endDrag);
@@ -6592,7 +6606,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (!rz) return;
         if (![...e.changedTouches || []].some((t2) => t2.identifier === rz.id)) return;
         this.floatResizeSession = null;
+        this._floatGeomTouched = true;
         this.syncFloatingRect();
+        this.saveFloatMemory();
       }, "endRz");
       resize.addEventListener("touchend", endRz);
       resize.addEventListener("touchcancel", endRz);
@@ -6607,6 +6623,92 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     /** 几何钳制（codex P2-4/5）：顶边至少留把手高度 26px；尺寸在
      * 画布内先钳上限再抬下限；尺寸抬升可能越界——最后按包围盒
      * 重钳位置，保证把手与缩放角始终在画布内。 */
+    /** 悬浮安全初值：竖屏宽 82% 视口；横屏 92%——悬浮卡两侧
+     *  不需要停靠态给安全区留的空白（用户实测「两边空白收一下」）。
+     *  高 55% 但不低于内容下限（codex review P2-3：189px 会被
+     *  overflow:hidden 裁掉第四行）。居中贴底。 */
+    setFloatInitialGeom() {
+      const wPct = this.landscape ? 0.92 : 0.82;
+      const w = Math.max(this.floatMinW(), Math.round(window.innerWidth * wPct));
+      const h = Math.max(
+        this.floatMinH(w),
+        Math.min(Math.round(window.innerHeight * 0.55), Math.round(w * 0.72))
+      );
+      this.floatGeom = {
+        x: Math.round((window.innerWidth - w) / 2),
+        y: window.innerHeight - h - 8,
+        w,
+        h
+      };
+    }
+    /** 悬浮记忆（#55 横竖屏独立）：{on,x,y,w,h} 按方向存
+     *  localStorage。旋转会触发 IMS 重建输入视图（native 侧
+     *  onCreateInputView 复位悬浮态），方向翻转也换视口尺寸——
+     *  两处都从各自方向的记忆恢复，用户的悬浮选择不被一次旋转
+     *  清掉（用户实测：横悬浮→竖悬浮→回横屏唤起变停靠）。 */
+    floatMemoryKey() {
+      return this.landscape ? "feelime_float_landscape" : "feelime_float_portrait";
+    }
+    loadFloatMemory() {
+      try {
+        const raw = localStorage.getItem(this.floatMemoryKey());
+        if (!raw) return null;
+        const m = JSON.parse(raw);
+        if (!m || typeof m.on !== "boolean") return null;
+        if (!m.on) return { on: false };
+        const ok = [m.x, m.y, m.w, m.h].every((v) => typeof v === "number" && isFinite(v) && v > 0);
+        return ok ? m : { on: true };
+      } catch (_) {
+        return null;
+      }
+    }
+    saveFloatMemory() {
+      if (!this.floating || !this.floatGeom) return;
+      try {
+        localStorage.setItem(this.floatMemoryKey(), JSON.stringify(
+          Object.assign({ on: true }, this.floatGeom)
+        ));
+      } catch (_) {
+      }
+    }
+    saveFloatMemoryOff() {
+      try {
+        localStorage.setItem(this.floatMemoryKey(), '{"on":false}');
+      } catch (_) {
+      }
+    }
+    saveFloatMemoryOn() {
+      try {
+        localStorage.setItem(this.floatMemoryKey(), '{"on":true}');
+      } catch (_) {
+      }
+    }
+    /** 应用当前方向的悬浮记忆（页面重建恢复 / 方向翻转切换）：
+     *  on=true 走完整进入流程（几何走记忆初值）；off/无记忆且当前
+     *  悬浮中 → 停靠。预置 floating=false 以穿过 setFloatingMode
+     *  的同态早退（换向重进是合法的全流程重放）。force（翻转/
+     *  重建恢复点）在悬浮中也完整重放——旧几何是另一方向的，只
+     *  对齐会带着横屏宽卡回竖屏；非 force 的同向重复调用才走
+     *  「仅对齐几何」。 */
+    applyFloatMemory(force) {
+      const mem = this.loadFloatMemory();
+      if (mem && mem.on) {
+        if (this.floating && !force) {
+          if (mem.w && this.floatGeom && (this.floatGeom.w !== mem.w || this.floatGeom.x !== mem.x || this.floatGeom.y !== mem.y || this.floatGeom.h !== mem.h)) {
+            this.floatGeom = { x: mem.x, y: mem.y, w: mem.w, h: mem.h };
+            this.clampFloatGeom();
+            this.applyFloatingGeom();
+            this.syncFloatingRect();
+          }
+          return;
+        }
+        this.floating = false;
+        this.floatGeom = null;
+        this.setFloatingMode(true);
+      } else if (this.floating) {
+        this.setFloatingMode(false);
+      }
+    }
     clampFloatGeom() {
       const g = this.floatGeom;
       const H = window.innerHeight, W = window.innerWidth;
@@ -6617,9 +6719,11 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }
     onFloatingResize() {
       if (!this.floating || !this.floatGeom) return;
+      if (!this._floatGeomTouched) this.setFloatInitialGeom();
       this.clampFloatGeom();
       this.applyFloatingGeom();
       this.syncFloatingRect();
+      if (this._floatGeomTouched) this.saveFloatMemory();
     }
     /** 悬浮几何手势会话（codex P2-6：提为实例字段，取消/隐藏/旋转
      * 链路可清；P2-7：与按键手势互斥的占用标志）。 */
@@ -7282,6 +7386,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         });
       }
       this._lastHeightSig = signature;
+      const memKey = this.floatMemoryKey();
+      if (this._floatOrientKey === void 0) {
+        this._floatOrientKey = memKey;
+      } else if (this._floatOrientKey !== memKey) {
+        this._floatOrientKey = memKey;
+        this.applyFloatMemory(true);
+      }
       this.applyKeycapMetrics(rowHeight);
       if (document.getElementById("heightCard").classList.contains("open")) {
         this.placeHeightCard();
@@ -10110,6 +10221,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (payload.orientation) {
         this.helloOrientation = payload.orientation;
         this.applyOrientation(payload.orientation === "landscape");
+        this._floatOrientKey = this.floatMemoryKey();
+        this.applyFloatMemory(true);
       }
       this.applyHeight();
       if (document.getElementById("phraseCard").classList.contains("open")) {

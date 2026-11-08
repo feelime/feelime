@@ -358,7 +358,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.92';
+    const KEYBOARD_VERSION = '3.73.95';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -7277,6 +7277,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.kbHeight = this.storedKbHeight();
             this.renderMode();
             this.applyHeight();
+            // 方向独立记忆（#55）：翻转时切到新方向的悬浮记忆（用户
+            // 实测：横悬浮→竖悬浮→回横屏唤起变停靠）。applyHeight 侧
+            // 的 key 跟随已在本次 applyHeight 里同步，不会双触发。
+            const memKey = this.floatMemoryKey();
+            if (this._floatOrientKey === undefined) {
+                this._floatOrientKey = memKey;
+            } else if (this._floatOrientKey !== memKey) {
+                this._floatOrientKey = memKey;
+                this.applyFloatMemory(true);
+            }
         }
 
         /** Saved CONTENT keyboard height (CSS px) for the current orientation;
@@ -7446,6 +7456,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 驱动 touchableRegion；spike 首版内存态，松手上报一次。 */
         setFloatingMode(on) {
             if (on === this.floating) return;
+
+            try { throw new Error('SFM|' + on + '|' + this.floatMemoryKey() + '|' + new Error().stack.split('\n').slice(2, 5).join(' <- ')); } catch (e) { (window.__sfm = window.__sfm || []).push(e.message); }
             // #55 硬键盘候选条形态（#H）与悬浮的组合暂不支持（codex
             // review P2-12：面板高度态不驱动卡片尺寸，挤在候选条里）。
             if (on && document.body.classList.contains('hwkb')) {
@@ -7463,23 +7475,30 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             this.floating = on;
             if (on && !this.floatGeom) {
-                // 安全自动初值：宽度 82% 视口，高 55% 但不低于内容下限
-                // （候选+预编辑+4×32 行键+chrome，codex review P2-3：
-                // 189px 会被 overflow:hidden 裁掉第四行）。
-                const w = Math.max(this.floatMinW(), Math.round(window.innerWidth * 0.82));
-                const h = Math.max(this.floatMinH(w),
-                    Math.min(Math.round(window.innerHeight * 0.55), Math.round(w * 0.72)));
-                this.floatGeom = {
-                    x: window.innerWidth - w - 8,
-                    y: window.innerHeight - h - 8,
-                    w, h,
-                };
+                // 记忆初值优先（#55 横竖屏独立记忆）：本方向存过几何
+                // 就原样恢复——旋转重建/唤出后用户的位置不丢；记忆
+                // 几何视为用户已调过（不再跟随视口重排初值）。
+                const mem = this.loadFloatMemory();
+                if (mem && mem.on && mem.w > 0) {
+                    this.floatGeom = { x: mem.x, y: mem.y, w: mem.w, h: mem.h };
+                    this._floatGeomTouched = true;
+                }
             }
+            if (on && !this.floatGeom) this.setFloatInitialGeom();
             this.cancelFloatGestures();
             document.body.dataset.floating = on ? 'on' : 'off';
             if (on) this.buildFloatHandles();
             this.applyFloatingGeom();
             this.syncFloatingRect();
+            // 记忆落盘：进/出悬浮记开关。几何只在用户动过（drag/resize
+            // 松手）时才值得记——自动初值随视口重算更准，旋转过渡期的
+            // 窗口宽度会把初值 clamp 成 minW 再被记忆锁死（实测横屏卡
+            // 549 永不回 92%）。
+            this._floatOrientKey = this.floatMemoryKey();
+            if (on) {
+                if (this._floatGeomTouched) this.saveFloatMemory();
+                else this.saveFloatMemoryOn();
+            } else this.saveFloatMemoryOff();
             this.call(() => {
                 if (typeof Native.setFloating === 'function') {
                     Native.setFloating(on, this.token);
@@ -7597,7 +7616,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!drag) return;
                 if (![...(e.changedTouches || [])].some(t => t.identifier === drag.id)) return;
                 this.floatDragSession = null;
+                this._floatGeomTouched = true;
                 this.syncFloatingRect();
+                this.saveFloatMemory();
             };
             grip.addEventListener('touchend', endDrag);
             grip.addEventListener('touchcancel', endDrag);
@@ -7639,7 +7660,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!rz) return;
                 if (![...(e.changedTouches || [])].some(t => t.identifier === rz.id)) return;
                 this.floatResizeSession = null;
+                this._floatGeomTouched = true;
                 this.syncFloatingRect();
+                this.saveFloatMemory();
             };
             resize.addEventListener('touchend', endRz);
             resize.addEventListener('touchcancel', endRz);
@@ -7656,6 +7679,94 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         /** 几何钳制（codex P2-4/5）：顶边至少留把手高度 26px；尺寸在
          * 画布内先钳上限再抬下限；尺寸抬升可能越界——最后按包围盒
          * 重钳位置，保证把手与缩放角始终在画布内。 */
+        /** 悬浮安全初值：竖屏宽 82% 视口；横屏 92%——悬浮卡两侧
+         *  不需要停靠态给安全区留的空白（用户实测「两边空白收一下」）。
+         *  高 55% 但不低于内容下限（codex review P2-3：189px 会被
+         *  overflow:hidden 裁掉第四行）。居中贴底。 */
+        setFloatInitialGeom() {
+            const wPct = this.landscape ? 0.92 : 0.82;
+            const w = Math.max(this.floatMinW(), Math.round(window.innerWidth * wPct));
+            const h = Math.max(this.floatMinH(w),
+                Math.min(Math.round(window.innerHeight * 0.55), Math.round(w * 0.72)));
+            this.floatGeom = {
+                x: Math.round((window.innerWidth - w) / 2),
+                y: window.innerHeight - h - 8,
+                w, h,
+            };
+        }
+
+        /** 悬浮记忆（#55 横竖屏独立）：{on,x,y,w,h} 按方向存
+         *  localStorage。旋转会触发 IMS 重建输入视图（native 侧
+         *  onCreateInputView 复位悬浮态），方向翻转也换视口尺寸——
+         *  两处都从各自方向的记忆恢复，用户的悬浮选择不被一次旋转
+         *  清掉（用户实测：横悬浮→竖悬浮→回横屏唤起变停靠）。 */
+        floatMemoryKey() {
+            return this.landscape ? 'feelime_float_landscape' : 'feelime_float_portrait';
+        }
+
+        loadFloatMemory() {
+            try {
+                const raw = localStorage.getItem(this.floatMemoryKey());
+                if (!raw) return null;
+                const m = JSON.parse(raw);
+                if (!m || typeof m.on !== 'boolean') return null;
+                if (!m.on) return { on: false };
+                const ok = [m.x, m.y, m.w, m.h]
+                    .every(v => typeof v === 'number' && isFinite(v) && v > 0);
+                // 无几何的 {on:true}（自动初值只存开关）是合法记忆：
+                // 恢复时走安全初值，不能折叠成 off（折叠曾把「竖屏悬浮
+                // 记忆」整个吞掉——翻转恢复误判停靠还写回 off 锁死）。
+                return ok ? m : { on: true };
+            } catch (_) { return null; }
+        }
+
+        saveFloatMemory() {
+            if (!this.floating || !this.floatGeom) return;
+            try {
+                localStorage.setItem(this.floatMemoryKey(), JSON.stringify(
+                    Object.assign({ on: true }, this.floatGeom)));
+            } catch (_) { /* 配额/隐私模式不致命 */ }
+        }
+
+        saveFloatMemoryOff() {
+            try { localStorage.setItem(this.floatMemoryKey(), '{"on":false}'); } catch (_) {}
+        }
+
+        saveFloatMemoryOn() {
+            try { localStorage.setItem(this.floatMemoryKey(), '{"on":true}'); } catch (_) {}
+        }
+
+        /** 应用当前方向的悬浮记忆（页面重建恢复 / 方向翻转切换）：
+         *  on=true 走完整进入流程（几何走记忆初值）；off/无记忆且当前
+         *  悬浮中 → 停靠。预置 floating=false 以穿过 setFloatingMode
+         *  的同态早退（换向重进是合法的全流程重放）。force（翻转/
+         *  重建恢复点）在悬浮中也完整重放——旧几何是另一方向的，只
+         *  对齐会带着横屏宽卡回竖屏；非 force 的同向重复调用才走
+         *  「仅对齐几何」。 */
+        applyFloatMemory(force) {
+            const mem = this.loadFloatMemory();
+            if (mem && mem.on) {
+                if (this.floating && !force) {
+                    // 已悬浮（同向重复调用）：只对齐几何，不重放流程。
+                    if (mem.w && this.floatGeom &&
+                        (this.floatGeom.w !== mem.w || this.floatGeom.x !== mem.x ||
+                         this.floatGeom.y !== mem.y || this.floatGeom.h !== mem.h)) {
+                        this.floatGeom = { x: mem.x, y: mem.y, w: mem.w, h: mem.h };
+                        this.clampFloatGeom();
+                        this.applyFloatingGeom();
+                        this.syncFloatingRect();
+                    }
+                    return;
+                }
+                this.floating = false;
+                this.floatGeom = null;
+                this.setFloatingMode(true);
+            } else if (this.floating) {
+
+                this.setFloatingMode(false);
+            }
+        }
+
         clampFloatGeom() {
             const g = this.floatGeom;
             const H = window.innerHeight, W = window.innerWidth;
@@ -7670,9 +7781,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         onFloatingResize() {
             // 画布尺寸变化（进悬浮后的窗口铺满、旋转）：钳制几何回界内。
             if (!this.floating || !this.floatGeom) return;
+            // 用户没动过（drag/resize）的初值几何跟随新视口重排：旋转
+            // 过渡期进入悬浮时窗口还是旧宽，初值会被 clamp 烘焙成
+            // minW（实测横屏卡 549 而非 92%）。
+            if (!this._floatGeomTouched) this.setFloatInitialGeom();
             this.clampFloatGeom();
             this.applyFloatingGeom();
             this.syncFloatingRect();
+            if (this._floatGeomTouched) this.saveFloatMemory();
         }
 
         /** 悬浮几何手势会话（codex P2-6：提为实例字段，取消/隐藏/旋转
@@ -8497,6 +8613,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 });
             }
             this._lastHeightSig = signature;
+            // 方向独立记忆（#55）：横竖屏翻转时切到新方向的悬浮记忆
+            // （view 未被重建的旋转路径；重建路径走 hello 恢复）。
+            const memKey = this.floatMemoryKey();
+            if (this._floatOrientKey === undefined) {
+                this._floatOrientKey = memKey;
+            } else if (this._floatOrientKey !== memKey) {
+                this._floatOrientKey = memKey;
+                this.applyFloatMemory(true);
+            }
             // 水位线跟行高走（#55 反馈 5：四段空白等比分摊）。
             this.applyKeycapMetrics(rowHeight);
             // Keep the floating card attached to the keyboard after the
@@ -12009,6 +12134,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (payload.orientation) {
                 this.helloOrientation = payload.orientation;
                 this.applyOrientation(payload.orientation === 'landscape');
+            // 页面重建后的悬浮恢复（#55 方向独立记忆）：旋转触发 IMS
+            // 重建输入视图时 native 侧已复位悬浮，这里按 hello 给定的
+            // 方向（上面刚消费）记忆重放——on=true 恢复悬浮+几何，
+            // off/无记忆保持停靠。applyOrientation 的翻转检测对新页面
+            // 只记 key 不恢复，重建场景由这里兜。
+            this._floatOrientKey = this.floatMemoryKey();
+            this.applyFloatMemory(true);
             }
             // The band shrinks the keyboard INSIDE an unchanged
             // viewport - no resize event fires and applyOrientation

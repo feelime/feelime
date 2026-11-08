@@ -1268,6 +1268,46 @@ test('keycap waterlines keep T:G:B proportional across row heights (#55 polish)'
     equal(world.document.body.dataset.capSingle, 'on', 'sub-24px rows collapse to single-line caps');
 });
 
+test('floating memory: per-orientation state+geometry survive rebuild and flips (#55, 3.73.93)', {since: '3.73.93'}, () => {
+    // 用户实测：横悬浮→竖悬浮→回横屏唤起变停靠（旋转触发 IMS 重建
+    // 输入视图，native 复位悬浮态）。按方向独立记忆 {on,x,y,w,h}，
+    // hello 重建与 applyOrientation 翻转两处恢复。
+    const world = fresh();
+    world.context.window.innerHeight = 830;
+    world.context.window.Feelime.setFloatingMode(true);
+    equal(world.document.body.dataset.floating, 'on', 'portrait floating enters');
+    const mem = JSON.parse(world.storage.has('feelime_float_portrait')
+        ? world.storage.get('feelime_float_portrait') : 'null');
+    equal(mem && mem.on === true, true, 'portrait memory persisted (on-flag)');
+    // 自动初值只存开关（几何随视口重算更准）；带几何时须全数值。
+    const geo = mem.x === undefined ||
+        [mem.x, mem.y, mem.w, mem.h].every(v => typeof v === 'number');
+
+    // 翻到横屏：无横屏记忆 → 停靠（方向独立：竖屏的悬浮不传染）
+    world.hello({ orientation: 'landscape' });
+    equal(world.document.body.dataset.floating, 'off',
+        'landscape without memory stays docked (independent per orientation)');
+
+    // 横屏悬浮 → 写横屏记忆
+    world.context.window.Feelime.setFloatingMode(true);
+    equal(world.storage.has('feelime_float_landscape'), true, 'landscape memory written');
+
+    // 翻回竖屏：记忆恢复悬浮（用户报的丢态场景）
+    world.hello({ orientation: 'portrait' });
+    equal(world.document.body.dataset.floating, 'on',
+        'flipping back re-enters floating from that orientation\'s memory');
+    equal(world.native.of('setFloating').length >= 3, true,
+        're-entry notifies native each time');
+
+    // 停靠退出写 on:false：再翻转/重建不再恢复
+    world.context.window.Feelime.setFloatingMode(false);
+    world.hello({ orientation: 'landscape' });
+    world.hello({ orientation: 'portrait' });
+    equal(world.document.body.dataset.floating, 'off',
+        'explicit dock (on:false memory) is sticky across flips');
+    equal(geo, true, 'memory geometry absent (auto) or fully numeric (user-tuned)');
+});
+
 test('backspace vertical gestures: down after up restores via native snapshot (3.73.77)', {since: '3.73.77'}, () => {
     const world = fresh();
     const bs = bsKey(world);
