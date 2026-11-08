@@ -349,7 +349,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.96";
+  const KEYBOARD_VERSION = "3.73.98";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -6562,9 +6562,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (!drag) return;
         if (![...e.changedTouches || []].some((t2) => t2.identifier === drag.id)) return;
         this.floatDragSession = null;
-        this._floatGeomTouched = true;
+        const t0 = [...e.changedTouches || []].find((t2) => t2.identifier === drag.id);
+        if (t0 && Math.abs(t0.clientX - drag.sx) + Math.abs(t0.clientY - drag.sy) > 3) {
+          this._floatGeomTouched = true;
+        }
         this.syncFloatingRect();
-        this.saveFloatMemory();
+        if (this._floatGeomTouched) this.saveFloatMemory();
       }, "endDrag");
       grip.addEventListener("touchend", endDrag);
       grip.addEventListener("touchcancel", endDrag);
@@ -6606,9 +6609,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (!rz) return;
         if (![...e.changedTouches || []].some((t2) => t2.identifier === rz.id)) return;
         this.floatResizeSession = null;
-        this._floatGeomTouched = true;
+        const t0 = [...e.changedTouches || []].find((t2) => t2.identifier === rz.id);
+        if (t0 && Math.abs(t0.clientX - rz.sx) + Math.abs(t0.clientY - rz.sy) > 3) {
+          this._floatGeomTouched = true;
+        }
         this.syncFloatingRect();
-        this.saveFloatMemory();
+        if (this._floatGeomTouched) this.saveFloatMemory();
       }, "endRz");
       resize.addEventListener("touchend", endRz);
       resize.addEventListener("touchcancel", endRz);
@@ -6650,7 +6656,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      *  两处都从各自方向的记忆恢复，用户的悬浮选择不被一次旋转
      *  清掉（用户实测：横悬浮→竖悬浮→回横屏唤起变停靠）。 */
     floatMemoryKey() {
-      return this.landscape ? "feelime_float2_landscape" : "feelime_float2_portrait";
+      return this.landscape ? "feelime_float3_landscape" : "feelime_float3_portrait";
     }
     loadFloatMemory() {
       try {

@@ -1276,8 +1276,8 @@ test('floating memory: per-orientation state+geometry survive rebuild and flips 
     world.context.window.innerHeight = 830;
     world.context.window.Feelime.setFloatingMode(true);
     equal(world.document.body.dataset.floating, 'on', 'portrait floating enters');
-    const mem = JSON.parse(world.storage.has('feelime_float2_portrait')
-        ? world.storage.get('feelime_float2_portrait') : 'null');
+    const mem = JSON.parse(world.storage.has('feelime_float3_portrait')
+        ? world.storage.get('feelime_float3_portrait') : 'null');
     equal(mem && mem.on === true, true, 'portrait memory persisted (on-flag)');
     // 自动初值只存开关（几何随视口重算更准）；带几何时须全数值。
     const geo = mem.x === undefined ||
@@ -1290,7 +1290,7 @@ test('floating memory: per-orientation state+geometry survive rebuild and flips 
 
     // 横屏悬浮 → 写横屏记忆
     world.context.window.Feelime.setFloatingMode(true);
-    equal(world.storage.has('feelime_float2_landscape'), true, 'landscape memory written');
+    equal(world.storage.has('feelime_float3_landscape'), true, 'landscape memory written');
 
     // 翻回竖屏：记忆恢复悬浮（用户报的丢态场景）
     world.hello({ orientation: 'portrait' });

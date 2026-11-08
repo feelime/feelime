@@ -358,7 +358,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.96';
+    const KEYBOARD_VERSION = '3.73.98';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -7616,9 +7616,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!drag) return;
                 if (![...(e.changedTouches || [])].some(t => t.identifier === drag.id)) return;
                 this.floatDragSession = null;
-                this._floatGeomTouched = true;
+                // 零位移=误触（tap 落在把手上），不算用户调整、不落
+                // 记忆——否则几何原样存档，把「初值」固化成记忆。
+                const t0 = [...(e.changedTouches || [])].find(t => t.identifier === drag.id);
+                if (t0 && Math.abs(t0.clientX - drag.sx) + Math.abs(t0.clientY - drag.sy) > 3) {
+                    this._floatGeomTouched = true;
+                }
                 this.syncFloatingRect();
-                this.saveFloatMemory();
+                if (this._floatGeomTouched) this.saveFloatMemory();
             };
             grip.addEventListener('touchend', endDrag);
             grip.addEventListener('touchcancel', endDrag);
@@ -7660,9 +7665,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (!rz) return;
                 if (![...(e.changedTouches || [])].some(t => t.identifier === rz.id)) return;
                 this.floatResizeSession = null;
-                this._floatGeomTouched = true;
+                const t0 = [...(e.changedTouches || [])].find(t => t.identifier === rz.id);
+                if (t0 && Math.abs(t0.clientX - rz.sx) + Math.abs(t0.clientY - rz.sy) > 3) {
+                    this._floatGeomTouched = true;
+                }
                 this.syncFloatingRect();
-                this.saveFloatMemory();
+                if (this._floatGeomTouched) this.saveFloatMemory();
             };
             resize.addEventListener('touchend', endRz);
             resize.addEventListener('touchcancel', endRz);
@@ -7706,9 +7714,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          *  两处都从各自方向的记忆恢复，用户的悬浮选择不被一次旋转
          *  清掉（用户实测：横悬浮→竖悬浮→回横屏唤起变停靠）。 */
         floatMemoryKey() {
-            // v2：v1 记忆的几何可能被旋转过渡期烘焙（横屏 w=60%×竖屏宽
-            // 的窄卡锁死、拉不回 92% 初值），一次性作废换版。
-            return this.landscape ? 'feelime_float2_landscape' : 'feelime_float2_portrait';
+            // v3：v1 被旋转过渡期烘焙；v2 验证期间又被「零位移把手
+            // 误触」写脏（tap 落在拖动柄上，touchstart→end 无位移也
+            // 曾记为用户调整）。换版作废 + 下方零位移守卫。
+            return this.landscape ? 'feelime_float3_landscape' : 'feelime_float3_portrait';
         }
 
         loadFloatMemory() {

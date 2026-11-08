@@ -272,6 +272,14 @@ body.landscape #softKeyboard {
         calc(4px + var(--safe-side-l, 0px));
 }
 
+/* #55 悬浮卡片内不留挖孔安全区（用户实测「横屏两边空白」的根子）：
+ * 停靠态的侧边让位（#39 挖孔）在卡片里只是两条空背景条——卡片可以
+ * 整体挪走/缩窄避开挖孔，不需要内部让位。基础 4px 边距保留。 */
+body[data-floating="on"].landscape #softKeyboard {
+    padding: 4px 4px
+        calc(4px + var(--safe-bottom, 0px) + var(--kb-bottom-pad, 0px)) 4px;
+}
+
 /* #39 横屏整体不透明度：含背景在内的整层透明（想看被盖住的内容时用）。
  * 仅横屏选择器生效；窗口涂层（导航栏/底部条）由 native applyChromeColor
  * 同步转透明。 */
