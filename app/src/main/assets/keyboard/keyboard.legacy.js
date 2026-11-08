@@ -349,7 +349,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.95";
+  const KEYBOARD_VERSION = "3.73.96";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -6613,9 +6613,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       resize.addEventListener("touchend", endRz);
       resize.addEventListener("touchcancel", endRz);
     }
-    /** 悬浮卡片最小尺寸：宽 60% 视口；高=内容下限（codex P2-3）。 */
+    /** 悬浮卡片最小尺寸：宽=短边（横竖屏中较小者）的 60%——竖屏
+     *  即视口 60%；横屏若按横屏宽算 60% 会得到 549/915 级的巨大
+     *  下限（用户实测「最小宽度占 60% 屏宽不合理，应对齐竖屏」），
+     *  对齐竖屏当量=0.6×min(W,H)。高=内容下限（codex P2-3）。 */
     floatMinW() {
-      return Math.round(window.innerWidth * 0.6);
+      return Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.6);
     }
     floatMinH(w) {
       return Math.round(this.layoutChrome() + 4 * KB_ROW_MIN + 8);
@@ -6647,7 +6650,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      *  两处都从各自方向的记忆恢复，用户的悬浮选择不被一次旋转
      *  清掉（用户实测：横悬浮→竖悬浮→回横屏唤起变停靠）。 */
     floatMemoryKey() {
-      return this.landscape ? "feelime_float_landscape" : "feelime_float_portrait";
+      return this.landscape ? "feelime_float2_landscape" : "feelime_float2_portrait";
     }
     loadFloatMemory() {
       try {

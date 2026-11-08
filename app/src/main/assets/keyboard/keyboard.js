@@ -358,7 +358,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.95';
+    const KEYBOARD_VERSION = '3.73.96';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -7668,8 +7668,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             resize.addEventListener('touchcancel', endRz);
         }
 
-        /** 悬浮卡片最小尺寸：宽 60% 视口；高=内容下限（codex P2-3）。 */
-        floatMinW() { return Math.round(window.innerWidth * 0.6); }
+        /** 悬浮卡片最小尺寸：宽=短边（横竖屏中较小者）的 60%——竖屏
+         *  即视口 60%；横屏若按横屏宽算 60% 会得到 549/915 级的巨大
+         *  下限（用户实测「最小宽度占 60% 屏宽不合理，应对齐竖屏」），
+         *  对齐竖屏当量=0.6×min(W,H)。高=内容下限（codex P2-3）。 */
+        floatMinW() {
+            return Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.6);
+        }
         floatMinH(w) {
             // 候选/预编辑/工具条 chrome 与 applyHeight 同源的行预算：四行
             // 32px + chrome 紧凑预算（layoutChrome 已含 bar/margins）。
@@ -7701,7 +7706,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          *  两处都从各自方向的记忆恢复，用户的悬浮选择不被一次旋转
          *  清掉（用户实测：横悬浮→竖悬浮→回横屏唤起变停靠）。 */
         floatMemoryKey() {
-            return this.landscape ? 'feelime_float_landscape' : 'feelime_float_portrait';
+            // v2：v1 记忆的几何可能被旋转过渡期烘焙（横屏 w=60%×竖屏宽
+            // 的窄卡锁死、拉不回 92% 初值），一次性作废换版。
+            return this.landscape ? 'feelime_float2_landscape' : 'feelime_float2_portrait';
         }
 
         loadFloatMemory() {
