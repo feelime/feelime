@@ -73,7 +73,9 @@ const CK_EDIT_OPS = [
   ["cursorLeft", "ck.op.cursorLeft"],
   ["cursorRight", "ck.op.cursorRight"],
   ["lineStart", "ck.op.lineStart"],
-  ["lineEnd", "ck.op.lineEnd"]
+  ["lineEnd", "ck.op.lineEnd"],
+  // #93 分享选中文字：系统分享面板（与键盘 [edit:share]/工具栏同源）。
+  ["share", "ck.op.share"]
 ];
 const LANG_KB = {
   /* leftKey：第三行左键形态（复刻 keyboard.js isChineseMode 分支）——
@@ -458,6 +460,7 @@ const I18N = {
     "ck.op.copy": "\u590D\u5236",
     "ck.op.paste": "\u7C98\u8D34",
     "ck.op.selectAll": "\u5168\u9009",
+    "ck.op.share": "\u5206\u4EAB\u9009\u4E2D\u6587\u5B57",
     "ck.op.clear": "\u6E05\u7A7A\u7F16\u8F91\u6846",
     "ck.op.cursorLeft": "\u5149\u6807\u5DE6\u79FB\u4E00\u8BCD",
     "ck.op.cursorRight": "\u5149\u6807\u53F3\u79FB\u4E00\u8BCD",
@@ -1279,6 +1282,7 @@ const I18N = {
     "ck.op.copy": "Copy",
     "ck.op.paste": "Paste",
     "ck.op.selectAll": "Select all",
+    "ck.op.share": "Share selected text",
     "ck.op.clear": "Clear editor",
     "ck.op.cursorLeft": "Cursor left by word",
     "ck.op.cursorRight": "Cursor right by word",
@@ -4527,6 +4531,7 @@ const CK_QUICK = [
   { t: "\u7C98\u8D34", tap: "[ctrl+v]" },
   { t: "\u526A\u5207", tap: "[ctrl+x]" },
   { t: "\u5168\u9009", tap: "[ctrl+a]" },
+  { t: "\u5206\u4EAB", tap: "[edit:share]", color: "purple", note: "\u628A\u9009\u4E2D\u7684\u6587\u5B57\u5206\u4EAB\u7ED9\u5176\u4ED6\u5E94\u7528" },
   { t: "\u64A4\u9500", tap: "[ctrl+z]" },
   { t: "\u90AE\u7BB1", tap: "me@example.com", span: 2 },
   { t: "\u7FFB\u8BD1", tap: "[open:https://fanyi.baidu.com]", note: "\u6253\u5F00\u767E\u5EA6\u7FFB\u8BD1\u7F51\u9875" },

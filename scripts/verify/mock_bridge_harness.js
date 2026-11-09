@@ -824,6 +824,14 @@ class MockNative {
     editorAction(action, token) {
         this._record('editorAction', [action, token]);
     }
+    // #93 分享选中文字（定制键 [edit:share] 与工具栏 share 工具共用）。
+    shareSelectedText(token) {
+        this._record('shareSelectedText', [token]);
+    }
+    // #93 面板输入框的分享（JS 面板态自带选区文本）。
+    shareText(text, token) {
+        this._record('shareText', [text, token]);
+    }
     // 侧条光标四向（FeelimeService.editorCursor，#39-10 编辑面板复用）。
     editorCursor(dir, token) {
         this._record('editorCursor', [dir, token]);

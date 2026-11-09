@@ -4605,11 +4605,12 @@ test('float band rides hello; band popups flip the native touch region', () => {
     world.context.window.Feelime.toggleModeMenu();
     equal(menu.style.top, '14px',
         'menu without headroom pins to the window top');
-    // #92：上方空间非负钳制——负数 maxHeight 是非法 CSS 值，浏览器
-    // 静默忽略=不限高（旧行为恰好靠这个 bug「能看全」，矮窗口里
-    // 反而整段溢出）。
-    equal(menu.style.maxHeight, Math.max(0, toggleTop - 14) + 'px',
-        'menu capped by the space above its trigger (clamped at 0)');
+    // #92：上方空间非负钳制（3.73.99 起）——负数 maxHeight 是非法
+    // CSS 值，浏览器静默忽略=不限高（旧行为恰好靠这个 bug「能看全」，
+    // 矮窗口里反而整段溢出）。3.20 基线仍是旧口径，行内分支。
+    equal(menu.style.maxHeight,
+        (verAtLeast(KEYBOARD_VERSION, '3.73.99') ? Math.max(0, toggleTop - 14) : toggleTop - 14) + 'px',
+        'menu capped by the space above its trigger (clamped at 0 since 3.73.99)');
 });
 
 test('combo card anchors to its trigger; shrink/side fallbacks keep it in-window', () => {
@@ -5783,6 +5784,82 @@ test('background images: light and dark groups render per theme', {since: '3.45.
         'cycling to auto (no light img) clears the layer');
 });
 
+test('share action: dsl token, key path and toolbar tool all reach shareSelectedText (#93)', {since: '3.73.100'}, () => {
+    // touchWorld：键盘实例挂 window.testKeyboard（runEditStep/parseTapDsl
+    // 非 public hook，直接驱动实例）。
+    const world = touchWorld();
+    const kb = world.context.testKeyboard;
+    // DSL 注册：[edit:share] 解析为 edit 步骤
+    const parsed = kb.parseTapDsl('[edit:share]');
+    assert(!parsed.error, 'dsl parses');
+    assert(parsed.steps.some(st => st.edit === 'share'), 'edit step recognized');
+    // 执行路径：runEditStep('share') → 原生桥
+    kb.runEditStep('share');
+    equal(world.native.of('shareSelectedText').length, 1, 'bridge called once');
+    // 旧原生（热更错峰期无此桥）：能力探测 toast，不炸不静默
+    let toastCount = 0;
+    const origToast = kb.showToast.bind(kb);
+    const realShare = world.native.shareSelectedText;
+    kb.showToast = () => { toastCount++; };
+    world.native.shareSelectedText = undefined;
+    kb.runEditStep('share');
+    equal(toastCount, 1, 'legacy native shows an upgrade hint');
+    kb.showToast = origToast;
+    // 恢复成 harness 原方法（裸箭头会丢 _record，后面 tap 断言数不到）
+    world.native.shareSelectedText = realShare;
+    // 工具池：share 工具在池（默认不上栏）；上栏后点击走同一执行路径
+    //（池内按钮的 tap 是编辑态「上栏」语义，不走动作——与 numpad 工具
+    // 用例同款：toolbarLayout 配置上栏再 tap）。
+    assert(world.$('toolShare'), 'share tool created in pool');
+    assert(world.$('toolShare').classList.contains('editor-pool'), 'starts in the editor pool');
+    world.hello({ toolbarLayout: JSON.stringify(
+        { left: ['ctrl', 'ime'], right: ['share'] }) });
+    assert(world.$('toolShare').closest('#candidateBar'), 'share tool is on the bar');
+    world.tap(world.$('toolShare'));
+    equal(world.native.of('shareSelectedText').length, 2, 'toolbar tool reaches the same bridge');
+    // 参数准确性（codex 评审 P2-2：只数次数的假通过面）：调用携带
+    // 的是当前页 token，且未被错序成其他参数。
+    equal(JSON.stringify(world.native.of('shareSelectedText').slice(-1)[0].args),
+        JSON.stringify([kb.token]), 'call carries the page token');
+    // 定制键执行链（runTapDsl——定制键 tap 的真实入口，非直调
+    // runEditStep）：
+    const beforeDsl = world.native.of('shareSelectedText').length;
+    kb.runTapDsl('[edit:share]');
+    equal(world.native.of('shareSelectedText').length, beforeDsl + 1, 'custom-key dsl chain reaches the bridge');
+    // 公共 toast 挂钮存在（native 无选区反馈的通道；删除导出必须红）。
+    assert(typeof world.context.window.Feelime.showToast === 'function',
+        'window.Feelime.showToast exported');
+    world.context.window.Feelime.showToast('probe123');
+    assert(world.$('toast').textContent.includes('probe123'),
+        'public hook drives the toast ui');
+});
+
+test('share routes to the panel field while the embedded editor holds focus (#93)', {since: '3.73.100'}, () => {
+    // codex 评审 P1-1：面板输入框激活（桥层改道）时 Android 的
+    // InputConnection 仍指宿主——分享必须读面板字段选区走 shareText，
+    // 绝不能读宿主旧选区。
+    const world = touchWorld();
+    const kb = world.context.testKeyboard;
+    // 面板编辑卡聚焦态：常用语编辑 input 持焦 + settingsInputFocus
+    const input = world.document.getElementById('panelEditorInput');
+    input.value = '面板内容 abc 尾';
+    input.selectionStart = 0; input.selectionEnd = 5;
+    world.document.activeElement = input;
+    kb.settingsInputFocus = true;
+    kb.runEditStep('share');
+    equal(JSON.stringify(world.native.of('shareText').slice(-1)[0].args),
+        JSON.stringify(['面板内容 ', kb.token]), 'panel selection rides shareText (host untouched)');
+    equal(world.native.of('shareSelectedText').length, 0, 'host selection bridge never called in panel mode');
+    // 面板态无选区：JS 侧 toast，不发桥
+    input.selectionStart = 2; input.selectionEnd = 2;
+    let toasts = 0;
+    const origToast = kb.showToast.bind(kb);
+    kb.showToast = () => { toasts++; };
+    kb.runEditStep('share');
+    equal(toasts, 1, 'empty panel selection toasts locally');
+    kb.showToast = origToast;
+});
+
 test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, done saves (issue #15)', {since: '3.44.0'}, () => {
     const w = fresh();
     w.hello({});
@@ -5812,7 +5889,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
 
     // 默认 5 个工具全在栏上（left=[ctrl,ime] right=[clipboard,favorites,mic]）；
     // 仓库里是 8 个默认不上栏的开关型/动作型工具（动态创建）。
-    equal(w.$('toolbarEditorGrid').children.length, 12, 'pool starts with the 12 extra tools (#33-1 gear + #39-10 edit + #39-12 custom + #67 kaomoji + #55 floating)');
+    equal(w.$('toolbarEditorGrid').children.length, 13, 'pool starts with the 13 extra tools (#33-1 gear + #39-10 edit + #39-12 custom + #67 kaomoji + #55 floating + #93 share)');
     ['toolTheme', 'toolVibrate', 'toolSound', 'toolAssoc', 'toolOneHand',
      'toolNumpad', 'toolEmoji', 'editTool', 'toolCustom'].forEach(id => {
         assert(w.$(id), id + ' created');
@@ -5830,7 +5907,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(x);
     w.touchUp(x);
     equal(kb().toolbarRight.join(','), 'clipboard,mic', '× removes favorites from right group');
-    equal(w.$('toolbarEditorGrid').children.length, 13, 'removed tool joins the 12 extra tools');
+    equal(w.$('toolbarEditorGrid').children.length, 14, 'removed tool joins the 13 extra tools');
 
     // 点仓库里的 favorites 加回（right 组未满 → 追加到队尾）。
     // 编辑态点仓库只做「上工具栏」：favorites 的 click 直连
@@ -5843,7 +5920,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(fav);
     w.touchUp(fav);
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'pool tap appends to right group');
-    equal(w.$('toolbarEditorGrid').children.length, 12, 'pool back to the 12 extra tools');
+    equal(w.$('toolbarEditorGrid').children.length, 13, 'pool back to the 13 extra tools');
 
     // #39-12：池里的定制按键必须能上栏——TOOL_CATALOG 漏登记时按钮
     // 照样创建，但接线循环遍历目录，池里那颗点不动（真机实录）。
@@ -5880,13 +5957,13 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     w.touchDown(xOf('mic'));
     w.touchUp(xOf('mic'));
     equal(kb().toolbarRight.join(','), 'clipboard', 'two removals land both in the pool');
-    equal(w.$('toolbarEditorGrid').children.length, 14,
-        'pool holds both removed tools + 12 extra tools (no innerHTML wipe)');
+    equal(w.$('toolbarEditorGrid').children.length, 15,
+        'pool holds both removed tools + 13 extra tools (no innerHTML wipe)');
     w.tap(w.$('toolbarEditCancel'));
     equal(kb().toolbarLeft.join(','), 'ctrl,ime', 'cancel restores left snapshot');
     equal(kb().toolbarRight.join(','), 'clipboard,mic,favorites', 'cancel restores right snapshot');
-    equal(w.$('toolbarEditorGrid').children.length, 12,
-        'pool drains back to the 12 extra tools after cancel');
+    equal(w.$('toolbarEditorGrid').children.length, 13,
+        'pool drains back to the 13 extra tools after cancel');
     equal(w.native.of('setQuickPref').filter(c => c.args[0] === 'toolbarLayout').length, 1,
         'cancel never saves');
 
@@ -5903,7 +5980,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
             w.touchUp(x);
         });
     equal(kb().toolbarLeft.length + kb().toolbarRight.length, 0, 'bar fully stripped');
-    equal(w.$('toolbarEditorGrid').children.length, 17, 'all seventeen tools in the pool (#33-1 gear + #39-10 edit + #39-12 custom + #67 kaomoji + #55 floating)');
+    equal(w.$('toolbarEditorGrid').children.length, 18, 'all eighteen tools in the pool (#33-1 gear + #39-10 edit + #39-12 custom + #67 kaomoji + #55 floating + #93 share)');
     w.tap(w.$('toolbarEditDone'));
     equal(kb().toolbarEdit, false, 'empty layout saves fine');
     w.touchDown(w.$('candidateBar'));
@@ -5956,7 +6033,7 @@ test('toolbar edit mode: long-press enters, × removes to pool, tap adds back, d
     equal(st.toolbarRight.includes('ime'), true, 'ime lands in the right group');
     equal(st.toolbarLeft.length, 1, 'left group keeps one (the displaced tool)');
     equal(st.toolbarLeft.length + st.toolbarRight.length, 5, 'no tool lost in the swap');
-    equal(poolNow.children.length, 12, 'pool back to the extra tools only');
+    equal(poolNow.children.length, 13, 'pool back to the extra tools only');
     w.tap(w.$('toolbarEditCancel'));
 });
 

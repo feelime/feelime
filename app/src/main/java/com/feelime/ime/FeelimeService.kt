@@ -3296,6 +3296,88 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             }
         }
 
+        /** #93 分享选中文字（定制键 [edit:share] 与工具栏 share 工具共
+         *  用）：读当前选区 → 系统 ACTION_SEND 面板（text/plain 是分享
+         *  生态最低公约数，微信/翻译/备忘录等全支持）。键盘可见时 IME
+         *  有可见窗口，属后台启动豁免场景（Gboard 同款路径）。
+         *  - 密码类编辑框显式拒绝（codex 评审 P1-2）：AOSP 的
+         *    BaseInputConnection 对密码 TextView 同样返回明文选区，
+         *    不能指望 getSelectedText 拒答。
+         *  - 无选区/读不到：toast 提示先选中，反馈走键盘页 showToast
+         *    （与 JS 侧同一 UI，双语）。
+         *  - getSelectedText 是同步 binder 调用（codex 评审 P2-1）：分享
+         *    是用户显式点击的低频动作，病态宿主最坏卡键盘主线程到超时
+         *    返回；同进程设置页 WebView 实测（AVD）无互等死锁面，不为
+         *    此引入异步查询复杂度——记录取舍于此。
+         *  - EXTRA_TEXT 钳 100k 字符（binder 事务 ~1MB 上限的稳妥值，
+         *    防长文 TransactionTooLargeException 整发失败）。 */
+        @JavascriptInterface
+        fun shareSelectedText(token: String) = guarded(token, limited = false) {
+            onMain {
+                fun toast(zh: String, en: String) {
+                    val msg = com.feelime.ime.t(applicationContext, zh, en)
+                        .replace("\\", "\\\\").replace("'", "\\'")
+                        .replace("\n", "\\n")
+                    evaluate(
+                        "window.Feelime && window.Feelime.showToast && " +
+                            "window.Feelime.showToast('$msg')",
+                    )
+                }
+                if (isSensitiveEditor()) {
+                    toast("此输入框不支持分享", "Sharing is unavailable in this field")
+                    return@onMain
+                }
+                val selected = runCatching {
+                    currentInputConnection?.getSelectedText(0)
+                }.getOrNull()
+                if (selected.isNullOrEmpty()) {
+                    toast("请先选中要分享的文字", "Select some text to share first")
+                    return@onMain
+                }
+                shareTextInternal(selected.toString(), ::toast)
+            }
+        }
+
+        /** #93 面板输入框的分享（codex 评审 P1-1）：键盘内嵌输入框（常用
+         *  语编辑卡等）激活时，编辑改道在桥层而非 Android InputConnection
+         *  层——currentInputConnection 仍指向宿主编辑框，直接读会分享错
+         *  对象。JS 侧在面板态自行取面板字段选区走本桥。空文本拒绝（与
+         *  宿主路径同一口径）。 */
+        @JavascriptInterface
+        fun shareText(text: String, token: String) = guarded(token, limited = false) {
+            if (text.isEmpty() || text.length > MAX_JSON_CHARS) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            onMain {
+                fun toast(zh: String, en: String) {
+                    val msg = com.feelime.ime.t(applicationContext, zh, en)
+                        .replace("\\", "\\\\").replace("'", "\\'")
+                        .replace("\n", "\\n")
+                    evaluate(
+                        "window.Feelime && window.Feelime.showToast && " +
+                            "window.Feelime.showToast('$msg')",
+                    )
+                }
+                shareTextInternal(text, ::toast)
+            }
+        }
+
+        /** shareSelectedText/shareText 的公共执行体：钳长 + ACTION_SEND。 */
+        private fun shareTextInternal(rawText: String, toast: (String, String) -> Unit) {
+            val text = if (rawText.length > 100_000) rawText.substring(0, 100_000) else rawText
+            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_TEXT, text)
+            }
+            val chooser = android.content.Intent.createChooser(
+                send,
+                com.feelime.ime.t(applicationContext, "分享文字", "Share text"),
+            ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+            val started = runCatching { startActivity(chooser) }.isSuccess
+            if (!started) toast("无法打开分享面板", "Could not open the share panel")
+        }
+
         /** #85 上滑删光标前全部：走 coordinator/editor port（码点删不发
          *  键事件，词撤销作废、终端宿主降级语义集中在
          *  TextInputCoordinator.deleteAllBeforeCursor）。选区裁决传原始

@@ -81,6 +81,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u8BE5\u952E\u76D8\u8FD8\u5728\u51C6\u5907\u4E2D": "That keyboard is still preparing",
     "\u62FC\u97F3\u7EC4\u5408\u4E2D\uFF0C\u5148\u4E0A\u5C4F\u518D\u5207\u6362": "Finish the composition before switching",
     "\u60AC\u6D6E\u952E\u76D8": "Floating keyboard",
+    "\u5206\u4EAB\u6587\u5B57": "Share text",
+    "\u6B64\u6309\u952E\u9700\u8981\u5347\u7EA7 App \u540E\u4F7F\u7528\uFF08\u5206\u4EAB\uFF09": "Update the app to use this key (share)",
+    "\u8BF7\u5148\u9009\u4E2D\u8981\u5206\u4EAB\u7684\u6587\u5B57": "Select some text to share first",
     "\u6062\u590D\u505C\u9760": "Dock keyboard",
     "\u62D6\u52A8\u79FB\u52A8": "Drag to move",
     "\u62D6\u52A8\u7F29\u653E": "Drag to resize",
@@ -349,7 +352,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.99";
+  const KEYBOARD_VERSION = "3.73.100";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -680,6 +683,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     onehand: "toolOneHand",
     // #55 悬浮键盘：动作型工具（默认不上栏，编辑仓库自选）。
     floating: "toolFloating",
+    // #93 分享选中文字：动作型工具（同悬浮，仓库自选；点击与定制键
+    // [edit:share] 同一执行路径）。
+    share: "toolShare",
     numpad: "toolNumpad",
     emoji: "toolEmoji",
     // #39-10 编辑工具条：替换键区的编辑面板（方向键/扩选/全选/
@@ -945,6 +951,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     // （把手在右上、向外拉=放大）；停靠=上沿开口的窗口+向下箭头
     // +底条（「下放回底部」，替换歧义的 ⌂）。
     floating: "M2 3h5v2H4v3H2zM17 3h5v5h-2V5h-3zM2 16h2v3h3v2H2zM20 16h2v5h-5v-2h3zM6 7h12v10H6zM8 9v6h8V9zM9 10h2v2H9zM13 10h2v2h-2zM9 13h6v1H9z",
+    // #93 分享（Material share：三节点两连线，系统的分享心智）。
+    share: "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z",
     resize: "M14 3h7v7h-2V6.4l-4.8 4.8-1.4-1.4L17.6 5H14zM3 14h2v3.6l4.8-4.8 1.4 1.4L6.4 19H10v2H3z",
     dock: "M3 3h4v2H5v14h14V5h-2V3h4v18H3zM11 3h2v8h3l-4 4-4-4h3zM7 17h10v2H7z",
     timer: "M12 3a9 9 0 100 18 9 9 0 000-18zm0 2a7 7 0 110 14 7 7 0 010-14zm-1 2h2v5.4l4 2.4-1 1.6-5-3V7z",
@@ -1583,7 +1591,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     cursorLeft: 1,
     cursorRight: 1,
     lineStart: 1,
-    lineEnd: 1
+    lineEnd: 1,
+    // #93 分享选中文字：走原生 ACTION_SEND 面板（系统分享）。
+    share: 1
   };
   const CUSTOM_KEY_COLORS = ["blue", "green", "orange", "red", "purple"];
   const CUSTOM_TEMPLATE = JSON.stringify({
@@ -5718,6 +5728,29 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         this.call(() => Native.clearEditorText(this.token));
         return;
       }
+      if (op === "share") {
+        const panelActive = !!this.settingsInputFocus;
+        if (panelActive) {
+          if (typeof Native.shareText !== "function") {
+            this.showToast(t("\u6B64\u6309\u952E\u9700\u8981\u5347\u7EA7 App \u540E\u4F7F\u7528\uFF08\u5206\u4EAB\uFF09"));
+            return;
+          }
+          const el = document.activeElement;
+          const sel = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") ? el.value.slice(el.selectionStart, el.selectionEnd) : "";
+          if (!sel) {
+            this.showToast(t("\u8BF7\u5148\u9009\u4E2D\u8981\u5206\u4EAB\u7684\u6587\u5B57"));
+            return;
+          }
+          this.call(() => Native.shareText(sel, this.token));
+          return;
+        }
+        if (typeof Native.shareSelectedText !== "function") {
+          this.showToast(t("\u6B64\u6309\u952E\u9700\u8981\u5347\u7EA7 App \u540E\u4F7F\u7528\uFF08\u5206\u4EAB\uFF09"));
+          return;
+        }
+        this.call(() => Native.shareSelectedText(this.token));
+        return;
+      }
       const combo = this.editOpCombo(op);
       if (combo) this.sendCombo(combo);
     }
@@ -6985,6 +7018,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         { key: "assoc", id: "toolAssoc", icon: "assoc", label: "\u4E2D\u6587\u8054\u60F3" },
         { key: "onehand", id: "toolOneHand", icon: "onehand", label: "\u5355\u624B\u6A21\u5F0F" },
         { key: "floating", id: "toolFloating", icon: "floating", label: "\u60AC\u6D6E\u952E\u76D8" },
+        { key: "share", id: "toolShare", icon: "share", label: "\u5206\u4EAB\u6587\u5B57" },
         { key: "numpad", id: "toolNumpad", icon: "numpad", label: "\u6570\u5B57\u952E\u76D8" },
         { key: "emoji", id: "toolEmoji", icon: "smiley", label: "Emoji" },
         { key: "edit", id: "editTool", icon: "edit", label: "\u7F16\u8F91\u5DE5\u5177" },
@@ -7034,6 +7068,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           if (key === "kaomoji") {
             if (this.panelOpen && this.panelTab === "kaomoji") this.closePanel();
             else this.openPanel("kaomoji");
+            return;
+          }
+          if (key === "share") {
+            this.runEditStep("share");
             return;
           }
           this.toggleExtraTool(key);
@@ -10730,6 +10768,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
   keyboard.themeLabel = () => t(THEME_LABELS[keyboard.themeMode] || THEME_LABELS.auto);
   window.Feelime = {
     onBridgeHello: /* @__PURE__ */ __name((payload) => keyboard.onBridgeHello(payload), "onBridgeHello"),
+    // #93：native→JS 的用户反馈通道（分享无选区/面板拉起失败的
+    // 提示）。此前 native evaluate 只有事件回调没有 toast 挂钩。
+    showToast: /* @__PURE__ */ __name((msg) => keyboard.showToast(String(msg || "")), "showToast"),
     // #12 复发取证：native 推送到达 JS 的对账计数（心跳捎带
     // states=N preedit=L，与 native 日志的 stateApplied 行数对照：
     // 相等=JS 收到了（查渲染层）；少=推送丢（查 evaluate 层））。

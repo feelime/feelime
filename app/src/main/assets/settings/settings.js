@@ -78,6 +78,8 @@ const CK_EDIT_OPS = [
     ['clear', 'ck.op.clear'], ['cursorLeft', 'ck.op.cursorLeft'],
     ['cursorRight', 'ck.op.cursorRight'], ['lineStart', 'ck.op.lineStart'],
     ['lineEnd', 'ck.op.lineEnd'],
+    // #93 分享选中文字：系统分享面板（与键盘 [edit:share]/工具栏同源）。
+    ['share', 'ck.op.share'],
 ];
 // 语言键盘四级页的布局数据（rows/角标与 keyboard.js LAYOUTS 同源摘要：
 // 角标取 alts 的首值；底行固定 [123][，][空格][中/英][⏎]，逗号键可
@@ -368,6 +370,7 @@ const I18N = {
         "ck.op.copy": "复制",
         "ck.op.paste": "粘贴",
         "ck.op.selectAll": "全选",
+    "ck.op.share": "分享选中文字",
         "ck.op.clear": "清空编辑框",
         "ck.op.cursorLeft": "光标左移一词",
         "ck.op.cursorRight": "光标右移一词",
@@ -1188,6 +1191,7 @@ const I18N = {
         "ck.op.copy": "Copy",
         "ck.op.paste": "Paste",
         "ck.op.selectAll": "Select all",
+    "ck.op.share": "Share selected text",
         "ck.op.clear": "Clear editor",
         "ck.op.cursorLeft": "Cursor left by word",
         "ck.op.cursorRight": "Cursor right by word",
@@ -4774,6 +4778,7 @@ const CK_QUICK = [
     { t: "存", tap: "[ctrl+s]", color: "h210" },
     { t: "复制", tap: "[ctrl+c]" }, { t: "粘贴", tap: "[ctrl+v]" },
     { t: "剪切", tap: "[ctrl+x]" }, { t: "全选", tap: "[ctrl+a]" },
+    { t: "分享", tap: "[edit:share]", color: "purple", note: "把选中的文字分享给其他应用" },
     { t: "撤销", tap: "[ctrl+z]" },
     { t: "邮箱", tap: "me@example.com", span: 2 },
     { t: "翻译", tap: "[open:https://fanyi.baidu.com]", note: "打开百度翻译网页" },

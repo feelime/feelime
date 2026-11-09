@@ -90,6 +90,9 @@
         "该键盘还在准备中": "That keyboard is still preparing",
         "拼音组合中，先上屏再切换": "Finish the composition before switching",
         "悬浮键盘": "Floating keyboard",
+        "分享文字": "Share text",
+        "此按键需要升级 App 后使用（分享）": "Update the app to use this key (share)",
+        "请先选中要分享的文字": "Select some text to share first",
         "恢复停靠": "Dock keyboard",
         "拖动移动": "Drag to move",
         "拖动缩放": "Drag to resize",
@@ -358,7 +361,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.99';
+    const KEYBOARD_VERSION = '3.73.100';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -571,6 +574,9 @@ const TOOL_CATALOG = {
     onehand: 'toolOneHand',
     // #55 悬浮键盘：动作型工具（默认不上栏，编辑仓库自选）。
     floating: 'toolFloating',
+    // #93 分享选中文字：动作型工具（同悬浮，仓库自选；点击与定制键
+    // [edit:share] 同一执行路径）。
+    share: 'toolShare',
     numpad: 'toolNumpad',
     emoji: 'toolEmoji',
     // #39-10 编辑工具条：替换键区的编辑面板（方向键/扩选/全选/
@@ -771,6 +777,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         // （把手在右上、向外拉=放大）；停靠=上沿开口的窗口+向下箭头
         // +底条（「下放回底部」，替换歧义的 ⌂）。
         floating: 'M2 3h5v2H4v3H2zM17 3h5v5h-2V5h-3zM2 16h2v3h3v2H2zM20 16h2v5h-5v-2h3zM6 7h12v10H6zM8 9v6h8V9zM9 10h2v2H9zM13 10h2v2h-2zM9 13h6v1H9z',
+        // #93 分享（Material share：三节点两连线，系统的分享心智）。
+        share: 'M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z',
         resize: 'M14 3h7v7h-2V6.4l-4.8 4.8-1.4-1.4L17.6 5H14zM3 14h2v3.6l4.8-4.8 1.4 1.4L6.4 19H10v2H3z',
         dock: 'M3 3h4v2H5v14h14V5h-2V3h4v18H3zM11 3h2v8h3l-4 4-4-4h3zM7 17h10v2H7z',
         timer: 'M12 3a9 9 0 100 18 9 9 0 000-18zm0 2a7 7 0 110 14 7 7 0 010-14zm-1 2h2v5.4l4 2.4-1 1.6-5-3V7z',
@@ -1398,6 +1406,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
     const EDIT_STEP_TOKENS = {
         undo: 1, redo: 1, cut: 1, copy: 1, paste: 1, selectAll: 1, clear: 1,
         cursorLeft: 1, cursorRight: 1, lineStart: 1, lineEnd: 1,
+        // #93 分享选中文字：走原生 ACTION_SEND 面板（系统分享）。
+        share: 1,
     };
     // 定制键色板（cell.color 的合法值）：预设色名而非任意 CSS 色，
     // 零注入面；rgba 在亮/暗两种键底上都可辨。
@@ -6576,6 +6586,36 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.call(() => Native.clearEditorText(this.token));
                 return;
             }
+            if (op === 'share') {
+                // #93：读选区+拉起系统分享面板都在原生侧（无选区时原生
+                // 回推 toast）。旧原生无此桥（热更错峰期）能力探测同款。
+                // codex 评审 P1-1：键盘内嵌输入框（常用语编辑卡等）激活
+                // 时编辑改道在桥层，Android 的 InputConnection 仍指向宿主
+                // ——面板态必须自己取面板字段选区走 shareText，否则会
+                // 分享到宿主的旧选区。
+                const panelActive = !!this.settingsInputFocus;
+                if (panelActive) {
+                    if (typeof Native.shareText !== 'function') {
+                        this.showToast(t("此按键需要升级 App 后使用（分享）"));
+                        return;
+                    }
+                    const el = document.activeElement;
+                    const sel = (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'))
+                        ? el.value.slice(el.selectionStart, el.selectionEnd) : '';
+                    if (!sel) {
+                        this.showToast(t("请先选中要分享的文字"));
+                        return;
+                    }
+                    this.call(() => Native.shareText(sel, this.token));
+                    return;
+                }
+                if (typeof Native.shareSelectedText !== 'function') {
+                    this.showToast(t("此按键需要升级 App 后使用（分享）"));
+                    return;
+                }
+                this.call(() => Native.shareSelectedText(this.token));
+                return;
+            }
             const combo = this.editOpCombo(op);
             if (combo) this.sendCombo(combo);
         }
@@ -8110,6 +8150,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 { key: 'assoc', id: 'toolAssoc', icon: 'assoc', label: '中文联想' },
                 { key: 'onehand', id: 'toolOneHand', icon: 'onehand', label: '单手模式' },
                 { key: 'floating', id: 'toolFloating', icon: 'floating', label: '悬浮键盘' },
+                { key: 'share', id: 'toolShare', icon: 'share', label: '分享文字' },
                 { key: 'numpad', id: 'toolNumpad', icon: 'numpad', label: '数字键盘' },
                 { key: 'emoji', id: 'toolEmoji', icon: 'smiley', label: 'Emoji' },
                 { key: 'edit', id: 'editTool', icon: 'edit', label: '编辑工具' },
@@ -8170,6 +8211,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     if (key === 'kaomoji') {
                         if (this.panelOpen && this.panelTab === 'kaomoji') this.closePanel();
                         else this.openPanel('kaomoji');
+                        return;
+                    }
+                    // #93 分享选中文字：一次性动作（无 toggle 态），与定制键
+                    // [edit:share] 同一执行路径（读选区+系统分享面板都在原生）。
+                    if (key === 'share') {
+                        this.runEditStep('share');
                         return;
                     }
                     this.toggleExtraTool(key);
@@ -12873,6 +12920,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
     window.Feelime = {
         onBridgeHello: payload => keyboard.onBridgeHello(payload),
+        // #93：native→JS 的用户反馈通道（分享无选区/面板拉起失败的
+        // 提示）。此前 native evaluate 只有事件回调没有 toast 挂钩。
+        showToast: msg => keyboard.showToast(String(msg || '')),
         // #12 复发取证：native 推送到达 JS 的对账计数（心跳捎带
         // states=N preedit=L，与 native 日志的 stateApplied 行数对照：
         // 相等=JS 收到了（查渲染层）；少=推送丢（查 evaluate 层））。
