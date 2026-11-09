@@ -8,7 +8,7 @@
 # 全部 schema 引用同一词典名，一份 table 全模式换装。
 ---
 name: luna_pinyin
-version: "frost-96278d8-feelime"
+version: "frost-96278d8-feelime1"
 sort: by_weight
 import_tables:
   - cn_dicts/8105
@@ -17,4 +17,6 @@ import_tables:
   - cn_dicts/ext
   - cn_dicts/others
   - cn_dicts/corrections
+  # feelime 自有补充词条（#91「是的」等白霜缺口）
+  - cn_dicts/feelime-extra
 ...

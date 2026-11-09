@@ -34,7 +34,7 @@
     },
     "rime/double_pinyin_flypy.prism.bin": {
       "bytes": 21816,
-      "sha256": "d2c576a93b1d0fd1eb2789c6f9dfe312bd68d2a6e79a205c3e329a1f0276e89b"
+      "sha256": "a6a36050cb718b9d7009cb17fc170593419ae9862f831ea77ae9636bbe2f6b9d"
     },
     "rime/double_pinyin_flypy.prism.txt": {
       "bytes": 13068,
@@ -46,7 +46,7 @@
     },
     "rime/double_pinyin_sogou.prism.bin": {
       "bytes": 22128,
-      "sha256": "14544334bb917c511b3a1f8c78a6705939fb1b07c620e37672b44ef293c0e29f"
+      "sha256": "8b2e33748d375198924224bd3bd97240cf04a085f59bd60155ac5ace69598c74"
     },
     "rime/double_pinyin_sogou.prism.txt": {
       "bytes": 13312,
@@ -58,7 +58,7 @@
     },
     "rime/double_pinyin_ziguang.prism.bin": {
       "bytes": 21656,
-      "sha256": "c87004eccc0563b994309673998aa5f83e2075e17af09c6fc98974feb07a56e2"
+      "sha256": "f7a9759e804f65c174e39b4ea67ae1a15ac9adb661559e7549be2544cef1633e"
     },
     "rime/double_pinyin_ziguang.prism.txt": {
       "bytes": 13001,
@@ -78,7 +78,7 @@
     },
     "rime/luna_pinyin.prism.bin": {
       "bytes": 31800,
-      "sha256": "59cc92970f348c13839b8d8426b2b3398316cc326d1a5bfcbf244919c012fb08"
+      "sha256": "29832dbb9bf0de73a4c01cd93d500ca4aed4bcaadeb19023fe034abe18755a51"
     },
     "rime/luna_pinyin.prism.txt": {
       "bytes": 20318,
@@ -86,15 +86,15 @@
     },
     "rime/luna_pinyin.reverse.bin": {
       "bytes": 253668,
-      "sha256": "2b6ca277c1bb4b39ca43d40e9f6cb40047d210f71589326cb3b1029501fb4e4b"
+      "sha256": "729c7dd42a6a8cbb16556b86978674b6757490906f3619ddcb2b8310c375a8f2"
     },
     "rime/luna_pinyin.schema.yaml": {
       "bytes": 42151,
       "sha256": "2ef49c09687dc4c0d4dfc13339c2a5445ff2062cac134eb96ba4d6643608bb9a"
     },
     "rime/luna_pinyin.table.bin": {
-      "bytes": 19352244,
-      "sha256": "0024406390e10067c72087b751fdd26bd02a79804170c53f5c6982a8f3b8a595"
+      "bytes": 19352252,
+      "sha256": "23af1c11f696c5aea2ef72d211d0ecf7c1c16b4dfd0990c7291ee2d2f7fa6302"
     },
     "rime/luna_pinyin_fuzzy.prism.txt": {
       "bytes": 30995,
@@ -106,135 +106,263 @@
     },
     "rime/luna_pinyin_fuzzy_m1.prism.bin": {
       "bytes": 35520,
-      "sha256": "b00218f6171fd16990b14958dbd53be5fe4b6a1561c4c09f1ea2f71ff2e83fbe"
+      "sha256": "59f81142b9d853059a2ad111a117d9d1a3adfdca0400689db7b5ecc8aeebed35"
     },
     "rime/luna_pinyin_fuzzy_m10.prism.bin": {
       "bytes": 37032,
-      "sha256": "919405ec8977152f0f213a9a8edff5e1b24a7307d50e550f2158236f4dbf8bf5"
+      "sha256": "12ecc5e404c5b2db7a122dad2f681b549eb5665158aa97883f0dfd4982b54a38"
     },
     "rime/luna_pinyin_fuzzy_m11.prism.bin": {
       "bytes": 40752,
-      "sha256": "83333d5f1b21f599de703de87e20248a6ddb11bf32180aa3a3cb0069fe016fc5"
+      "sha256": "c1e619814dc01bc80d62d32d0228e01f969b9c03aa95122fc4c5f37902f99d46"
     },
     "rime/luna_pinyin_fuzzy_m12.prism.bin": {
       "bytes": 35128,
-      "sha256": "68ece553a403c23dff393d24a2811496510c4ac923e69a40e17929b5171cfc53"
+      "sha256": "c52fa2e23ccca9d5d645ece62c970e28def59509ed423ec5a1f4a36c67242178"
     },
     "rime/luna_pinyin_fuzzy_m13.prism.bin": {
       "bytes": 38848,
-      "sha256": "a81007991be328441b48c7e00137c00aa84aeda896959e72340c542ab58a8761"
+      "sha256": "3ceb1e404bde0b205af6704f1ceb06afebe1e24503a1f80b0655385930206953"
     },
     "rime/luna_pinyin_fuzzy_m14.prism.bin": {
       "bytes": 38432,
-      "sha256": "a6619a3ddf9e11637710981463f7b98952894fb6f5ede8a7aa1af48b21514335"
+      "sha256": "7defc4a4891f3125821d3163a42ac9b126262a4b1dd4de6fd94770964f451885"
     },
     "rime/luna_pinyin_fuzzy_m15.prism.bin": {
       "bytes": 42152,
-      "sha256": "284c3fd0743b3866335e36666708c0272e191b3da438042732574100f1d86b86"
+      "sha256": "fe4ae2af531e1486d4af7c291e07abc228a69f53306acf1c97497df77b28e6b3"
     },
     "rime/luna_pinyin_fuzzy_m16.prism.bin": {
       "bytes": 36600,
-      "sha256": "4c959c2cbfd9472c9d91ebad726c728f02a7f48409eecb28b4b41d58a9f25712"
+      "sha256": "a33c8f9937165af79cddc48b1ec3b1adcedbf2a62e9b99ad146f0a1290b7d696"
     },
     "rime/luna_pinyin_fuzzy_m17.prism.bin": {
       "bytes": 41208,
-      "sha256": "159ad0df6d62cc61e3cba5eb0e8b6c87784fec3ee0e3d9fdfa474b06206b7c4f"
+      "sha256": "7bb2abfd04923f39b8a2a8f54f572d610f8b8af4fbdac30b4f7a2714e7d415c6"
     },
     "rime/luna_pinyin_fuzzy_m18.prism.bin": {
       "bytes": 39376,
-      "sha256": "d7bbe625bb3dc2377e4bfc5a66c13056e3d8ad0ad97dac3e72f378bb5e6f5028"
+      "sha256": "f37405e43299422b6997205cbf2384762e966aeb2b64eab3bbf3c76700752f36"
     },
     "rime/luna_pinyin_fuzzy_m19.prism.bin": {
       "bytes": 43984,
-      "sha256": "b7f81bdfcea2ee7ff354314e7bfc277528fb4ff1797fcbd27ea40e8f6e742e84"
+      "sha256": "5bc8b16318c856472b5a30d0c5d115b132aa24b3439389cd3358da07f221f183"
     },
     "rime/luna_pinyin_fuzzy_m2.prism.bin": {
       "bytes": 34024,
-      "sha256": "6fea49a220e0ec0463d699e93f4e93e5f17eddd3469ebc405ad8a044dd3b4413"
+      "sha256": "6f2a71a708f1565d722ab982011942e6deeac34780573165ce133c58c8a5cb27"
     },
     "rime/luna_pinyin_fuzzy_m20.prism.bin": {
       "bytes": 38272,
-      "sha256": "aa8c9f80953abf0c5c2612fb74129d85e0b0fbb8bba3a5481b7a8d2aef83d814"
+      "sha256": "1f85f6bc8efc3f3181fd1471fc2c0b38a7c0f2aa1fe2a1601ae8129462cbc405"
     },
     "rime/luna_pinyin_fuzzy_m21.prism.bin": {
       "bytes": 42880,
-      "sha256": "961e907f1438e89de0953d2aba599680ade3cbb217fd367f1dfc1e8ad4891a34"
+      "sha256": "327e433a7bbeeffe8ef3fbc580b496b347eb6ed132fe10048d49ea1c9ad5c398"
     },
     "rime/luna_pinyin_fuzzy_m22.prism.bin": {
       "bytes": 41048,
-      "sha256": "b92e81ad8874c0d3ab60b125617eed02cbc863b4d70c5c7954e2280f6ee7ae82"
+      "sha256": "75af64806808dc3de7dad0b247561d47f2625722148272d4cc0a53bab5b14464"
     },
     "rime/luna_pinyin_fuzzy_m23.prism.bin": {
       "bytes": 46680,
-      "sha256": "07b915f65983d90a4f7cac7e362707348a3744e784c9f4546a615001105b834e"
+      "sha256": "c3d5e0fcc91ffaa1118bd86c42cda3feb8e91b481d17546544356729f0dc3a82"
     },
     "rime/luna_pinyin_fuzzy_m24.prism.bin": {
       "bytes": 38952,
-      "sha256": "7ed0c2243db62cdd21a81b6573cf266469f83347223ad4661e70f84121a42a80"
+      "sha256": "b0bbea9960e8e07db59a62f911027192695ffc5247da55ee20d883c0cfbd0014"
     },
     "rime/luna_pinyin_fuzzy_m25.prism.bin": {
       "bytes": 44584,
-      "sha256": "2a86ffa23c7454769821840e5d0b2718e07a4360985e7323ff4fed4a6408d5fc"
+      "sha256": "604dd98e402a3292c9ebcbb0374f3ff5e67c8c8feaa825722521f6d7ff252a5a"
     },
     "rime/luna_pinyin_fuzzy_m26.prism.bin": {
       "bytes": 44112,
-      "sha256": "90ec82059f78366daa768d674f374fa5b3e0ad8c73cf5a7b0c1435991a999888"
+      "sha256": "acfdf82eea5aa25158d39b201b864b3bc29a5134580b5adaed76039461ae7a11"
     },
     "rime/luna_pinyin_fuzzy_m27.prism.bin": {
       "bytes": 48720,
-      "sha256": "b590b31adcccce7f52f1bb71ea175d1c6dc64c3f1707a853099c6515c4bf251f"
+      "sha256": "0d6a8239a5d88b518a449040576303772a9fc5f79bd2a8d690441ca41b089744"
     },
     "rime/luna_pinyin_fuzzy_m28.prism.bin": {
       "bytes": 41648,
-      "sha256": "e7595d4656f590717ac193c7456412ba2c6967ac13fd08519e4739fc7e2835b6"
+      "sha256": "62c8ed242d3040b4de7d77cbad1673d9ee480e1f507254c1291145f1bb1860a8"
     },
     "rime/luna_pinyin_fuzzy_m29.prism.bin": {
       "bytes": 46256,
-      "sha256": "042e13a192bd1732282ca354f94ddc729b680d3d5b8e5f598175d1f483d26cbe"
+      "sha256": "cc94c23c635798c5ac034185b827c1715b367c7d1604be3dd94b337b245d8089"
     },
     "rime/luna_pinyin_fuzzy_m3.prism.bin": {
       "bytes": 37744,
-      "sha256": "78caf6945d498c0ade041cbf22271833aa61ffbb13c81af6ee13e8d2f0a29029"
+      "sha256": "862851316c49425ac8dff02d8441d7a96e05abec7da45ba230aa24d92d11d831"
     },
     "rime/luna_pinyin_fuzzy_m30.prism.bin": {
       "bytes": 45784,
-      "sha256": "78ac2631c898818f8bdbd1c5d0716c5118bece86fe4ac2491c2ac2f355df5408"
+      "sha256": "4719f306018ca741d89774ae5bcee3bce1c7176e62ecbf17e0c7eabe058659c5"
     },
     "rime/luna_pinyin_fuzzy_m31.prism.bin": {
       "bytes": 50392,
-      "sha256": "0a9f124ece3553f80e9dbde7f04cf18940137a309b1ffe7baeba1d16bfe49ca7"
+      "sha256": "9dd7fafbf4f22509409e1c71b06ffe4b9f558be4aa0fbc824895fddbce766b17"
     },
     "rime/luna_pinyin_fuzzy_m4.prism.bin": {
       "bytes": 33200,
-      "sha256": "8cccd75d433ad5246a5e2c18bf9a02c65ac71fa46d404a45fcc6a016e47c5be7"
+      "sha256": "a8ffcaf3b2dcf9892ccebe7347d81964726c620f239ff6169f0f62b2c19a885d"
     },
     "rime/luna_pinyin_fuzzy_m5.prism.bin": {
       "bytes": 36920,
-      "sha256": "c2aeeb70571402ec09e289642f6e96c66ebcf64f414f706b62b98745fee9f99a"
+      "sha256": "09831fadadff076bf0bfd4e840483f5a02fecccaa7de8a4a1f9b3dd2a4a952c9"
     },
     "rime/luna_pinyin_fuzzy_m6.prism.bin": {
       "bytes": 35424,
-      "sha256": "5778618eb459aeda87fc8082674cf7d26d2159d8ff9bd6eeea0435ca77a245a8"
+      "sha256": "54f79a6d629e59ed415d06281f94ba504d538017c5824de93817e434f3c8d6b0"
     },
     "rime/luna_pinyin_fuzzy_m7.prism.bin": {
       "bytes": 39144,
-      "sha256": "5f5e05a0f1338e1e9d832f0971c43e1c9db6ba7a935c2972fb149bbabc60b857"
+      "sha256": "6d07965dc28de34790097afb4ba751dfe15a414a084d8f7aff35ec546d01d7aa"
     },
     "rime/luna_pinyin_fuzzy_m8.prism.bin": {
       "bytes": 33728,
-      "sha256": "f12f9cc826dd77c698e2a9870d3f8a80afa661df674bf7c2066a03142f78f2e3"
+      "sha256": "9fb5ad01eb0921adac5f3f14dc8da7b5944438e7adb8201fc74035bb42639ff7"
     },
     "rime/luna_pinyin_fuzzy_m9.prism.bin": {
       "bytes": 37448,
-      "sha256": "ba0481452c3f255fae476f7f993259114a6b1965da26ed7cbb0660c809142052"
+      "sha256": "0e809b9cb86f72faf9dd5643a3f0990eb72faaeb6d44e2fdd65d939b91a9e0ad"
     },
     "rime/luna_pinyin_t9.prism.bin": {
       "bytes": 146584,
-      "sha256": "fec29f241e7c1fed4421f7f1873891ffb183ef5e835ecad090983945d1a6e2d6"
+      "sha256": "1f9b27488fbff877650c471ae1a64a52c4b135690f76cbccea13458b75e3321a"
     },
     "rime/luna_pinyin_t9.schema.yaml": {
       "bytes": 45604,
       "sha256": "3929ff92603cdc4ab8c1e5e8cd68ed8038e721b3e5be3675e94d1c898fa9d811"
+    },
+    "rime/luna_pinyin_t9_fuzzy.schema.yaml": {
+      "bytes": 45924,
+      "sha256": "c0aeb86042201399b1a15c6988d643e575d27dbdb97577c44d47cce0177f7f5e"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m1.prism.bin": {
+      "bytes": 174456,
+      "sha256": "983381166aa9d8dbe5f5e36ddc5323c92ec551e8a20364c98ace75c639bb31e1"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m10.prism.bin": {
+      "bytes": 168200,
+      "sha256": "2e4d024d9eae17be0570289aa565eb544520632716c9ad0eb42b131202edca5d"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m11.prism.bin": {
+      "bytes": 195048,
+      "sha256": "b473086c996873c4fe37253d37bfe5c1cd55ddfb73f70f027d478cd18fadb476"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m12.prism.bin": {
+      "bytes": 161896,
+      "sha256": "11817bc1dbd1ba7e798e7c82e274ec198611da88733ca93f99134d24eecfe71b"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m13.prism.bin": {
+      "bytes": 188744,
+      "sha256": "ea2f0c5dc33c5d7c42acffb202b1dd0319050f51056edc4e7f8ebedd0747b0f1"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m14.prism.bin": {
+      "bytes": 175032,
+      "sha256": "70243bdd2576be0ed3c6b3933bf24a3e02405519cee76a702a810b65264d91fc"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m15.prism.bin": {
+      "bytes": 201880,
+      "sha256": "29758e6505ee70395fc63e9371fade65ed8a5213caeeeee68482b8181e3d501c"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m16.prism.bin": {
+      "bytes": 194936,
+      "sha256": "a5c756ab918c10dbc60a0c11e9d588e717c426fafdf06481e71a45af8392a835"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m17.prism.bin": {
+      "bytes": 233304,
+      "sha256": "5e0ff24f2605bd4653ce1a180f70f482ac5b280cf94bb8f15e7199192e1c0839"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m18.prism.bin": {
+      "bytes": 210056,
+      "sha256": "b88e256640dfa101e7c0a1e11d0a91ec4e1b42965ec3ed8711f81961af04234d"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m19.prism.bin": {
+      "bytes": 247400,
+      "sha256": "e17e4a5d0902f5a6478646b8bb0072954f0502e2d6ab7df0a7bb6ffac01699b8"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m2.prism.bin": {
+      "bytes": 155464,
+      "sha256": "b927745abbdb249ee24045d1dc628d474ddb1915c8ad6548fc619f0f825e413c"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m20.prism.bin": {
+      "bytes": 203944,
+      "sha256": "61a6a7bc96b10fd5eaab4006fa70b8653b545f4c1ab96b02fcb07cc2fe9b6c1c"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m21.prism.bin": {
+      "bytes": 242312,
+      "sha256": "11625efb0594daadda9470c6616880ebc879213c72f8b7e3344774f7c0f23ecd"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m22.prism.bin": {
+      "bytes": 218040,
+      "sha256": "168fecc0ed8fb5b3eccfb1a5dc9e775ba51f7a70d5c36515688017a24f2a3fb7"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m23.prism.bin": {
+      "bytes": 256408,
+      "sha256": "bf6aa1d2f797c1302d478737f9afe2292d358ce877fe377c507178af1f5f79ba"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m24.prism.bin": {
+      "bytes": 207480,
+      "sha256": "f126ac5a046a6ce232ce208293597991775d87546844ff121edd98709f291c73"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m25.prism.bin": {
+      "bytes": 245848,
+      "sha256": "266e246e7165e0e099392c543f18741acb9063b4a04318890fc6c9c77f224b8b"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m26.prism.bin": {
+      "bytes": 228296,
+      "sha256": "15c08d3717401d776ca89b49842dccb7caf40890a4461fddcc274c59ea4cc867"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m27.prism.bin": {
+      "bytes": 266664,
+      "sha256": "8b59cb1fe3bb03b87b41137e545bc1520f5c460f647ca2c779fd5916cf4c3ca4"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m28.prism.bin": {
+      "bytes": 216488,
+      "sha256": "4715f58edfb52d2bb897f60e7612ccde090c19e79c29a11c2e9667b416988001"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m29.prism.bin": {
+      "bytes": 254856,
+      "sha256": "f12bcbd5023442a0b61c65d15110acc148f3aa6a19f189794615be7d45e0605d"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m3.prism.bin": {
+      "bytes": 183336,
+      "sha256": "b9e467e46170a958b29acc6e75ff706c6425385579ac4000309a59b2abe311df"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m30.prism.bin": {
+      "bytes": 237304,
+      "sha256": "726085079c1b19150c277309268d3a6a697230eb5e61c0077ff6667169f2ba1f"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m31.prism.bin": {
+      "bytes": 275672,
+      "sha256": "baa8f2fbceccda609068140a8a6a3eb2d3297fe5a3200f913923ac9a76b895dd"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m4.prism.bin": {
+      "bytes": 153416,
+      "sha256": "a3b785c0da350c1f435170049127ab287960a78d29c1d850aec9cf599bc52d1f"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m5.prism.bin": {
+      "bytes": 180264,
+      "sha256": "a444a8375511b72da5996c8b80e91e8f34e674131c2ba2716be89e9a154fc84e"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m6.prism.bin": {
+      "bytes": 162296,
+      "sha256": "16df693c4c3438376a9d95265a859930b663a24edf495d43d8d3089b6cc03b36"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m7.prism.bin": {
+      "bytes": 190168,
+      "sha256": "6d856e9d7855f0ea4de9b7c41f76958f35b5267c0cae77bba6e5300682be1d1b"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m8.prism.bin": {
+      "bytes": 155064,
+      "sha256": "07235f225efc6a07b1075704c588d31aab1d52bdd1433c219a06282aec4312fa"
+    },
+    "rime/luna_pinyin_t9_fuzzy_m9.prism.bin": {
+      "bytes": 181912,
+      "sha256": "b55ef743fcf09eec8e494c9234d22cc9181dcc7be24b31c2ef626965359fe150"
     },
     "rime/opencc/TSCharacters.txt": {
       "bytes": 104512,
@@ -262,7 +390,7 @@
     },
     "rime/ziranma_double_pinyin.prism.bin": {
       "bytes": 22344,
-      "sha256": "b8c21ffeafd32208a68511d90ba263d29124d6fce21a07adb43fdc9df403b452"
+      "sha256": "e30c2b831fbce2c8e1cf9ef4c4e653706f644ac21e1ac13df5d9a4c833b879a3"
     },
     "rime/ziranma_double_pinyin.prism.txt": {
       "bytes": 13417,
@@ -271,134 +399,6 @@
     "rime/ziranma_double_pinyin.schema.yaml": {
       "bytes": 39513,
       "sha256": "28aff12e9cf73d9610a007dd154af520572a2fb3a3c2f5d141898d599b7347ad"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m31.prism.bin": {
-      "bytes": 275672,
-      "sha256": "e120aa0adf98f49a5d95ac752c1ae84606ba8af504c1fbf5b9ed5342560812ef"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m1.prism.bin": {
-      "bytes": 174456,
-      "sha256": "5ec5a6109978f909f60e1ba5a780e48f3aef0cd47079126af42863d7b9f654b1"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m2.prism.bin": {
-      "bytes": 155464,
-      "sha256": "a661881135b827680e11c4108114d583d826d0b3ba45d042e49be776e6d45cf5"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m3.prism.bin": {
-      "bytes": 183336,
-      "sha256": "7e448d6f9beb382c6665e7d589188efadcbfe7b7c8800a1bb22417d3d9160b7d"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m4.prism.bin": {
-      "bytes": 153416,
-      "sha256": "d312507bea7abf8b2908c8506cf45bff82f24f97c573692ab0beafc3a7f21001"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m5.prism.bin": {
-      "bytes": 180264,
-      "sha256": "ff322a32764a2aff0bf356dc5601126cd72ed3db9f90a0990569d66bc36d752d"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m6.prism.bin": {
-      "bytes": 162296,
-      "sha256": "f62b6aef39688c2f83d303224e3942049a506b9378a463b42f8f1bea0fcabd4c"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m7.prism.bin": {
-      "bytes": 190168,
-      "sha256": "b2bf8e9f555bfa4efdfae5bebd5f784fece2cf752847966f45a07d7e7dddab9a"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m8.prism.bin": {
-      "bytes": 155064,
-      "sha256": "52dc6e2ae4d7c612047a5f0054c1d714e2bf2ae77ba99844b4f903ab282b9ed2"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m9.prism.bin": {
-      "bytes": 181912,
-      "sha256": "5b90c8f271a66cabc6ee8ac05e3aa6fce10f61f162ad3d394b846f6c99902804"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m10.prism.bin": {
-      "bytes": 168200,
-      "sha256": "b587bb6982109a4fb053d734803e8f69ae4ead778a4e87b0e269ac02babfd58e"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m11.prism.bin": {
-      "bytes": 195048,
-      "sha256": "7b84645733dc261939d9bd9702d760ca1834b683dbf5e6c639b5aa025654cedb"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m12.prism.bin": {
-      "bytes": 161896,
-      "sha256": "82468543e49e2d93812c89a0d27f832686a24426a31ffc63571422360766a47c"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m13.prism.bin": {
-      "bytes": 188744,
-      "sha256": "54b7196fe0dc4013285abaafd518a0378b6a82388d46b5b92dc7abf69aba5fb0"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m14.prism.bin": {
-      "bytes": 175032,
-      "sha256": "c2d48ad4199f56fc835a959fbad5dc1253168ff7cfe16fbf20da4a357286dc86"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m15.prism.bin": {
-      "bytes": 201880,
-      "sha256": "c8eb14c7432e00b9e7194305b4cb4a1bb709458f2f6d3594fbb8a8aecc1467a7"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m16.prism.bin": {
-      "bytes": 194936,
-      "sha256": "b4ade3f718cfd108a56248d6f19f7c7cc5ec741b1b2c34aebf48c3cee31d15d9"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m17.prism.bin": {
-      "bytes": 233304,
-      "sha256": "7a3959878b7175aa40d138664799ba20a20072f2e6646d716f24fc6a3fca4bfd"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m18.prism.bin": {
-      "bytes": 210056,
-      "sha256": "8d062b5fa80a1fd91511d6c8500ffe96b500c6f051f55f012a2a31164bff4418"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m19.prism.bin": {
-      "bytes": 247400,
-      "sha256": "1d33a803664f8c524c1ae6861f5b3c5f8aa5dc46a39e5373f4a9867abb3bfebc"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m20.prism.bin": {
-      "bytes": 203944,
-      "sha256": "b8b9c2830113af77a39a6bd39d173a65f76dcc7f7124de7df5899696c42afe47"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m21.prism.bin": {
-      "bytes": 242312,
-      "sha256": "089b418427645d0c1d21e3e0da71f7799bf2b491fa475e3705783290a0361f08"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m22.prism.bin": {
-      "bytes": 218040,
-      "sha256": "903dd98ba30b383f8dabfc10da9e223c1680e2e4564ac0572480749b71c1d597"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m23.prism.bin": {
-      "bytes": 256408,
-      "sha256": "f2ca5c6bd9d92b90c0e9bcabf5c79a22c058646eb7730e3a75fa4cb904fbde6b"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m24.prism.bin": {
-      "bytes": 207480,
-      "sha256": "9b3660cbee7b02abd622f43d6f6d8e963c8ea3f29421a18b5a097905dbfe2130"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m25.prism.bin": {
-      "bytes": 245848,
-      "sha256": "0cdf21f1cddb242342336177bc9f6ac50d6b7d8b1196d96eceb1e9fb80f1e263"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m26.prism.bin": {
-      "bytes": 228296,
-      "sha256": "48bdb817cd3cfb3b702b8719e4f53bbfbf9d8263dd070e17beb85a9533b33455"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m27.prism.bin": {
-      "bytes": 266664,
-      "sha256": "1470d490601dd9650da1fecf42739dea49f3079e3d4a109f4107c5d3d2563732"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m28.prism.bin": {
-      "bytes": 216488,
-      "sha256": "4f10c408a329598297eb3bb1706f3b4523a826c289f6d96d404c41252035d5a3"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m29.prism.bin": {
-      "bytes": 254856,
-      "sha256": "f3905cc5e9cdcf4609937f7f456d0342d0bd55a08e00ae27330387b2a0fb7ea9"
-    },
-    "rime/luna_pinyin_t9_fuzzy_m30.prism.bin": {
-      "bytes": 237304,
-      "sha256": "7f1fd0a016205adb6ebe413fd213fd8331d0f42440c56f1e47f2aacc861a7c7c"
-    },
-    "rime/luna_pinyin_t9_fuzzy.schema.yaml": {
-      "bytes": 45924,
-      "sha256": "c0aeb86042201399b1a15c6988d643e575d27dbdb97577c44d47cce0177f7f5e"
     }
   },
   "formatVersion": 1

@@ -97,6 +97,9 @@ mkdir -p "$rime_shared/cn_dicts"
 for piece in 8105 41448 base ext others corrections; do
   cp "$work/src/rime-data/rime-frost/cn_dicts/$piece.dict.yaml" "$rime_shared/cn_dicts/"
 done
+# feelime 自有补充词条（#91）：与 frost 六件同场，umbrella 挂载
+cp "$repo_root/scripts/research/rime-dicts/feelime-extra.dict.yaml" \
+  "$rime_shared/cn_dicts/"
 cp "$repo_root/scripts/research/rime-dicts/rime-frost-umbrella.dict.yaml" \
   "$rime_shared/luna_pinyin.dict.yaml"
 

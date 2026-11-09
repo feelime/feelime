@@ -1,0 +1,18 @@
+# Rime dictionary
+# encoding: utf-8
+#
+# feelime 自有补充词条（issue #91）：白霜词库（上游含最新 master）缺的
+# 高频轻声组合词。上游 frost 的 cn_dicts 只有「是的是的/是的呀」这类
+# 派生形，没有「是的」本体；librime 对存在精确匹配词的码位不再组句
+# （script_translator.cc has_reliable_phrase 短路），「是+的」组合候选
+# 也出不来。词条由 feelime 贡献，随基底词库（GPL-3.0 组合）一同分发。
+#
+# 权重口径：参照同码位现有词（使得 28413 / 时的 18395 / 似的 9412）
+# 与高频口语基准（什么 90425），「是的」给 150000 稳居码位首选。
+---
+name: feelime-extra
+version: "0.1"
+sort: by_weight
+...
+
+是的	shi de	150000

@@ -3,7 +3,7 @@
     "cmake-native": {
       "command": "FEELIME_M0_INPUTS=<verified-inputs> FEELIME_M0_NDK=<verified-r29> FEELIME_M0_WORK=<new-empty-dir> scripts/research/build-cmake-native-engines.sh",
       "script": "scripts/research/build-cmake-native-engines.sh",
-      "scriptSha256": "581de9d4347f4c7aadffd16c363c15ba27df7e21e233214f8b0b1d3f3cb3192a"
+      "scriptSha256": "5e722e87f3dc20d578a73ac7ce2063caa1081358cc8d99e1119f258a9c3d9f9a"
     },
     "mozc-android": {
       "command": "FEELIME_M0_INPUTS=<verified-inputs> FEELIME_M0_NDK=<verified-r29> FEELIME_M0_NDK_ARCHIVE=<verified-r29-archive> FEELIME_M0_BAZELISK=<verified-bazelisk> FEELIME_M0_REPOSITORY_CACHE_SEED=<verified-cache> FEELIME_M0_REPOSITORY_CACHE_MANIFEST=<verified-cache-manifest> FEELIME_M0_WORK=<new-empty-dir> scripts/research/build-mozc-android.sh",
@@ -165,7 +165,7 @@
       "buildRecipe": "cmake-native",
       "bytes": 22344,
       "path": "app/src/main/assets/engine-data/rime/ziranma_double_pinyin.prism.bin",
-      "sha256": "b8c21ffeafd32208a68511d90ba263d29124d6fce21a07adb43fdc9df403b452",
+      "sha256": "e30c2b831fbce2c8e1cf9ef4c4e653706f644ac21e1ac13df5d9a4c833b879a3",
       "sources": [
         "feelime-original-schema",
         "rime-essay",
@@ -204,7 +204,7 @@
       "buildRecipe": "cmake-native",
       "bytes": 31800,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.prism.bin",
-      "sha256": "59cc92970f348c13839b8d8426b2b3398316cc326d1a5bfcbf244919c012fb08",
+      "sha256": "29832dbb9bf0de73a4c01cd93d500ca4aed4bcaadeb19023fe034abe18755a51",
       "sources": [
         "rime-essay",
         "rime-frost",
@@ -230,7 +230,7 @@
       "buildRecipe": "cmake-native",
       "bytes": 253668,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.reverse.bin",
-      "sha256": "2b6ca277c1bb4b39ca43d40e9f6cb40047d210f71589326cb3b1029501fb4e4b",
+      "sha256": "729c7dd42a6a8cbb16556b86978674b6757490906f3619ddcb2b8310c375a8f2",
       "sources": [
         "rime-essay",
         "rime-frost",
@@ -254,9 +254,9 @@
     {
       "apkPath": "assets/engine-data/rime/luna_pinyin.table.bin",
       "buildRecipe": "cmake-native",
-      "bytes": 19352244,
+      "bytes": 19352252,
       "path": "app/src/main/assets/engine-data/rime/luna_pinyin.table.bin",
-      "sha256": "0024406390e10067c72087b751fdd26bd02a79804170c53f5c6982a8f3b8a595",
+      "sha256": "23af1c11f696c5aea2ef72d211d0ecf7c1c16b4dfd0990c7291ee2d2f7fa6302",
       "sources": [
         "rime-essay",
         "rime-frost",
