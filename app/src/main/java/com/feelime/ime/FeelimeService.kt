@@ -296,6 +296,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     private var panelSession = 0
     private var pendingPanelSelection: Triple<Int, Int, Int>? = null
     private var hostSelectionStart = -1
+    /** #94 选区变化序号（主线程单调递增）：选区 A→B→A 回到同坐标也
+     *  能被察觉——异步选区查询的回包要坐标+序号都与锚点一致才接受
+     *  结果（codex 复审 P1：首尾坐标相等挡不住 ABA）。 */
+    private var hostSelectionSeq = 0L
     private var hostSelectionEnd = -1
 
     // Bridge handshake state (design section 5.3). A fresh random token is
@@ -1505,6 +1509,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         candidatesStart: Int,
         candidatesEnd: Int,
     ) {
+        val prevSelStart = hostSelectionStart
+        val prevSelEnd = hostSelectionEnd
         super.onUpdateSelection(
             oldSelStart,
             oldSelEnd,
@@ -1541,6 +1547,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // host moves/selects the caret outside our own bridge action.
         if (::coordinator.isInitialized && !panelInputActive) {
             coordinator.onEditorSelectionChanged(oldSelStart, oldSelEnd, newSelStart, newSelEnd)
+        }
+        // #94：只在跟踪值真的变化时递增（hostSelectionSeq 见声明处注释）。
+        if (hostSelectionStart != prevSelStart || hostSelectionEnd != prevSelEnd) {
+            hostSelectionSeq += 1
         }
     }
 
@@ -1787,35 +1797,108 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     finishPendingVoiceStart(requestId)
                     return@onMain
                 }
-                voiceStartPending = false
                 // 三态：已知空（start==end>=0）/ 已知非空 / 未知（-1——
-                // 宿主 EditorInfo 没给有效坐标）。无选区时跳过宿主选区
-                // IPC：Chromium 系 IC 的 getSelectedText 卡满 framework 2
-                // 秒超时（RemoteInputConnection 警告实录，与 #85 手势路由
-                // 注释同源），主线程跳帧、录音启动被挡在后面。已知空的
-                // 查询结果（""或null）归一同一分支，跳过等价；有选区才
-                // 查——rollback 还原选区文本要用；未知不查也不流式
-                // （codex P1：未知态无法证明选区为空，流式替换会在取消
-                // 时删掉取不回来的原文，走缓冲模式）。
+                // 宿主 EditorInfo 没给有效坐标）。采样点必须在热身排队
+                // 结束后（codex 复审 P1：排队期间回放按键/提交组合会改
+                // 变选区，提前采样会把新选区当空选区流式替换丢原文）。
+                // 有选区才查——rollback 还原选区文本要用；未知不查也
+                // 不流式（codex P1：未知态无法证明选区为空，流式替换会
+                // 在取消时删掉取不回来的原文，走缓冲模式）。
                 val selectionKnownNonEmpty =
                     hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
                         hostSelectionEnd != hostSelectionStart
                 val selectionKnownEmpty =
                     hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
                         hostSelectionStart == hostSelectionEnd
-                val selected = if (selectionKnownNonEmpty) {
-                    runCatching { editorPort.selectedText() }.getOrNull()
-                } else null
-                voiceSession = VoiceSession(
-                    editorGeneration = inputConnectionGeneration,
-                    originalSelection = if (selected != null) selected
-                    else if (selectionKnownNonEmpty) null
-                    else "",
-                    // A null selected-text result plus a known non-empty
-                    // selection cannot be safely replaced by a composing span.
-                    streamToEditor = selected != null || selectionKnownEmpty,
-                )
-                engine.start()
+                if (!selectionKnownNonEmpty) {
+                    voiceStartPending = false
+                    voiceSession = VoiceSession(
+                        editorGeneration = inputConnectionGeneration,
+                        originalSelection = "",
+                        streamToEditor = selectionKnownEmpty,
+                    )
+                    engine.start()
+                    return@onMain
+                }
+                // #94：选区 IPC 必须离开主线程（工程约定，#93 同进程互
+                // 等定罪的同款存量）——本应用设置页与 IME 同进程时主
+                // 线程直查互等卡满 2s 超时，跨进程慢宿主同样卡。查询期
+                // 间 voiceStartPending 保持 true：stop/cancel/换届的既有
+                // 作废路径原样生效，回包终检后照旧走配对的
+                // finishPendingVoiceStart 收尾（beginVoiceSession 已发生，
+                // endVoiceSession 不会落空——codex 复审 P2）。
+                fun startWithSelection(selected: String?) {
+                    voiceStartPending = false
+                    // 三态用此刻的最新坐标重导：selected 只在「查询期间
+                    // 坐标+序号都没动」时可信（ABA 防护，漂移即弃）。
+                    val stillNonEmpty =
+                        hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
+                            hostSelectionEnd != hostSelectionStart
+                    val knownEmpty =
+                        hostSelectionStart >= 0 && hostSelectionEnd >= 0 &&
+                            hostSelectionStart == hostSelectionEnd
+                    voiceSession = VoiceSession(
+                        editorGeneration = inputConnectionGeneration,
+                        originalSelection = if (selected != null) selected
+                        else if (stillNonEmpty) null
+                        else "",
+                        // A null selected-text result plus a known non-empty
+                        // selection cannot be safely replaced by a composing span.
+                        streamToEditor = selected != null || knownEmpty,
+                    )
+                    engine.start()
+                }
+
+                fun querySelectionThenStart(attempt: Int) {
+                    val connection = currentInputConnection
+                    val hwGeneration = hwInputGeneration
+                    val selStart = hostSelectionStart
+                    val selEnd = hostSelectionEnd
+                    val selSeq = hostSelectionSeq
+                    cursorQueryExecutor.execute {
+                        val selected = runCatching {
+                            connection?.getSelectedText(0)?.toString()
+                        }.getOrNull()
+                        onMain {
+                            // 迟到作废终检先行（codex 复审 P2：已取消/换届/
+                            // 销毁的请求不得再追加查询——销毁后 executor 已
+                            // shutdownNow，重查会 RejectedExecutionException
+                            // 落到主线程）。finishPendingVoiceStart 内含
+                            // editor 守卫，配对收尾。
+                            if (!voiceStartPending || voiceStartRequestId != requestId) return@onMain
+                            if (requestId != voiceRequestId ||
+                                !acceptAsrResults || state != VoiceState.LOADING
+                            ) {
+                                finishPendingVoiceStart(requestId)
+                                return@onMain
+                            }
+                            if (inputConnectionGeneration != editorGeneration ||
+                                hwInputGeneration != hwGeneration
+                            ) {
+                                finishPendingVoiceStart(requestId)
+                                return@onMain
+                            }
+                            // 查询期间选区漂移（坐标或序号）：结果对应的可
+                            // 能是旧选区，作废重查一次（新坐标+新序号为
+                            // 锚）；再不稳则弃用查询结果——非空选区走缓冲
+                            // 模式（不流式不丢原文），最新坐标已知空时仍
+                            // 可流式（无原文可丢）。序号防 A→B→A 同坐标
+                            // 假阴性。
+                            if (hostSelectionSeq != selSeq ||
+                                hostSelectionStart != selStart || hostSelectionEnd != selEnd
+                            ) {
+                                if (attempt < 1) {
+                                    querySelectionThenStart(attempt + 1)
+                                } else {
+                                    startWithSelection(null)
+                                }
+                                return@onMain
+                            }
+                            startWithSelection(selected)
+                        }
+                    }
+                }
+                querySelectionThenStart(0)
             }
         }
     }
