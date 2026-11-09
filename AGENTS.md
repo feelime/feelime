@@ -226,6 +226,16 @@ DevTools 合成 TouchEvent 切到符号层（`<123>`）时会触发 qemu **静�
 
 ## 工程约定
 
+- **InputConnection 查询不上主线程**（#93 实测定罪，2026-11-09）：
+  `getSelectedText`/`getExtractedText`/`getTextBefore/AfterCursor` 等
+  同步 IC 查询一律走 `cursorQueryExecutor`（光标/退格/分享三处既有
+  先例），主线程捕获 connection+代际（`inputConnectionGeneration` +
+  `hwInputGeneration` 双校验，onFinishInput/onUnbindInput 只换届后者）、
+  回主线程终检后再用。原因：查询由宿主 App 主线程执行——自家设置页
+  与 IME 同进程时互等，各等满 framework 2s 超时返回 null（logcat
+  `RemoteInputConnection` 警告），真选区被报成空；跨进程慢宿主同样
+  卡。已知存量例外：语音启动 `editorPort.selectedText()`（有选区前置
+  门，带选区启动会白卡 2s，待修）。
 - **设置不进 localStorage，壳提供统一 pref 接口**：一切「设置」（用户
   偏好，需要备份/换机跟随的值）的真相源必须是原生层（键盘侧走
   `feelime_keyboard.xml` + hello 下发 + `setQuickPref`/SettingsBridge
