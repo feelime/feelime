@@ -3305,10 +3305,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
          *    不能指望 getSelectedText 拒答。
          *  - 无选区/读不到：toast 提示先选中，反馈走键盘页 showToast
          *    （与 JS 侧同一 UI，双语）。
-         *  - getSelectedText 是同步 binder 调用（codex 评审 P2-1）：分享
-         *    是用户显式点击的低频动作，病态宿主最坏卡键盘主线程到超时
-         *    返回；同进程设置页 WebView 实测（AVD）无互等死锁面，不为
-         *    此引入异步查询复杂度——记录取舍于此。
+         *  - IC 查询必须离开主线程（ace 实测定罪，#93 复盘）：查询经
+         *    RemoteInputConnection 派发到宿主 App 主线程执行——设置页
+         *    WebView 与 IME 同进程同主线程时形成互等，getSelectedText/
+         *    getExtractedText 各等满 2s 超时返回 null（logcat
+         *    RemoteInputConnection 警告实录），真选区也被报成空。
+         *    AVD 的 IMM 行为不同测不出此面。与语音/光标路径同款走
+         *    cursorQueryExecutor：主线程空出来才能执行派发，病态外宿
+         *    主也只剩后台慢、不再冻结键盘（codex 评审 P2-1 一并根治）。
          *  - EXTRA_TEXT 钳 100k 字符（binder 事务 ~1MB 上限的稳妥值，
          *    防长文 TransactionTooLargeException 整发失败）。 */
         @JavascriptInterface
@@ -3327,12 +3331,24 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     toast("此输入框不支持分享", "Sharing is unavailable in this field")
                     return@onMain
                 }
-                val selected = readSelectedText()
-                if (selected.isNullOrEmpty()) {
+                val connection = currentInputConnection ?: run {
                     toast("请先选中要分享的文字", "Select some text to share first")
                     return@onMain
                 }
-                shareTextInternal(selected, ::toast)
+                val generation = inputConnectionGeneration
+                cursorQueryExecutor.execute {
+                    val selected = readSelectedText(connection)
+                    onMain {
+                        // 查询期间编辑器已换届：旧选区不属于当前输入框，
+                        // 静默放弃——提示语与新现场对不上（codex P2-1）。
+                        if (inputConnectionGeneration != generation) return@onMain
+                        if (selected.isNullOrEmpty()) {
+                            toast("请先选中要分享的文字", "Select some text to share first")
+                        } else {
+                            shareTextInternal(selected, ::toast)
+                        }
+                    }
+                }
             }
         }
 
@@ -3367,9 +3383,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
          *  的支持普遍好得多（预编辑回显依赖它），选区位置随 ExtractedText
          *  返回。先走 getSelectedText，空则用 extractedText 的选区切片
          *  兜底（IME 对 WebView 宿主的通用兼容做法）。折叠选区/两者都
-         *  拿不到返回 null，由调用方提示。 */
-        private fun readSelectedText(): String? {
-            val ic = currentInputConnection ?: return null
+         *  拿不到返回 null，由调用方提示。必须在主线程外调用（调用方
+         *  传入主线程捕获的 connection，规避同进程互等死锁）。 */
+        private fun readSelectedText(ic: android.view.inputmethod.InputConnection): String? {
             runCatching { ic.getSelectedText(0) }.getOrNull()?.let {
                 if (it.isNotEmpty()) return it.toString()
             }
