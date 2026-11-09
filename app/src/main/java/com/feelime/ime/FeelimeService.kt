@@ -3327,14 +3327,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     toast("此输入框不支持分享", "Sharing is unavailable in this field")
                     return@onMain
                 }
-                val selected = runCatching {
-                    currentInputConnection?.getSelectedText(0)
-                }.getOrNull()
+                val selected = readSelectedText()
                 if (selected.isNullOrEmpty()) {
                     toast("请先选中要分享的文字", "Select some text to share first")
                     return@onMain
                 }
-                shareTextInternal(selected.toString(), ::toast)
+                shareTextInternal(selected, ::toast)
             }
         }
 
@@ -3361,6 +3359,29 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 }
                 shareTextInternal(text, ::toast)
             }
+        }
+
+        /** #93 读选区（ace 实测定罪补充）：部分 Chromium/WebView 宿主对
+         *  getSelectedText 恒答 null（ace 的 WebView 对系统选择与 JS 选区
+         *  都拒答；AVD 旧 WebView 正常——版本差异），但 getExtractedText
+         *  的支持普遍好得多（预编辑回显依赖它），选区位置随 ExtractedText
+         *  返回。先走 getSelectedText，空则用 extractedText 的选区切片
+         *  兜底（IME 对 WebView 宿主的通用兼容做法）。折叠选区/两者都
+         *  拿不到返回 null，由调用方提示。 */
+        private fun readSelectedText(): String? {
+            val ic = currentInputConnection ?: return null
+            runCatching { ic.getSelectedText(0) }.getOrNull()?.let {
+                if (it.isNotEmpty()) return it.toString()
+            }
+            return runCatching {
+                val ext = ic.getExtractedText(
+                    android.view.inputmethod.ExtractedTextRequest(), 0,
+                ) ?: return@runCatching null
+                val text = ext.text ?: return@runCatching null
+                val s = minOf(ext.selectionStart, ext.selectionEnd).coerceIn(0, text.length)
+                val e = maxOf(ext.selectionStart, ext.selectionEnd).coerceIn(0, text.length)
+                if (s == e) null else text.substring(s, e)
+            }.getOrNull()
         }
 
         /** shareSelectedText/shareText 的公共执行体：钳长 + ACTION_SEND。 */
