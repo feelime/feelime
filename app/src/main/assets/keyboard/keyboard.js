@@ -358,7 +358,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.98';
+    const KEYBOARD_VERSION = '3.73.99';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -8654,6 +8654,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 手写：总高/画布分辨率跟视图几何走（重唤键盘的兜底再推——
             // 高度在收起期间被改过的话，靠 renderMode 的推送接不住）。
             if (this.mode === 'handwriting') this.inkSyncViewport();
+            // #92：视口几何变了，开着的模式菜单按新几何重摆（锚点已
+            // 隐藏——如形态切换收掉键区——则直接关，别留孤儿浮层）。
+            if (this.modeMenuAnchor) {
+                const mm = document.getElementById('modeMenu');
+                if (mm.classList.contains('open')) {
+                    if (this.modeMenuAnchor.getBoundingClientRect().width > 0) {
+                        this.positionModeMenu(this.modeMenuAnchor);
+                    } else {
+                        this.closeModeMenu();
+                    }
+                }
+            }
         }
 
         /** native 落盘回执（setKeyboardHeightNow 的 commit 结果）：提示
@@ -8968,11 +8980,31 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 document.getElementById('modeToggle');
             if (!anchorEl) return;
             this.modeMenuAnchor = anchorEl;
+            this.positionModeMenu(anchorEl);
+            this.syncOverlay();
+        }
+
+        /** 模式菜单锚点定位（#92 抽出）：右缘对齐锚点右缘、菜单在锚点
+         *  上方；两条硬约束——左缘/上缘不得推出视口。hwkb 候选条形态
+         *  下切换键在候选条左侧，旧行为右对齐会把左缘算成负数
+         *  （min-width 180 > 键右缘），菜单左半被窗口裁掉（杉树反馈
+         *  「弹窗不能完整显示」的形态）。高度结算后由 applyHeight 重调
+         *  （视口变了按新几何重摆）。 */
+        positionModeMenu(anchorEl) {
+            const menu = document.getElementById('modeMenu');
             const toggle = anchorEl.getBoundingClientRect();
-            menu.style.left = 'auto';
-            menu.style.right = Math.max(4, innerWidth - toggle.right) + 'px';
             menu.style.bottom = 'auto';
-            const availUp = toggle.top - 14;
+            // 宽度先钳：CSS 的 min-width 180 在窄视口里也可能越界，
+            // 内联 max-width 取「CSS 70% 与视口-8 的较小者」压住它。
+            menu.style.maxWidth = Math.max(24, Math.min(innerWidth * 0.7, innerWidth - 8)) + 'px';
+            const w = menu.offsetWidth;
+            // 右缘对齐锚点右缘；越界时收到「左缘至少 4px」。
+            const minRight = Math.max(4, innerWidth - w - 4);
+            const rightGap = Math.min(Math.max(4, innerWidth - toggle.right), minRight);
+            menu.style.left = 'auto';
+            menu.style.right = rightGap + 'px';
+            // 上方空间非负钳制（矮窗口/浮层带收缩时兜滚动）。
+            const availUp = Math.max(0, toggle.top - 14);
             if (menu.offsetHeight <= availUp) {
                 menu.style.maxHeight = '';
                 menu.style.top = (toggle.top - menu.offsetHeight - 6) + 'px';
@@ -8980,7 +9012,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 menu.style.maxHeight = availUp + 'px';
                 menu.style.top = '14px';
             }
-            this.syncOverlay();
         }
 
         closeModeMenu() {

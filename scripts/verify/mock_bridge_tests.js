@@ -4605,8 +4605,11 @@ test('float band rides hello; band popups flip the native touch region', () => {
     world.context.window.Feelime.toggleModeMenu();
     equal(menu.style.top, '14px',
         'menu without headroom pins to the window top');
-    equal(menu.style.maxHeight, (toggleTop - 14) + 'px',
-        'menu capped by the space above its trigger');
+    // #92：上方空间非负钳制——负数 maxHeight 是非法 CSS 值，浏览器
+    // 静默忽略=不限高（旧行为恰好靠这个 bug「能看全」，矮窗口里
+    // 反而整段溢出）。
+    equal(menu.style.maxHeight, Math.max(0, toggleTop - 14) + 'px',
+        'menu capped by the space above its trigger (clamped at 0)');
 });
 
 test('combo card anchors to its trigger; shrink/side fallbacks keep it in-window', () => {

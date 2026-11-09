@@ -349,7 +349,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.98";
+  const KEYBOARD_VERSION = "3.73.99";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -7409,6 +7409,16 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.auditToolbarTools();
       this.fitFloatingToolbar();
       if (this.mode === "handwriting") this.inkSyncViewport();
+      if (this.modeMenuAnchor) {
+        const mm = document.getElementById("modeMenu");
+        if (mm.classList.contains("open")) {
+          if (this.modeMenuAnchor.getBoundingClientRect().width > 0) {
+            this.positionModeMenu(this.modeMenuAnchor);
+          } else {
+            this.closeModeMenu();
+          }
+        }
+      }
     }
     /** native 落盘回执（setKeyboardHeightNow 的 commit 结果）：提示
      *  只在确认写上盘后出现；失败明确告知（codex 终审 P2）。 */
@@ -7637,11 +7647,26 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const anchorEl = anchor || document.body.classList.contains("hwkb") && document.getElementById("hwModeTag") || document.getElementById("modeToggle");
       if (!anchorEl) return;
       this.modeMenuAnchor = anchorEl;
+      this.positionModeMenu(anchorEl);
+      this.syncOverlay();
+    }
+    /** 模式菜单锚点定位（#92 抽出）：右缘对齐锚点右缘、菜单在锚点
+     *  上方；两条硬约束——左缘/上缘不得推出视口。hwkb 候选条形态
+     *  下切换键在候选条左侧，旧行为右对齐会把左缘算成负数
+     *  （min-width 180 > 键右缘），菜单左半被窗口裁掉（杉树反馈
+     *  「弹窗不能完整显示」的形态）。高度结算后由 applyHeight 重调
+     *  （视口变了按新几何重摆）。 */
+    positionModeMenu(anchorEl) {
+      const menu = document.getElementById("modeMenu");
       const toggle = anchorEl.getBoundingClientRect();
-      menu.style.left = "auto";
-      menu.style.right = Math.max(4, innerWidth - toggle.right) + "px";
       menu.style.bottom = "auto";
-      const availUp = toggle.top - 14;
+      menu.style.maxWidth = Math.max(24, Math.min(innerWidth * 0.7, innerWidth - 8)) + "px";
+      const w = menu.offsetWidth;
+      const minRight = Math.max(4, innerWidth - w - 4);
+      const rightGap = Math.min(Math.max(4, innerWidth - toggle.right), minRight);
+      menu.style.left = "auto";
+      menu.style.right = rightGap + "px";
+      const availUp = Math.max(0, toggle.top - 14);
       if (menu.offsetHeight <= availUp) {
         menu.style.maxHeight = "";
         menu.style.top = toggle.top - menu.offsetHeight - 6 + "px";
@@ -7649,7 +7674,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         menu.style.maxHeight = availUp + "px";
         menu.style.top = "14px";
       }
-      this.syncOverlay();
     }
     closeModeMenu() {
       document.getElementById("modeMenu").classList.remove("open");

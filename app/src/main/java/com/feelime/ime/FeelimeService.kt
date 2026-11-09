@@ -312,6 +312,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      *  参与高度，其余形态自然忽略。 */
     @Volatile private var hwPanelHeightState = "candidates"
 
+    /** #92 形态变化检测：hwCandidatesFormActive() 的上次快照（null=尚
+     *  未初始化，首条状态推不触发重排）。 */
+    @Volatile private var hwCandidatesFormLast: Boolean? = null
+
     /** #H 状态快照缓存（design §5.4，codex 评审 P1-8）：keyboardReady
      *  重推最后一次引擎状态——新页（热更重载）接管时池/组合非空，
      *  JS 首个有效 state 驱动能力上报。 */
@@ -996,6 +1000,21 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     "pushState rev=${event.revision} composing=${event.state.composing} view=${System.identityHashCode(keyboardView)}")
                 lastStatePayloadJson = payload.toString()
                 evaluate("window.Feelime && window.Feelime.onEngineState && window.Feelime.onEngineState($lastStatePayloadJson)")
+                // #92 hwkb 形态重测量缺口：窗口高度按「hwkb 候选条形态
+                //  × 面板状态」两个维度算，但重测量通知只有面板状态桥
+                // （hwPanelHeight，candidates/ctrl/full 两端去重）。模式
+                // 切换改变形态时（手写/T9/笔画↔全拼/双拼），前后面板
+                // 状态同名（都是 candidates）→ 桥被去重跳过 → native 不
+                // 重测，窗口保持旧高度（键区已藏、面板收不回）。状态
+                // 推送点是所有模式变化（菜单/快捷切换/降级/密码框
+                // Direct）的汇聚口，在此按「有效形态变化」补一次重测量
+                // ——布尔不变不触发，无逐帧重排。JS 侧 onEngineState 的
+                // 重评估兜不住桥去重，native 自查才与高度职责同层。
+                val hwFormNow = hwCandidatesFormActive()
+                if (hwFormNow != hwCandidatesFormLast) {
+                    hwCandidatesFormLast = hwFormNow
+                    hwMain.post { (keyboardView?.parent as? View)?.requestLayout() }
+                }
                 // 中文联想（docs/design/association.md §3）：只在 commit 事件
                 // 上计算并推送，键盘保留现有联想直到组合开始。
                 val committed = event.state.commit
@@ -1069,6 +1088,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // （design §7：换页由 hello 重推触发 JS 重算）。
         jsHwKeys = false
         hwPanelHeightState = "candidates"
+        // #92：页面换代后形态快照一并失效——新页首条状态推重新对账
+        // （null 只触发一次重排，幂等）。
+        hwCandidatesFormLast = null
         val active = KeyboardUpdateCenter.activeKeyboard(this)
         servedRevision = active.revision
         assetStore = KeyboardAssetStore(active.dir)
@@ -1669,6 +1691,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // （design §7：换页由 hello 重推触发 JS 重算）。
         jsHwKeys = false
         hwPanelHeightState = "candidates"
+        // #92：页面换代后形态快照一并失效——新页首条状态推重新对账
+        // （null 只触发一次重排，幂等）。
+        hwCandidatesFormLast = null
         Diagnostics.log("bridge", "pageLoad at=reload view=${System.identityHashCode(keyboardView)}")
         keyboardView?.loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
     }
