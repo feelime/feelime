@@ -285,6 +285,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     // it - so editor writes must be redirected back into the panel input.
     @Volatile private var panelInputActive = false
     private var panelComposeSupported = false
+    /** #93 分享选区查询在途标记（仅主线程读写）：慢宿主下合并连点，
+     *  防止排队查询拖垮共享 executor 上的光标/退格查询（codex 复审
+     *  P2-2）。 */
+    private var shareQueryActive = false
     /** #85：键盘页带 onImeGesture* 直连处理器（版本 ≥3.73.79）。 */
     private var panelGestureSupported = false
     private var panelInputRequested = false
@@ -3310,9 +3314,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
          *    WebView 与 IME 同进程同主线程时形成互等，getSelectedText/
          *    getExtractedText 各等满 2s 超时返回 null（logcat
          *    RemoteInputConnection 警告实录），真选区也被报成空。
-         *    AVD 的 IMM 行为不同测不出此面。与语音/光标路径同款走
+         *    AVD 的 IMM 行为不同测不出此面。与光标/退格手势路径同款走
          *    cursorQueryExecutor：主线程空出来才能执行派发，病态外宿
          *    主也只剩后台慢、不再冻结键盘（codex 评审 P2-1 一并根治）。
+         *  - 在途合并（codex 复审 P2-2）：单线程 executor 与光标/退格
+         *    查询共享，慢宿主一次最坏 ~4s，连点会排队拖累它们——在途
+         *    时直接忽略后续点击，终态回主线程释放标记。
          *  - EXTRA_TEXT 钳 100k 字符（binder 事务 ~1MB 上限的稳妥值，
          *    防长文 TransactionTooLargeException 整发失败）。 */
         @JavascriptInterface
@@ -3335,13 +3342,22 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     toast("请先选中要分享的文字", "Select some text to share first")
                     return@onMain
                 }
+                if (shareQueryActive) return@onMain
+                shareQueryActive = true
                 val generation = inputConnectionGeneration
+                // onFinishInput/onUnbindInput 只换届 hwInputGeneration
+                // （inputConnectionGeneration 不动），解绑窗口内在途结果
+                // 必须一并作废（codex 复审 P2-1）。
+                val hwGeneration = hwInputGeneration
                 cursorQueryExecutor.execute {
                     val selected = readSelectedText(connection)
                     onMain {
-                        // 查询期间编辑器已换届：旧选区不属于当前输入框，
-                        // 静默放弃——提示语与新现场对不上（codex P2-1）。
-                        if (inputConnectionGeneration != generation) return@onMain
+                        shareQueryActive = false
+                        // 查询期间编辑器已换届/解绑：旧选区不属于当前
+                        // 输入框，静默放弃——提示语与新现场对不上。
+                        if (inputConnectionGeneration != generation ||
+                            hwInputGeneration != hwGeneration
+                        ) return@onMain
                         if (selected.isNullOrEmpty()) {
                             toast("请先选中要分享的文字", "Select some text to share first")
                         } else {
@@ -3377,14 +3393,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             }
         }
 
-        /** #93 读选区（ace 实测定罪补充）：部分 Chromium/WebView 宿主对
-         *  getSelectedText 恒答 null（ace 的 WebView 对系统选择与 JS 选区
-         *  都拒答；AVD 旧 WebView 正常——版本差异），但 getExtractedText
-         *  的支持普遍好得多（预编辑回显依赖它），选区位置随 ExtractedText
-         *  返回。先走 getSelectedText，空则用 extractedText 的选区切片
-         *  兜底（IME 对 WebView 宿主的通用兼容做法）。折叠选区/两者都
-         *  拿不到返回 null，由调用方提示。必须在主线程外调用（调用方
-         *  传入主线程捕获的 connection，规避同进程互等死锁）。 */
+        /** #93 读选区：部分宿主对 getSelectedText 返回 null（同进程宿主
+         *  两者都会被互等超时成 null，见 shareSelectedText 注释），因此
+         *  空结果再用 getExtractedText 的选区切片兜底（预编辑回显依赖
+         *  它，WebView 宿主支持普遍）。折叠选区/两者都拿不到返回 null，
+         *  由调用方提示。必须在主线程外调用（调用方传入主线程捕获的
+         *  connection，规避同进程互等死锁）。 */
         private fun readSelectedText(ic: android.view.inputmethod.InputConnection): String? {
             runCatching { ic.getSelectedText(0) }.getOrNull()?.let {
                 if (it.isNotEmpty()) return it.toString()
