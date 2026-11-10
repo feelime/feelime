@@ -1356,6 +1356,59 @@ test('quick switch: follow returns to the last keyboard from English', {since: '
         'English returns to the remembered keyboard, not pinyin');
 });
 
+test('quick switch: unready return mode falls back (#95)', {since: '3.73.101'}, () => {
+    // 大词库跳编 T9 后 quickReturnMode 可能钉在 t9（跳编前用过）——
+    // 切换键不得指向永远切不过去的目标，回退第一个可用中文模式。
+    const world = fresh({
+        mode: 'direct', quickSwitchPolicy: 'follow', quickReturnMode: 't9',
+        engineDataReady: { t9: false },
+    });
+    world.engineState({ phase: 'READY', revision: 1, mode: 'direct', composing: '', candidates: [] });
+    world.tap(world.$('modeToggle'));
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 'pinyin',
+        'unready t9 return target falls back to pinyin');
+
+    // fixed 配对的不可用成员替换成回退后必须保持**双向**（codex 一轮
+    // P2：逐次回退会让 [t9,direct] 退化成 pinyin→pinyin 单向环，从英
+    // 文切回中文后再也回不去英文）。配对经 stores 传入（hello 的
+    // quickPair 字段不被键盘消费）。
+    const world2 = fresh({ mode: 'direct', quickSwitchPolicy: 'fixed', engineDataReady: { t9: false } });
+    world2.context.window.Feelime.onStoresRestored({ feelime_quick_pair: JSON.stringify(['t9', 'direct']) });
+    world2.engineState({ phase: 'READY', revision: 1, mode: 'direct', composing: '', candidates: [] });
+    world2.tap(world2.$('modeToggle'));
+    equal(world2.native.of('selectMode').slice(-1)[0].args[0], 'pinyin',
+        'unready t9 pair member replaced by pinyin');
+    world2.engineState({ phase: 'READY', revision: 2, mode: 'pinyin', composing: '', candidates: [] });
+    world2.tap(world2.$('modeToggle'));
+    equal(world2.native.of('selectMode').slice(-1)[0].args[0], 'direct',
+        'effective pair stays bidirectional: chinese side flips back to english');
+
+    // 回退只在中文模式里挑（codex P2：法/俄/日可能排在拖拽序最前）。
+    const world3 = fresh({ mode: 'direct', quickSwitchPolicy: 'follow', quickReturnMode: 't9',
+        engineDataReady: { t9: false } });
+    world3.context.window.localStorage.setItem('feelime_mode_order',
+        JSON.stringify(['french', 'direct', 'pinyin', 'double-pinyin', 't9', 'stroke', 'flypy', 'handwriting', 'russian', 'japanese']));
+    world3.engineState({ phase: 'READY', revision: 1, mode: 'direct', composing: '', candidates: [] });
+    world3.tap(world3.$('modeToggle'));
+    equal(world3.native.of('selectMode').slice(-1)[0].args[0], 'pinyin',
+        'fallback skips non-Chinese modes even when ordered first');
+});
+
+test('hello readiness change closes stale menu and refreshes toggle label (#95)', {since: '3.73.101'}, () => {
+    // codex P2：MODELS_CHANGED/换库广播重推 hello 时就绪集可能翻转——
+    // 已开菜单不能留着按旧集渲染的可点 T9；软键角标（cn-sub）也不能
+    // 指着一个实际切不过去的目标。
+    const world = fresh({ mode: 'pinyin' });
+    const toggle = world.$('modeToggle');
+    world.touchDown(toggle);
+    world.clock.advance(360);
+    world.touchUp(toggle);
+    assert(world.$('modeMenu').classList.contains('open'), 'menu open before hello');
+    world.hello({ engineDataReady: { t9: false } });
+    assert(!world.$('modeMenu').classList.contains('open'),
+        'stale menu closed on readiness change');
+});
+
 test('quick switch: no switch toast (removed, issue #82)', {since: '3.73.62'}, () => {
     // #82 定案删除「已切换：xxx」toast：软键盘切换键走同一 quickSwitch
     // 通道，键帽状态本身就是反馈，toast 只遮挡第一排字母（硬件键盘形态
@@ -6267,16 +6320,20 @@ test('quick-pair editor: tick 双拼 relabels the toggle and flips the pair', {u
         'toggle flips inside the configured pair');
 });
 
-test('unready engine mode is disabled in the menu', () => {
+test('unready engine mode is hidden from the menu (#95: data-less modes are removed, not "preparing")', {since: '3.73.101'}, () => {
     const world = fresh({ engineDataReady: { pinyin: false, 'double-pinyin': false, japanese: false, french: false, russian: false } });
     const toggle = world.$('modeToggle');
     world.touchDown(toggle);
     world.clock.advance(360);
     world.touchUp(toggle);
-    const pinyin = [...world.$('modeMenu').children][1];
-    assert(pinyin.className.includes('preparing'), 'preparing class');
-    world.tap(pinyin);
-    equal(world.native.of('selectMode').length, 0, 'no selectMode for unready');
+    const labels = [...world.$('modeMenu').children].map(b => b.textContent);
+    assert(!labels.some(l => l.includes('全拼')), 'unready pinyin removed from menu');
+    assert(!labels.some(l => l.includes('双拼') || l.includes('Double')), 'unready double-pinyin removed');
+    // ready 模式照常可点；strictReady 模式（笔画）保留 preparing 显示（数据在途）。
+    const t9 = [...world.$('modeMenu').children].find(b => b.textContent.includes('九宫格'));
+    assert(t9, 'ready t9 listed');
+    world.tap(t9);
+    equal(world.native.of('selectMode').slice(-1)[0].args[0], 't9', 'ready mode selectable');
 });
 
 test('mode change re-renders layout and toggle shorthand', () => {

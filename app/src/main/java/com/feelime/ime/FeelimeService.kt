@@ -4239,14 +4239,29 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             if (next == null || !ready) {
                 rejectedCalls += 1
                 if (next != null && !ready) {
-                    pushState(
-                        message = t(
-                            this@FeelimeService,
-                            "该输入法正在准备语言数据，请稍后再试",
-                            "Language data is still being prepared. Try again shortly",
-                        ),
-                        messageCode = "ENGINE_DATA_PREPARING",
-                    )
+                    // #95：大词库导入跳编 T9 是「永久停用」（换词库才恢复），
+                    // 与「准备中」混同一句「请稍后再试」会误导用户干等。
+                    if (next == com.feelime.ime.engine.InputMode.T9 &&
+                        com.feelime.ime.engine.BaseDictInstaller.isT9Skipped(this@FeelimeService)
+                    ) {
+                        pushState(
+                            message = t(
+                                this@FeelimeService,
+                                "当前词库词条过多，九宫格暂不可用；在设置的词库页恢复内置或换更小的词库即可恢复",
+                                "This dictionary is too large for the 9-key mode. Restore the built-in dictionary or import a smaller one to bring it back",
+                            ),
+                            messageCode = "BASE_T9_SKIPPED",
+                        )
+                    } else {
+                        pushState(
+                            message = t(
+                                this@FeelimeService,
+                                "该输入法正在准备语言数据，请稍后再试",
+                                "Language data is still being prepared. Try again shortly",
+                            ),
+                            messageCode = "ENGINE_DATA_PREPARING",
+                        )
+                    }
                 }
                 return@guarded
             }

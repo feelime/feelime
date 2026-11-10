@@ -361,7 +361,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.100';
+    const KEYBOARD_VERSION = '3.73.101';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -591,6 +591,10 @@ const TOOL_CATALOG = {
 };
 // #H 硬键盘接字符的模式（design §2，与 native hwCharModes 同源集）。
 const HW_TEXT_MODES = new Set(['pinyin', 'double-pinyin', 'flypy', 'french', 'russian', 'japanese']);
+/** #95 中英快捷切换的「中」侧集合（能打中文的模式）：回退目标只从
+ *  这里挑——orderedModeNames 是用户拖拽全序，法/俄/日可能排最前，
+ *  但快捷对的语义是中英切换，不能落到外文键盘上。 */
+const CHINESE_INPUT_MODES = new Set(['pinyin', 'double-pinyin', 't9', 'stroke', 'flypy']);
 
 const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites', 'mic'] };
     const MIN_NATIVE_API = 1;
@@ -3891,12 +3895,26 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          *  fixed：固定配对翻转（配对外模式回 pair[0]，存量约定）。
          *  降级重试优先级保留在上层调用处。 */
         quickSwitchTarget() {
+            // #95：目标模式数据不可用（大词库跳编 T9 等）时回退到第一个
+            // 可用的中文模式——否则切换键指向一个永远切不过去的目标
+            // （每次按都 toast「还在准备中」，实际永远不会好）。
+            // 回退限定中文模式（codex P2：orderedModeNames 是用户拖拽
+            // 全序，法/俄/日可能排前，但快捷对语义是中英切换）。
+            const fallbackChinese = () =>
+                this.orderedModeNames().find(n => CHINESE_INPUT_MODES.has(n) && this.modeAvailable(n))
+                || 'direct';
             if ((this.quickSwitchPolicy || 'fixed') === 'fixed') {
+                // 不可用成员替换成回退后**固定整对**（codex P2：逐次回退
+                // 会让 pair=[t9,direct] 退化成「pinyin→pinyin」的单向环
+                // ——从英文落到回退模式后，再按一次要能切回英文）。
                 const pair = this.quickPair;
-                return this.mode === pair[0] ? pair[1] : pair[0];
+                const eff = pair.map(m => this.modeAvailable(m) ? m : fallbackChinese());
+                return this.mode === eff[0] ? eff[1] : eff[0];
             }
             if (this.mode === 'direct') {
-                return MODES[this.quickReturnMode] ? this.quickReturnMode : 'pinyin';
+                return MODES[this.quickReturnMode] && this.modeAvailable(this.quickReturnMode)
+                    ? this.quickReturnMode
+                    : fallbackChinese();
             }
             return 'direct';
         }
@@ -8987,9 +9005,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 点——旧 APK 的 engineDataReady 不含该字段，宽松判定
                 // （!== false）会把缺键当可用，出现可点却无效的入口。
                 // 非 strictReady 维持原语义：engine:false 恒可点。
-                const ready = config.strictReady
-                    ? this.engineReady[name] === true
-                    : (!config.engine || this.engineReady[name] !== false);
+                // （#95 后 not-ready 模式已被 modeOrder 过滤，此处仅
+                // strictReady 的「模型下载中」还以 preparing 显示。）
+                const ready = this.modeAvailable(name);
                 const current = name === this.mode;
                 button.className = current ? 'current' : (ready ? '' : 'preparing');
                 // Compact rows - the shorthand leads, the full
@@ -9998,6 +10016,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
 
         /** Saved drag order  applied to the long-press menu. */
+        /** 模式此刻可用吗（engineReady 口径与模式菜单一致）：strictReady
+         *  （stroke/手写）只有 hello 明确 true 才可用；engine:false 的非
+         *  引擎模式恒可用；其余 engineReady[name]!==false。#95：大词库
+         *  导入跳编 T9 后（engineReady.t9===false，且不会自愈），菜单/
+         *  快捷切换要把 not-ready 模式当「不存在」而不是「准备中」。 */
+        modeAvailable(name) {
+            const config = MODES[name];
+            if (!config) return false;
+            return config.strictReady
+                ? this.engineReady[name] === true
+                : (!config.engine || this.engineReady[name] !== false);
+        }
+
         modeOrder() {
             const ordered = this.orderedModeNames();
             // The long-press menu shows ONLY the keyboards the user
@@ -10007,12 +10038,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // The quick toggle always reaches the pair regardless.
             let menu = null;
             try { menu = JSON.parse(localStorage.getItem('feelime_menu_modes') || 'null'); } catch (_) {}
+            let list = ordered;
             if (Array.isArray(menu)) {
                 const filtered = ordered.filter(name => menu.includes(name));
-                if (filtered.length) return filtered;
+                if (filtered.length) list = filtered;
+            } else {
+                const enabled = ordered.filter(name => DEFAULT_MENU_MODES.includes(name));
+                if (enabled.length) list = enabled;
             }
-            const enabled = ordered.filter(name => DEFAULT_MENU_MODES.includes(name));
-            return enabled.length ? enabled : ordered;
+            // #95（#35 注释承诺「大词库跳编后模式自动隐藏」的兑现）：
+            // 引擎类模式的数据不可用（T9 跳编最典型，等不来的缺数据）
+            // 不再进菜单——旧行为留「…」preparing 项，不可点还占位，
+            // 用户看着像坏了。strictReady 模式（手写/笔画）例外：数据
+            // 「在途」（模型下载/编译中）保留 preparing 显示，旧语义不
+            // 动。全空时回退未过滤集（首启 hello 未达的窗口期兜底，宁
+            // 可显示也不空菜单）。
+            const available = list.filter(name =>
+                name === this.mode || MODES[name].strictReady || this.modeAvailable(name));
+            return available.length ? available : list;
         }
 
         /** Every known keyboard in the saved drag order (unfiltered). */
@@ -11907,7 +11950,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 本地陈旧值写回镜像并抬高 rev，设置页刚导入的恢复值就丢了。
             }
             this.token = payload.pageGenerationToken;
-            this.engineReady = payload.engineDataReady || {};
+            // #95（codex P2）：就绪集变化会改变菜单过滤集与快捷切换目标
+            // （MODELS_CHANGED/换库广播重推 hello）——已开菜单与切换键
+            // 角标不能停在旧值（标签指着一个实际切不过去的目标）。
+            {
+                // 全模式的可用性指纹（modeAvailable 同口径），指纹变化
+                // 才刷新——避免每次 hello 都重绘。
+                const avail = r => Object.keys(MODES).map(n =>
+                    MODES[n].strictReady ? (r[n] === true ? 1 : 0)
+                        : (!MODES[n].engine || r[n] !== false ? 1 : 0)).join('');
+                const prev = avail(this.engineReady);
+                this.engineReady = payload.engineDataReady || {};
+                if (avail(this.engineReady) !== prev) {
+                    if (document.getElementById('modeMenu').classList.contains('open')) {
+                        this.closeModeMenu();
+                    }
+                    this.updateLabels();
+                    this.updateHwModeTag();
+                }
+            }
             // D: bottom gesture-nav inset (CSS px) - the native
             // view carries this space in both orientations (see applyHeight).
             this.safeBottom = Math.max(0, Number(payload.safeBottom) || 0);

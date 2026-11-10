@@ -225,6 +225,17 @@ object BaseDictInstaller {
 
     fun isBuilding(): Boolean = building.get()
 
+    /** #95：T9 是否因大词库跳编而不可用（与设置页 t9Skipped 提示同口径：
+     *  自定义基底 + 跳过标记 + staging 无 t9 prism）。供键盘 selectMode
+     *  拒绝时区分「永久停用（换词库才能恢复）」与「准备中」。 */
+    fun isT9Skipped(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+        val built = File(context.filesDir, "rime-user/build/luna_pinyin.table.bin").isFile
+        return prefs.getString(KEY_MODE, "builtin") == "custom" && built &&
+            prefs.getBoolean(KEY_T9_SKIPPED, false) &&
+            !File(context.filesDir, "rime-user/build/luna_pinyin_t9.prism.bin").isFile
+    }
+
     /** 忙时排队的补编补偿（P2-6）：任务收尾（building 已清零）统一触发。
      *  目标变体若本次安装清单已编出（prism 在），ifNeeded 自行 no-op。 */
     private fun compensatePendingFuzzy(app: Context) {

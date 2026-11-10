@@ -352,7 +352,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.100";
+  const KEYBOARD_VERSION = "3.73.101";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -699,6 +699,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     kaomoji: "toolKaomoji"
   };
   const HW_TEXT_MODES = /* @__PURE__ */ new Set(["pinyin", "double-pinyin", "flypy", "french", "russian", "japanese"]);
+  const CHINESE_INPUT_MODES = /* @__PURE__ */ new Set(["pinyin", "double-pinyin", "t9", "stroke", "flypy"]);
   const TOOLBAR_DEFAULT = { left: ["ctrl", "ime"], right: ["clipboard", "favorites", "mic"] };
   const MIN_NATIVE_API = 1;
   const REQUIRED_CAPABILITIES = [
@@ -3509,12 +3510,14 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      *  fixed：固定配对翻转（配对外模式回 pair[0]，存量约定）。
      *  降级重试优先级保留在上层调用处。 */
     quickSwitchTarget() {
+      const fallbackChinese = /* @__PURE__ */ __name(() => this.orderedModeNames().find((n) => CHINESE_INPUT_MODES.has(n) && this.modeAvailable(n)) || "direct", "fallbackChinese");
       if ((this.quickSwitchPolicy || "fixed") === "fixed") {
         const pair = this.quickPair;
-        return this.mode === pair[0] ? pair[1] : pair[0];
+        const eff = pair.map((m) => this.modeAvailable(m) ? m : fallbackChinese());
+        return this.mode === eff[0] ? eff[1] : eff[0];
       }
       if (this.mode === "direct") {
-        return MODES[this.quickReturnMode] ? this.quickReturnMode : "pinyin";
+        return MODES[this.quickReturnMode] && this.modeAvailable(this.quickReturnMode) ? this.quickReturnMode : fallbackChinese();
       }
       return "direct";
     }
@@ -7667,7 +7670,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.modeOrder().forEach((name) => {
         const config = MODES[name];
         const button = document.createElement("button");
-        const ready = config.strictReady ? this.engineReady[name] === true : !config.engine || this.engineReady[name] !== false;
+        const ready = this.modeAvailable(name);
         const current = name === this.mode;
         button.className = current ? "current" : ready ? "" : "preparing";
         button.innerHTML = `<span class="prep">${ready ? modeLabel(name) : "\u2026"}</span><span>${t(config.title)}</span>`;
@@ -8616,6 +8619,16 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }, { passive: false });
     }
     /** Saved drag order  applied to the long-press menu. */
+    /** 模式此刻可用吗（engineReady 口径与模式菜单一致）：strictReady
+     *  （stroke/手写）只有 hello 明确 true 才可用；engine:false 的非
+     *  引擎模式恒可用；其余 engineReady[name]!==false。#95：大词库
+     *  导入跳编 T9 后（engineReady.t9===false，且不会自愈），菜单/
+     *  快捷切换要把 not-ready 模式当「不存在」而不是「准备中」。 */
+    modeAvailable(name) {
+      const config = MODES[name];
+      if (!config) return false;
+      return config.strictReady ? this.engineReady[name] === true : !config.engine || this.engineReady[name] !== false;
+    }
     modeOrder() {
       const ordered = this.orderedModeNames();
       let menu = null;
@@ -8623,12 +8636,16 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         menu = JSON.parse(localStorage.getItem("feelime_menu_modes") || "null");
       } catch (_) {
       }
+      let list = ordered;
       if (Array.isArray(menu)) {
         const filtered = ordered.filter((name) => menu.includes(name));
-        if (filtered.length) return filtered;
+        if (filtered.length) list = filtered;
+      } else {
+        const enabled = ordered.filter((name) => DEFAULT_MENU_MODES.includes(name));
+        if (enabled.length) list = enabled;
       }
-      const enabled = ordered.filter((name) => DEFAULT_MENU_MODES.includes(name));
-      return enabled.length ? enabled : ordered;
+      const available = list.filter((name) => name === this.mode || MODES[name].strictReady || this.modeAvailable(name));
+      return available.length ? available : list;
     }
     /** Every known keyboard in the saved drag order (unfiltered). */
     orderedModeNames() {
@@ -10051,7 +10068,18 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         translateStaticUi();
       }
       this.token = payload.pageGenerationToken;
-      this.engineReady = payload.engineDataReady || {};
+      {
+        const avail = /* @__PURE__ */ __name((r) => Object.keys(MODES).map((n) => MODES[n].strictReady ? r[n] === true ? 1 : 0 : !MODES[n].engine || r[n] !== false ? 1 : 0).join(""), "avail");
+        const prev = avail(this.engineReady);
+        this.engineReady = payload.engineDataReady || {};
+        if (avail(this.engineReady) !== prev) {
+          if (document.getElementById("modeMenu").classList.contains("open")) {
+            this.closeModeMenu();
+          }
+          this.updateLabels();
+          this.updateHwModeTag();
+        }
+      }
       this.safeBottom = Math.max(0, Number(payload.safeBottom) || 0);
       this.bottomPad = Math.max(0, Number(payload.bottomPad) || 0);
       {
