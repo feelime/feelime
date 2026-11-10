@@ -71,6 +71,65 @@ class BaseDictPinyinRatioTest {
         assertEquals(1.0, BaseDictInstaller.pinyinCodeRatio(f, syllables, 100), 1e-9)
     }
 
+    /** #98：雾凇 tencent 表声明 `columns: [text, weight]`（无码列，词条
+     *  靠 librime 编译期 encoder 注音）。旧逻辑把第二列权重"100"当编码
+     *  判（非字母恒 fail）→ ratio=0，整表被排除出双拼/T9 子伞。 */
+    @Test
+    fun codelessColumnDictIsPinyinTable() {
+        val noCode = File.createTempFile("tencent", ".dict.yaml").apply {
+            writeText(
+                """# Rime dictionary
+# encoding: utf-8
+---
+name: tencent
+version: "1"
+sort: by_weight
+columns:
+  - text
+  - weight
+...
+交叉熵	100
+傀儡皇帝	100
+菜谱设计	100
+""",
+            )
+            deleteOnExit()
+        }
+        assertEquals(-1, BaseDictInstaller.dictCodeColumn(noCode))
+        assertEquals(1.0, BaseDictInstaller.pinyinCodeRatio(noCode, syllables, 100), 1e-9)
+        // 有码表（无 columns 声明）默认第二列不变。
+        assertEquals(1, BaseDictInstaller.dictCodeColumn(dict("你\tni\t1")))
+    }
+
+    /** codex 一轮 P2：inline list、列表内注释/空行/引号、显式重排列序。 */
+    @Test
+    fun codeColumnParsesAllYamlListForms() {
+        fun tmp(content: String) = File.createTempFile("dict", ".yaml").apply {
+            writeText(content); deleteOnExit()
+        }
+        // inline 无码：columns: [text, weight]
+        val inlineNoCode = tmp(
+            "# Rime dictionary\n---\nname: a\nversion: \"1\"\ncolumns: [text, weight]\n...\n词\t100\n")
+        assertEquals(-1, BaseDictInstaller.dictCodeColumn(inlineNoCode))
+        assertEquals(1.0, BaseDictInstaller.pinyinCodeRatio(inlineNoCode, syllables, 100), 1e-9)
+        // inline 重排：码在第三列（你\t100\tni）。
+        val inlineReordered = tmp(
+            "# Rime dictionary\n---\nname: b\nversion: \"1\"\ncolumns: [text, weight, code]\n...\n你\t100\tni\n")
+        assertEquals(2, BaseDictInstaller.dictCodeColumn(inlineReordered))
+        assertEquals(1.0, BaseDictInstaller.pinyinCodeRatio(inlineReordered, syllables, 100), 1e-9)
+        // 多行列表内注释/空行不得中断解析（codex P2：半截列表误判无码
+        // 会把形码表当拼音表）。
+        val commented = tmp(
+            "# Rime dictionary\n---\nname: c\nversion: \"1\"\ncolumns:\n  - text\n" +
+                "  # 编码列\n\n  - code\n  - weight\n...\n那\tnaxy\t100\n")
+        assertEquals(1, BaseDictInstaller.dictCodeColumn(commented))
+        assertEquals(0.0, BaseDictInstaller.pinyinCodeRatio(commented, syllables, 100), 1e-9)
+        // 带引号的列表项。
+        val quoted = tmp(
+            "# Rime dictionary\n---\nname: d\nversion: \"1\"\ncolumns:\n  - \"text\"\n  - 'weight'\n...\n词\t100\n")
+        assertEquals(-1, BaseDictInstaller.dictCodeColumn(quoted))
+    }
+
     @Test
     fun emptyDictionaryDefaultsToSegmentable() {
         val f = dict()

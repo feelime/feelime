@@ -1119,18 +1119,29 @@ object BaseDictInstaller {
         // 拼音码表照旧进全量伞表（全拼英文混输特性保留），字母码表
         // （en/abbrev 类）只进全量伞。全部表都是拼音码时不分表（单文件
         // #23 导入零变化）；切不出来（全字母）也退回全量（行为同旧）。
+        // #98 无码表（columns 无 code，靠 encoder 注音）没有自身编码
+        // 样本可判——跟随「存在拼音供码表」进子伞（encoder 跨表学习，
+        // 没有拼音供码表时无码词必然整体 Encode failure，进子伞无意义，
+        // codex P2-3：也不能让形码字表+无码词表的组合误判拼音域）。
         val dpTables: List<String> = if (syllables.isEmpty() || nonPinyinRatio == null) {
             emptyList()
         } else {
-            staged.files.filter { f ->
+            val codedEligible = staged.files.filter { f ->
+                dictCodeColumn(f) != -1
+            }.filter { f ->
                 val lines = stats.perFile.firstOrNull { it.first == f }?.second ?: 0
                 lines <= 0 || runCatching {
                     pinyinCodeRatio(f, syllables, NON_PINYIN_SAMPLE / 4, lines) >= 0.5f
                 }.getOrDefault(true)
-            }.map { it.name }.also { eligible ->
-                if (eligible.size == staged.files.size || eligible.isEmpty()) {
+            }.map { it.name }
+            val codeless = staged.files.filter { dictCodeColumn(it) == -1 }.map { it.name }
+            val eligible =
+                if (codedEligible.isEmpty()) emptyList()
+                else codedEligible + codeless
+            eligible.also {
+                if (it.size == staged.files.size || it.isEmpty()) {
                     android.util.Log.i("FeelimeBaseDict",
-                        "dp umbrella: no split (${eligible.size}/${staged.files.size} pinyin tables)")
+                        "dp umbrella: no split (${it.size}/${staged.files.size} pinyin tables)")
                 }
             }
         }
@@ -1552,12 +1563,61 @@ object BaseDictInstaller {
      *  时，「头部全拼+尾部形码」的表会整体漏检）；注释/分隔行跳过。
      *  注意这只是启发式提示信号：换装会按导入码表重编 prism（本机
      *  librime 实测 naxy/kkfj 可命中），不构成「无法输入」的判定。 */
+    /** dict.yaml 头部的码列索引（rime 语义：`columns:` 声明各列角色，
+     *  无声明默认 [text, code, weight]——码在第二列；多行与 inline 两种
+     *  list 形态 librime 都支持，config_data.cc 走完整 YAML 解析）。返回
+     *  -1 = 声明了 columns 但不含 code（如雾凇 tencent 表 `columns:
+     *  [text, weight]`，词条靠 librime 编译期用同库有码词条的 encoder
+     *  自动注音——host 实测 98 万词全部编入，见 #98）。列表内注释/空行
+     *  跳过（中断在注释处的声明不算读完——codex P2：半截列表误判无码
+     *  会把形码表当拼音表）。 */
+    internal fun dictCodeColumn(file: File): Int {
+        file.bufferedReader(Charsets.UTF_8).useLines { seq ->
+            val cols = mutableListOf<String>()
+            var first = true
+            var inColumns = false
+            for (raw in seq) {
+                var line = raw.trimEnd()
+                if (first) { line = line.trimStart('﻿'); first = false }
+                if (line == "...") break
+                if (line == "---") continue
+                val t = line.trim()
+                if (!inColumns) {
+                    if (t == "columns:") { inColumns = true; continue }
+                    // inline 形态：columns: [text, weight]
+                    if (t.startsWith("columns:")) {
+                        val rest = t.removePrefix("columns:").trim()
+                        if (rest.startsWith("[") && rest.endsWith("]")) {
+                            rest.removeSurrounding("[", "]").split(',')
+                                .map { it.trim().trim('"').trim('\'') }
+                                .filter { it.isNotEmpty() }
+                                .forEach { cols.add(it) }
+                            break
+                        }
+                    }
+                    continue
+                }
+                if (t.isEmpty() || t.startsWith("#")) continue
+                val item = Regex("^-\\s*(.+?)\\s*$").find(t) ?: break
+                cols.add(item.groupValues[1].trim().trim('"').trim('\''))
+            }
+            return if (cols.isEmpty()) 1  // 无声明/解析未果，默认第二列
+            else cols.indexOf("code").let { if (it == -1) -1 else it }
+        }
+    }
+
     internal fun pinyinCodeRatio(
         file: File,
         syllables: Set<String>,
         sampleLimit: Int,
         totalLines: Int = 0,
     ): Double {
+        // 无码列表（#98）：词条由同库 encoder 注音（不需要 essay，Pass2
+        // 从同库单字有码词条学习），注音产物就是拼音码——按拼音表处理，
+        // 进双拼/T9 子伞；旧逻辑把权重列当码判（"100" 非字母）→ ratio=0
+        // 把整张表排除出子伞（双拼/T9 丢 98 万词）。
+        val codeColumn = dictCodeColumn(file)
+        if (codeColumn == -1) return 1.0
         // 步长让样本均匀铺满全表；词表小于样本上限时逐行全采。
         val step = if (totalLines > sampleLimit) (totalLines + sampleLimit - 1) / sampleLimit else 1
         var seen = 0
@@ -1570,8 +1630,9 @@ object BaseDictInstaller {
                 if (trimmed.startsWith("#") || trimmed == "..." ||
                     trimmed == "---" || !line.contains('\t')
                 ) continue
-                // dict.yaml 词条行：词\t码\t[权重]——码在第 2 列。
-                val code = line.split('\t').getOrNull(1)?.trim() ?: continue
+                // dict.yaml 词条行：词\t码\t[权重]——码列由头部声明决定
+                // （默认第 2 列）。
+                val code = line.split('\t').getOrNull(codeColumn)?.trim() ?: continue
                 seen++
                 if ((seen - 1) % step != 0) continue
                 if (code.isEmpty()) continue
@@ -1893,14 +1954,18 @@ object BaseDictInstaller {
     /** #37 多表加权：每表按行数分摊采样额度（总量 [NON_PINYIN_SAMPLE]），
      *  结果按行数加权平均。 */
     private fun pinyinRatioOverFiles(stats: SourceStats, syllables: Set<String>): Float {
-        if (stats.tabLines == 0) return 1f
+        // 无码表（#98 columns 无 code）没有自身编码样本，对「拼音域」
+        // 无信息——不计入分子也不占分母（codex P2-3：计入会把形码组合
+        // 的非拼音提示掩盖掉）。
+        val coded = stats.perFile.filter { it.second > 0 && dictCodeColumn(it.first) != -1 }
+        val codedLines = coded.sumOf { it.second }
+        if (codedLines == 0) return 1f
         var weighted = 0.0
-        for ((f, lines) in stats.perFile) {
-            if (lines <= 0) continue
+        for ((f, lines) in coded) {
             val limit = maxOf(1, NON_PINYIN_SAMPLE * lines / stats.tabLines)
             weighted += pinyinCodeRatio(f, syllables, limit, lines) * lines
         }
-        return (weighted / stats.tabLines).toFloat()
+        return (weighted / codedLines).toFloat()
     }
 
     private fun joinHex(bytes: ByteArray): String =
