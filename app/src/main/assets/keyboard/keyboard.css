@@ -3247,6 +3247,16 @@ body[data-floating="on"] #softKeyboard {
 /* 画布透明：主窗口铺满可用区，卡片外的区域透传给宿主（REGION 触摸）。 */
 body[data-floating="on"] { background: transparent; }
 body[data-floating="on"] .kb-row { margin-bottom: 4px; }
+/* 竖屏悬浮：符号底栏（#symCatBar）与编辑面板（#editLayer）不是
+ * .kb-row、没有上面的 4px 行距补偿，会被弹性区推到贴卡片下沿、
+ * 两端键帽受圆角裁切（用户截图实录）。横屏悬浮有自己的卡片
+ * padding 规则（.landscape 特异性更高，保留 ~4px），故 :not(.landscape)
+ * 防叠加到 8px。数字/emoji 面板四行固定高度、预算剩 5-8px 不贴边
+ * （codex 核实），不修。 */
+body[data-floating="on"]:not(.landscape) #symCatBar,
+body[data-floating="on"]:not(.landscape) #editLayer {
+    margin-bottom: 4px;
+}
 #floatHandles { display: none; }
 body[data-floating="on"] #floatHandles { display: block; }
 #floatBar {
