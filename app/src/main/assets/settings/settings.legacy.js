@@ -280,7 +280,7 @@ const I18N = {
     "dict.base.builtinNote": "\u5185\u7F6E rime-frost \u8BCD\u5E93",
     "dict.base.entries": "{0} \u8BCD\u6761",
     "dict.base.nonPinyin": "\u62BD\u6837\u53D1\u73B0\u6B64\u8BCD\u5E93\u7684\u8F83\u591A\u7F16\u7801\u4E0D\u662F\u62FC\u97F3\u97F3\u8282\u7EC4\u5408\uFF08\u5F62\u7801/\u97F3\u5F62\u7801\u8868\u7279\u5F81\uFF09\uFF1A\u53EF\u80FD\u65E0\u6CD5\u6309\u8BFB\u97F3\uFF08\u62FC\u97F3\uFF09\u9884\u671F\u6253\u51FA\u8FD9\u4E9B\u5B57\uFF1B\u5982\u9700\u5F62\u7801\u8F93\u5165\u8BF7\u5173\u6CE8\u540E\u7EED\u7684\u4E13\u5C5E\u65B9\u6848\u652F\u6301\u3002",
-    "dict.base.t9Skip": "\u6B64\u8BCD\u5E93\u8BCD\u6761\u8F83\u591A\uFF1A\u7F16\u8BD1\u4E5D\u5BAB\u683C\uFF08T9\uFF09\u8BCD\u5E93\u7684\u5185\u5B58\u5F00\u9500\u8D85\u51FA\u672C\u673A\u627F\u53D7\uFF08\u4F1A\u88AB\u7CFB\u7EDF\u4E2D\u6B62\uFF09\uFF0C\u672C\u6B21\u5BFC\u5165\u8DF3\u8FC7\u4E86\u4E5D\u5BAB\u683C\uFF0C\u62FC\u97F3/\u53CC\u62FC\u4E0D\u53D7\u5F71\u54CD\uFF1B\u6362\u66F4\u5C0F\u7684\u8BCD\u5E93\u6216\u6062\u590D\u5185\u7F6E\u540E\u4E5D\u5BAB\u683C\u5373\u6062\u590D\u3002",
+    "dict.base.t9Skip": "\u6B64\u8BCD\u5E93\u7531\u65E7\u7248\u672C\u5BFC\u5165\uFF1A\u5F53\u65F6\u7684\u5185\u5B58\u4FDD\u62A4\u8DF3\u8FC7\u4E86\u4E5D\u5BAB\u683C\u7F16\u8BD1\uFF08\u65B0\u7248\u672C\u5DF2\u6839\u6CBB\uFF0C\u4E0D\u518D\u8DF3\u8FC7\uFF09\uFF0C\u62FC\u97F3/\u53CC\u62FC\u4E0D\u53D7\u5F71\u54CD\uFF1B\u91CD\u65B0\u5BFC\u5165\u8BE5\u8BCD\u5E93\u5373\u53EF\u6062\u590D\u4E5D\u5BAB\u683C\u3002",
     "dict.base.toned": "\u6B64\u8BCD\u5E93\u7684\u7F16\u7801\u5E26\u58F0\u8C03\uFF08\u7591\u4F3C\u5B8C\u6574\u7248\uFF0C\u5982\u4E07\u8C61\u62FC\u97F3 Base\uFF09\uFF1A\u952E\u76D8\u6253\u4E0D\u51FA\u58F0\u8C03\u7B26\u53F7\uFF0C\u5F88\u591A\u5B57\u5C06\u65E0\u6CD5\u547D\u4E2D\uFF0C\u8BF7\u6539\u7528\u53BB\u58F0\u8C03\u7684 Lite \u7248\uFF08\u6216\u6362\u56DE\u5185\u7F6E\u8BCD\u5E93\uFF09\u3002",
     "flypy.title": "\u97F3\u5F62\u7801\u8868",
     "flypy.badge": "\u97F3\u5F62",
@@ -292,8 +292,21 @@ const I18N = {
     "flypy.building": "\u6B63\u5728\u5904\u7406\u97F3\u5F62\u7801\u8868\u2026",
     "dict.base.stageCopy": "\u6B63\u5728\u8BFB\u53D6\u8BCD\u5E93\u6587\u4EF6\u2026",
     "dict.base.stageActivate": "\u6B63\u5728\u5207\u6362\u8BCD\u5E93\u2026",
+    "dict.base.stageAnalyze": "\u6B63\u5728\u5206\u6790\u8BCD\u8868\u7279\u6027\u2026",
     "dict.base.stageCompile": "\u6B63\u5728\u7F16\u8BD1\u8BCD\u5E93\uFF08\u671F\u95F4\u4E2D\u6587\u8F93\u5165\u6682\u4E0D\u53EF\u7528\uFF09\uFF0C\u53EF\u79BB\u5F00\u6B64\u9875\uFF0C\u5B8C\u6210\u540E\u81EA\u52A8\u6362\u88C5",
-    "dict.base.elapsed": "\u5DF2\u7F16\u8BD1 {0} \u79D2",
+    "dict.base.elapsed": "\u5DF2\u7528\u65F6 {0} \u79D2",
+    "dict.base.readingPct": "\u8BFB\u53D6\u8BCD\u8868 {0}%\uFF08{1}/{2}\uFF09",
+    "dict.base.compilingStep": "\u7F16\u8BD1 {0}/{1}\uFF0C\u6B63\u5728\u7F16\uFF1A{2}",
+    "dict.base.compilingFinalize": "\u7F16\u8BD1 {0}/{1}\uFF0C\u6536\u5C3E\u4E2D",
+    "dict.base.compilingCount": "\u7F16\u8BD1 {0}/{1}",
+    "dict.base.canLeave": "\u53EF\u79BB\u5F00\u6B64\u9875",
+    "dict.base.etaSec": "\u7EA6 {0} \u79D2\u540E\u5B8C\u6210",
+    "dict.base.etaMin": "\u7EA6 {0} \u5206\u949F\u540E\u5B8C\u6210",
+    "dict.base.part.main": "\u4E3B\u8BCD\u8868",
+    "dict.base.part.t9": "\u4E5D\u5BAB\u683C",
+    "dict.base.part.dp": "\u53CC\u62FC",
+    "dict.base.part.fuzzy": "\u6A21\u7CCA\u97F3",
+    "dict.base.part.flypy": "\u97F3\u5F62",
     "dict.base.switching": "\u5F53\u524D\u751F\u6548 {0}\uFF0C\u6B63\u5728\u5207\u6362\u5230 {1}\uFF1A",
     "page.appearance": "\u5916\u89C2",
     "themeMode.auto": "\u8DDF\u968F\u7CFB\u7EDF",
@@ -1099,7 +1112,7 @@ const I18N = {
     "dict.base.builtinNote": "Bundled rime-frost dictionary",
     "dict.base.entries": "{0} entries",
     "dict.base.nonPinyin": "A large share of codes in this dictionary are not pinyin syllable sequences (shape-code layout): characters may not be reachable by typing their pronunciation. Dedicated shape-code schema support may come later.",
-    "dict.base.t9Skip": "This dictionary has many entries: compiling the T9 (9-key) prism would exceed this device's available memory, so the 9-key mode was skipped for this import. Pinyin and double-pinyin are unaffected; a smaller dictionary or the built-in one restores it.",
+    "dict.base.t9Skip": "This dictionary was imported by an older version whose memory guard skipped 9-key compilation (since fixed; it no longer skips). Pinyin and double-pinyin are unaffected; re-importing the dictionary restores the 9-key mode.",
     "dict.base.toned": "Codes in this dictionary carry tone marks (likely the full variant, e.g. wanxiang Base): tones are not typeable on this keyboard, so many entries will never match. Use the tone-free Lite variant (or restore the built-in).",
     "flypy.title": "Shape-code table",
     "flypy.badge": "Shape",
@@ -1111,8 +1124,21 @@ const I18N = {
     "flypy.building": "Processing the shape-code table\u2026",
     "dict.base.stageCopy": "Reading the dictionary file\u2026",
     "dict.base.stageActivate": "Switching dictionary\u2026",
+    "dict.base.stageAnalyze": "Analyzing the dictionary\u2026",
     "dict.base.stageCompile": "Compiling (Chinese input pauses meanwhile) - you can leave this page; the keyboard swaps over when done",
     "dict.base.elapsed": "{0}s elapsed",
+    "dict.base.readingPct": "Reading {0}% ({1}/{2})",
+    "dict.base.compilingStep": "Compiling {0}/{1}, now: {2}",
+    "dict.base.compilingFinalize": "Compiling {0}/{1}, finalizing",
+    "dict.base.compilingCount": "Compiling {0}/{1}",
+    "dict.base.canLeave": "you can leave this page",
+    "dict.base.etaSec": "about {0}s remaining",
+    "dict.base.etaMin": "about {0} min remaining",
+    "dict.base.part.main": "main table",
+    "dict.base.part.t9": "9-key",
+    "dict.base.part.dp": "double pinyin",
+    "dict.base.part.fuzzy": "fuzzy variants",
+    "dict.base.part.flypy": "shape-code",
     "dict.base.switching": "Active: {0}, switching to {1}: ",
     "page.appearance": "Appearance",
     "themeMode.auto": "Follow system",
@@ -2078,12 +2104,14 @@ window.FeelimeSettings = {
       case "dictBaseError":
         setNote("dictBaseNote", event.message || "");
         $("dictBaseBuilding").hidden = true;
+        setDictBar("dictBaseProgressBar", null);
         dictBasePending = null;
         break;
       case "flypyDone":
       case "flypyError":
         setNote("flypyNote", event.message || "");
         $("flypyBuilding").hidden = true;
+        setDictBar("flypyBuildingBar", null);
         break;
       case "dpSchemeError":
         setNote("dpNote", eventText(event, "error.INVALID_DP_SCHEME"));
@@ -3517,16 +3545,71 @@ $("btnManagePhrases").addEventListener("click", () => showPage("phrases"));
 $("btnOpenLicenses").addEventListener("click", () => showPage("licenses"));
 $("btnImportDict").addEventListener("click", () => call("openDictDocument"));
 $("btnBaseDictPick").addEventListener("click", () => call("openBaseDictDocument"));
-function dictBaseStageText(stage, elapsedMs) {
+function dictCompileTargetName(id) {
+  if (!id) return "";
+  if (id === "luna_pinyin") return t("dict.base.part.main");
+  if (id === "luna_pinyin_t9") return t("dict.base.part.t9");
+  if (id === "flypy") return t("dict.base.part.flypy");
+  if (id.includes("double_pinyin")) return t("dict.base.part.dp");
+  if (id.startsWith("luna_pinyin_fuzzy")) return t("dict.base.part.fuzzy");
+  return id;
+}
+__name(dictCompileTargetName, "dictCompileTargetName");
+function dictEtaText(elapsedMs, percent, done) {
+  if (!percent || percent >= 95 || !done) return "";
+  const elapsed = elapsedMs || 0;
+  if (percent < 8 || elapsed < 3e3) return "";
+  const etaSec = Math.round(elapsed / percent * (100 - percent) / 1e3);
+  if (etaSec < 5) return "";
+  return etaSec >= 90 ? t("dict.base.etaMin", [Math.max(1, Math.round(etaSec / 60))]) : t("dict.base.etaSec", [etaSec]);
+}
+__name(dictEtaText, "dictEtaText");
+function dictHasPercent(progress) {
+  return !!(progress && typeof progress.percent === "number" && progress.total > 0);
+}
+__name(dictHasPercent, "dictHasPercent");
+function dictBaseStageText(stage, elapsedMs, progress) {
   if (stage === "ACTIVATING") return t("dict.base.stageActivate");
   const seconds = Math.round((elapsedMs || 0) / 1e3);
-  const label = stage === "COPYING" ? t("dict.base.stageCopy") : t("dict.base.stageCompile");
-  return stage === "COPYING" ? label : `${label}\uFF08${t("dict.base.elapsed", [seconds])}\uFF09`;
+  if (stage === "ANALYZING") {
+    return `${t("dict.base.stageAnalyze")}\uFF08${t("dict.base.elapsed", [seconds])}\uFF09`;
+  }
+  if (stage === "COPYING") {
+    if (dictHasPercent(progress)) {
+      const frac = Math.min(100, Math.round(progress.done / progress.total * 100));
+      const parts = [t("dict.base.readingPct", [
+        frac,
+        mb(progress.done),
+        mb(progress.total)
+      ])];
+      const eta = dictEtaText(elapsedMs, progress.percent, progress.done);
+      if (eta) parts.push(eta);
+      return parts.join(" \xB7 ");
+    }
+    return t("dict.base.stageCopy");
+  }
+  if (dictHasPercent(progress)) {
+    const target = dictCompileTargetName(progress.detail);
+    const bits = [target ? t("dict.base.compilingStep", [progress.done, progress.total, target]) : progress.done >= progress.total ? t("dict.base.compilingFinalize", [progress.done, progress.total]) : t("dict.base.compilingCount", [progress.done, progress.total])];
+    bits.push(t("dict.base.elapsed", [seconds]));
+    bits.push(dictEtaText(elapsedMs, progress.percent, progress.done) || t("dict.base.canLeave"));
+    return bits.join(" \xB7 ");
+  }
+  const label = t("dict.base.stageCompile");
+  return `${label}\uFF08${t("dict.base.elapsed", [seconds])}\uFF09`;
 }
 __name(dictBaseStageText, "dictBaseStageText");
+function setDictBar(barId, progress) {
+  const bar = $(barId);
+  if (!bar) return;
+  const pct = dictHasPercent(progress) ? progress.percent : null;
+  bar.hidden = pct == null;
+  if (pct != null) bar.firstElementChild.style.width = `${pct}%`;
+}
+__name(setDictBar, "setDictBar");
 let dictBasePending = null;
 function dictBaseBuildingText(base) {
-  const stage = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+  const stage = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs, base.progress);
   const target = base.building && (base.targetSlot || dictBasePending);
   if (!target) return stage;
   let label = null;
@@ -3543,7 +3626,12 @@ __name(dictBaseBuildingText, "dictBaseBuildingText");
 function onDictBaseProgress(event) {
   if (event.operation === "flypy") {
     $("flypyBuilding").hidden = false;
-    $("flypyBuilding").textContent = dictBaseStageText(event.stage, event.elapsedMs);
+    $("flypyBuilding").textContent = dictBaseStageText(
+      event.stage,
+      event.elapsedMs,
+      event.progress
+    );
+    setDictBar("flypyBuildingBar", event.progress);
     return;
   }
   const building = $("dictBaseBuilding");
@@ -3552,8 +3640,10 @@ function onDictBaseProgress(event) {
     ...lastState && lastState.baseDict,
     stage: event.stage,
     elapsedMs: event.elapsedMs,
+    progress: event.progress,
     building: true
   });
+  setDictBar("dictBaseProgressBar", event.progress);
 }
 __name(onDictBaseProgress, "onDictBaseProgress");
 function renderDictBase(state) {
@@ -3632,6 +3722,10 @@ function renderDictBase(state) {
   if (t9skip) t9skip.hidden = !base.t9Skipped;
   $("btnBaseDictPick").disabled = !!base.building;
   $("dictBaseBuilding").hidden = !base.building || base.operation === "flypy";
+  setDictBar(
+    "dictBaseProgressBar",
+    base.building && base.operation !== "flypy" ? base.progress : null
+  );
   if (base.building && base.operation !== "flypy") {
     $("dictBaseBuilding").textContent = dictBaseBuildingText(base);
   }
@@ -3656,8 +3750,12 @@ function renderFlypy(state) {
   $("btnFlypyPick").disabled = !!base.building;
   const building = $("flypyBuilding");
   building.hidden = !base.building || base.operation !== "flypy";
+  setDictBar(
+    "flypyBuildingBar",
+    base.building && base.operation === "flypy" ? base.progress : null
+  );
   if (base.building && base.operation === "flypy") {
-    building.textContent = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+    building.textContent = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs, base.progress);
   }
 }
 __name(renderFlypy, "renderFlypy");

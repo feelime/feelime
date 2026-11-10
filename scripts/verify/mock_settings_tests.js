@@ -2140,6 +2140,56 @@ test('base dictionary card renders builtin/custom/building and wires the actions
         elapsedMs: 32000 });
     assert(world.$('dictBaseBuilding').textContent.includes('32'),
         'elapsed seconds surface in the hint');
+
+    // 进度条（#95 后续）：COPYING 字节比 → 百分比文案+条；COMPILING
+    // 产物步进 → 计数+正在编+ETA（elapsed/percent 外推）；无 progress
+    // 回退原阶段文案且条隐藏；完成收起。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COPYING',
+        elapsedMs: 1500,
+        progress: { percent: 6, done: 1000000, total: 16930834,
+                    detail: 'base.dict.yaml' } });
+    assert(world.$('dictBaseBuilding').textContent.includes('6'),
+        'copy percent surfaces');
+    equal(world.$('dictBaseProgressBar').hidden, false, 'copy bar visible');
+    equal(world.$('dictBaseProgressBar').firstElementChild.style.width, '6%',
+        'bar width follows percent');
+    // 主产物落地前（done=0）：不给 ETA（外推会单调上修），尾巴是可离开
+    // 提示；0/N 不知道在编哪项，不冒「正在编」。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 55000,
+        progress: { percent: 15, done: 0, total: 8 } });
+    assert(!world.$('dictBaseBuilding').textContent.includes('约'),
+        'no eta before the main table lands');
+    assert(!world.$('dictBaseBuilding').textContent.includes('正在编'),
+        'no in-progress guess at 0/N');
+    assert(world.$('dictBaseBuilding').textContent.includes('可离开'),
+        'can-leave hint while table compiles');
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 42000,
+        progress: { percent: 45, done: 2, total: 7, detail: 'luna_pinyin_t9' } });
+    assert(world.$('dictBaseBuilding').textContent.includes('2/7'),
+        'compile step count surfaces');
+    assert(world.$('dictBaseBuilding').textContent.includes('九宫格'),
+        'compile detail maps to a readable name');
+    assert(world.$('dictBaseBuilding').textContent.includes('约'),
+        'eta surfaces past the early window');
+    // 全产物落盘（detail 空）：显示收尾，不冒「正在编」。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 88000,
+        progress: { percent: 95, done: 8, total: 8 } });
+    assert(world.$('dictBaseBuilding').textContent.includes('收尾'),
+        'finalize wording when detail is empty');
+    assert(!world.$('dictBaseBuilding').textContent.includes('正在编'),
+        'no stale in-progress label when done');
+    // ANALYZING 心跳：读满后的抽样/staging 空窗有文案在动，条隐藏。
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'ANALYZING',
+        elapsedMs: 21000 });
+    assert(world.$('dictBaseBuilding').textContent.includes('分析'),
+        'analyzing stage surfaces its own label');
+    equal(world.$('dictBaseProgressBar').hidden, true, 'analyzing hides the bar');
+    world.FeelimeSettings().onEvent({ type: 'dictBaseProgress', stage: 'COMPILING',
+        elapsedMs: 33000 });
+    equal(world.$('dictBaseProgressBar').hidden, true, 'bar hides without progress');
     world.FeelimeSettings().onEvent({ type: 'dictBaseDone',
         message: '基底词库换装完成' });
     equal(world.$('dictBaseBuilding').hidden, true, 'done collapses the hint');

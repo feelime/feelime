@@ -203,8 +203,21 @@ const I18N = {
         "flypy.building": "正在处理音形码表…",
         "dict.base.stageCopy": "正在读取词库文件…",
         "dict.base.stageActivate": "正在切换词库…",
+        "dict.base.stageAnalyze": "正在分析词表特性…",
         "dict.base.stageCompile": "正在编译词库（期间中文输入暂不可用），可离开此页，完成后自动换装",
-        "dict.base.elapsed": "已编译 {0} 秒",
+        "dict.base.elapsed": "已用时 {0} 秒",
+        "dict.base.readingPct": "读取词表 {0}%（{1}/{2}）",
+        "dict.base.compilingStep": "编译 {0}/{1}，正在编：{2}",
+        "dict.base.compilingFinalize": "编译 {0}/{1}，收尾中",
+        "dict.base.compilingCount": "编译 {0}/{1}",
+        "dict.base.canLeave": "可离开此页",
+        "dict.base.etaSec": "约 {0} 秒后完成",
+        "dict.base.etaMin": "约 {0} 分钟后完成",
+        "dict.base.part.main": "主词表",
+        "dict.base.part.t9": "九宫格",
+        "dict.base.part.dp": "双拼",
+        "dict.base.part.fuzzy": "模糊音",
+        "dict.base.part.flypy": "音形",
         "dict.base.switching": "当前生效 {0}，正在切换到 {1}：",
         "page.appearance": "外观",
         "themeMode.auto": "跟随系统",
@@ -1020,8 +1033,21 @@ const I18N = {
         "flypy.building": "Processing the shape-code table…",
         "dict.base.stageCopy": "Reading the dictionary file…",
         "dict.base.stageActivate": "Switching dictionary…",
+        "dict.base.stageAnalyze": "Analyzing the dictionary…",
         "dict.base.stageCompile": "Compiling (Chinese input pauses meanwhile) - you can leave this page; the keyboard swaps over when done",
         "dict.base.elapsed": "{0}s elapsed",
+        "dict.base.readingPct": "Reading {0}% ({1}/{2})",
+        "dict.base.compilingStep": "Compiling {0}/{1}, now: {2}",
+        "dict.base.compilingFinalize": "Compiling {0}/{1}, finalizing",
+        "dict.base.compilingCount": "Compiling {0}/{1}",
+        "dict.base.canLeave": "you can leave this page",
+        "dict.base.etaSec": "about {0}s remaining",
+        "dict.base.etaMin": "about {0} min remaining",
+        "dict.base.part.main": "main table",
+        "dict.base.part.t9": "9-key",
+        "dict.base.part.dp": "double pinyin",
+        "dict.base.part.fuzzy": "fuzzy variants",
+        "dict.base.part.flypy": "shape-code",
         "dict.base.switching": "Active: {0}, switching to {1}: ",
         "page.appearance": "Appearance",
         "themeMode.auto": "Follow system",
@@ -2003,12 +2029,14 @@ window.FeelimeSettings = {
             case "dictBaseError":
                 setNote("dictBaseNote", event.message || "");
                 $("dictBaseBuilding").hidden = true;
+                setDictBar("dictBaseProgressBar", null);
                 dictBasePending = null;
                 break;
             case "flypyDone":
             case "flypyError":
                 setNote("flypyNote", event.message || "");
                 $("flypyBuilding").hidden = true;
+                setDictBar("flypyBuildingBar", null);
                 break;
             case "dpSchemeError":
                 setNote("dpNote", eventText(event, "error.INVALID_DP_SCHEME"));
@@ -3649,13 +3677,86 @@ $("btnOpenLicenses").addEventListener("click", () => showPage("licenses"));
 $("btnImportDict").addEventListener("click", () => call("openDictDocument"));
 $("btnBaseDictPick").addEventListener("click", () => call("openBaseDictDocument"));
 
-/** 基底编译是黑盒（librime maintenance），无百分比——用阶段 + 已耗时
- *  提示；用户可离开页面，完成/失败由 dictBaseDone/dictBaseError 收尾。 */
-function dictBaseStageText(stage, elapsedMs) {
+/** 导入进度呈现：Kotlin 侧两个真实信号——COPYING 按源流字节比、
+ *  COMPILING 按 staging 产物落盘计数（librime 无逐 schema 回调）。
+ *  progress = {percent?, done, total, detail?}；ETA 用 elapsed/percent
+ *  比例外推（自校准：慢机已耗时长 → 剩余估计自动变长），早期（<8% 或
+ *  <3s）外推噪声大不显示。无 progress 的路径（模糊音补编等）回退
+ *  原阶段文案。完成/失败由 dictBaseDone/dictBaseError 收尾。 */
+function dictCompileTargetName(id) {
+    if (!id) return "";
+    if (id === "luna_pinyin") return t("dict.base.part.main");
+    if (id === "luna_pinyin_t9") return t("dict.base.part.t9");
+    if (id === "flypy") return t("dict.base.part.flypy");
+    // includes 而非 startsWith：ziranma_double_pinyin 等带前缀变体。
+    if (id.includes("double_pinyin")) return t("dict.base.part.dp");
+    if (id.startsWith("luna_pinyin_fuzzy")) return t("dict.base.part.fuzzy");
+    return id;
+}
+
+/** 主产物（table）落地前不给 ETA——该段占编译 ~70% 且 percent 不动，
+ *  比例外推会随 elapsed 单调上修（ace 实录 23s→「约 5 分钟」），越等
+ *  越焦虑；table 落地后剩余段外推准（实录误差 <15s）。 */
+function dictEtaText(elapsedMs, percent, done) {
+    if (!percent || percent >= 95 || !done) return "";
+    const elapsed = elapsedMs || 0;
+    if (percent < 8 || elapsed < 3000) return "";
+    const etaSec = Math.round(elapsed / percent * (100 - percent) / 1000);
+    if (etaSec < 5) return "";
+    return etaSec >= 90
+        ? t("dict.base.etaMin", [Math.max(1, Math.round(etaSec / 60))])
+        : t("dict.base.etaSec", [etaSec]);
+}
+
+function dictHasPercent(progress) {
+    return !!(progress && typeof progress.percent === "number"
+        && progress.total > 0);
+}
+
+function dictBaseStageText(stage, elapsedMs, progress) {
     if (stage === "ACTIVATING") return t("dict.base.stageActivate");
     const seconds = Math.round((elapsedMs || 0) / 1000);
-    const label = stage === "COPYING" ? t("dict.base.stageCopy") : t("dict.base.stageCompile");
-    return stage === "COPYING" ? label : `${label}（${t("dict.base.elapsed", [seconds])}）`;
+    if (stage === "ANALYZING") {
+        return `${t("dict.base.stageAnalyze")}（${t("dict.base.elapsed", [seconds])}）`;
+    }
+    if (stage === "COPYING") {
+        if (dictHasPercent(progress)) {
+            // 文案用真实文件读取比（progress.percent 是含编译段的整条
+            // 权重位置，直接展示会被误读成「只读了 14% 的文件」）。
+            const frac = Math.min(100, Math.round(progress.done / progress.total * 100));
+            const parts = [t("dict.base.readingPct", [frac,
+                mb(progress.done), mb(progress.total)])];
+            const eta = dictEtaText(elapsedMs, progress.percent, progress.done);
+            if (eta) parts.push(eta);
+            return parts.join(" · ");
+        }
+        return t("dict.base.stageCopy");
+    }
+    if (dictHasPercent(progress)) {
+        const target = dictCompileTargetName(progress.detail);
+        // detail 空 = 0/N（不知道 librime 在编哪项，别冒「正在编」）
+        // 或 N/N（收尾/校验中）。
+        const bits = [target
+            ? t("dict.base.compilingStep", [progress.done, progress.total, target])
+            : progress.done >= progress.total
+                ? t("dict.base.compilingFinalize", [progress.done, progress.total])
+                : t("dict.base.compilingCount", [progress.done, progress.total])];
+        bits.push(t("dict.base.elapsed", [seconds]));
+        bits.push(dictEtaText(elapsedMs, progress.percent, progress.done)
+            || t("dict.base.canLeave"));
+        return bits.join(" · ");
+    }
+    const label = t("dict.base.stageCompile");
+    return `${label}（${t("dict.base.elapsed", [seconds])}）`;
+}
+
+/** 进度条显隐/宽度（percent 缺失时整体隐藏，如 ACTIVATING 或补编）。 */
+function setDictBar(barId, progress) {
+    const bar = $(barId);
+    if (!bar) return;
+    const pct = dictHasPercent(progress) ? progress.percent : null;
+    bar.hidden = pct == null;
+    if (pct != null) bar.firstElementChild.style.width = `${pct}%`;
 }
 
 /** 切换目标（用户点选的 radio 值）：编译期间文案必须标出「实际生效 +
@@ -3665,7 +3766,7 @@ function dictBaseStageText(stage, elapsedMs) {
 let dictBasePending = null;
 
 function dictBaseBuildingText(base) {
-    const stage = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+    const stage = dictBaseStageText(base.stage || "COMPILING", base.elapsedMs, base.progress);
     const target = base.building && (base.targetSlot || dictBasePending);
     if (!target) return stage;
     let label = null;
@@ -3685,7 +3786,9 @@ function dictBaseBuildingText(base) {
 function onDictBaseProgress(event) {
     if (event.operation === "flypy") {
         $("flypyBuilding").hidden = false;
-        $("flypyBuilding").textContent = dictBaseStageText(event.stage, event.elapsedMs);
+        $("flypyBuilding").textContent = dictBaseStageText(
+            event.stage, event.elapsedMs, event.progress);
+        setDictBar("flypyBuildingBar", event.progress);
         return;
     }
     const building = $("dictBaseBuilding");
@@ -3694,8 +3797,10 @@ function onDictBaseProgress(event) {
         ...(lastState && lastState.baseDict),
         stage: event.stage,
         elapsedMs: event.elapsedMs,
+        progress: event.progress,
         building: true,
     });
+    setDictBar("dictBaseProgressBar", event.progress);
 }
 
 /** state.baseDict: {mode, building, stage, elapsedMs, name, installedAt}——
@@ -3784,6 +3889,8 @@ function renderDictBase(state) {
     if (t9skip) t9skip.hidden = !base.t9Skipped;
     $("btnBaseDictPick").disabled = !!base.building;
     $("dictBaseBuilding").hidden = !base.building || base.operation === "flypy";
+    setDictBar("dictBaseProgressBar",
+        base.building && base.operation !== "flypy" ? base.progress : null);
     if (base.building && base.operation !== "flypy") {
         $("dictBaseBuilding").textContent = dictBaseBuildingText(base);
     }
@@ -3818,9 +3925,11 @@ function renderFlypy(state) {
     $("btnFlypyPick").disabled = !!base.building;
     const building = $("flypyBuilding");
     building.hidden = !base.building || base.operation !== "flypy";
+    setDictBar("flypyBuildingBar",
+        base.building && base.operation === "flypy" ? base.progress : null);
     if (base.building && base.operation === "flypy") {
         building.textContent =
-            dictBaseStageText(base.stage || "COMPILING", base.elapsedMs);
+            dictBaseStageText(base.stage || "COMPILING", base.elapsedMs, base.progress);
     }
 }
 /** 清空导入词的两击确认（#39 补充建议）：WebView 无原生 confirm

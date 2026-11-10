@@ -3,6 +3,7 @@ package com.feelime.ime.engine
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.SystemClock
 import com.feelime.ime.nativeengine.NativeSmoke
 import java.io.File
@@ -63,6 +64,60 @@ object BaseDictInstaller {
     /** 主表构建的内存估算系数（实测万象 2.7M 词条峰值 1.2GB ≈ 450B/条）。 */
     private const val BASE_BUILD_BYTES_PER_ENTRY = 600L
     private const val TONE_RATIO_THRESHOLD = 0.02
+
+    // ---- 导入进度模型（librime maintenance 无逐 schema 回调，进度取两
+    // 个真实信号拼装：COPYING 段按源流字节数（精确）；COMPILING 段按
+    // staging 产物落盘计数（librime 逐 schema 串行编译、编完即落盘）。
+    // 段权重 COPY 15 / COMPILE 80 / ACTIVATE 5、compile 段内主 table
+    // 占 70%（ace 209 万词条实测：table 收集+落盘 ~50s / 编译段总 ~75s）。
+    // percent 单调不减；ETA 由 UI 用 elapsed/percent 外推（比例外推天然
+    // 自校准：慢机已耗时长 → ETA 自动变长，不引入设备速率常量）。 ----
+    private const val PROGRESS_WEIGHT_COPY = 0.15
+    private const val PROGRESS_WEIGHT_COMPILE = 0.80
+
+    /** compile 段内单个产物的原始权重（音形等无主 table 的清单会被
+     *  [compileProgress] 归一化，不依赖 luna_pinyin 在场）。 */
+    fun productWeight(product: String, expected: List<String>): Double {
+        if (product == "luna_pinyin.table.bin") return 0.70
+        if (product == "luna_pinyin.prism.bin") return 0.08
+        val rest = expected.count {
+            it != "luna_pinyin.table.bin" && it != "luna_pinyin.prism.bin"
+        }.coerceAtLeast(1)
+        return 0.22 / rest
+    }
+
+    /** COMPILING 进度 JSON（detail = 未完成产物里权重最大的 schema；
+     *  done 为空时不给 detail——0/N 时不知道 librime 在编哪项，
+     *  「正在编 X」是猜。权重归一化后全完成显式 95（codex P2：浮点
+     *  截断会得到 94；音形两件清单旧公式只到 50%）。 */
+    fun compileProgress(done: Set<String>, expected: List<String>): JSONObject {
+        val weights = expected.associateWith { productWeight(it, expected) }
+        val sum = weights.values.sum()
+        val acc = weights.filterKeys { it in done }.values.sum()
+        val complete = done.size >= expected.size
+        val percent = if (complete) 95 else
+            (100 * (PROGRESS_WEIGHT_COPY + PROGRESS_WEIGHT_COMPILE * acc / sum)).toInt()
+        val pending = expected.filter { it !in done }
+            .maxByOrNull { productWeight(it, expected) }
+        return JSONObject()
+            .put("percent", percent.coerceIn(0, 95))
+            .put("done", done.size)
+            .put("total", expected.size)
+            .putOpt("detail", if (done.isEmpty() || pending == null) JSONObject.NULL
+                else pending.removeSuffix(".prism.bin").removeSuffix(".table.bin"))
+    }
+
+    /** COPYING 进度 JSON（源流字节比；size<=0 时只报已读量无 percent）。 */
+    fun copyProgress(read: Long, size: Long, name: String?): JSONObject {
+        val frac = if (size > 0) (read.toDouble() / size).coerceIn(0.0, 1.0) else 0.0
+        return JSONObject()
+            .putOpt("percent", if (size > 0)
+                (100 * PROGRESS_WEIGHT_COPY * frac).toInt() else JSONObject.NULL)
+            .put("done", read)
+            .put("total", if (size > 0) size else 0)
+            .putOpt("detail", name ?: JSONObject.NULL)
+    }
+
 
     // ---- #20 音形码表导入（小鹤音形）：独立于基底词库的第二换装通道 ----
     // 事务标记共用 KEY_INSTALLING（编译期间进程中断由 sweepPending 回滚），
@@ -163,6 +218,23 @@ object BaseDictInstaller {
     @Volatile private var operationKind: String? = null
     @Volatile private var stageSnapshot: String? = null
     @Volatile private var stageStartedAt: Long = 0L
+    /** 导入进度快照（{percent?,done,total,detail?}，与 stage 同生命周期；
+     *  进度模型见 companion PROGRESS_ 注释）。status()/statusJson 合并
+     *  下发，事件推到设置页。 */
+    @Volatile private var progressSnapshot: JSONObject? = null
+
+    /** ANALYZING 心跳的生命周期（codex P1 修）：flag 停止 + join 收割，
+     *  与 stageSnapshot 解耦——收尾清空与心跳 status() 写回的交错会把
+     *  阶段复活成永久心跳。stop 在 installAsync 收尾与进 COMPILING
+     *  两处，done/error 事件保证在心跳退出之后。 */
+    private val analyzingFlag = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var analyzingThread: Thread? = null
+
+    private fun stopAnalyzingHeartbeat() {
+        analyzingFlag.set(false)
+        analyzingThread?.let { t -> runCatching { t.join(2500) } }
+        analyzingThread = null
+    }
 
     /** 编译期的切换目标（#7 用户裁定：文案要反馈实际生效的词库）：
      *  槽 id / "builtin"（revert），null = 非切换类编译（SAF 导入）。
@@ -182,6 +254,7 @@ object BaseDictInstaller {
         val app = context.applicationContext
         operationKind = KIND_BASE
         stageSnapshot = "COPYING"
+        progressSnapshot = null
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             // 编译保活（ace 实录：灭屏数分钟 ColorOS 静默清进程）。收尾的
@@ -197,6 +270,10 @@ object BaseDictInstaller {
             // 收尾补偿排入的下一个补编任务由它自己的 CAS 持有，上一个
             // 任务的 finally 若再清零会让补编全程裸奔（codex 三轮 P1-1）。
             stageSnapshot = null
+            progressSnapshot = null
+            // 心跳先于完成事件退出（codex P1）：join 后不再有迟到事件
+            // 把已收起的 building 行复活。
+            stopAnalyzingHeartbeat()
             operationKind = null
             building.set(false)
             try {
@@ -262,6 +339,7 @@ object BaseDictInstaller {
         val app = context.applicationContext
         operationKind = KIND_FLYPY
         stageSnapshot = "COPYING"
+        progressSnapshot = null
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             CompileGuardService.start(app)
@@ -271,6 +349,7 @@ object BaseDictInstaller {
                     InstallResult("BASE_DICT_INTERNAL", changed = true)
                 }
             stageSnapshot = null
+            progressSnapshot = null
             operationKind = null
             building.set(false)
             try {
@@ -378,6 +457,7 @@ object BaseDictInstaller {
                 .getOrElse { "BASE_DICT_INTERNAL" as String? }
             operationKind = null
             stageSnapshot = null
+            progressSnapshot = null
             building.set(false)
             try {
                 if (code != null) {
@@ -536,6 +616,8 @@ object BaseDictInstaller {
         val app = context.applicationContext
         pendingSlotId = "builtin"
         stageSnapshot = "ACTIVATING"
+        progressSnapshot = JSONObject().put("percent", 95)
+            .put("done", 0).put("total", 0)
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             val code = runCatching {
@@ -546,6 +628,7 @@ object BaseDictInstaller {
                 .getOrElse { "BASE_DICT_REVERT_FAILED" }
             pendingSlotId = null
             stageSnapshot = null
+            progressSnapshot = null
             operationKind = null
             building.set(false)
             if (code == null) {
@@ -620,6 +703,8 @@ object BaseDictInstaller {
         pendingSlotId = slotId
         operationKind = KIND_BASE
         stageSnapshot = "ACTIVATING"
+        progressSnapshot = JSONObject().put("percent", 95)
+            .put("done", 0).put("total", 0)
         stageStartedAt = SystemClock.elapsedRealtime()
         worker.execute {
             CompileGuardService.start(app)
@@ -633,6 +718,7 @@ object BaseDictInstaller {
                 InstallResult("BASE_DICT_INTERNAL", changed = true)
             }
             stageSnapshot = null
+            progressSnapshot = null
             operationKind = null
             pendingSlotId = null
             building.set(false)
@@ -790,6 +876,7 @@ object BaseDictInstaller {
         if (isBuilding() && stage != null) {
             json.put("stage", stage)
                 .put("elapsedMs", SystemClock.elapsedRealtime() - stageStartedAt)
+                .putOpt("progress", progressSnapshot ?: JSONObject.NULL)
         }
         // 切换目标随 building 下发：页面重开时「当前生效 X，正在切换到
         // Y」仍可恢复（null = SAF 导入等无槽目标）。
@@ -935,7 +1022,7 @@ object BaseDictInstaller {
             val sha = meta?.optString("sha")?.takeIf { it.isNotBlank() } ?: source.slotId
             outcome = StageOutcome(Staged(sha, files))
         } else {
-            outcome = stageSource(context, (source as SourceInput.Uri).uri, sourceDir)
+            outcome = stageSource(context, (source as SourceInput.Uri).uri, sourceDir, pushEvent)
         }
         val staged = outcome.staged
         if (staged == null) {
@@ -943,6 +1030,29 @@ object BaseDictInstaller {
             clearInstalling(context)
             return InstallResult(outcome.errorCode ?: "BASE_DICT_READ_FAILED", changed = false)
         }
+        // #95 进度：读满 → 抽样/staging 写/引擎 reload 之间有 ~17s 无事件
+        // 空窗（ace 实测 209 万词条：analyze 11s + staging 写 6s），文案
+        // 会卡在「读取 14%」——ANALYZING 心跳 2s 一推保住「在动」的感
+        // 知。codex P1：循环条件不得依赖 stageSnapshot、心跳体不得调
+        // status()（内部写回 stage，与收尾清空竞态会把阶段写回、心跳
+        // 永生）——改独立 flag + 纯 JSON 构造；先睡后推+双检压掉迟到
+        // 事件，stopAnalyzingHeartbeat 在收尾/进 COMPILING 两处 join。
+        stageSnapshot = "ANALYZING"
+        progressSnapshot = null
+        analyzingFlag.set(true)
+        analyzingThread = Thread {
+            while (analyzingFlag.get()) {
+                Thread.sleep(2000)
+                if (!analyzingFlag.get()) break
+                runCatching {
+                    pushEvent(JSONObject().put("type", "dictBaseProgress")
+                        .put("stage", "ANALYZING")
+                        .putOpt("operation", operationKind)
+                        .putOpt("progress", progressSnapshot ?: JSONObject.NULL)
+                        .put("elapsedMs", SystemClock.elapsedRealtime() - stageStartedAt))
+                }
+            }
+        }.also { it.isDaemon = true; it.start() }
         val stats = analyzeSource(staged.files)
         if (staged.files.isEmpty() || stats.tabLines <= 0) {
             sourceDir.deleteRecursively()
@@ -1139,17 +1249,25 @@ object BaseDictInstaller {
                 return InstallResult("BASE_DICT_MAINTENANCE_START_FAILED", changed = true)
             }
         }
-        pushEvent(status("COMPILING"))
-        val timeout = pollMaintenance(pushEvent)
+        // 产物基线在 maintenance 启动前取（codex P2：启动后到 poll 首轮
+        // 间隔内落盘的产物会永久漏计）；心跳停 + 首推带总口径 elapsedMs
+        //（防「已用时 0 秒」闪回）。
+        val compileStartWall = System.currentTimeMillis()
+        stopAnalyzingHeartbeat()
+        pushEvent(status("COMPILING").put(
+            "elapsedMs", SystemClock.elapsedRealtime() - stageStartedAt))
+        // 产物清单提前算（校验与进度观察共用一份口径）。
+        val build = File(user, "build")
+        val required = requiredProducts(compileSchemas) +
+            listOfNotNull(BaseDictFiles.DP_TABLE.takeIf { splitDp })
+        val timeout = pollMaintenance(pushEvent, stagingDir = build,
+            expected = required, baselineWall = compileStartWall)
         // join 必须等到部署线程真正收尾才能动产物（线程还在写文件时
         // 回滚会撕裂）。超时不自动判负（#35 万象实测：2.7M 词条慢机
         // 超 45min 也该等它编完），成败由产物完整性判定。
         NativeSmoke.rimeJoinMaintenance()
 
         // 产物校验（按本次编译清单推导；#35 延迟编译后只验进过清单的）。
-        val build = File(user, "build")
-        val required = requiredProducts(compileSchemas) +
-            listOfNotNull(BaseDictFiles.DP_TABLE.takeIf { splitDp })
         val missing = required.filterNot { File(build, it).isFile }
         if (missing.isNotEmpty()) {
             android.util.Log.w("FeelimeBaseDict", "missing products: $missing")
@@ -1261,7 +1379,9 @@ object BaseDictInstaller {
             return InstallResult("BASE_DICT_MAINTENANCE_START_FAILED", changed = true)
         }
         pushEvent(status("COMPILING"))
-        val timeout = pollMaintenance(pushEvent, FLYPY_TIMEOUT_MS)
+        val timeout = pollMaintenance(pushEvent, FLYPY_TIMEOUT_MS,
+            stagingDir = File(user, "build"),
+            expected = listOf(BaseDictFiles.FLYPY_TABLE, "flypy.prism.bin"))
         NativeSmoke.rimeJoinMaintenance()
         val build = File(user, "build")
         val missing = listOf(BaseDictFiles.FLYPY_TABLE, "flypy.prism.bin")
@@ -1384,6 +1504,9 @@ object BaseDictInstaller {
     private fun pollMaintenance(
         pushEvent: (JSONObject) -> Unit,
         timeoutMs: Long = MAINTENANCE_TIMEOUT_MS,
+        stagingDir: File? = null,
+        expected: List<String> = emptyList(),
+        baselineWall: Long = System.currentTimeMillis(),
     ): Boolean {
         val started = SystemClock.elapsedRealtime()
         var lastPush = 0L
@@ -1395,10 +1518,27 @@ object BaseDictInstaller {
                 timedOut = true
                 android.util.Log.w("FeelimeBaseDict", "maintenance timed out, draining")
             }
+            // 产物步进（librime 无逐 schema 回调）：只认 mtime ≥ 基线的
+            // 产物——staging 常有上次导入的同名旧产物，按存在性计数开局
+            // 就是 8/8（ace 实录）。信号语义是「产物文件出现/更新」
+            // （librime 写文件含预分配阶段，出现≠收尾完成），用作步进
+            // 观察足够，ETA 资格见 UI 侧 done 门槛。
+            if (stagingDir != null && expected.isNotEmpty()) {
+                progressSnapshot = runCatching {
+                    compileProgress(
+                        expected.filter {
+                            val f = File(stagingDir, it)
+                            f.isFile && f.lastModified() >= baselineWall
+                        }.toSet(), expected)
+                }.getOrNull() ?: progressSnapshot
+            }
             if (now - lastPush > PROGRESS_EVERY_MS) {
                 lastPush = now
+                // elapsedMs 统一总口径（stageStartedAt = 导入起点，
+                // codex P2：poll 起点口径会在段切换时把秒数归零、与页面
+                // 重开快照跳变）；timeout 判定仍用 poll 自己的 elapsed。
                 pushEvent(status(if (timedOut) "DRAINING" else "COMPILING")
-                    .put("elapsedMs", elapsed))
+                    .put("elapsedMs", SystemClock.elapsedRealtime() - stageStartedAt))
             }
             Thread.sleep(500)
         }
@@ -1500,9 +1640,28 @@ object BaseDictInstaller {
 
     private class StageOutcome(val staged: Staged?, val errorCode: String? = null)
 
-    private fun stageSource(context: Context, uri: Uri, sourceDir: File): StageOutcome {
+    private fun stageSource(
+        context: Context,
+        uri: Uri,
+        sourceDir: File,
+        pushEvent: (JSONObject) -> Unit,
+    ): StageOutcome {
         val input = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
             ?: return StageOutcome(null)
+        // 源总长（SAF DocumentsProvider 的 SIZE 列；查不到则进度只报已读
+        // 量、无百分比）。COPYING 阶段没有轮询循环，读循环每 ~1MB 直接
+        // 推一次进度事件（模型下载同款频率量级）。
+        val sourceBytes = runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE),
+                null, null, null)?.use { c -> if (c.moveToFirst()) c.getLong(0) else -1L }
+        }.getOrNull() ?: -1L
+        var lastPushed = -1L
+        fun pushCopy(read: Long, name: String?) {
+            if (lastPushed >= 0 && read - lastPushed < (1 shl 20)) return
+            lastPushed = read
+            progressSnapshot = copyProgress(read, sourceBytes, name)
+            pushEvent(status("COPYING"))
+        }
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(1 shl 16)
         input.use { stream ->
@@ -1537,6 +1696,7 @@ object BaseDictInstaller {
                         }
                         digest.update(buffer, 0, read)
                         out.write(buffer, 0, read)
+                        pushCopy(total, BaseDictFiles.SOURCE_FILE)
                     }
                 }
                 if (overLimit || total == 0L) return StageOutcome(null)
@@ -1562,8 +1722,24 @@ object BaseDictInstaller {
             var total = 0L
             var overLimit = false
             var duplicate: Pair<String, String>? = null
+            // 进度口径：zip.read 计的是解压后字节，与源 zip 大小不可比
+            // （209 万词条 zip 解压比 ~3x，会 49MB/16MB 恒钳满格）。计数
+            // 流套在 ZipInputStream 底层记压缩流字节——与 SIZE 同口径。
+            var compressedRead = 0L
+            val counting = object : java.io.FilterInputStream(stream) {
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    val n = super.read(b, off, len)
+                    if (n > 0) compressedRead += n
+                    return n
+                }
+                override fun read(): Int {
+                    val n = super.read()
+                    if (n >= 0) compressedRead += 1
+                    return n
+                }
+            }
             val zipped = runCatching {
-                ZipInputStream(PushbackInputStream(stream, 4).apply { unread(head, 0, got) })
+                ZipInputStream(PushbackInputStream(counting, 4).apply { unread(head, 0, got) })
                     .use { zip ->
                         while (!overLimit && duplicate == null) {
                             val entry = zip.nextEntry ?: break
@@ -1592,6 +1768,7 @@ object BaseDictInstaller {
                                         break
                                     }
                                     out?.write(buffer, 0, read)
+                                    pushCopy(compressedRead, base)
                                 }
                             }
                             val name = base
@@ -1879,6 +2056,7 @@ object BaseDictInstaller {
         stageSnapshot = stage
         return JSONObject().put("type", "dictBaseProgress").put("stage", stage)
             .putOpt("operation", operationKind)
+            .putOpt("progress", progressSnapshot ?: JSONObject.NULL)
     }
 
     /** 成功文案带实际生效词库（用户裁定：文案要反馈实际生效的词库）：
