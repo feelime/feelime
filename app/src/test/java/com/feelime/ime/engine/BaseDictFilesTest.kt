@@ -186,15 +186,10 @@ class BaseDictFilesTest {
             BaseDictFiles.CORE_SCHEMAS,
             BaseDictFiles.baseCompileSchemas(fuzzyMask = 0, flypyInstalled = false),
         )
-        // 模糊音开 m19：核心 + 全拼/T9 各 1 变体（issue #73：T9 变体跟
-        // 随 includeT9 内存门）。
+        // 模糊音开 m19：核心 + 全拼/T9 各 1 变体（issue #73）。
         assertEquals(
             BaseDictFiles.CORE_SCHEMAS + listOf("luna_pinyin_fuzzy_m19", "luna_pinyin_t9_fuzzy_m19"),
             BaseDictFiles.baseCompileSchemas(fuzzyMask = 19, flypyInstalled = false),
-        )
-        assertEquals(
-            BaseDictFiles.CORE_SCHEMAS.filter { it != "luna_pinyin_t9" } + "luna_pinyin_fuzzy_m19",
-            BaseDictFiles.baseCompileSchemas(fuzzyMask = 19, flypyInstalled = false, includeT9 = false),
         )
         // + flypy 联动。
         assertEquals(
@@ -211,30 +206,8 @@ class BaseDictFilesTest {
             BaseDictFiles.CORE_SCHEMAS + BaseDictFiles.FLYPY_SCHEMA,
             BaseDictFiles.flypyCompileSchemas(baseCustom = true),
         )
-        // #35 T9 内存门（词条量 + 可用内存双门；万象 2.7M 实测 RSS 爬到
-        // 6.9GB+ 被系统 SIGKILL）。
-        assertEquals(
-            BaseDictFiles.CORE_SCHEMAS.filter { it != "luna_pinyin_t9" } + "luna_pinyin_fuzzy_m19",
-            BaseDictFiles.baseCompileSchemas(
-                fuzzyMask = 19, flypyInstalled = false, includeT9 = false,
-            ),
-        )
-        assertEquals(
-            BaseDictFiles.CORE_SCHEMAS,
-            BaseDictFiles.baseCompileSchemas(
-                fuzzyMask = 0, flypyInstalled = false, includeT9 = true),
-        )
-        assertEquals(
-            BaseDictFiles.CORE_SCHEMAS.filter { it != "luna_pinyin_t9" } + BaseDictFiles.FLYPY_SCHEMA,
-            BaseDictFiles.flypyCompileSchemas(baseCustom = true, includeT9 = false),
-        )
-        // t9Eligible 双门边界：词条上限、内存按 4KB/词条。
-        assertEquals(false, BaseDictFiles.t9Eligible(BaseDictFiles.T9_MAX_ENTRIES + 1, Long.MAX_VALUE))
-        assertEquals(true, BaseDictFiles.t9Eligible(BaseDictFiles.T9_MAX_ENTRIES, Long.MAX_VALUE))
-        // 600k 词条 × 4KB = 2.4GB：可用 2GB 不够。
-        assertEquals(false, BaseDictFiles.t9Eligible(600_000, 2_000_000_000L))
-        assertEquals(true, BaseDictFiles.t9Eligible(500_000, 2_500_000_000L))
-        assertEquals(false, BaseDictFiles.t9Eligible(0, Long.MAX_VALUE))
+        // #95 T9 内存门整体移除（根因修正见 BaseDictFiles 注释）：清单恒含
+        // luna_pinyin_t9，t9Eligible 双门与 includeT9 参数已删。
 
         // #35 双拼/T9 纯拼音子伞：dictionary 行只动 translator 的精确匹配。
         val dpSchema = BaseDictFiles.rewriteDictionary(
@@ -394,14 +367,11 @@ class BaseDictFilesTest {
     }
 
     @Test
-    fun baseCompileSchemasCarriesT9FuzzyBehindMemoryGate() {
-        val withT9 = BaseDictFiles.baseCompileSchemas(19, flypyInstalled = false, includeT9 = true)
+    fun baseCompileSchemasCarriesT9Fuzzy() {
+        val withT9 = BaseDictFiles.baseCompileSchemas(19, flypyInstalled = false)
         assertTrue(withT9.contains("luna_pinyin_t9_fuzzy_m19"))
-        val gated = BaseDictFiles.baseCompileSchemas(19, flypyInstalled = false, includeT9 = false)
-        assertTrue(!gated.contains("luna_pinyin_t9_fuzzy_m19"))
-        assertTrue(!gated.contains("luna_pinyin_t9"))
         // 掩码 0 时无任何模糊变体
-        val off = BaseDictFiles.baseCompileSchemas(0, flypyInstalled = false, includeT9 = true)
+        val off = BaseDictFiles.baseCompileSchemas(0, flypyInstalled = false)
         assertTrue(!off.contains("fuzzy_m"))
     }
 

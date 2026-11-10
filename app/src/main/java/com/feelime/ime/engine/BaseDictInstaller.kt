@@ -415,10 +415,10 @@ object BaseDictInstaller {
 
         val archive = activeSourceDir(context) ?: return "NO_ARCHIVE"
         val template = engineTemplate(context) ?: return "ENGINE_NOT_READY"
-        // issue #73：T9 模糊变体同场补编。门 = staging 有 T9 prism（导入时
-        // t9Eligible 内存门的裁决结果——变体拼写比原版再乘模糊倍数，不能
-        // 在被门拦下的基底上编）+ T9 模板在场（旧资产混搭时缺失则跳过）。
-        // T9 变体编译失败不阻塞全拼（编译后按产物存在性分别判定）。
+        // issue #73：T9 模糊变体同场补编。门 = staging 有 T9 prism（#95
+        // 内存门移除后导入恒编出；仅旧版本跳编的存量基底无此产物）+ T9
+        // 模板在场（旧资产混搭时缺失则跳过）。T9 变体编译失败不阻塞
+        // 全拼（编译后按产物存在性分别判定）。
         val t9Variant = BaseDictFiles.t9FuzzyVariant(mask)
             ?.takeIf { File(staging, "luna_pinyin_t9.prism.bin").isFile }
             ?.takeIf { t9Template(context) != null }
@@ -998,15 +998,12 @@ object BaseDictInstaller {
         // #35 延迟编译：核心 6 项 + 当前模糊音 1 变体（见 baseCompileSchemas）；
         // #20 联动：音形码表已导入时 flypy 同场在列。
         val flypyInstalled = isFlypyInstalled(context)
-        val includeT9 = BaseDictFiles.t9Eligible(stats.tabLines, availBytes)
+        // #95：T9 词条门移除（prism 输入是去重音节表，与词条数无关；
+        // 当年爆炸是英文编码混进 syllabary 被保护级联展开——schema 侧
+        // erase 过滤已根治，host 实测 192 万词条 T9 段增量≈0）。
         val compileSchemas = BaseDictFiles.baseCompileSchemas(
-            FuzzyPinyin.mask(context), flypyInstalled, includeT9,
+            FuzzyPinyin.mask(context), flypyInstalled,
         )
-        if (!includeT9) {
-            android.util.Log.w("FeelimeBaseDict",
-                "T9 skipped: ${stats.tabLines} entries, " +
-                    "avail=${availBytes / 1_000_000}MB")
-        }
 
         // #35 双拼/T9 纯拼音子伞表（「ing欧」定罪）：按表采样切分比例，
         // 拼音码表照旧进全量伞表（全拼英文混输特性保留），字母码表
@@ -1072,9 +1069,9 @@ object BaseDictInstaller {
             }
             // issue #73：T9 变体 schema 同批双落位（codex 实锤：只写全拼
             // 时 compileSchemas 里的 T9 变体在 staging 无源，requiredProducts
-            // 校验缺产物 → 首次导入整体回滚）。门与 compileSchemas 一致：
-            // includeT9（内存门）+ 模板在场。
-            if (includeT9) {
+            // 校验缺产物 → 首次导入整体回滚）。#95：T9 词条门移除后
+            // 恒随清单在场（模板缺失时仍跳过）。
+            run {
                 t9Template(context)?.let { t9Tpl ->
                     (BaseDictFiles.MASK_MIN..BaseDictFiles.MASK_MAX).forEach { mask ->
                         val variant = BaseDictFiles.t9FuzzyVariant(mask) ?: return@forEach
@@ -1181,7 +1178,7 @@ object BaseDictInstaller {
             .putFloat(KEY_NON_PINYIN_RATIO, nonPinyinRatio ?: -1f)
             .putBoolean(KEY_TONED, toned)
             .putInt(KEY_TAB_LINES, stats.tabLines)
-            .putBoolean(KEY_T9_SKIPPED, !includeT9)
+            .putBoolean(KEY_T9_SKIPPED, false)
             .apply()
         saveActiveCache(context)
         return InstallResult(null, changed = true)
@@ -1225,11 +1222,7 @@ object BaseDictInstaller {
         val defaultYaml = runCatching {
             BaseDictFiles.defaultYaml(
                 assets.open(BaseDictFiles.ASSETS_DEFAULT).bufferedReader().readText(),
-                BaseDictFiles.flypyCompileSchemas(
-                    baseCustom,
-                    baseCustom && BaseDictFiles.t9Eligible(
-                        prefs.getInt(KEY_TAB_LINES, 0), availMemory(context)),
-                ),
+                BaseDictFiles.flypyCompileSchemas(baseCustom),
             )
         }.getOrNull() ?: run {
             rollbackFlypy(context); return InstallResult("BASE_DICT_INTERNAL", changed = true)

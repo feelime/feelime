@@ -7,7 +7,7 @@ T9 九宫格 v2（方向滑动消歧）：每个音节拥有全部「确认字�
 xlit，级联组合覆盖任意位置的 2^k 保护组合；重复字母的首个出现靠首匹
 配规则），再 xlit 小写→数字、大写→小写还原。最终 alphabet = a-z + 2-9，
 librime 音节图对混合输入原生枚举切分。coverage_patches() 模拟级联断言
-全部音节的 2^k 投影覆盖，缺口补显式 derive（当前音节表零缺口）。
+全部音节的 2^k 投影覆盖，缺口（含模拟盲区）补显式 derive。
 
 形态量级：424 音节 × 平均 2^3.2 ≈ 4.7k 拼写，prism ~140KB（纯数字版
 11KB）——方向滑动消歧的代价，一次性加载可接受。
@@ -105,6 +105,13 @@ def syllabary() -> list:
             out.append(m.group(1))
         elif out and not line.startswith("#"):
             break
+    # 完整性防护（codex #95 review）：解析静默漏项会让 erase 白名单缺
+    # 音节、真丢输入能力——数量地板 + 哨兵音节（含显式覆盖规则特殊
+    # 音节 junding）不符直接报错，不做静默降级。
+    missing = {"a", "ai", "an", "ang", "zhong", "junding"} - set(out)
+    if len(out) < 400 or missing:
+        raise SystemExit(
+            f"syllabary parse looks broken: {len(out)} syllables, missing {sorted(missing)}")
     return out
 
 
@@ -141,6 +148,24 @@ def coverage_patches(syllables: list, rules: list) -> list:
     return lines
 
 
+def domain_filter_rule(syllables: list) -> str:
+    """#95 T9 编码域过滤：algebra 第一行 erase「不在音节表内的编码」。
+
+    大词库导入（如雾凇 full ≈192 万词条）时英文词条的字母编码会混进
+    syllabary（librime 对「音节」无拼音合法性校验，EntryCollector 按码
+    列空格拆分后逐单元收集）。T9 保护级联对每个编码做 2^k 展开——仅
+    rime-ice en 表 18,380 个纯小写英文编码就派生 359 万拼写形态，编译
+    RSS 爬到 6.9GB 被系统杀（58c3bcc 的 60 万词条门实际是被英文污染
+    的测量，中文词条数与 T9 prism 大小基本无关——prism 输入是去重音
+    节表而非词条）。
+    在级联之前把非音节编码 erase 掉：英文编码在 T9 下本来就不该可达
+    （内置 T9 的 prism 就只有 424 音节），零功能损失；被滤词条仍留在
+    table（全拼等其余 schema 照常命中）。
+    """
+    alt = "|".join(syllables)
+    return f"erase/^(?!(?:{alt})$).+$/"
+
+
 def hybrid_speller(patches: list, fuzzy: list = None) -> str:
     head = (
         "speller:\n"
@@ -150,12 +175,15 @@ def hybrid_speller(patches: list, fuzzy: list = None) -> str:
         "  delimiter: \" '\"\n"
         "  algebra:\n"
     )
+    # 编码域过滤（#95）必须先于一切派生——fuzzy/protect 只应作用于合法
+    # 音节，英文长编码不该进入级联。
+    filter_lines = f'  - "{domain_filter_rule(syllabary())}"\n'
     # 模糊行必须在保护级联之前：protect 把字母大写化后（ZH≠zh），模糊
     # 正则不再命中——音节容错只在纯小写音节形态上派生。
     fuzzy_lines = "".join(f'  - "{r}"\n' for r in (fuzzy or []))
     rule_lines = "".join(f'  - "derive/{p}/{r}/"\n' for p, r in protect_rules())
     patch_lines = "".join(f'  - "{p}"\n' for p in patches)
-    return (head + fuzzy_lines + rule_lines + patch_lines
+    return (head + filter_lines + fuzzy_lines + rule_lines + patch_lines
             + f'  - "{XLIT}"\n'
             + f'  - "{RESTORE}"\n')
 

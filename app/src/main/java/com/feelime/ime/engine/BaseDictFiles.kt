@@ -116,44 +116,27 @@ object BaseDictFiles {
     fun fuzzyVariantOf(schemaId: String, mask: Int): String? =
         if (mask in 1..31) "${schemaId}_m$mask" else null
 
-    /** T9 模糊变体（issue #73）：与全拼同掩码；custom 基底按需补编，
-     *  大基底被 [t9Eligible] 内存门拦下（变体缺失回落严格 T9）。 */
+    /** T9 模糊变体（issue #73）：与全拼同掩码；custom 基底按需补编。 */
     fun t9FuzzyVariant(mask: Int): String? =
         fuzzyVariantOf(FuzzyPinyin.T9_SCHEMA_ID, mask)
 
-    /** T9 进清单的词条上限：T9 的「首末字母保护级联」（design/t9.md §1，
-     *  26 字母 × derive）把每词条拼写数乘 ~8，prism 内存随词条数线性放大
-     *  ——万象 Lite（2.7M 词条）真机实测 T9 段 RSS 一路爬到 6.9GB+ 直到
-     *  系统内存枯竭被 Athena SIGKILL（其余 5 项全程 ≤1.2GB）。超限词典
-     *  跳过 T9（模式自动不可用），内置与中小词库不受影响。 */
-    const val T9_MAX_ENTRIES = 600_000
-
-    /** T9 每词条的编译内存估算（含余量）：实测 6.9GB/2.7M ≈ 2.6KB/词条，
-     *  按 4KB 留余量。与词条上限双门：低配机（可用内存小）在更小的
-     *  词条数就会跳过 T9（codex 后整体 review F）。 */
-    const val T9_BYTES_PER_ENTRY = 4_000L
-
-    /** T9 编译资格 = 词条上限 + 可用内存双门。availBytes 传
-     *  ActivityManager.MemoryInfo.availMem。 */
-    fun t9Eligible(entries: Int, availBytes: Long): Boolean =
-        entries in 1..T9_MAX_ENTRIES && availBytes > entries * T9_BYTES_PER_ENTRY
+    // #95 根因修正，T9 内存门（t9Eligible 双门）整体移除：门基于「T9
+    // prism 内存随词条数线性放大」的旧定罪——实际 librime 的 prism 输入
+    // 是去重音节表而非词条，当年爆炸是英文/脏编码混进 syllabary 被保护
+    // 级联指数展开（host 实测：rime-ice 192 万词条，旧 schema T9 段
+    // +1.38GB/4 分钟；schema 加编码域 erase 过滤后 T9 段增量≈0）。t9
+    // Skipped 状态机制保留（兼容存量导入状态的下发与提示）。
 
     /** #35 延迟编译版换装清单：核心 6 项 + 当前模糊音组合 1 项（若开）
      *  + flypy 联动（#20：音形码表已导入时同场，见 [flypyCompileSchemas]）。
      *  其余 30 个变体在用户切换模糊音组合时按需补编（FuzzyPinyin
-     *  开关链路的 ensureFuzzyVariant，见 BaseDictInstaller）。
-     *  includeT9 由调用方按 [t9Eligible] 判定后传入。 */
+     *  开关链路的 ensureFuzzyVariant，见 BaseDictInstaller）。 */
     fun baseCompileSchemas(
         fuzzyMask: Int,
         flypyInstalled: Boolean,
-        includeT9: Boolean = true,
     ): List<String> {
-        val core = if (includeT9) CORE_SCHEMAS
-            else CORE_SCHEMAS.filter { it != "luna_pinyin_t9" }
-        // issue #73：T9 模糊变体与全拼变体同场（includeT9 由 t9Eligible
-        // 内存门裁决——T9 变体的拼写展开比原版再乘模糊倍数，不能越过门）。
-        val t9Fuzzy = if (includeT9) t9FuzzyVariant(fuzzyMask) else null
-        return core + listOfNotNull(fuzzyVariant(fuzzyMask), t9Fuzzy) +
+        // issue #73：T9 模糊变体与全拼变体同场。
+        return CORE_SCHEMAS + listOfNotNull(fuzzyVariant(fuzzyMask), t9FuzzyVariant(fuzzyMask)) +
             listOfNotNull(FLYPY_SCHEMA.takeIf { flypyInstalled })
     }
 
@@ -163,13 +146,9 @@ object BaseDictFiles {
      *  ⚠ custom 基底 + flypy 组合的真机行为待验收实测（变体 schema 源
      *  在基底安装成功后已被清理，SchemaUpdate 找不到源时的行为要
      *  眼见为实）。 */
-    fun flypyCompileSchemas(baseCustom: Boolean, includeT9: Boolean = true): List<String> {
+    fun flypyCompileSchemas(baseCustom: Boolean): List<String> {
         if (!baseCustom) return listOf(FLYPY_SCHEMA)
-        // T9 内存门同 baseCompileSchemas：大基底跳过（否则 flypy 导入的
-        // maintenance 会补建 t9 prism，同样的内存炸弹）。
-        val core = if (includeT9) CORE_SCHEMAS
-            else CORE_SCHEMAS.filter { it != "luna_pinyin_t9" }
-        return core + FLYPY_SCHEMA
+        return CORE_SCHEMAS + FLYPY_SCHEMA
     }
 
     /** #35：tables = 落进 [SOURCE_DIR] 的词条表文件名（zip 多表导入；
