@@ -167,17 +167,18 @@ def main():
                 ".map(el => el.textContent)") or []
     record("home page tiles (grid; voice/clipboard stay on the main keyboard)",
            # 3.38.0 起面板是跨两页的 tile 网格（DOM 全量可查）。名单随批次
-           # 漂移过两次：界面语言/定制键盘/双拼方案 tile 迁去了设置 app，
-           # 输入统计（#41）与编辑工具栏（#133）是新 tile——改 tile 时同步
-           # 这里，红=名单漂移不是套件坏。
+           # 漂移过：界面语言/定制键盘/双拼方案 tile 迁去了设置 app，
+           # 输入统计（#41）与编辑工具栏（#133）是新 tile；3.73.103 起
+           # 悬浮键盘快开+单手模式进第一页，快捷切换/长按菜单挪第二页
+           # ——改 tile 时同步这里，红=名单漂移不是套件坏。
            labels == ['色彩模式', '中文联想', '按键声音', '按键振动',
-                      '键盘高度', '输入统计', '快捷切换', '长按菜单',
-                      '候选字号', '单手模式', '底部留白', '长按时长',
-                      '滑动选字', '编辑工具栏', '完整设置']
+                      '键盘高度', '输入统计', '悬浮键盘', '单手模式',
+                      '候选字号', '底部留白', '长按时长', '滑动选字',
+                      '快捷切换', '长按菜单', '编辑工具栏', '完整设置']
            or labels == ['Appearance', 'Associations', 'Key sound', 'Key vibration',
-                         'Keyboard height', 'Typing stats', 'Quick switch', 'Keyboard menu',
-                         'Candidate size', 'One-handed', 'Bottom padding', 'Long-press delay',
-                         'Swipe reach', 'Edit toolbar', 'All settings'],
+                         'Keyboard height', 'Typing stats', 'Floating keyboard', 'One-handed',
+                         'Candidate size', 'Bottom padding', 'Long-press delay', 'Swipe reach',
+                         'Quick switch', 'Keyboard menu', 'Edit toolbar', 'All settings'],
            repr(labels))
 
     # 快捷切换子页已删（3.59.6 起 tile 深链完整设置的 quickPairA 行，

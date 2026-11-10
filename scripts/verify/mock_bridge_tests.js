@@ -1308,6 +1308,32 @@ test('floating memory: per-orientation state+geometry survive rebuild and flips 
     equal(geo, true, 'memory geometry absent (auto) or fully numeric (user-tuned)');
 });
 
+test('qs floating tile: page-1 toggle, panel yields on enter only (3.73.103)', {since: '3.73.103'}, () => {
+    // 第一页重排（用户诉求）：悬浮键盘快开+单手模式上第一页，
+    // 快捷切换/长按菜单（低频深链）挪第二页。进悬浮时面板让位
+    // （缩卡上方盖面板层吞触摸，AVD 实录），出悬浮面板保持打开。
+    const world = fresh();
+    world.context.window.innerHeight = 830;
+    world.tap(world.$('setupButton'));
+    const panel = world.$('settingsPanel');
+    assert(panel.classList.contains('open'), 'panel open');
+    const names = world.tileNames();
+    equal(names.indexOf('悬浮键盘'), 6, 'floating tile lands on page 1 (7th)');
+    equal(names.indexOf('单手模式'), 7, 'one-hand mode moved onto page 1');
+    equal(names.indexOf('快捷切换') >= 8, true, 'quick switch pushed to page 2');
+    equal(names.indexOf('长按菜单') >= 8, true, 'long-press menu pushed to page 2');
+    world.tap(world.tile('悬浮键盘'));
+    equal(world.document.body.dataset.floating, 'on', 'tile enters floating');
+    equal(panel.classList.contains('open'), false, 'panel auto-closed on floating enter');
+    world.tap(world.$('setupButton'));
+    assert(panel.classList.contains('open'), 'panel reopened over floating card');
+    const tile = world.tile('悬浮键盘');
+    equal(tile.classList.contains('on'), true, 'tile on-class while floating');
+    world.tap(tile);
+    equal(world.document.body.dataset.floating, 'off', 'tile docks the keyboard');
+    equal(panel.classList.contains('open'), true, 'panel stays open on dock');
+});
+
 test('backspace vertical gestures: down after up restores via native snapshot (3.73.77)', {since: '3.73.77'}, () => {
     const world = fresh();
     const bs = bsKey(world);
@@ -5371,9 +5397,17 @@ test('setup button opens the quick settings panel; full settings entry calls ope
     // 3.43.0 adds 单手模式 — pages stay strictly 2×4 (8 tiles each).
     // 3.60.0（验收 2026-09-24）：低频的「界面语言/双拼方案」tile 撤下
     // （设置页可调），「长按菜单」上移紧跟快捷切换同屏。
+    // 3.73.103：悬浮键盘快开+单手模式进第一页，快捷切换/长按菜单
+    // 挪第二页（低频深链给高频开关让位）。
+    const reordered = verAtLeast(KEYBOARD_VERSION, '3.73.103');
     const modernTiles = verAtLeast(KEYBOARD_VERSION, '3.72.0');
     equal(JSON.stringify(world.tileNames()),
-        JSON.stringify(modernTiles ? [
+        JSON.stringify(reordered ? [
+            '色彩模式', '中文联想', '按键声音', '按键振动',
+            '键盘高度', '输入统计', '悬浮键盘', '单手模式',
+            '候选字号', '底部留白', '长按时长', '滑动选字',
+            '快捷切换', '长按菜单', '编辑工具栏', '完整设置',
+        ] : modernTiles ? [
             '色彩模式', '中文联想', '按键声音', '按键振动',
             '键盘高度', '输入统计', '快捷切换', '长按菜单', '候选字号', '单手模式',
             '底部留白', '长按时长', '滑动选字',

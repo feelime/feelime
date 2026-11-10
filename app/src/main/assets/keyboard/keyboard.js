@@ -361,7 +361,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.102';
+    const KEYBOARD_VERSION = '3.73.103';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -9774,29 +9774,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         tap: () => { this.toggleStatsPanel(); rehome(); },
                     },
                     {
-                        icon: ICONS.swap, label: t("快捷切换"),
-                        state: () => this.quickPair.map(m => modeLabel(m)).join(' · '),
-                        // 验收 2026-09-24 二改：tile 直达完整设置的「对应设置
-                        // 行」（quickPairA=快捷切换对），不再只落卡级；锚定
-                        // 与呼吸灯由设置页 focusSetting 统一处理。
-                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('quickPairA', this.token)); },
-                    },
-                    {
-                        icon: ICONS.menu, label: t("长按菜单"),
-                        state: () => t("{0} 个键盘", this.menuModes().length),
-                        // menuModesRow=「长按菜单里列出哪些键盘」设置行。
-                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('menuModesRow', this.token)); },
-                    },
-                    {
-                        icon: ICONS.font, label: t("候选字号"), hold: 'candidateFont',
-                        state: () => `${this.qRead('candidateFont', this.candidateFont)}%`,
-                        tap: () => {
-                            if (typeof Native.setQuickPref !== 'function') return;
-                            this.candidateFont = this.qStep('candidateFont', CAND_STEPS, this.candidateFont);
-                            this.applyCandidateFont();
-                            quickPref('candidateFont', this.candidateFont);
-                            rehome();
-                        },
+                        // #55 悬浮键盘快开（tile 版）：工具栏里的动作型
+                        // 工具默认不上栏，入口藏在编辑仓库——高频诉求提
+                        // 到第一页。进悬浮时 setFloatingMode 自带互斥收面
+                        // （设置面板/模式菜单全关：AVD 实录面板层盖在缩小
+                        // 后的卡片上方吞触摸）；出悬浮面板保持打开，rehome
+                        // 刷新 tile 状态行。
+                        icon: ICONS.floating, label: t("悬浮键盘"),
+                        on: () => this.floating,
+                        state: () => (this.floating ? t("开") : t("关")),
+                        tap: () => { this.setFloatingMode(!this.floating); rehome(); },
                     },
                     {
                         // 单手模式（issue #15 起，#38 改直达）：单击 = 开
@@ -9813,6 +9800,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             this.quickPending['oneHand'] = this.oneHand;
                             this.applyOneHand();
                             quickPref('oneHand', this.oneHand);
+                            rehome();
+                        },
+                    },
+                    {
+                        icon: ICONS.font, label: t("候选字号"), hold: 'candidateFont',
+                        state: () => `${this.qRead('candidateFont', this.candidateFont)}%`,
+                        tap: () => {
+                            if (typeof Native.setQuickPref !== 'function') return;
+                            this.candidateFont = this.qStep('candidateFont', CAND_STEPS, this.candidateFont);
+                            this.applyCandidateFont();
+                            quickPref('candidateFont', this.candidateFont);
                             rehome();
                         },
                     },
@@ -9849,6 +9847,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             quickPref('popupSnap', this.popupSnap);
                             rehome();
                         },
+                    },
+                    {
+                        icon: ICONS.swap, label: t("快捷切换"),
+                        state: () => this.quickPair.map(m => modeLabel(m)).join(' · '),
+                        // 验收 2026-09-24 二改：tile 直达完整设置的「对应设置
+                        // 行」（quickPairA=快捷切换对），不再只落卡级；锚定
+                        // 与呼吸灯由设置页 focusSetting 统一处理。
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('quickPairA', this.token)); },
+                    },
+                    {
+                        icon: ICONS.menu, label: t("长按菜单"),
+                        state: () => t("{0} 个键盘", this.menuModes().length),
+                        // menuModesRow=「长按菜单里列出哪些键盘」设置行。
+                        tap: () => { this.closeSettingsPanel(); this.call(() => Native.openSetupPage('menuModesRow', this.token)); },
                     },
                     {
                         icon: ICONS.swap, label: t("编辑工具栏"),

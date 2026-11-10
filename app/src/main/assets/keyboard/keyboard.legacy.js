@@ -352,7 +352,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.102";
+  const KEYBOARD_VERSION = "3.73.103";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -8374,37 +8374,18 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           }, "tap")
         },
         {
-          icon: ICONS.swap,
-          label: t("\u5FEB\u6377\u5207\u6362"),
-          state: /* @__PURE__ */ __name(() => this.quickPair.map((m) => modeLabel(m)).join(" \xB7 "), "state"),
-          // 验收 2026-09-24 二改：tile 直达完整设置的「对应设置
-          // 行」（quickPairA=快捷切换对），不再只落卡级；锚定
-          // 与呼吸灯由设置页 focusSetting 统一处理。
+          // #55 悬浮键盘快开（tile 版）：工具栏里的动作型
+          // 工具默认不上栏，入口藏在编辑仓库——高频诉求提
+          // 到第一页。进悬浮时 setFloatingMode 自带互斥收面
+          // （设置面板/模式菜单全关：AVD 实录面板层盖在缩小
+          // 后的卡片上方吞触摸）；出悬浮面板保持打开，rehome
+          // 刷新 tile 状态行。
+          icon: ICONS.floating,
+          label: t("\u60AC\u6D6E\u952E\u76D8"),
+          on: /* @__PURE__ */ __name(() => this.floating, "on"),
+          state: /* @__PURE__ */ __name(() => this.floating ? t("\u5F00") : t("\u5173"), "state"),
           tap: /* @__PURE__ */ __name(() => {
-            this.closeSettingsPanel();
-            this.call(() => Native.openSetupPage("quickPairA", this.token));
-          }, "tap")
-        },
-        {
-          icon: ICONS.menu,
-          label: t("\u957F\u6309\u83DC\u5355"),
-          state: /* @__PURE__ */ __name(() => t("{0} \u4E2A\u952E\u76D8", this.menuModes().length), "state"),
-          // menuModesRow=「长按菜单里列出哪些键盘」设置行。
-          tap: /* @__PURE__ */ __name(() => {
-            this.closeSettingsPanel();
-            this.call(() => Native.openSetupPage("menuModesRow", this.token));
-          }, "tap")
-        },
-        {
-          icon: ICONS.font,
-          label: t("\u5019\u9009\u5B57\u53F7"),
-          hold: "candidateFont",
-          state: /* @__PURE__ */ __name(() => `${this.qRead("candidateFont", this.candidateFont)}%`, "state"),
-          tap: /* @__PURE__ */ __name(() => {
-            if (typeof Native.setQuickPref !== "function") return;
-            this.candidateFont = this.qStep("candidateFont", CAND_STEPS, this.candidateFont);
-            this.applyCandidateFont();
-            quickPref("candidateFont", this.candidateFont);
+            this.setFloatingMode(!this.floating);
             rehome();
           }, "tap")
         },
@@ -8424,6 +8405,19 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
             this.quickPending["oneHand"] = this.oneHand;
             this.applyOneHand();
             quickPref("oneHand", this.oneHand);
+            rehome();
+          }, "tap")
+        },
+        {
+          icon: ICONS.font,
+          label: t("\u5019\u9009\u5B57\u53F7"),
+          hold: "candidateFont",
+          state: /* @__PURE__ */ __name(() => `${this.qRead("candidateFont", this.candidateFont)}%`, "state"),
+          tap: /* @__PURE__ */ __name(() => {
+            if (typeof Native.setQuickPref !== "function") return;
+            this.candidateFont = this.qStep("candidateFont", CAND_STEPS, this.candidateFont);
+            this.applyCandidateFont();
+            quickPref("candidateFont", this.candidateFont);
             rehome();
           }, "tap")
         },
@@ -8465,6 +8459,28 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
             this.popupSnap = this.qStep("popupSnap", [0, 1, 2], this.popupSnap);
             quickPref("popupSnap", this.popupSnap);
             rehome();
+          }, "tap")
+        },
+        {
+          icon: ICONS.swap,
+          label: t("\u5FEB\u6377\u5207\u6362"),
+          state: /* @__PURE__ */ __name(() => this.quickPair.map((m) => modeLabel(m)).join(" \xB7 "), "state"),
+          // 验收 2026-09-24 二改：tile 直达完整设置的「对应设置
+          // 行」（quickPairA=快捷切换对），不再只落卡级；锚定
+          // 与呼吸灯由设置页 focusSetting 统一处理。
+          tap: /* @__PURE__ */ __name(() => {
+            this.closeSettingsPanel();
+            this.call(() => Native.openSetupPage("quickPairA", this.token));
+          }, "tap")
+        },
+        {
+          icon: ICONS.menu,
+          label: t("\u957F\u6309\u83DC\u5355"),
+          state: /* @__PURE__ */ __name(() => t("{0} \u4E2A\u952E\u76D8", this.menuModes().length), "state"),
+          // menuModesRow=「长按菜单里列出哪些键盘」设置行。
+          tap: /* @__PURE__ */ __name(() => {
+            this.closeSettingsPanel();
+            this.call(() => Native.openSetupPage("menuModesRow", this.token));
           }, "tap")
         },
         {
