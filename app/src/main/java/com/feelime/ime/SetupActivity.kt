@@ -303,6 +303,11 @@ class SetupActivity : AppCompatActivity() {
                     androidx.core.view.WindowInsetsCompat.Type.displayCutout(),
             )
             val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime())
+            // fixtures（debug 编辑框区）与设置页同需避让系统栏：edge-to-edge
+            // 下 rootLayout 铺满全屏，WebView 用注入的 CSS 变量避让，native
+            // fixtures 不避让会让最后一项沉到屏底、被三键导航/手势条整条盖住
+            // （clipboard-seed 按 a11y 置零、门禁点不到；1.4.7 门禁实录）。
+            debugFixtures?.setPadding(0, 0, 0, bars.bottom)
             // WindowInsets 是物理 px，页面 CSS 要 CSS px——除以 density
             // 再注入（否则 density≠1 的机器避让量随密度成倍放大）。
             val density = resources.displayMetrics.density
