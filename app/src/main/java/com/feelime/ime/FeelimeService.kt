@@ -324,12 +324,6 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      *  未初始化，首条状态推不触发重排）。 */
     @Volatile private var hwCandidatesFormLast: Boolean? = null
 
-    /** #92b DIRECT 自动收起：显隐快照（null=未初始化）与「本次隐藏是
-     *  我们自己收的」资格标志（仅自动收起后的离开 DIRECT 才拉回窗口
-     *  ——用户主动收起后的模式变化不弹回）。 */
-    @Volatile private var hwDirectHideLast: Boolean? = null
-    @Volatile private var hwDirectAutoHidden = false
-
     /** #H 状态快照缓存（design §5.4，codex 评审 P1-8）：keyboardReady
      *  重推最后一次引擎状态——新页（热更重载）接管时池/组合非空，
      *  JS 首个有效 state 驱动能力上报。 */
@@ -1029,39 +1023,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     hwCandidatesFormLast = hwFormNow
                     hwMain.post { (keyboardView?.parent as? View)?.requestLayout() }
                 }
-                // #92b（杉树反馈）：物理键盘候选条档 Shift 切英文（DIRECT）
-                // 时窗口整体收起——英文直出无候选无 preedit，弹出来只是
-                // 整屏用不上的英文键帽。显隐判定独立于形态布尔（手写/
-                // T9/笔画→DIRECT 两端形态同为 false，不能靠形态差驱动）
-                //；降级 DIRECT 例外——降级提示与模式键重试入口在键盘
-                // 上，收起等于藏掉反馈（Shift 重试路径仍通，但用户看不
-                // 到故障原因）。恢复只认「本会话因 DIRECT 自动收起」
-                // （hwDirectAutoHidden）：用户主动收起（hideKeyboard 桥）
-                // 后的模式变化不得把窗口强行拉回。
-                // （块整体上主线程：isInputViewShown 非线程安全，且
-                //  requestHideSelf/showWindow 均主线程约定；状态推经
-                //  hwMain 串行保序。）
-                val hwHideNow = hwDirectShouldHide()
-                if (hwHideNow != hwDirectHideLast) {
-                    hwDirectHideLast = hwHideNow
-                    hwMain.post {
-                        if (hwHideNow) {
-                            // 资格只在「窗口当时显示着、被我们收起」时
-                            // 成立（codex 二轮 P2）：用户已主动收起时窗口
-                            // 本来就藏着，不置资格——后续切回中文不得
-                            // 强行弹回。
-                            if (isInputViewShown) {
-                                hwDirectAutoHidden = true
-                                Diagnostics.log("ui", "hideRequest src=hwDirect")
-                                requestHideSelf(0)
-                            }
-                        } else if (hwDirectAutoHidden) {
-                            hwDirectAutoHidden = false
-                            Diagnostics.log("ui", "showRequest src=hwDirectReturn")
-                            hwRequestShowSelf()
-                        }
-                    }
-                }
+                // #92b→#104：DIRECT 整窗收起块已删（1.4.7 用户反馈：候选
+                // /工具条一并消失）——DIRECT 现并入候选条档（见
+                // hwCandidatesFormActive），窗口恒显、只换高度，不再有
+                // hideSelf/showSelf 往返。
                 // 中文联想（docs/design/association.md §3）：只在 commit 事件
                 // 上计算并推送，键盘保留现有联想直到组合开始。
                 val committed = event.state.commit
@@ -1136,11 +1101,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         jsHwKeys = false
         hwPanelHeightState = "candidates"
         // #92：页面换代后形态快照一并失效——新页首条状态推重新对账
-        // （null 只触发一次重排，幂等）。#92b 显隐快照同重置：重评幂等
-        // （hide 幂等；拉回有 hwDirectAutoHidden 闸，用户主动收起后的
-        // 换代不会被强行弹回）。
+        // （null 只触发一次重排，幂等）。
         hwCandidatesFormLast = null
-        hwDirectHideLast = null
         val active = KeyboardUpdateCenter.activeKeyboard(this)
         servedRevision = active.revision
         assetStore = KeyboardAssetStore(active.dir)
@@ -1235,16 +1197,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     /** #H 显示策略三档（design §7）：candidates/full 保持恒显（现行为，
      *  回归风险最小——初版恒显覆写疑似防 AVD/厂商硬键盘误报）；follow
      *  走 super（系统「硬键盘时显示屏幕键盘」开关生效）。
-     *  #92b 例外（杉树反馈）：candidates 档+物理键盘+DIRECT——英文直出
-     *  没有候选/预编辑可显示，窗口不弹（弹出来就是整屏用不上的英文键
-     *  帽）。加 pageReady 闸（codex P1）：inputView 的创建走本评估——
-     *  冷启动（进程复活恢复 DIRECT）时页面未建，恒 false 会拦掉
-     *  onCreateInputView → 握手永远不发生 → Shift 切不回中文。冷启动
-     *  先放行（短窗一闪），onStartInputView/状态推送点随即收起。 */
+     *  #92b→#104 演进：DIRECT 曾整体收窗（#92b），用户反馈过狠——英文
+     *  直出时工具条/候选条档仍应可见（En 指示可点回中文）。现 DIRECT
+     *  由 hwCandidatesFormActive 并入候选条档（窗口恒显、高度=档位），
+     *  本评估不再特判 DIRECT，#92b 的 pageReady 闸（防冷启动拦掉
+     *  onCreateInputView → 握手死环）随之退役。 */
     override fun onEvaluateInputViewShown(): Boolean =
         when (com.feelime.ime.readHwkbForm(this)) {
             "follow" -> super.onEvaluateInputViewShown()
-            "candidates" -> !(pageReady && hwDirectShouldHide())
             else -> true
         }
 
@@ -1608,12 +1568,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         inputConnectionGeneration += 1
         // #H：视图隐藏作废按压归属与 Shift 武装（design §5.2——组合与
         // 输入会话不在此结束，hwPendingSwitch 保留给重新显示后续跑）。
-        // #92b 例外（codex 二轮 P2）：DIRECT 自动收起（hwDirectAutoHidden
-        // 为真=这次的隐藏就是我们发的）可能插在用户下一次 Shift 的
-        // DOWN/UP 之间——清 hwPressedKeys 会让 UP 的「集合空」校验失败
-        // （set==null ≠ isEmpty），切换被吞。输入会话未变、键盘还连着，
-        // 这种隐藏完整保留按压状态；其余（主动收起/切走/降级）照清。
-        if (!(hwDirectAutoHidden && hwDirectShouldHide())) hwClearKeyState()
+        // （#104 后 DIRECT 不再自动收窗，这里只剩真隐藏路径——用户收起
+        // /切走/降级——按压归属照清。）
+        hwClearKeyState()
         // 键盘已收起：在途手势会话一并作废（延迟删除丢弃）。
         endBackspaceGestureSession(executeQueued = false)
         invalidatePendingVoiceStartOnEditorChange()
@@ -1654,16 +1611,6 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // v3 埋点（issue #13）：「调出键盘」的 UI 侧时刻（engine 侧的
         // editorStart 在 onStartInput，两件事不总同拍）。
         Diagnostics.log("ui", "inputViewShown restarting=$restarting type=${editorInfo?.inputType}")
-        // #92b 冷启动补刀：evaluate 的 pageReady 闸在进程复活恢复
-        // DIRECT 时放行了窗口（否则 inputView 不创建、握手不成、Shift
-        // 切不回中文）——这里窗口刚起就以最新模式收掉，把闪窗压到
-        // 最短。引擎状态推送点会再对账一次（幂等）。
-        if (::coordinator.isInitialized && hwDirectShouldHide()) {
-            hwDirectHideLast = true
-            hwDirectAutoHidden = true
-            Diagnostics.log("ui", "hideRequest src=hwDirectColdStart")
-            requestHideSelf(0)
-        }
         // 收起时（onFinishInputView）已清过一次联想；restarting 弹出时若那
         // 次 evaluate 没到达（WebView detach 竞态），这里是可靠兜底——
         // onStartInputView 对同编辑器再弹出必然触发。
@@ -1770,11 +1717,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         jsHwKeys = false
         hwPanelHeightState = "candidates"
         // #92：页面换代后形态快照一并失效——新页首条状态推重新对账
-        // （null 只触发一次重排，幂等）。#92b 显隐快照同重置：重评幂等
-        // （hide 幂等；拉回有 hwDirectAutoHidden 闸，用户主动收起后的
-        // 换代不会被强行弹回）。
+        // （null 只触发一次重排，幂等）。
         hwCandidatesFormLast = null
-        hwDirectHideLast = null
         Diagnostics.log("bridge", "pageLoad at=reload view=${System.identityHashCode(keyboardView)}")
         keyboardView?.loadUrl("$KEYBOARD_URL?band=${floatBandPx()}&sb=${navBottomInset()}")
     }
@@ -2413,28 +2357,23 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
     /** hwkb 候选条形态激活（design §5）：native 侧近似（JS 的 body class
      *  是渲染真相，本判定供窗口高度；mode 双方同源于 state 推送，误差
-     *  窗口=一帧高度抖动，模式切换时 onEngineState 重评估兜住）。 */
+     *  窗口=一帧高度抖动，模式切换时 onEngineState 重评估兜住）。
+     *  #104（1.4.7 反馈）：DIRECT 并入候选条档——英文直出时窗口不再
+     *  整体收起（#92b 的做法把工具条/候选条一并藏掉），改为保留候选
+     *  条档（工具条+En 指示可见，仅无键区）。档位为 full 的用户切英文
+     *  仍显示完整键盘（其主动选择），follow 走系统判定，均不受影响。
+     *  降级 DIRECT 例外：降级提示/重试入口在完整键盘上，必须保住载体
+     *  （JS 侧 applyHwForm 同判据——this.degrade.active）。 */
     private fun hwCandidatesFormActive(): Boolean =
         hwKeyboardAttached() &&
             com.feelime.ime.readHwkbForm(this) == "candidates" &&
-            coordinator.currentMode in hwCharModes
-
-    /** #92b 候选条档位本身（物理键盘在 + 用户档位=candidates，与当前
-     *  模式无关）：DIRECT 收起判定用——档位为 full 的用户切英文仍显示
-     *  完整键盘（其主动选择），follow 走系统判定，均不受此影响。
-     *  降级 DIRECT 不收起：降级提示/重试入口在键盘上，藏掉等于无反馈。 */
-    private fun hwDirectShouldHide(): Boolean =
-        hwKeyboardAttached() &&
-            com.feelime.ime.readHwkbForm(this) == "candidates" &&
-            coordinator.currentMode == com.feelime.ime.engine.InputMode.DIRECT &&
-            coordinator.engineDegrade == null
-
-    /** #92b 自动收起后的拉回：requestShowSelf 需 API 28，26/27 用
-     *  showWindow(true)（窗口显示评估此刻 mode 已非 DIRECT，不会被
-     *  onEvaluateInputViewShown 拦住）。主线程调用。 */
-    private fun hwRequestShowSelf() {
-        if (android.os.Build.VERSION.SDK_INT >= 28) requestShowSelf(0) else showWindow(true)
-    }
+            (
+                coordinator.currentMode in hwCharModes ||
+                    (
+                        coordinator.currentMode == com.feelime.ime.engine.InputMode.DIRECT &&
+                            coordinator.engineDegrade == null
+                    )
+            )
 
     /** 候选条形态高度（design §5）：preedit band + candidateBar(40px)
      *  + 安全区/底部留白，与用户保存的完整键盘高度分离（不进持久化，
@@ -2697,12 +2636,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
     /** #H 生命周期清理（design §5.2）：输入会话边界/销毁清全部硬键状态。
      *  不提交组合——隐藏视图/切走 IME 的组合保留策略与现状一致。
-     *  #92b：clearArm=false 只在「DIRECT 自动收起的隐藏回调」用（见
-     *  onFinishInputView）——保留武装让紧跟着的 Shift UP 仍能切换。 */
-    private fun hwClearKeyState(clearArm: Boolean = true) {
+     *  （#92b 的 clearArm=false 例外随 DIRECT 自动收窗机制一并移除。） */
+    private fun hwClearKeyState() {
         hwKeyOwnership.clear()
         hwPressedKeys.clear()
-        if (clearArm) hwShiftArmed = null
+        hwShiftArmed = null
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -4434,9 +4372,6 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         @JavascriptInterface
         fun hideKeyboard(token: String) = guarded(token, limited = false) { onMain {
             Diagnostics.log("ui", "hideRequest src=jsKey")
-            // #92b：用户主动收起撤销自动恢复资格——后续 Shift 切英文再
-            // 切回中文不得弹回（窗口保持用户的收起意图）。
-            hwDirectAutoHidden = false
             requestHideSelf(0)
         } }
 

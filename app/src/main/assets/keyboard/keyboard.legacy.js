@@ -352,7 +352,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.104";
+  const KEYBOARD_VERSION = "3.73.105";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -6252,12 +6252,18 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }
     /* ===== #H 硬键盘候选条形态（design hardware-keyboard.md §5）=====
      * body.hwkb = hardwareKeyboard（hello 字段）&& 档位==candidates &&
-     * mode∈引擎文本模式。手写/T9/笔画/direct 即使硬键盘在也显示完整
-     * 键盘（笔迹区/九键/英文键帽必须可见）。档位存 native pref
-     * （feelime_hwkb_form），随 hello 的 hwkbForm 字段下发。
+     * 带形模式（hwBandFormMode）。手写/T9/笔画即使硬键盘在也显示完
+     * 整键盘（笔迹区/九键必须可见）；direct 自 #104 起并入带形（#92b
+     * 曾整窗收起，1.4.7 用户反馈候选/工具条一并消失——改为保留候选
+     * 条档：工具条+En|拼 快捷切换可见，仅无键区）。档位存 native
+     * pref（feelime_hwkb_form），随 hello 的 hwkbForm 字段下发。
      * 高度由 native 的 contentHeightPx 收缩——CSS 只隐藏键区。 */
+    hwBandFormMode() {
+      if (HW_TEXT_MODES.has(this.mode)) return true;
+      return this.mode === "direct" && !(this.degrade && this.degrade.active);
+    }
     applyHwForm() {
-      const active = !!this.hardwareKeyboard && (this.hwkbForm || "candidates") === "candidates" && HW_TEXT_MODES.has(this.mode);
+      const active = !!this.hardwareKeyboard && (this.hwkbForm || "candidates") === "candidates" && this.hwBandFormMode();
       if (document.body.classList.contains("hwkb") === active) return;
       document.body.classList.toggle("hwkb", active);
       this.applyHeight();
@@ -6282,7 +6288,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     updateHwModeTag() {
       const el = document.getElementById("hwModeTag");
       if (!el) return;
-      const active = document.body.classList.contains("hwkb") && HW_TEXT_MODES.has(this.mode);
+      const active = document.body.classList.contains("hwkb") && this.hwBandFormMode();
       el.hidden = !active;
       if (!active) return;
       el.querySelector(".cn-main").textContent = modeLabel(this.mode);
@@ -10473,6 +10479,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         this.degrade = null;
         this.renderDegradeBadge();
       }
+      this.applyHwForm();
       this.updateEngineStatus();
       {
         const panel = document.getElementById("settingsPanel");

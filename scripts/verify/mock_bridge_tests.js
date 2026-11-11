@@ -2810,7 +2810,7 @@ test('hwKey: letters queue behind a pending two-step punctuation (#H)', {since: 
     assert(commaAt >= 0 && hAt > commaAt, 'the full-width comma landed before the letter');
 });
 
-test('hwkb form: candidates form collapses the key layers to the bar (#H)', {since: '3.73.50'}, () => {
+test('hwkb form: candidates form collapses the key layers to the bar (#H)', {since: '3.73.50', until: '3.73.104'}, () => {
     const world = fresh({ mode: 'pinyin', hardwareKeyboard: true, hwkbForm: 'candidates' });
     const body = world.document.body;
     equal(body.classList.contains('hwkb'), true, 'hwkb class on with a hard keyboard in an engine mode');
@@ -2824,6 +2824,50 @@ test('hwkb form: candidates form collapses the key layers to the bar (#H)', {sin
     equal(full.document.body.classList.contains('hwkb'), false, 'full form keeps the keyboard');
     // 无硬键盘：恒不收。
     const none = fresh({ mode: 'pinyin' });
+    equal(none.document.body.classList.contains('hwkb'), false, 'no hard keyboard, no form');
+});
+
+test('hwkb form: direct keeps the candidates band, degrade falls back to the full keyboard (#104)', {since: '3.73.105'}, () => {
+    const world = fresh({ mode: 'pinyin', hardwareKeyboard: true, hwkbForm: 'candidates' });
+    const body = world.document.body;
+    equal(body.classList.contains('hwkb'), true, 'hwkb class on with a hard keyboard in an engine mode');
+    // #104：切 direct 不再收窗/收回形态——工具条+En|拼 标签留在候选条档。
+    world.engineState({ mode: 'direct', revision: 2, composing: '', rawInput: '', candidates: [], hasNextPage: false });
+    equal(body.classList.contains('hwkb'), true, 'direct keeps the band form (#104)');
+    const tag = world.$('hwModeTag');
+    equal(tag.hidden, false, 'mode tag visible in direct (En | 拼 entry)');
+    equal(tag.querySelector('.cn-main').textContent, 'En', 'cn-main shows En');
+    // 降级 direct：横幅/重试入口要完整键盘——带形让位。
+    world.engineState({
+        mode: 'direct', revision: 3, composing: '', rawInput: '', candidates: [], hasNextPage: false,
+        degraded: true, degradedActive: true, failedMode: 'pinyin', degradeSeq: 1,
+    });
+    equal(body.classList.contains('hwkb'), false, 'degraded direct falls back to the full keyboard');
+    equal(tag.hidden, true, 'mode tag hides with the band');
+    // 恢复（重试成功）：真实载荷是 degraded:true + degradedActive:false
+    // （TextInputCoordinator 恢复事件带 inactive degrade 对象，不是清空），
+    // mode 切回 failedMode——带形重新挂上。
+    world.engineState({ mode: 'pinyin', revision: 4, composing: '', rawInput: '', candidates: [], hasNextPage: false,
+        degraded: true, degradedActive: false, failedMode: 'pinyin', degradeSeq: 1 });
+    equal(body.classList.contains('hwkb'), true, 'recovery re-arms the band form');
+    // direct→direct 解除降级（两阶段交付：inactive 通知先到、mode 状态
+    // 后到）：mode 不变不走模式分支，靠 applyEngineLifecycle 末尾的
+    // 幂等重评把带形挂回——守 #104 补的那条对称路径。
+    world.engineState({
+        mode: 'direct', revision: 5, composing: '', rawInput: '', candidates: [], hasNextPage: false,
+        degraded: true, degradedActive: true, failedMode: 'pinyin', degradeSeq: 2,
+    });
+    equal(body.classList.contains('hwkb'), false, 'second degrade drops the band again');
+    world.engineState({
+        mode: 'direct', revision: 6, composing: '', rawInput: '', candidates: [], hasNextPage: false,
+        degraded: true, degradedActive: false, failedMode: 'pinyin', degradeSeq: 2,
+    });
+    equal(body.classList.contains('hwkb'), true, 'release without mode change re-arms the band (lifecycle re-eval)');
+    equal(tag.hidden, false, 'mode tag back with the band');
+    // full 档/无硬键盘：direct 也不收键区（与 #104 无关的存量语义）。
+    const full = fresh({ mode: 'direct', hardwareKeyboard: true, hwkbForm: 'full' });
+    equal(full.document.body.classList.contains('hwkb'), false, 'full form keeps the keyboard in direct');
+    const none = fresh({ mode: 'direct' });
     equal(none.document.body.classList.contains('hwkb'), false, 'no hard keyboard, no form');
 });
 

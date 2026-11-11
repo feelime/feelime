@@ -254,7 +254,11 @@ ready 后 300ms 无 state 则补报（从未有过状态=无旧池可 stale）�
 
 （v3 §5 保留）hello 增 `hardwareKeyboard`（hardKeyboardHidden==NO
 且 keyboard!=NOKEYS）；`body.hwkb` = hardwareKeyboard && 档位==
-candidates && mode∈charModes（onEngineState 路径重评估）；原生候选
+candidates &&（mode∈charModes ∨ 非降级 DIRECT）（onEngineState 路径
+重评估；**#104**：DIRECT 并入带形——#92b 曾整窗收起，用户反馈
+候选/工具条一并消失，改为保留候选条档仅无键区；降级 DIRECT 例外，
+横幅/重试入口要完整键盘，applyEngineLifecycle 末尾幂等重评覆盖
+direct→direct 的降级迁移）；原生候选
 高度（preedit band + 40px bar，safeBottom/bottomPad 只在
 contentHeightPx 统一出口叠一次——代码评审 P2-12；hwkb CSS 清零 bar
 margin 2+10px）与用户保存高度分离不持久化；面板临时高度走新薄桥

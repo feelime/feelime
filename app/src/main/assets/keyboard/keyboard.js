@@ -361,7 +361,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.104';
+    const KEYBOARD_VERSION = '3.73.105';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -7268,14 +7268,26 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         /* ===== #H 硬键盘候选条形态（design hardware-keyboard.md §5）=====
          * body.hwkb = hardwareKeyboard（hello 字段）&& 档位==candidates &&
-         * mode∈引擎文本模式。手写/T9/笔画/direct 即使硬键盘在也显示完整
-         * 键盘（笔迹区/九键/英文键帽必须可见）。档位存 native pref
-         * （feelime_hwkb_form），随 hello 的 hwkbForm 字段下发。
+         * 带形模式（hwBandFormMode）。手写/T9/笔画即使硬键盘在也显示完
+         * 整键盘（笔迹区/九键必须可见）；direct 自 #104 起并入带形（#92b
+         * 曾整窗收起，1.4.7 用户反馈候选/工具条一并消失——改为保留候选
+         * 条档：工具条+En|拼 快捷切换可见，仅无键区）。档位存 native
+         * pref（feelime_hwkb_form），随 hello 的 hwkbForm 字段下发。
          * 高度由 native 的 contentHeightPx 收缩——CSS 只隐藏键区。 */
+        hwBandFormMode() {
+            if (HW_TEXT_MODES.has(this.mode)) return true;
+            // #104：非降级 direct 走带形；降级 direct 例外——降级横幅与
+            // 重试入口在完整键盘上（native hwCandidatesFormActive 同判据；
+            // applyEngineLifecycle 先于模式分支跑，degrade/mode 无论哪条
+            // 事件先到都在同一回调内收敛，两条事件连续交付时中间至多
+            // 一帧高度错位、终态一致）。
+            return this.mode === 'direct' && !(this.degrade && this.degrade.active);
+        }
+
         applyHwForm() {
             const active = !!this.hardwareKeyboard &&
                 (this.hwkbForm || 'candidates') === 'candidates' &&
-                HW_TEXT_MODES.has(this.mode);
+                this.hwBandFormMode();
             if (document.body.classList.contains('hwkb') === active) return;
             document.body.classList.toggle('hwkb', active);
             this.applyHeight();
@@ -7301,7 +7313,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         updateHwModeTag() {
             const el = document.getElementById('hwModeTag');
             if (!el) return;
-            const active = document.body.classList.contains('hwkb') && HW_TEXT_MODES.has(this.mode);
+            // #104：direct 也要标签（En|拼）——它已在带形模式内，标签是
+            // 切回中文的可点入口。
+            const active = document.body.classList.contains('hwkb') && this.hwBandFormMode();
             el.hidden = !active;
             if (!active) return;
             el.querySelector('.cn-main').textContent = modeLabel(this.mode);
@@ -12547,6 +12561,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.degrade = null;
                 this.renderDegradeBadge();
             }
+            // #104：带形判据含 degrade（direct+降级=完整键盘），degrade
+            // 迁移本身要重评——不伴随模式变化的 direct→direct 降级事件
+            // 不会走模式分支。幂等（applyHwForm 自带布尔早退）。
+            this.applyHwForm();
             this.updateEngineStatus();
             // 快捷设置首页的方块状态跟 hello 走（广播落盘 → 重推 hello）：
             // 面板开着就重渲染首页，开关/档位立即反映新值。子页有自己的
