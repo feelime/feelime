@@ -66,13 +66,23 @@ FUZZY_GROUPS = [
 
 def fuzzy_rules(mask: int) -> list:
     return [rule for bit, rules in FUZZY_GROUPS if mask & bit for rule in rules]
-# 词库换装/重编现场与 pinned deployer 可用环境变量覆盖（默认沿用历史路径）。
+# 词库换装/重编现场与 pinned deployer 可用环境变量覆盖。SHARED 不设
+# 默认值（1.4.7 事故实录：历史默认现场 ~/tmp/fv-t9-hybrid/shared 的
+# dict 源已随换装实验漂移，编出的 prism 与随包 table 的 syllable_id
+# 静默错位，f364→fo，运行时无任何报错）——必须显式指向随包 table 的
+# 编译现场（scripts/research/build-cmake-native-engines.sh 产出的
+# $work/rime-data/shared），配套性由 table_paired 门兜底校验。
 DEPLOYER = pathlib.Path(os.environ.get(
     "FEELIME_T9_DEPLOYER",
     str(pathlib.Path.home() / "tmp/pinned/build-host/librime/bin/rime_deployer")))
-SHARED = pathlib.Path(os.environ.get(
-    "FEELIME_T9_SHARED",
-    str(pathlib.Path.home() / "tmp/fv-t9-hybrid/shared")))
+_shared_env = os.environ.get("FEELIME_T9_SHARED")
+if not _shared_env:
+    raise SystemExit(
+        "FEELIME_T9_SHARED is required: point it at the compile scene that "
+        "built the shipped luna_pinyin.table.bin "
+        "(scripts/research/build-cmake-native-engines.sh: $work/rime-data/shared)")
+SHARED = pathlib.Path(_shared_env)
+TABLE_DST = pathlib.Path("app/src/main/assets/engine-data/rime/luna_pinyin.table.bin")
 
 # 26 个字母 → 9 键位（T9 标准布局：7=PQRS，9=WXYZ）。
 XLIT = "xlit/abcdefghijklmnopqrstuvwxyz/22233344455566677778889999/"
@@ -206,6 +216,29 @@ def update_manifest() -> None:
     print(f"manifest updated: {DST.name}, {PRISM_DST.name}")
 
 
+def table_paired(work_build: pathlib.Path) -> bool:
+    """配套门（1.4.7 事故）：deployer 编 T9 系 schema 时会同场编出
+    luna_pinyin.table.bin。prism 里的 syllable_id 编号与 table 的音节表
+    耦合，现场 dict 源漂移后编号静默错位（f364→fo，运行时零报错，
+    32 个 prism 全军覆没）。同场 table 与随包逐字节一致才算配套。"""
+    built = work_build / "luna_pinyin.table.bin"
+    if not built.is_file():
+        print(f"scene pairing check: {built} missing (deployer produced no table)",
+              file=sys.stderr)
+        return False
+    if built.read_bytes() != TABLE_DST.read_bytes():
+        print(
+            "scene pairing check FAILED: deployer-built luna_pinyin.table.bin "
+            "differs from the shipped one — FEELIME_T9_SHARED points at a scene "
+            "whose dict source drifted from the shipped dictionary. prism from "
+            "this scene would misnumber every syllable (silent wrong-word "
+            "regression). Rebuild the scene with "
+            "scripts/research/build-cmake-native-engines.sh and retry.",
+            file=sys.stderr)
+        return False
+    return True
+
+
 def compile_variant(schema_text: str, schema_name: str, prism_out: pathlib.Path) -> int:
     """在临时现场编译单个变体 schema，产物 rename 后拷入 assets 并进 MANIFEST。
 
@@ -225,6 +258,9 @@ def compile_variant(schema_text: str, schema_name: str, prism_out: pathlib.Path)
     if r.returncode != 0 or not built.is_file():
         print(f"compile failed rc={r.returncode}\n{r.stdout[-400:]}\n{r.stderr[-400:]}",
               file=sys.stderr)
+        shutil.rmtree(work, ignore_errors=True)
+        return 1
+    if not table_paired(work / "build"):
         shutil.rmtree(work, ignore_errors=True)
         return 1
     shutil.copy2(built, prism_out)
@@ -309,6 +345,9 @@ def compile_prism() -> int:
     if r.returncode != 0 or not prism.is_file():
         print(f"compile failed rc={r.returncode}\n{r.stdout[-400:]}\n{r.stderr[-400:]}",
               file=sys.stderr)
+        return 1
+    if not table_paired(work / "build"):
+        shutil.rmtree(work, ignore_errors=True)
         return 1
     shutil.copy2(prism, PRISM_DST)
     print(f"prism: {PRISM_DST.stat().st_size} bytes")
