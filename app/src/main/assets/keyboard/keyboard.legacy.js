@@ -352,7 +352,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.103";
+  const KEYBOARD_VERSION = "3.73.104";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -4168,8 +4168,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           const bsKey = originButton.closest('.kb-key[data-role="backspace"]');
           if (bsKey) {
             if (bsKey._cancelRepeat) bsKey._cancelRepeat();
-            if (bsKey.classList.contains("ink-key")) return;
-            if (!bsKey.closest("#qwertyLayer")) return;
+            if (bsKey.classList.contains("ink-key") && bsKey._inkHadStrokes) return;
+            if (bsKey.closest(".sym-custom-row")) return;
             if (this.composing) {
               if (Math.abs(dx) > Math.abs(dy) && dx < 0) this.clearComposing();
               return;

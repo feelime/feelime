@@ -361,7 +361,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.103';
+    const KEYBOARD_VERSION = '3.73.104';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -4733,15 +4733,20 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const bsKey = originButton.closest('.kb-key[data-role="backspace"]');
                     if (bsKey) {
                         if (bsKey._cancelRepeat) bsKey._cancelRepeat();
-                        // 手写模式的退格是「清笔迹优先」（inkBackspace），
-                        // 四件套在这里没有对应设计——v1 不启用，键自身
-                        // 行为不变。
-                        if (bsKey.classList.contains('ink-key')) return;
-                        // 四件套只挂主键盘（qwertyLayer：qwerty/双拼/T9/
-                        // 笔画共用）的退格。数字/符号/自定义表层内的退格
-                        // 常挨着滚动网格，从它起手的滚动不该在松手时变成
-                        // 撤销/全选删（垂直动作是松手才发的破坏性操作）。
-                        if (!bsKey.closest('#qwertyLayer')) return;
+                        // 手写模式的退格「清笔迹优先」（inkBackspace）：
+                        // 有笔迹时滑动不接四件套（防滑动清笔迹被误判），
+                        // 无笔迹时与主键盘一致（#102 用户反馈统一）。
+                        if (bsKey.classList.contains('ink-key') && bsKey._inkHadStrokes) return;
+                        // 四件套挂所有退格（qwerty/双拼/T9/笔画、数字/
+                        // 符号面板的底栏与 fn 列——#102 用户反馈：退格
+                        // 手势在不同界面断裂）。唯一例外是定制键行
+                        // （sym-custom-row 可横向拖动浏览超宽行，从其退格
+                        // 起手的水平拖动是浏览意图，不是删除手势）。
+                        // 原qwertyLayer 门担忧「层内退格起手的滚动变成
+                        // 删除」——退格键不在滚动网格内，从它起手的滑动
+                        // 不会滚动任何容器（主键盘退格同样紧邻可横滑的
+                        // 候选条却一直启用四件套），实测不成立。
+                        if (bsKey.closest('.sym-custom-row')) return;
                         // 组合态不启用四件套（spec v1 裁剪，评审 F-2 的
                         // 最大正确性坑）：组合中退格属于引擎世界（删拼音）。
                         // 左滑保留既有「整段撤销组合」语义；垂直滑动不接

@@ -420,7 +420,7 @@ test('delete gesture: recognized swipe cancels the live repeat', {since: '3.68.0
     world.touchUp(bs, 60, 20);
 });
 
-test('delete gesture: layer backspaces (nine-pad) stay gesture-free', {since: '3.68.0'}, () => {
+test('delete gesture: layer backspaces (nine-pad) stay gesture-free', {since: '3.68.0', until: '3.73.103'}, () => {
     const world = fresh({ mode: 'pinyin' });
     const key123 = [...world.document.querySelectorAll('.kb-special')].find(
         el => el.textContent === '123',
@@ -435,6 +435,44 @@ test('delete gesture: layer backspaces (nine-pad) stay gesture-free', {since: '3
     world.touchUp(bs, 60, 20);
     equal(world.native.of('backspaceGestureBegin').length, 0, 'layer backspace has no gestures');
     equal(world.native.of('backspaceN').length, 0, 'no deletes either');
+});
+
+test('delete gesture: custom-row backspace stays gesture-free (draggable strip)', {since: '3.73.104'}, () => {
+    // 定制键行（sym-custom-row）可横向拖动浏览超宽行——从其退格起手
+    // 的水平拖动是浏览意图，#102 统一时唯一保留的例外。
+    const world = fresh({ mode: 'pinyin' });
+    world.context.window.Feelime.saveCustomJson(JSON.stringify({
+        version: 1,
+        rows: [[{ t: '退格位', tap: '[backspace]' }], [], []],
+    }));
+    world.tap(world.$('toolCustom'));
+    assert(!world.$('symbolLayer').hidden, 'custom tab open');
+    const stripBs = world.$('symbolLayer').querySelector('.sym-custom-row [data-role="backspace"]');
+    assert(stripBs, 'custom strip carries a backspace cell');
+    world.touchDown(stripBs, 100, 20);
+    world.move(stripBs, 60, 20);
+    world.touchUp(stripBs, 60, 20);
+    equal(world.native.of('backspaceGestureBegin').length, 0, 'custom-row backspace keeps gestures off');
+});
+
+test('delete gesture: layer backspaces (nine-pad) join the four gestures', {since: '3.73.104'}, () => {
+    // #102 用户反馈统一：数字/符号面板的退格与主键盘同套手势。
+    // （3.68.0~3.73.103 旧语义=层内退格无手势。）
+    const world = fresh({ mode: 'pinyin' });
+    const key123 = [...world.document.querySelectorAll('.kb-special')].find(
+        el => el.textContent === '123',
+    );
+    world.touchDown(key123);
+    world.clock.advance(360);
+    world.touchUp(key123);
+    assert(!world.$('numPadLayer').hidden, 'nine-pad open');
+    const bs = world.$('numPadLayer').querySelector('[data-role="backspace"]');
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20);
+    world.touchUp(bs, 60, 20);
+    equal(world.native.of('backspaceGestureBegin').length, 1, 'layer backspace opens the gesture session');
+    equal(world.native.of('backspaceN').reduce((s, c) => s + c.args[0], 0), 1,
+        'dx=-40 crosses the 38px slop: one unit deleted (same as the main keyboard)');
 });
 
 test('delete gesture: sensitive editor disables the four gestures', {since: '3.68.0'}, () => {
@@ -9892,7 +9930,7 @@ function inkStroke(world, points) {
     world.touchUp(pad, points[points.length - 1][0], points[points.length - 1][1]);
 }
 
-test('delete gesture: handwriting backspace keeps ink semantics, no gestures', {since: '3.68.0'}, () => {
+test('delete gesture: handwriting backspace keeps ink semantics, no gestures', {since: '3.68.0', until: '3.73.103'}, () => {
     const world = handwritingWorld();
     const bs = bsKey(world);
     assert(bs.classList.contains('ink-key'), 'handwriting backspace is the ink key');
@@ -9902,6 +9940,29 @@ test('delete gesture: handwriting backspace keeps ink semantics, no gestures', {
     world.touchUp(bs, 60, 20);
     equal(world.native.of('backspaceGestureBegin').length, 0, 'no session on ink key');
     equal(world.native.of('backspaceN').length, 0, 'no editor deletes');
+});
+
+test('delete gesture: handwriting backspace gates gestures on live ink', {since: '3.73.104'}, () => {
+    // #102：有笔迹时清笔迹优先（滑动不接四件套，防误判）；无笔迹时
+    // 与主键盘同套手势。（3.68.0~3.73.103 旧语义=ink 键恒无手势。）
+    const world = handwritingWorld();
+    const bs = bsKey(world);
+    assert(bs.classList.contains('ink-key'), 'handwriting backspace is the ink key');
+    inkStroke(world, [[20, 20], [40, 24], [60, 30]]); // 书写区留有笔迹的真实场景
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20); // 左滑不转成删编辑器文本
+    world.touchUp(bs, 60, 20);
+    equal(world.native.of('backspaceGestureBegin').length, 0, 'live ink keeps the gesture off');
+    equal(world.native.of('backspaceN').length, 0, 'no editor deletes with ink present');
+    // 无笔迹：tap 一次清笔迹（滑动不触发 tap，笔迹只有 tap 能清），
+    // 之后同一手势进入四件套会话（dx=-40 过 slop 删一字）。
+    world.tap(bs);
+    world.touchDown(bs, 100, 20);
+    world.move(bs, 60, 20);
+    world.touchUp(bs, 60, 20);
+    equal(world.native.of('backspaceGestureBegin').length, 1, 'empty pad joins the gesture session');
+    equal(world.native.of('backspaceN').reduce((s, c) => s + c.args[0], 0), 1,
+        'one unit deleted, same as the main keyboard');
 });
 
 test('handwriting: menu entry gated by strictReady (missing field = no entry)', {since: '3.59.0'}, () => {
