@@ -157,6 +157,34 @@ class DictYamlImporterTest {
     }
 
     @Test
+    fun columnsAfterFirstEntryIsIgnored() {
+        // codex review P2：无 `...` 的裸词表，词条后的声明不得追溯改写
+        // 整表语义（rankDeclared 不升级、已收 ranks 不清）。
+        val text = """
+            大学	daxue	100
+            columns: [text, code, rank]
+        """.trimIndent()
+        val result = DictYamlImporter.parse(StringReader(text))
+        assertEquals(false, result.rankDeclared)
+        // 正文前的第三列照 #81 现状读（100 钳 9）。
+        assertEquals(mapOf("大学" to 9), result.ranks)
+    }
+
+    @Test
+    fun trailingCommentOnInlineColumnsIsTolerated() {
+        // codex review P2：行尾注释（# 前带空白）不致声明静默失效。
+        val text = """
+            ---
+            columns: [text, code, rank] # 位次声明
+            ...
+            大学	daxue	1
+        """.trimIndent()
+        val result = DictYamlImporter.parse(StringReader(text))
+        assertEquals(true, result.rankDeclared)
+        assertEquals(mapOf("大学" to 1), result.ranks)
+    }
+
+    @Test
     fun columnsAfterDocumentEndIsIgnored() {
         // `...` 之后的正文区出现 columns 字样不构成声明。
         val text = """

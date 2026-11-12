@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.107";
+  const KEYBOARD_VERSION = "3.73.110";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -9141,7 +9141,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const ranks = this.symbolRanks || {};
       const pinOf = /* @__PURE__ */ __name((item) => {
         const rank = Number(ranks[item && item.text]);
-        return Number.isInteger(rank) && rank >= 1 && rank <= 9 && (isSymbolicText(item && item.text) || (this.rankAllTexts || /* @__PURE__ */ new Set()).has(item && item.text)) ? rank : 0;
+        return Number.isInteger(rank) && rank >= 1 && rank <= 9 && !String(item && item.id).match(/^(fav|dyn|alt):/) && (isSymbolicText(item && item.text) || (this.rankAllTexts || /* @__PURE__ */ new Set()).has(item && item.text)) ? rank : 0;
       }, "pinOf");
       const pinned = [];
       const plain = [];

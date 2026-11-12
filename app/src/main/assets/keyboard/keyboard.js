@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.107';
+    const KEYBOARD_VERSION = '3.73.110';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -10748,8 +10748,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const ranks = this.symbolRanks || {};
             const pinOf = item => {
                 const rank = Number(ranks[item && item.text]);
-                // #107：声明表词面（rankAllTexts）与符号词同权钉位。
+                // #107：声明表词面（rankAllTexts）与符号词同权钉位——
+                // 仅对引擎候选；fav:/dyn:/alt: 等 overlay 自带位次规则
+                // （fav 的 exact rank splice），同词面不被 symbolRanks
+                // 改写（codex review P2）。
                 return Number.isInteger(rank) && rank >= 1 && rank <= 9
+                    && !String(item && item.id).match(/^(fav|dyn|alt):/)
                     && (isSymbolicText(item && item.text)
                         || (this.rankAllTexts || new Set()).has(item && item.text))
                     ? rank : 0;

@@ -778,6 +778,24 @@ test('declared-table word without a valid rank keeps engine order (issue #107)',
         'rankless declared word neither pins nor falls into the symbol default');
 });
 
+test('declared-table rank never overrides the favorite overlay rank (issue #107, codex P2)', {since: '3.73.110'}, () => {
+    // 同词面双来源：声明表（symbolRanks=3, rankAll 含词面）与常用语
+    // fav:（自带 rank=1 的 exact splice）。fav 的位次必须由 fav 自己的
+    // rank 决定——englishOrderedPool 的 pinOf 放宽只认引擎候选。
+    const world = fresh({ mode: 'pinyin' });
+    world.hello({ mode: 'pinyin',
+        symbolRanks: { '晓': 3 }, rankAll: ['晓'] });
+    world.favorites([{ id: 'f1', time: 1, text: '晓', code: 'pan', rank: 1 }]);
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'pan', rawInput: 'pan',
+        candidates: [
+            { id: 'c1', text: '盘' }, { id: 'c2', text: '判' }, { id: 'c3', text: '潘' },
+        ], hasNextPage: false });
+    const bar = () => JSON.stringify([...world.$('candidates').querySelectorAll('.candidate')]
+        .map(node => node.textContent));
+    equal(bar(), JSON.stringify(['晓', '盘', '判', '潘']),
+        'favorite keeps its own rank-1 slot; symbolRanks does not override');
+});
+
 test('declared-table rank survives the English-candidate insertion (issue #107)', {since: '3.73.107'}, () => {
     // 显示序裁决层（englishOrderedPool）的 pinOf 门同步放宽：声明表词
     // rank=3 与英文插入并存时，「第 3 位」是用户看到的第 3 位。

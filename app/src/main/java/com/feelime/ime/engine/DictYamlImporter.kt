@@ -75,9 +75,12 @@ object DictYamlImporter {
                     if (!headerOpen) continue
                     if (!inColumns) {
                         if (t == "columns:") { inColumns = true; continue }
-                        // inline 形态：columns: [text, code, rank]
+                        // inline 形态：columns: [text, code, rank]；容忍
+                        // 行尾注释（# 前带空白）——不剥的话整个声明被
+                        // 静默忽略（codex review P2-3）。
                         if (t.startsWith("columns:")) {
                             val rest = t.removePrefix("columns:").trim()
+                                .replace(Regex("\\s+#.*$"), "").trim()
                             if (rest.startsWith("[") && rest.endsWith("]")) {
                                 val roles = rest.removeSurrounding("[", "]")
                                     .split(',')
@@ -105,6 +108,11 @@ object DictYamlImporter {
                     continue
                 }
                 inColumns = false // 词条行=已进正文，块声明自然结束
+                // codex review P2-2：首个词条行也是正文开始的标志——
+                // 无 `...` 的裸词表（用户自制）里跟在词条后的 columns
+                // 行不得追溯改写整表语义（已收的 ranks 也不该被后续
+                // 声明升级/降级）。
+                if (headerOpen) headerOpen = false
                 val columns = line.split('\t')
                 if (columns.size < 2) {
                     skipped++
