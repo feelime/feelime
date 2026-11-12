@@ -185,6 +185,10 @@ class TextInputCoordinator(
     private val expectedSelections = ArrayDeque<Pair<Int, Int>>()
 
     val currentMode: InputMode get() = mode
+    /** #103 组合是否活跃（scrub 首批判定用）：private 字段非 volatile，
+     *  读取线程与引擎线程的误差最多让首批锁定到另一目标——锁定后
+     *  手势期内不再变，语义安全。 */
+    val composingLive: Boolean get() = composingActive
     val currentStamp: EngineStamp get() = stamp
     val engineWarming: Boolean get() = pendingEngine != null
     val enterConsumedComposing: Boolean get() = lastEnterConsumedComposing
@@ -911,6 +915,13 @@ class TextInputCoordinator(
         userInputGeneration++
         return dispatch(EngineCommand.PageNext(expectedRevision))
     }
+
+    /** #103 组合内光标原子移动（空格横滑，实验开关默认关）：模式/开关
+     *  白名单由调用方（FeelimeService.scrubCursor 桥）判定——这里只面
+     *  对活引擎。移动不改词缓存（不 invalidateWordUndo：内容未变，
+     *  重算分段由引擎内部处理）。 */
+    fun movePreeditCursor(steps: Int): DispatchAck =
+        dispatch(EngineCommand.MovePreeditCursor(steps))
 
     fun pagePrevious(expectedRevision: Long): DispatchAck {
         userInputGeneration++

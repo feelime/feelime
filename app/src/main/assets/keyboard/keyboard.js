@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.106';
+    const KEYBOARD_VERSION = '3.73.107';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1528,6 +1528,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.expanded = false;
             this.lastEngineState = null;
             this.lastRawInput = '';
+            // #103 光标双域（-1=不支持）：inputCaret 进候选池身份键，
+            // preeditCaret 驱动插入符渲染。
+            this.inputCaret = -1;
+            this.preeditCaret = -1;
             this.symbolCat = 'common';
             // 中/En table pins per category (常用/引号): a second tap on
             // the active tab pins 'zh'/'en'; a mode switch clears the
@@ -1731,6 +1735,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 预览所按字符。
             this.keyBubble = false;
             this.cnEnGuard = false; // #89 组词中防误触切换（默认关）
+            // #103 空格横滑组合内拼音光标（实验开关，默认关）：
+            // 组合中横滑空格=移动 preedit 光标（gestureId 会话锁定），
+            // 非组合=宿主光标（存量）。首期全拼/双拼（native 白名单同款）。
+            this.preeditScrub = false;
+            this.scrubGestureId = null;
             // #55 悬浮键盘几何（css px，画布坐标=WebView 视口）：
             // spike 首版内存态（方向无关），进悬浮时按视口给安全初值。
             this.floating = false;
@@ -4846,14 +4855,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             // Direction-only blob, no character.
                             this.showFlick(button, dy);
                         }
-                    } else if (Math.abs(dx) > Math.abs(dy) && button && !this.composing
-                        && !this.voiceHold) {
+                    } else if (Math.abs(dx) > Math.abs(dy) && button && !this.voiceHold
+                        && (!this.composing || this.preeditScrubEligible(button))) {
                         // Scrub only starts ON a letter key: horizontal drags
                         // that begin on the panel/symbol grid scroll those
                         // layers instead of moving the caret. While a pinyin
                         // composition is live the caret belongs to the
                         // composing span - moving it just makes the next
                         // setComposingText snap it back (jumpy).
+                        // #103 实验开关（默认关）放开「组合中空格横滑」：
+                        // 目标是组合内拼音光标（scrubDispatch 按 gestureId
+                        // 锁定目标，native 侧不转投宿主）；其余键源仍维持
+                        // 组合中不启动。
 // engage: keep the recognition slop out
                         // of the first step, but derive the anchor from the
                         // fixed threshold crossing rather than this sample.
@@ -4866,7 +4879,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         const crossingX = this.touchOrigin.x + (dx / distance) * threshold;
                         this.scrubBase = crossingX - direction * unit;
                         this.scrubSteps = direction;
-                        this.call(() => Native.moveCursor(direction, this.token));
+                        this.scrubDispatch(direction);
                     }
                 } else if (this.scrubBase !== null) {
                     this.applyScrub(touch.clientX);
@@ -4946,10 +4959,48 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
                 this.scrubBase = null;
                 this.scrubSteps = 0;
+                // #103：手势结束释放 native 的目标锁定（漏发由 LRU 兜底）。
+                this.endScrubGesture();
                 setTimeout(() => { this.swiping = false; }, 0);
             };
             root.addEventListener('touchend', event => finish(event, false), { capture: true });
             this.finishTouchGesture = finish;
+        }
+
+        /* ===== #103 空格横滑组合光标（实验开关默认关）=====
+         * 组合中=组合内拼音光标（首批判定后 gestureId 锁定，native 侧
+         * 不转投宿主），非组合=宿主光标（存量语义）。首期模式白名单
+         * 全拼/双拼（native PREEDIT_SCRUB_MODES 同款），T9/形码后续。 */
+        preeditScrubEligible(key) {
+            // 空格键源（26 键 id=spaceKey；T9/手写空格挂 data-key=' '）
+            // ——字母键组合中横滑维持不启动（字母键有自身的 flick 语义）。
+            const isSpace = key && (key.id === 'spaceKey' ||
+                (key.dataset && key.dataset.key === ' '));
+            return !!this.preeditScrub && isSpace;
+        }
+
+        /** 统一派发：组合中走 scrubCursor(gestureId, steps)（native 锁定
+         *  目标；JS 侧手势会话内复用同一 id），否则走存量 moveCursor。 */
+        scrubDispatch(steps) {
+            if (this.composing && this.preeditScrub) {
+                if (!this.scrubGestureId) {
+                    this.scrubGestureId = 'sg' + Date.now().toString(36) +
+                        Math.random().toString(36).slice(2, 6);
+                }
+                const id = this.scrubGestureId;
+                this.call(() => Native.scrubCursor(id, steps, this.token));
+            } else {
+                this.call(() => Native.moveCursor(steps, this.token));
+            }
+        }
+
+        /** 手势收尾（touchend/touchcancel）：释放 native 锁定。 */
+        endScrubGesture() {
+            if (this.scrubGestureId) {
+                const id = this.scrubGestureId;
+                this.scrubGestureId = null;
+                this.call(() => Native.scrubCursorEnd(id, this.token));
+            }
         }
 
         /** Continuous scrub: crossing a unit boundary moves the caret by the
@@ -4969,7 +5020,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             let remaining = delta;
             while (remaining) {
                 const move = Math.max(-256, Math.min(256, remaining));
-                this.call(() => Native.moveCursor(move, this.token));
+                // #103：组合中同批走 gestureId 通道（目标已锁定），否则
+                // 存量宿主光标批量。
+                this.scrubDispatch(move);
                 remaining -= move;
             }
         }
@@ -10429,12 +10482,34 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 el.classList.toggle('active', el.dataset.expandTab === 'freq')));
         }
 
+        /** #103 插入符：preeditCaret 中置（0<c<长度）时把宿主元素拆成
+         *  前/光标/后三节点。光标是空 CSS 元素不进 textContent——不污染
+         *  既有文本断言与复制；端点/不支持（-1）不渲染。T9 显示转换
+         *  （数字→拼音）首期未开放：白名单模式下 preeditCaret 与显示
+         *  串同域（全拼/双拼 preedit=原始码序列化）。 */
+        renderPreeditCaret(el, text) {
+            if (!el || typeof text !== 'string' || !text) return;
+            const c = this.preeditCaret;
+            if (!Number.isInteger(c) || c <= 0 || c >= text.length) return;
+            const caret = document.createElement('span');
+            caret.className = 'preedit-caret';
+            // 前后段用 span 而非 TextNode：mock 世界（fake DOM）只有
+            // createElement 通道；span.textContent 与真机渲染等价。
+            const before = document.createElement('span');
+            before.textContent = text.slice(0, c);
+            const after = document.createElement('span');
+            after.textContent = text.slice(c);
+            el.replaceChildren(before, caret, after);
+        }
+
         renderExpanded() {
             const strip = document.getElementById('expandGrid');
-            document.getElementById('expandPreedit').textContent =
+            const expandPreeditEl = document.getElementById('expandPreedit');
+            expandPreeditEl.textContent =
                 this.mode === 't9'
                     ? (this.t9Reading() || this.t9PreeditLabel(this.lastRawInput))
                     : (this.lastRawInput || '');
+            this.renderPreeditCaret(expandPreeditEl, expandPreeditEl.textContent);
             strip.replaceChildren();
             this.expandRendered = 0;
             this.renderVariants();
@@ -10917,6 +10992,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 this.updateCaseKeyVisual();
             }
             if (this.composing && rawInput !== undefined) this.lastRawInput = rawInput;
+            // #103 光标双域：-1=引擎不支持（不渲染/不参与池身份）。
+            this.inputCaret = Number.isInteger(state.inputCaret) ? state.inputCaret : -1;
+            this.preeditCaret = Number.isInteger(state.preeditCaret) ? state.preeditCaret : -1;
             // 8 键组合中逗号的两步收尾（issue #18）：候选确认的回声把组合
             // 收掉后，直发挂起的全角 ，；组合继续且 raw 变了（用户接着打）
             // 或确认被拒超时（3s 无回声收尾）则作废——迟到的逗号比缺逗号
@@ -10954,6 +11032,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     ? (this.t9Reading() || this.t9PreeditLabel(this.lastRawInput))
                     : this.lastRawInput)
                 : '';
+            this.renderPreeditCaret(preedit, preedit.textContent);
             if (!this.composing) {
                 this.t9ConfirmedLen = 0;
                 this._t9ConfirmedText = '';
@@ -12070,6 +12149,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (landOpacity >= 10 && landOpacity <= 100) this.landscapeOpacity = landOpacity;
             if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
             if (typeof payload.cnEnComposingGuard === 'boolean') this.cnEnGuard = payload.cnEnComposingGuard;
+            if (typeof payload.preeditScrub === 'boolean') this.preeditScrub = payload.preeditScrub;
             const lingerMs = Number(payload.bubbleLinger);
             if (lingerMs >= 0) this.bubbleLinger = lingerMs;
             this.applyOneHand();
@@ -12709,7 +12789,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // candidate and keep its head after the grid collapses - the old
             // per-page bar is what stranded it on a low-frequency page.
             if (payload.composing) {
-                const key = payload.rawInput || payload.composing || '';
+                // #103 池身份加 inputCaret：同 raw 不同光标位置的候选不同
+                //（同 preedit 误选旧池 = codex P0），回同位置沿用池。
+                const caretTag = Number.isInteger(payload.inputCaret) && payload.inputCaret >= 0
+                    ? '#' + payload.inputCaret : '';
+                const key = (payload.rawInput || payload.composing || '') + caretTag;
                 // Rewind bursts can emit a composing event with an EMPTY raw;
                 // only a real (non-empty) new input resets the accumulation.
                 if (key && key !== this.expandKey) {
@@ -12781,7 +12865,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (payload.composing) {
                     const raw = (payload.rawInput || '').replace(/ /g, '');
                     const engineCands = payload.candidates || [];
-                    if (raw && raw !== this._autoCollapseKey) {
+                    // #103 中置帧（光标不在串尾）不参与自动收束：候选只是
+                    // caret 左侧活动段的，空≠死串、首候选≠用户看到的整句
+                    // 首选——中置是纯定位态，收束只由正常尾部输入态驱动。
+                    const midCaret = Number.isInteger(payload.inputCaret)
+                        && payload.inputCaret >= 0
+                        && payload.inputCaret < raw.length;
+                    if (raw && raw !== this._autoCollapseKey && !midCaret) {
                         if (raw.length >= 40 && engineCands.length) {
                             this._autoCollapseKey = raw;
                             this.call(revision => Native.chooseCandidate(

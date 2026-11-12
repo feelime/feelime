@@ -99,6 +99,8 @@ class DirectTextEngine : TextEngine {
             // Direct has no engine candidates to delete.
             is EngineCommand.DeleteHighlighted -> DispatchAck.Rejected(EngineCode.NOT_DELETABLE)
             is EngineCommand.DeleteCandidate -> DispatchAck.Rejected(EngineCode.NOT_DELETABLE)
+            // #103 preedit 光标只有 rime 引擎支持（coordinator 白名单先挡）。
+            is EngineCommand.MovePreeditCursor -> DispatchAck.Rejected(EngineCode.INVALID_COMMAND)
             EngineCommand.Start, EngineCommand.Close -> DispatchAck.Accepted
         }
     }

@@ -19,7 +19,10 @@ int feelime_rime_select_candidate_absolute(std::uintptr_t, std::size_t);
 int feelime_rime_delete_candidate_absolute(std::uintptr_t, std::size_t);
 int feelime_rime_context_at_page(
     std::uintptr_t, int, char*, std::size_t, char*, std::size_t,
-    int*, int*, int*, int*);
+    int*, int*, int*, int*, int*);
+int feelime_rime_caret_snapshot(
+    std::uintptr_t, char*, std::size_t, int*);
+int feelime_rime_move_caret(std::uintptr_t, int, int*);
 int feelime_rime_get_context(
     std::uintptr_t, char*, std::size_t, char*, std::size_t, int*, int*);
 int feelime_rime_get_commit(std::uintptr_t, char*, std::size_t);
@@ -53,6 +56,22 @@ std::string json_escape(const std::string& value) {
     }
   }
   return out;
+}
+
+// #103 UTF-8 字节偏移 → UTF-16 code unit 偏移（Java/JS 字符串域）。
+// 4 字节码点算 2（代理对），其余算 1；byte_pos 越界按串尾收敛。
+int utf16_offset(const std::string& utf8, int byte_pos) {
+  int units = 0;
+  int i = 0;
+  const int limit = byte_pos < 0 ? 0 : byte_pos;
+  while (i < limit && i < static_cast<int>(utf8.size())) {
+    const unsigned char c = static_cast<unsigned char>(utf8[i]);
+    const int len = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2
+                                 : (c & 0xF0) == 0xE0 ? 3 : 4;
+    units += len == 4 ? 2 : 1;
+    i += len;
+  }
+  return units;
 }
 
 }  // namespace
@@ -202,18 +221,48 @@ Java_com_feelime_ime_nativeengine_NativeSmoke_rimeContextAtPage(
   int is_last_page = 1;
   int has_next = 0;
   int page_size = 0;
+  int preedit_caret = -1;
   const int code = feelime_rime_context_at_page(
       static_cast<std::uintptr_t>(session), view_page, preedit, sizeof(preedit),
       candidates, sizeof(candidates), &page_no, &is_last_page, &has_next,
-      &page_size);
+      &page_size, &preedit_caret);
+  // #103 raw 域快照与 at_page 同批读取（引擎侧 gate 串行，无交错）；
+  // inputCaret=-1 表示「不可用」（Kotlin/JS 不得当成 0）。
+  char input_keys[1024] = {};
+  int input_caret = -1;
+  const int caret_code = code == 0
+      ? feelime_rime_caret_snapshot(
+            static_cast<std::uintptr_t>(session), input_keys,
+            sizeof(input_keys), &input_caret)
+      : -2;
   std::ostringstream out;
   out << "{\"code\":" << code << ",\"preedit\":\"" << json_escape(preedit)
       << "\",\"candidates\":\"" << json_escape(candidates)
       << "\",\"pageNo\":" << page_no
       << ",\"isLastPage\":" << is_last_page
       << ",\"hasNext\":" << has_next
-      << ",\"pageSize\":" << page_size << "}";
+      << ",\"pageSize\":" << page_size;
+  if (code == 0) {
+    out << ",\"preeditCaret\":" << utf16_offset(preedit, preedit_caret);
+  }
+  if (caret_code == 0) {
+    out << ",\"inputKeys\":\"" << json_escape(input_keys)
+        << "\",\"inputCaret\":" << input_caret;
+  }
+  out << "}";
   return env->NewStringUTF(out.str().c_str());
+}
+
+// #103 组合内光标原子移动：返回 moved（0=已在边界无位移 1=已移动），
+// 负值为错误码（-1 参数 / -2 引擎会话不可用）。Kotlin 侧据此推进
+// 候选代数（仅 moved=1 时）。
+extern "C" JNIEXPORT jint JNICALL
+Java_com_feelime_ime_nativeengine_NativeSmoke_rimeMoveCaret(
+    JNIEnv*, jclass, jlong session, jint steps) {
+  int moved = 0;
+  const int code = feelime_rime_move_caret(
+      static_cast<std::uintptr_t>(session), steps, &moved);
+  return code == 0 ? moved : code;
 }
 
 extern "C" JNIEXPORT jstring JNICALL

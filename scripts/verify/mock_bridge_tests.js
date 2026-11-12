@@ -2546,6 +2546,54 @@ test('fast scrub keeps all steps beyond the old 40-step cap', {since: '3.22.0'},
     assert(moves.length < 5, 'bounded batch avoids single-step call flood');
 });
 
+test('preedit scrub: composing space swipe moves the pinyin caret, gesture-locked; off keeps legacy (#103)', {since: '3.73.107'}, () => {
+    // 默认关（实验开关）：组合中空格横滑维持不启动（存量——组合中
+    // 宿主光标属于组合 span，动了会被 setComposingText 弹回）。
+    const off = fresh({ mode: 'pinyin' });
+    off.engineState({ mode: 'pinyin', revision: 1, composing: 'ni hao', rawInput: 'ni hao', candidates: [], hasNextPage: false });
+    off.touchDown(off.$('spaceKey'), 20, 20);
+    off.move(off.$('spaceKey'), -40, 0);
+    equal(off.native.of('moveCursor').length, 0, 'off (default): composing space drag stays inert');
+    equal(off.native.of('scrubCursor').length, 0, 'off: no preedit channel either');
+    off.touchUp(off.$('spaceKey'), -40, 0);
+
+    // 开启：组合中 → scrubCursor 通道（gestureId 会话锁定），宿主不动。
+    const on = fresh({ mode: 'pinyin', preeditScrub: true });
+    on.engineState({ mode: 'pinyin', revision: 1, composing: 'ni hao', rawInput: 'ni hao', candidates: [], hasNextPage: false, inputCaret: 5, preeditCaret: 5 });
+    on.touchDown(on.$('spaceKey'), 20, 20);
+    on.move(on.$('spaceKey'), -40, 0);
+    equal(on.native.of('scrubCursor').length, 1, 'on: composing space drag goes to the preedit channel');
+    equal(on.native.of('moveCursor').length, 0, 'on: host cursor untouched while composing');
+    const gid = on.native.of('scrubCursor')[0].args[0];
+    equal(typeof gid, 'string', true, 'gesture id is a session token');
+    // 中置回声：插入符渲染三节点（前文本|caret|后文本）。
+    on.engineState({ mode: 'pinyin', revision: 2, composing: 'ni hao', rawInput: 'ni hao', candidates: ['你好'], hasNextPage: false, inputCaret: 2, preeditCaret: 2 });
+    const pl = on.$('preeditLine');
+    equal(pl.children.length, 3, 'mid-caret renders three child elements');
+    equal(pl.children[1].className, 'preedit-caret', 'caret element sits mid-string');
+    equal(pl.textContent, 'ni hao', 'caret element adds no text');
+    // 续滑同手势复用 id；松手释放、不补发空格。
+    on.move(on.$('spaceKey'), -68, 0);
+    equal(on.native.of('scrubCursor').slice(-1)[0].args[0], gid, 'same gesture keeps its id');
+    on.touchUp(on.$('spaceKey'), -68, 0);
+    equal(on.native.of('scrubCursorEnd').length, 1, 'release ends the gesture session');
+    equal(on.native.of('scrubCursorEnd')[0].args[0], gid, 'end carries the same id');
+    equal(on.native.of('space').length, 0, 'scrubbed space never commits');
+
+    // 非组合：开关开着也维持宿主光标存量语义。
+    const idle = fresh({ mode: 'pinyin', preeditScrub: true });
+    idle.touchDown(idle.$('spaceKey'), 20, 20);
+    idle.move(idle.$('spaceKey'), -40, 0);
+    equal(idle.native.of('moveCursor').length, 1, 'idle: host caret scrub unchanged');
+    equal(idle.native.of('scrubCursor').length, 0, 'idle: no preedit channel');
+    idle.touchUp(idle.$('spaceKey'), -40, 0);
+
+    // 自动收束排除断言：中置帧不触发死串清空（候选=活动段的，空≠死串）。
+    const mid = fresh({ mode: 'pinyin', preeditScrub: true });
+    mid.engineState({ mode: 'pinyin', revision: 1, composing: 'a'.repeat(20), rawInput: 'a'.repeat(20), candidates: [], hasNextPage: false, inputCaret: 10, preeditCaret: 10 });
+    equal(mid.native.of('clearComposing').length, 0, 'mid-caret dead-string guard stays silent');
+});
+
 test('qwerty space borrows the scrub channel; vertical stays inert', {since: '3.73.36'}, () => {
     const world = fresh();
     const space = world.$('spaceKey');

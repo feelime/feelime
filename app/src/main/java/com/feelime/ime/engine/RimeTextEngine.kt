@@ -91,6 +91,18 @@ class RimeTextEngine(
                     emit(event(Phase.READY, if (committed != null) state.copy(commit = committed) else state))
                 }
             }
+            is EngineCommand.MovePreeditCursor -> synchronized(gate) {
+                // #103：moved<0=错误码；0=已在边界无位移（不重算——纯
+                // 定位帧不得污染 hint 快照与候选身份）；1=已移动（一次
+                // Compose 重算，分段/候选变化是设计内行为）。
+                val moved = NativeSmoke.rimeMoveCaret(session, command.steps)
+                viewPage = 0
+                lastState = parseState()
+                emit(event(Phase.READY, lastState))
+                if (moved < 0) {
+                    com.feelime.ime.Diagnostics.log("engine", "rimeMoveCaret code=$moved")
+                }
+            }
             is EngineCommand.EnterRaw -> synchronized(gate) {
                 viewPage = 0
                 NativeSmoke.rimeProcessKey(session, ENTER, 0)
@@ -336,6 +348,11 @@ class RimeTextEngine(
             candidates = candidates,
             hasPreviousPage = viewPage > 0,
             hasNextPage = candidates.isNotEmpty() && !isLastPage,
+            // #103 光标双域：raw 域（inputKeys/inputCaret）与显示域
+            // （preeditCaret，native 已换算 UTF-16）。缺字段（空组合/
+            // 快照失败）为 -1——JS 侧 -1=不渲染插入符。
+            inputCaret = json.optInt("inputCaret", -1),
+            preeditCaret = json.optInt("preeditCaret", -1),
         )
     }
 

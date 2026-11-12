@@ -16,6 +16,9 @@ object NativeSmoke {
     @JvmStatic external fun rimeInitialize(sharedDir: String, userDir: String): Boolean
     @JvmStatic external fun rimeCreateSession(schemaId: String): Long
     @JvmStatic external fun rimeProcessKey(session: Long, keyCode: Int, modifiers: Int): Boolean
+    // #103 组合内光标原子移动：返回 moved（0=已在边界 1=已移动），
+    // 负值=错误码（-1 参数 / -2 会话不可用）。
+    @JvmStatic external fun rimeMoveCaret(session: Long, steps: Int): Int
     @JvmStatic external fun rimeSelectCandidate(session: Long, pageIndex: Int): Boolean
     @JvmStatic external fun rimeSelectCandidateAbsolute(session: Long, index: Int): Boolean
     @JvmStatic external fun rimeDeleteCandidateAbsolute(session: Long, index: Int): Boolean

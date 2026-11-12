@@ -847,6 +847,13 @@ class MockNative {
     moveCursor(delta, token) {
         this._record('moveCursor', [delta, token]);
     }
+    // #103 空格横滑统一入口：组合中走 gestureId 通道（native 锁定目标）。
+    scrubCursor(gestureId, steps, token) {
+        this._record('scrubCursor', [gestureId, steps, token]);
+    }
+    scrubCursorEnd(gestureId, token) {
+        this._record('scrubCursorEnd', [gestureId, token]);
+    }
     // Control layer: raw host key events (keycode + meta).
     undoDeleteBeforeCursor(token) { this._record('undoDeleteBeforeCursor', [token]); }
     keyEvent(keyCode, metaState, token) {

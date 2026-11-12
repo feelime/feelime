@@ -27,6 +27,9 @@ object NativeSmoke {
     @JvmStatic external fun rimeJoinMaintenance()
     @JvmStatic external fun rimeCreateSession(schemaId: String): Long
     @JvmStatic external fun rimeProcessKey(session: Long, keyCode: Int, modifiers: Int): Boolean
+    // #103 组合内光标原子移动：返回 moved（0=已在边界 1=已移动），
+    // 负值=错误码（-1 参数 / -2 会话不可用）。
+    @JvmStatic external fun rimeMoveCaret(session: Long, steps: Int): Int
     @JvmStatic external fun rimeSelectCandidate(session: Long, pageIndex: Int): Boolean
     /** #72 只读候选通道：绝对下标（整个候选列表的平铺序号）选/删，
      *  替代 seek 翻页+页内下标——翻页会挪 selector 高亮，污染

@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.106";
+  const KEYBOARD_VERSION = "3.73.107";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1682,6 +1682,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.expanded = false;
       this.lastEngineState = null;
       this.lastRawInput = "";
+      this.inputCaret = -1;
+      this.preeditCaret = -1;
       this.symbolCat = "common";
       this.tableVariants = {};
       this.keyLayer = "letters";
@@ -1779,6 +1781,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.landscapeOpacity = 100;
       this.keyBubble = false;
       this.cnEnGuard = false;
+      this.preeditScrub = false;
+      this.scrubGestureId = null;
       this.floating = false;
       this.floatGeom = null;
       this.bubbleLinger = 400;
@@ -4221,14 +4225,14 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
               }
               this.showFlick(button, dy);
             }
-          } else if (Math.abs(dx) > Math.abs(dy) && button && !this.composing && !this.voiceHold) {
+          } else if (Math.abs(dx) > Math.abs(dy) && button && !this.voiceHold && (!this.composing || this.preeditScrubEligible(button))) {
             const unit = SCRUB_UNIT_BASE_PX / this.scrubSpeed;
             const direction = dx > 0 ? 1 : -1;
             const distance = Math.hypot(dx, dy) || threshold;
             const crossingX = this.touchOrigin.x + dx / distance * threshold;
             this.scrubBase = crossingX - direction * unit;
             this.scrubSteps = direction;
-            this.call(() => Native.moveCursor(direction, this.token));
+            this.scrubDispatch(direction);
           }
         } else if (this.scrubBase !== null) {
           this.applyScrub(touch.clientX);
@@ -4297,12 +4301,42 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         }
         this.scrubBase = null;
         this.scrubSteps = 0;
+        this.endScrubGesture();
         setTimeout(() => {
           this.swiping = false;
         }, 0);
       }, "finish");
       root.addEventListener("touchend", (event) => finish(event, false), { capture: true });
       this.finishTouchGesture = finish;
+    }
+    /* ===== #103 空格横滑组合光标（实验开关默认关）=====
+     * 组合中=组合内拼音光标（首批判定后 gestureId 锁定，native 侧
+     * 不转投宿主），非组合=宿主光标（存量语义）。首期模式白名单
+     * 全拼/双拼（native PREEDIT_SCRUB_MODES 同款），T9/形码后续。 */
+    preeditScrubEligible(key) {
+      const isSpace = key && (key.id === "spaceKey" || key.dataset && key.dataset.key === " ");
+      return !!this.preeditScrub && isSpace;
+    }
+    /** 统一派发：组合中走 scrubCursor(gestureId, steps)（native 锁定
+     *  目标；JS 侧手势会话内复用同一 id），否则走存量 moveCursor。 */
+    scrubDispatch(steps) {
+      if (this.composing && this.preeditScrub) {
+        if (!this.scrubGestureId) {
+          this.scrubGestureId = "sg" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        }
+        const id = this.scrubGestureId;
+        this.call(() => Native.scrubCursor(id, steps, this.token));
+      } else {
+        this.call(() => Native.moveCursor(steps, this.token));
+      }
+    }
+    /** 手势收尾（touchend/touchcancel）：释放 native 锁定。 */
+    endScrubGesture() {
+      if (this.scrubGestureId) {
+        const id = this.scrubGestureId;
+        this.scrubGestureId = null;
+        this.call(() => Native.scrubCursorEnd(id, this.token));
+      }
     }
     /** Continuous scrub: crossing a unit boundary moves the caret by the
      * exact number of crossed steps, so fast drags jump multiple cells
@@ -4318,7 +4352,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       let remaining = delta;
       while (remaining) {
         const move = Math.max(-256, Math.min(256, remaining));
-        this.call(() => Native.moveCursor(move, this.token));
+        this.scrubDispatch(move);
         remaining -= move;
       }
     }
@@ -8889,9 +8923,28 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.expandTab = "freq";
       document.querySelectorAll("[data-expand-tab]").forEach((el) => el.classList.toggle("active", el.dataset.expandTab === "freq"));
     }
+    /** #103 插入符：preeditCaret 中置（0<c<长度）时把宿主元素拆成
+     *  前/光标/后三节点。光标是空 CSS 元素不进 textContent——不污染
+     *  既有文本断言与复制；端点/不支持（-1）不渲染。T9 显示转换
+     *  （数字→拼音）首期未开放：白名单模式下 preeditCaret 与显示
+     *  串同域（全拼/双拼 preedit=原始码序列化）。 */
+    renderPreeditCaret(el, text) {
+      if (!el || typeof text !== "string" || !text) return;
+      const c = this.preeditCaret;
+      if (!Number.isInteger(c) || c <= 0 || c >= text.length) return;
+      const caret = document.createElement("span");
+      caret.className = "preedit-caret";
+      const before = document.createElement("span");
+      before.textContent = text.slice(0, c);
+      const after = document.createElement("span");
+      after.textContent = text.slice(c);
+      el.replaceChildren(before, caret, after);
+    }
     renderExpanded() {
       const strip = document.getElementById("expandGrid");
-      document.getElementById("expandPreedit").textContent = this.mode === "t9" ? this.t9Reading() || this.t9PreeditLabel(this.lastRawInput) : this.lastRawInput || "";
+      const expandPreeditEl = document.getElementById("expandPreedit");
+      expandPreeditEl.textContent = this.mode === "t9" ? this.t9Reading() || this.t9PreeditLabel(this.lastRawInput) : this.lastRawInput || "";
+      this.renderPreeditCaret(expandPreeditEl, expandPreeditEl.textContent);
       strip.replaceChildren();
       this.expandRendered = 0;
       this.renderVariants();
@@ -9259,6 +9312,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         this.updateCaseKeyVisual();
       }
       if (this.composing && rawInput !== void 0) this.lastRawInput = rawInput;
+      this.inputCaret = Number.isInteger(state.inputCaret) ? state.inputCaret : -1;
+      this.preeditCaret = Number.isInteger(state.preeditCaret) ? state.preeditCaret : -1;
       if (this.pendingPunct) {
         const pending = this.pendingPunct;
         const staleGen = pending.gen !== void 0 && pending.gen !== this.hwGen;
@@ -9279,6 +9334,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       document.body.classList.toggle("composing", this.composing);
       const preedit = document.getElementById("preeditLine");
       preedit.textContent = this.composing ? this.mode === "t9" ? this.t9Reading() || this.t9PreeditLabel(this.lastRawInput) : this.lastRawInput : "";
+      this.renderPreeditCaret(preedit, preedit.textContent);
       if (!this.composing) {
         this.t9ConfirmedLen = 0;
         this._t9ConfirmedText = "";
@@ -10151,6 +10207,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (landOpacity >= 10 && landOpacity <= 100) this.landscapeOpacity = landOpacity;
       if (typeof payload.keyBubble === "boolean") this.keyBubble = payload.keyBubble;
       if (typeof payload.cnEnComposingGuard === "boolean") this.cnEnGuard = payload.cnEnComposingGuard;
+      if (typeof payload.preeditScrub === "boolean") this.preeditScrub = payload.preeditScrub;
       const lingerMs = Number(payload.bubbleLinger);
       if (lingerMs >= 0) this.bubbleLinger = lingerMs;
       this.applyOneHand();
@@ -10579,7 +10636,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       this.updateComposing(payload, payload.rawInput || payload.composing || "");
       if (payload.composing) {
-        const key = payload.rawInput || payload.composing || "";
+        const caretTag = Number.isInteger(payload.inputCaret) && payload.inputCaret >= 0 ? "#" + payload.inputCaret : "";
+        const key = (payload.rawInput || payload.composing || "") + caretTag;
         if (key && key !== this.expandKey) {
           this.expandKey = key;
           this.expandCandidates = [];
@@ -10617,7 +10675,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (payload.composing) {
           const raw = (payload.rawInput || "").replace(/ /g, "");
           const engineCands = payload.candidates || [];
-          if (raw && raw !== this._autoCollapseKey) {
+          const midCaret = Number.isInteger(payload.inputCaret) && payload.inputCaret >= 0 && payload.inputCaret < raw.length;
+          if (raw && raw !== this._autoCollapseKey && !midCaret) {
             if (raw.length >= 40 && engineCands.length) {
               this._autoCollapseKey = raw;
               this.call((revision) => Native.chooseCandidate(
