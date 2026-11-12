@@ -51,6 +51,13 @@ let lastModelError = null;
 
 const $ = id => document.getElementById(id);
 
+// #106 滑杆数值回显：input 拖动与 state 回显两条路共用；output 元素
+// 缺席（旧 HTML 缓存）时静默跳过。
+const rangeOut = (id, text) => {
+    const out = $(id + "Out");
+    if (out) out.textContent = text;
+};
+
 // 键盘选择（验收 2026-09-24）：与键盘 MODES 一致；默认菜单 = round-6 五项。
 const KEYBOARD_MODES = [
     ['direct', '英文直出'], ['pinyin', '全拼'], ['double-pinyin', '双拼'],
@@ -2660,11 +2667,16 @@ function renderFeel(state) {
             keySatShown = hasKeySat ? Math.round(ks) : themeSatShown;
             keySatInput.value = String(keySatShown);
         }
+        rangeOut("keySat", keySatShown + "%");
         keySatInput.oninput = () => {
             // 拖动键面滑条=脱离跟随（同 keyHue）。
             keySatFollow = false;
             const v = Number(keySatInput.value);
-            if (Number.isFinite(v)) { keySatShown = Math.max(0, Math.min(100, Math.round(v))); updateThemePreview(); }
+            if (Number.isFinite(v)) {
+                keySatShown = Math.max(0, Math.min(100, Math.round(v)));
+                rangeOut("keySat", keySatShown + "%");
+                updateThemePreview();
+            }
         };
         keySatInput.onchange = () => {
             const v = Math.round(Number(keySatInput.value));
@@ -2677,6 +2689,7 @@ function renderFeel(state) {
         const opPct = Math.max(5, Math.min(100, Number(state.keyOpacity ?? 100)));
         pvKeyAlpha = opPct / 100;
         opacity.value = String(opPct);
+        rangeOut("keyOpacity", opPct + "%");
     }
     const pvBg = (imgKey, srcKey) => (state[srcKey] && state[srcKey] !== "none" && state[imgKey])
         ? `url("${state[imgKey].startsWith('https://feelime.local/keyboard/background/')
@@ -2705,6 +2718,7 @@ function renderFeel(state) {
         const saved = Number(state.kbHeightPortrait ?? 0);
         kbHeight.value = String(saved >= min ? saved : 272);
         kbHeight.dataset.default = "272";
+        rangeOut("kbHeight", kbHeight.value + " px");
     }
     // 背景图两组回显：source = none/builtin/custom（custom 选项按需挂载）。
     [["bgImageLight", "bgImageLightSource"], ["bgImageDark", "bgImageDarkSource"]].forEach(([id, key]) => {
@@ -2736,6 +2750,7 @@ function renderFeel(state) {
     setToggle("keySound", state.keySound);
     const vol = $("keySoundVolume");
     if (vol && document.activeElement !== vol) vol.value = String(state.keySoundVolume ?? 60);
+    if (vol) rangeOut("keySoundVolume", vol.value + "%");
     setSelect("keyHapticStrength", String(state.keyHapticStrength ?? 1), ["0", "1", "2"]);
     // #30-2 音效风格回读：custom 需文件在（native 已保证不悬空），文件行
     // 仅在选了 custom 或已有文件时露出。
@@ -4298,7 +4313,11 @@ $("keyOpacity").addEventListener("input", event => {
     keyOpacityDirty = true;
     // 拖动实时进预览（用户验收五轮）：不透明度直接影响键帽半透观感。
     const v = parseInt(event.target.value, 10);
-    if (Number.isFinite(v)) { pvKeyAlpha = Math.max(0, Math.min(1, v / 100)); updateThemePreview(); }
+    if (Number.isFinite(v)) {
+        pvKeyAlpha = Math.max(0, Math.min(1, v / 100));
+        rangeOut("keyOpacity", v + "%");
+        updateThemePreview();
+    }
 });
 $("keyOpacity").addEventListener("change", event => {
     if (!keyOpacityDirty) return;
@@ -4317,6 +4336,7 @@ $("bubbleLinger").addEventListener("change", event => {
 let kbHeightDirty = false;
 $("kbHeight").addEventListener("input", event => {
     kbHeightDirty = true;
+    rangeOut("kbHeight", event.target.value + " px");
 });
 $("kbHeight").addEventListener("change", event => {
     if (!kbHeightDirty) return;
@@ -4326,6 +4346,7 @@ $("kbHeight").addEventListener("change", event => {
 $("kbHeightReset").addEventListener("click", () => {
     const slider = $("kbHeight");
     slider.value = slider.dataset.default || "272";
+    rangeOut("kbHeight", slider.value + " px");
     call("setKbHeight", 0);
 });
 // 背景图两组（亮/暗）：「选择图片…」打开文件选择器，选完压到 720px 宽
@@ -4495,6 +4516,7 @@ $("dynamicDateTimeOn").addEventListener("change", event => call("setDynamicDateT
 $("keySound").addEventListener("change", event => call("setKeySound", event.target.checked));
 
 $("keySoundVolume").addEventListener("input", event => {
+    rangeOut("keySoundVolume", event.target.value + "%");
     clearTimeout(keySoundVolumeTimer);
     keySoundVolumeTimer = setTimeout(
         () => call("setKeySoundVolume", Number(event.target.value)), 250);

@@ -204,6 +204,7 @@
         <small data-i18n="input.feel.kbHeightHint">竖屏键盘的高度；键盘上拖拽调节与此处等效。</small>
       </span>
       <span class="slider-with-action">
+        <output id="kbHeightOut" for="kbHeight" class="range-out">272 px</output>
         <input type="range" id="kbHeight" data-keywords="太高 太低 调大 调小 变小 一半 高度调整 taller shorter height" class="slider" aria-label="键盘高度" data-i18n-aria="input.feel.kbHeight">
         <button type="button" id="kbHeightReset" class="ghost-btn" data-i18n="input.feel.kbHeightReset">恢复默认</button>
       </span>
@@ -337,6 +338,7 @@
         <small data-i18n="input.feel.keySatHint">只调键帽组的色彩浓度；最左=键帽变黑白灰。</small>
       </span>
       <span class="preset-wrap">
+        <output id="keySatOut" for="keySat" class="range-out">100%</output>
         <input type="range" id="keySat" min="0" max="100" step="1" value="100" aria-label="键面饱和度" />
       </span>
     </div>
@@ -356,7 +358,10 @@
         <span data-i18n="input.feel.keyOpacity">按键不透明度</span>
         <small data-i18n="input.feel.keyOpacityHint">键帽在背景图上的透明程度，文字始终实色。</small>
       </span>
-      <input type="range" id="keyOpacity" class="slider" min="5" max="100" step="5" aria-label="按键不透明度" data-i18n-aria="input.feel.keyOpacity">
+      <span class="range-group">
+        <output id="keyOpacityOut" for="keyOpacity" class="range-out">100%</output>
+        <input type="range" id="keyOpacity" class="slider" min="5" max="100" step="5" aria-label="按键不透明度" data-i18n-aria="input.feel.keyOpacity">
+      </span>
     </div>
         <div class="row stack" data-keywords="预览 效果 preview">
       <span class="row-label">
@@ -652,7 +657,10 @@
           <span data-i18n="input.feel.keySoundVolume">按键音量</span>
           <small data-i18n="input.feel.keySoundVolumeHint">哔声、系统键击音与自定义音效共用。</small>
         </span>
-        <input type="range" id="keySoundVolume" min="0" max="100" step="5" class="slider" aria-label="按键音量" data-i18n-aria="input.feel.keySoundVolume">
+        <span class="range-group">
+          <output id="keySoundVolumeOut" for="keySoundVolume" class="range-out">60%</output>
+          <input type="range" id="keySoundVolume" min="0" max="100" step="5" class="slider" aria-label="按键音量" data-i18n-aria="input.feel.keySoundVolume">
+        </span>
       </div>
       <!-- #30-2 音效风格：默认哔声 / 系统键击音 / 自定义文件（SAF 选音频，
            拷进应用私有目录，SoundPool 预载播放）。 -->

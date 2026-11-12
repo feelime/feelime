@@ -88,7 +88,6 @@
         "笔画 Stroke": "Stroke",
         "重输": "Restart",
         "该键盘还在准备中": "That keyboard is still preparing",
-        "拼音组合中，先上屏再切换": "Finish the composition before switching",
         "悬浮键盘": "Floating keyboard",
         "分享文字": "Share text",
         "此按键需要升级 App 后使用（分享）": "Update the app to use this key (share)",
@@ -361,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.105';
+    const KEYBOARD_VERSION = '3.73.106';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3925,8 +3924,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 不切换——组合串被切走直接变英文直出，只能删掉重打。先上屏
             // （或清组合）再切。长按完整模式菜单不受此限（选择性操作，
             // 误触概率低，保留组词中主动换模式的自由）。
+            // #105：拦截静默化——开关是用户主动开的，被拦原因自知，
+            // 每次误触弹提示反而干扰（组合串与模式标签未变即反馈）。
             if (this.cnEnGuard && this.composing) {
-                this.showToast(t("拼音组合中，先上屏再切换"));
                 return;
             }
             if (this.degrade && this.degrade.active && this.degrade.failedMode) {

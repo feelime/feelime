@@ -79,7 +79,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     "\u7B14\u753B Stroke": "Stroke",
     "\u91CD\u8F93": "Restart",
     "\u8BE5\u952E\u76D8\u8FD8\u5728\u51C6\u5907\u4E2D": "That keyboard is still preparing",
-    "\u62FC\u97F3\u7EC4\u5408\u4E2D\uFF0C\u5148\u4E0A\u5C4F\u518D\u5207\u6362": "Finish the composition before switching",
     "\u60AC\u6D6E\u952E\u76D8": "Floating keyboard",
     "\u5206\u4EAB\u6587\u5B57": "Share text",
     "\u6B64\u6309\u952E\u9700\u8981\u5347\u7EA7 App \u540E\u4F7F\u7528\uFF08\u5206\u4EAB\uFF09": "Update the app to use this key (share)",
@@ -352,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.105";
+  const KEYBOARD_VERSION = "3.73.106";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -3523,7 +3522,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }
     toggleChineseEnglish() {
       if (this.cnEnGuard && this.composing) {
-        this.showToast(t("\u62FC\u97F3\u7EC4\u5408\u4E2D\uFF0C\u5148\u4E0A\u5C4F\u518D\u5207\u6362"));
         return;
       }
       if (this.degrade && this.degrade.active && this.degrade.failedMode) {

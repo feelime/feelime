@@ -1882,6 +1882,35 @@ test('double shift lock toggle reflects state and commits setDoubleShiftLock (#6
     equal(world.lastCall('setDoubleShiftLock').args, [false, world.token], 'commit + token');
 });
 
+test('slider readouts follow state and input (#106: saturation/opacity/height/volume)', () => {
+    const world = new SettingsWorld();
+    // 本套件无 era 门：对旧 settings 资产（无 output 元素）自动让位，
+    // baseline 轮不因缺元素误报（world.$ 缺元素会 throw，走 getElementById）。
+    if (!world.doc.getElementById('keySatOut')) return;
+    world.push({ ...BASE_STATE, keySat: 60, keyOpacity: 65, kbHeightPortrait: 300, keySoundVolume: 40 });
+    equal(world.$('keySatOut').textContent, '60%', 'keySat readout from state');
+    equal(world.$('keyOpacityOut').textContent, '65%', 'keyOpacity readout from state');
+    equal(world.$('kbHeightOut').textContent, '300 px', 'kbHeight readout from state');
+    equal(world.$('keySoundVolumeOut').textContent, '40%', 'volume readout from state');
+    // 拖动实时刷新读数：addEventListener 挂的走 listeners，oninput 挂的直呼。
+    const vol = world.$('keySoundVolume');
+    vol.value = '75';
+    vol.listeners.find(l => l.type === 'input').handler({ target: vol });
+    equal(world.$('keySoundVolumeOut').textContent, '75%', 'volume readout follows input');
+    const h = world.$('kbHeight');
+    h.value = '340';
+    h.listeners.find(l => l.type === 'input').handler({ target: h });
+    equal(world.$('kbHeightOut').textContent, '340 px', 'height readout follows input');
+    const sat = world.$('keySat');
+    sat.value = '30';
+    sat.oninput();
+    equal(world.$('keySatOut').textContent, '30%', 'keySat readout follows input');
+    const op = world.$('keyOpacity');
+    op.value = '85';
+    op.listeners.find(l => l.type === 'input').handler({ target: op });
+    equal(world.$('keyOpacityOut').textContent, '85%', 'keyOpacity readout follows input');
+});
+
 test('feel card renders state values and commits each control with the token', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE, bottomPadPortrait: 24, bottomPadLandscape: 12, holdMs: 450, scrubSpeed: 2, popupSnap: 2, candidateFont: 135 });

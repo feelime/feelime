@@ -39,6 +39,10 @@ let uiLocale = browserLocale();
 let pendingModelConsent = null;
 let lastModelError = null;
 const $ = /* @__PURE__ */ __name((id) => document.getElementById(id), "$");
+const rangeOut = /* @__PURE__ */ __name((id, text) => {
+  const out = $(id + "Out");
+  if (out) out.textContent = text;
+}, "rangeOut");
 const KEYBOARD_MODES = [
   ["direct", "\u82F1\u6587\u76F4\u51FA"],
   ["pinyin", "\u5168\u62FC"],
@@ -2608,11 +2612,13 @@ function renderFeel(state) {
       keySatShown = hasKeySat ? Math.round(ks) : themeSatShown;
       keySatInput.value = String(keySatShown);
     }
+    rangeOut("keySat", keySatShown + "%");
     keySatInput.oninput = () => {
       keySatFollow = false;
       const v = Number(keySatInput.value);
       if (Number.isFinite(v)) {
         keySatShown = Math.max(0, Math.min(100, Math.round(v)));
+        rangeOut("keySat", keySatShown + "%");
         updateThemePreview();
       }
     };
@@ -2626,6 +2632,7 @@ function renderFeel(state) {
     const opPct = Math.max(5, Math.min(100, Number((_i = state.keyOpacity) != null ? _i : 100)));
     pvKeyAlpha = opPct / 100;
     opacity.value = String(opPct);
+    rangeOut("keyOpacity", opPct + "%");
   }
   const pvBg = /* @__PURE__ */ __name((imgKey, srcKey) => state[srcKey] && state[srcKey] !== "none" && state[imgKey] ? `url("${state[imgKey].startsWith("https://feelime.local/keyboard/background/") ? state[imgKey] : "data:image/jpeg;base64," + state[imgKey]}")` : "none", "pvBg");
   pvBgLightImg = pvBg("bgImageLight", "bgImageLightSource");
@@ -2651,6 +2658,7 @@ function renderFeel(state) {
     const saved = Number((_m = state.kbHeightPortrait) != null ? _m : 0);
     kbHeight.value = String(saved >= min ? saved : 272);
     kbHeight.dataset.default = "272";
+    rangeOut("kbHeight", kbHeight.value + " px");
   }
   [["bgImageLight", "bgImageLightSource"], ["bgImageDark", "bgImageDarkSource"]].forEach(([id, key]) => {
     const sel = $(id);
@@ -2681,6 +2689,7 @@ function renderFeel(state) {
   setToggle("keySound", state.keySound);
   const vol = $("keySoundVolume");
   if (vol && document.activeElement !== vol) vol.value = String((_q = state.keySoundVolume) != null ? _q : 60);
+  if (vol) rangeOut("keySoundVolume", vol.value + "%");
   setSelect("keyHapticStrength", String((_r = state.keyHapticStrength) != null ? _r : 1), ["0", "1", "2"]);
   {
     const style = state.keySoundStyle || "default";
@@ -4087,6 +4096,7 @@ $("keyOpacity").addEventListener("input", (event) => {
   const v = parseInt(event.target.value, 10);
   if (Number.isFinite(v)) {
     pvKeyAlpha = Math.max(0, Math.min(1, v / 100));
+    rangeOut("keyOpacity", v + "%");
     updateThemePreview();
   }
 });
@@ -4104,6 +4114,7 @@ $("bubbleLinger").addEventListener("change", (event) => {
 let kbHeightDirty = false;
 $("kbHeight").addEventListener("input", (event) => {
   kbHeightDirty = true;
+  rangeOut("kbHeight", event.target.value + " px");
 });
 $("kbHeight").addEventListener("change", (event) => {
   if (!kbHeightDirty) return;
@@ -4113,6 +4124,7 @@ $("kbHeight").addEventListener("change", (event) => {
 $("kbHeightReset").addEventListener("click", () => {
   const slider = $("kbHeight");
   slider.value = slider.dataset.default || "272";
+  rangeOut("kbHeight", slider.value + " px");
   call("setKbHeight", 0);
 });
 const bgPickGeneration = { light: 0, dark: 0 };
@@ -4265,6 +4277,7 @@ $("wxSlashOn").addEventListener("change", (event) => call("setWxSlash", event.ta
 $("dynamicDateTimeOn").addEventListener("change", (event) => call("setDynamicDateTime", event.target.checked));
 $("keySound").addEventListener("change", (event) => call("setKeySound", event.target.checked));
 $("keySoundVolume").addEventListener("input", (event) => {
+  rangeOut("keySoundVolume", event.target.value + "%");
   clearTimeout(keySoundVolumeTimer);
   keySoundVolumeTimer = setTimeout(
     () => call("setKeySoundVolume", Number(event.target.value)),
