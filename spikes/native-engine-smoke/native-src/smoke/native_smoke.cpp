@@ -19,10 +19,11 @@ int feelime_rime_select_candidate_absolute(std::uintptr_t, std::size_t);
 int feelime_rime_delete_candidate_absolute(std::uintptr_t, std::size_t);
 int feelime_rime_context_at_page(
     std::uintptr_t, int, char*, std::size_t, char*, std::size_t,
-    int*, int*, int*, int*, int*);
-int feelime_rime_caret_snapshot(
-    std::uintptr_t, char*, std::size_t, int*);
-int feelime_rime_move_caret(std::uintptr_t, int, int*);
+    int*, int*, int*, int*);
+int feelime_rime_caret_at(
+    std::uintptr_t, std::size_t, char*, std::size_t, int*, int*);
+int feelime_rime_process_at(
+    std::uintptr_t, std::size_t, int, int, int*);
 int feelime_rime_get_context(
     std::uintptr_t, char*, std::size_t, char*, std::size_t, int*, int*);
 int feelime_rime_get_commit(std::uintptr_t, char*, std::size_t);
@@ -214,26 +215,34 @@ Java_com_feelime_ime_nativeengine_NativeSmoke_rimeDeleteCandidateAbsolute(
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_feelime_ime_nativeengine_NativeSmoke_rimeContextAtPage(
-    JNIEnv* env, jclass, jlong session, jint view_page) {
+    JNIEnv* env, jclass, jlong session, jint view_page, jint display_caret) {
   char preedit[1024] = {};
   char candidates[16384] = {};
   int page_no = 0;
   int is_last_page = 1;
   int has_next = 0;
   int page_size = 0;
-  int preedit_caret = -1;
   const int code = feelime_rime_context_at_page(
       static_cast<std::uintptr_t>(session), view_page, preedit, sizeof(preedit),
       candidates, sizeof(candidates), &page_no, &is_last_page, &has_next,
-      &page_size, &preedit_caret);
-  // #103 raw 域快照与 at_page 同批读取（引擎侧 gate 串行，无交错）；
-  // inputCaret=-1 表示「不可用」（Kotlin/JS 不得当成 0）。
+      &page_size);
+  // #103 v2 应用层光标：display_caret 由 Kotlin 维护（-1=非中置态），
+  // 此处仅做双域换算（raw 回显 + GetPreedit 显示位置），不动引擎。
+  // caret_at 无条件调用（非中置态用 INT_MAX 让 native clamp 到串尾）：
+  // inputKeys/rawLen 是引擎侧事实，若只在已中置时才回填，第一次
+  // MovePreeditCursor 会因 rawLen=0 被 clamp 回尾、displayCaret 永远
+  // 归 -1（鸡生蛋，AVD 实测定罪）。inputCaret/preeditCaret 的语义值
+  // 仅在 display_caret>=0 时输出。
   char input_keys[1024] = {};
   int input_caret = -1;
+  int preedit_caret_bytes = -1;
+  const std::size_t caret_query = display_caret >= 0
+      ? static_cast<std::size_t>(display_caret)
+      : static_cast<std::size_t>(-1);
   const int caret_code = code == 0
-      ? feelime_rime_caret_snapshot(
-            static_cast<std::uintptr_t>(session), input_keys,
-            sizeof(input_keys), &input_caret)
+      ? feelime_rime_caret_at(
+            static_cast<std::uintptr_t>(session), caret_query, input_keys,
+            sizeof(input_keys), &input_caret, &preedit_caret_bytes)
       : -2;
   std::ostringstream out;
   out << "{\"code\":" << code << ",\"preedit\":\"" << json_escape(preedit)
@@ -242,27 +251,30 @@ Java_com_feelime_ime_nativeengine_NativeSmoke_rimeContextAtPage(
       << ",\"isLastPage\":" << is_last_page
       << ",\"hasNext\":" << has_next
       << ",\"pageSize\":" << page_size;
-  if (code == 0) {
-    out << ",\"preeditCaret\":" << utf16_offset(preedit, preedit_caret);
-  }
   if (caret_code == 0) {
-    out << ",\"inputKeys\":\"" << json_escape(input_keys)
-        << "\",\"inputCaret\":" << input_caret;
+    out << ",\"inputKeys\":\"" << json_escape(input_keys) << "\"";
+    if (display_caret >= 0) {
+      out << ",\"inputCaret\":" << input_caret
+          << ",\"preeditCaret\":" << utf16_offset(preedit, preedit_caret_bytes);
+    }
   }
   out << "}";
   return env->NewStringUTF(out.str().c_str());
 }
 
-// #103 组合内光标原子移动：返回 moved（0=已在边界无位移 1=已移动），
-// 负值为错误码（-1 参数 / -2 引擎会话不可用）。Kotlin 侧据此推进
-// 候选代数（仅 moved=1 时）。
+// #103 v2 中置编辑原子序列（BeginEditing+set(caret)+process+回尾）：
+// 返回 process_key 的 consumed（0/1），负值为错误码。inputLen 经返回
+// JSON 的 inputKeys 长度对 Kotlin 可见（displayCaret 推进后 clamp）。
 extern "C" JNIEXPORT jint JNICALL
-Java_com_feelime_ime_nativeengine_NativeSmoke_rimeMoveCaret(
-    JNIEnv*, jclass, jlong session, jint steps) {
-  int moved = 0;
-  const int code = feelime_rime_move_caret(
-      static_cast<std::uintptr_t>(session), steps, &moved);
-  return code == 0 ? moved : code;
+Java_com_feelime_ime_nativeengine_NativeSmoke_rimeProcessAt(
+    JNIEnv*, jclass, jlong session, jint caret, jint keycode, jint modifiers) {
+  int input_len = 0;
+  const int code = feelime_rime_process_at(
+      static_cast<std::uintptr_t>(session),
+      static_cast<std::size_t>(caret), keycode, modifiers, &input_len);
+  // bit31=consumed（0/1），低 24 位=执行后 raw 串长（Kotlin 推进
+  // displayCaret 后 clamp 用）；负值=错误码直传。
+  return code >= 0 ? ((code << 24) | (input_len & 0xFFFFFF)) : code;
 }
 
 extern "C" JNIEXPORT jstring JNICALL

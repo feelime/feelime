@@ -182,12 +182,10 @@ FEELIME_EXPORT int feelime_rime_context_at_page(std::uintptr_t session,
                                                 int* page_no,
                                                 int* is_last_page,
                                                 int* has_next,
-                                                int* page_size_out,
-                                                int* preedit_caret) {
+                                                int* page_size_out) {
   if (preedit == nullptr || preedit_size == 0 || candidates == nullptr ||
       candidates_size == 0 || page_no == nullptr || is_last_page == nullptr ||
-      has_next == nullptr || page_size_out == nullptr ||
-      preedit_caret == nullptr) {
+      has_next == nullptr || page_size_out == nullptr) {
     return -1;
   }
   if (view_page < 0) {
@@ -204,10 +202,6 @@ FEELIME_EXPORT int feelime_rime_context_at_page(std::uintptr_t session,
   }
   const int page_size = context.menu.page_size;
   *page_size_out = page_size;
-  // #103 显示域光标：RimeComposition.cursor_pos = preedit 显示串内的
-  // UTF-8 字节位置（已确认汉字前缀/T9 转写都会与 raw 域错位，两个域
-  // 分开传，UTF-16 换算在 JNI 层做）。
-  *preedit_caret = context.composition.cursor_pos;
   const std::string preedit_value =
       context.composition.preedit == nullptr ? "" : context.composition.preedit;
   api->free_context(&context);
@@ -327,42 +321,23 @@ FEELIME_EXPORT int feelime_rime_get_commit(std::uintptr_t session,
   return copy_result(value, output, output_size) ? 1 : -1;
 }
 
-// ---- #103 preedit 光标（组合内定位，issue #103）----
+// ---- #103 preedit 光标（组合内定位，issue #103 v2：应用层光标）----
+// 引擎常态 caret 恒在串尾（分段/候选按整串翻译——中置时不丢后半句的
+// 候选）；「光标位置」是应用层 displayCaret，只在插入/退格的瞬间经
+// process_at 临时落到 librime、执行完立刻回尾。
 
-// raw 输入域快照：一次锁内取完整原始输入码（ASCII，如 "nihaoma"/
-// "6442662"）与其 caret 位置。显示域光标走 context_at_page 的
-// preedit_caret 出参；两域必须同批读取（组合态下两者会错位）。
-// 返回：0 成功；-1 参数；-2 引擎/会话不可用。
-FEELIME_EXPORT int feelime_rime_caret_snapshot(std::uintptr_t session,
-                                               char* input,
-                                               std::size_t input_size,
-                                               int* input_caret) {
-  if (input == nullptr || input_size == 0 || input_caret == nullptr) {
-    return -1;
-  }
-  std::lock_guard<std::mutex> lock(g_mutex);
-  const RimeApi* api = rime_get_api();
-  if (!g_initialized || session == 0 || api == nullptr) {
-    return -2;
-  }
-  // get_input 返回的指针在编辑后失效——锁内立即拷贝。
-  const char* raw = api->get_input(session);
-  const std::string value = raw == nullptr ? "" : raw;
-  *input_caret = static_cast<int>(api->get_caret_pos(session));
-  return copy_result(value, input, input_size) ? 0 : -3;
-}
-
-// 原子批次移动 raw 光标（#103 空格横滑）：target = clamp(caret+steps,
-// 0, input.length())；无位移直接完成（不触发 Compose 重算——纯定位
-// 帧不得污染 #72 的 hint 快照与候选代数）；有位移先 BeginEditing 再
-// set_caret_pos（同步触发一次 Compose：重算分段/候选是设计内行为）。
-// JNI 侧同方向批次合并、反方向保序（见 Kotlin applyScrub 语义）。
-// *moved：0=无位移（已在边界）1=已移动。返回：0 成功；-1 参数；
-// -2 引擎/会话不可用。
-FEELIME_EXPORT int feelime_rime_move_caret(std::uintptr_t session,
-                                           int steps,
-                                           int* moved) {
-  if (moved == nullptr) {
+// displayCaret 的双域换算：raw 域位置（由 Kotlin 传入、此侧 clamp 回
+// 显）+ 显示域位置（GetPreedit 纯渲染换算——用当前分段+给定光标，
+// 不重算分段、不动引擎状态）。
+// 返回：0 成功；-1 参数；-2 引擎/会话不可用；-3 缓冲不足。
+FEELIME_EXPORT int feelime_rime_caret_at(std::uintptr_t session,
+                                         std::size_t caret,
+                                         char* input,
+                                         std::size_t input_size,
+                                         int* input_caret,
+                                         int* preedit_caret_bytes) {
+  if (input == nullptr || input_size == 0 || input_caret == nullptr ||
+      preedit_caret_bytes == nullptr) {
     return -1;
   }
   std::lock_guard<std::mutex> lock(g_mutex);
@@ -376,23 +351,48 @@ FEELIME_EXPORT int feelime_rime_move_caret(std::uintptr_t session,
   if (ctx == nullptr) {
     return -2;
   }
-  const std::size_t caret = ctx->caret_pos();
-  const std::size_t length = ctx->input().size();
-  std::size_t target;
-  if (steps < 0) {
-    const std::size_t back = static_cast<std::size_t>(-(long long)steps);
-    target = caret > back ? caret - back : 0;
-  } else {
-    target = std::min(caret + static_cast<std::size_t>(steps), length);
+  const std::string& raw = ctx->input();
+  const std::size_t clamped = std::min(caret, raw.size());
+  *input_caret = static_cast<int>(clamped);
+  const rime::Preedit pre =
+      ctx->composition().GetPreedit(raw, clamped, " ");
+  *preedit_caret_bytes = static_cast<int>(pre.caret_pos);
+  return copy_result(raw, input, input_size) ? 0 : -3;
+}
+
+// 中置编辑原子序列：BeginEditing + set_caret(caret) + process_key +
+// 组合未清则回尾。BeginEditing 必须先调（跳过它，退格会走
+// ReopenPreviousSelection 变成撤销选词而非删输入码——host probe 定
+// 案）。返回 process_key 的 consumed（0/1）；-1 参数；-2 会话不可用。
+// *input_len_out=执行后原始串长（Kotlin 侧推进 displayCaret 后 clamp）。
+FEELIME_EXPORT int feelime_rime_process_at(std::uintptr_t session,
+                                           std::size_t caret,
+                                           int keycode,
+                                           int modifiers,
+                                           int* input_len_out) {
+  if (input_len_out == nullptr) {
+    return -1;
   }
-  if (target == caret) {
-    *moved = 0;
-    return 0;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  const RimeApi* api = rime_get_api();
+  if (!g_initialized || session == 0 || api == nullptr) {
+    return -2;
+  }
+  const rime::an<rime::Session> rime_session =
+      rime::Service::instance().GetSession(session);
+  rime::Context* ctx =
+      rime_session ? rime_session->context() : nullptr;
+  if (ctx == nullptr) {
+    return -2;
   }
   ctx->BeginEditing();
-  ctx->set_caret_pos(target);
-  *moved = 1;
-  return 0;
+  ctx->set_caret_pos(caret);
+  const int handled = api->process_key(session, keycode, modifiers) ? 1 : 0;
+  // 回尾（整串翻译态）；组合已被清空时 input 空，set(0) 无意义，跳过。
+  const std::size_t len = ctx->input().size();
+  if (len > 0) ctx->set_caret_pos(len);
+  *input_len_out = static_cast<int>(len);
+  return handled;
 }
 
 FEELIME_EXPORT void feelime_rime_destroy_session(std::uintptr_t session) {

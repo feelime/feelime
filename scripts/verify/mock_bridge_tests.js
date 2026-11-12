@@ -2592,6 +2592,15 @@ test('preedit scrub: composing space swipe moves the pinyin caret, gesture-locke
     const mid = fresh({ mode: 'pinyin', preeditScrub: true });
     mid.engineState({ mode: 'pinyin', revision: 1, composing: 'a'.repeat(20), rawInput: 'a'.repeat(20), candidates: [], hasNextPage: false, inputCaret: 10, preeditCaret: 10 });
     equal(mid.native.of('clearComposing').length, 0, 'mid-caret dead-string guard stays silent');
+
+    // v2（用户验收）：组合中横滑不限空格——字母键也进 preedit 通道。
+    const anyKey = fresh({ mode: 'pinyin', preeditScrub: true });
+    anyKey.engineState({ mode: 'pinyin', revision: 1, composing: 'ni hao', rawInput: 'ni hao', candidates: [], hasNextPage: false, inputCaret: 5, preeditCaret: 5 });
+    const nKey = [...anyKey.document.querySelectorAll('#qwertyLayer .kb-key')].find(k => k.dataset.key === 'n');
+    anyKey.touchDown(nKey, 20, 20);
+    anyKey.move(nKey, -40, 0);
+    equal(anyKey.native.of('scrubCursor').length, 1, 'v2: letter-key drag engages the preedit channel too');
+    anyKey.touchUp(nKey, -40, 0);
 });
 
 test('qwerty space borrows the scrub channel; vertical stays inert', {since: '3.73.36'}, () => {

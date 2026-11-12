@@ -25,6 +25,11 @@ class RimeTextEngine(
     // Reset 后回到第 0 页重新读取。
     private var viewPage = 0
     private var lastState = EngineState("", "", emptyList(), false, false, null)
+    // #103 v2 应用层编辑光标（raw 域）：-1=非中置态（引擎与正常输入无
+    // 异），0..rawLen=中置位置（引擎 caret 恒在尾部——分段/候选按整串
+    // 翻译；插入/退格经 rimeProcessAt 瞬间落位、执行完回尾）。
+    private var displayCaret = -1
+    private var rawLen = 0
 
     override fun startNative() {
         // librime setup is process-global and must run exactly once: a second
@@ -67,9 +72,25 @@ class RimeTextEngine(
                 // 之前被丢弃、stateEvent 恒报 consumed=true——调用方无从
                 // 判断「引擎没接这个键」（空组合下的部分符号等）。透传真值，
                 // JS/Native 侧可据「未处理且无状态变化」做防御分流。
-                val handled = NativeSmoke.rimeProcessKey(session, command.unicodeScalar, command.modifiers)
-                viewPage = 0
-                emit(stateEvent(consumed = handled))
+                // #103 v2 中置插入：瞬间落位（BeginEditing+set(caret)）
+                // → process → 回尾；displayCaret 随插入点右移一位。
+                if (displayCaret in 0 until rawLen) {
+                    val r = NativeSmoke.rimeProcessAt(
+                        session, displayCaret, command.unicodeScalar, command.modifiers)
+                    if (r >= 0) {
+                        val consumed = (r shr 24) and 1
+                        if (consumed == 1) displayCaret += 1
+                        viewPage = 0
+                        emit(stateEvent(consumed = true))
+                    } else {
+                        viewPage = 0
+                        emit(stateEvent(consumed = false))
+                    }
+                } else {
+                    val handled = NativeSmoke.rimeProcessKey(session, command.unicodeScalar, command.modifiers)
+                    viewPage = 0
+                    emit(stateEvent(consumed = handled))
+                }
                 val ms = android.os.SystemClock.elapsedRealtime() - t0
                 if (ms > 60) com.feelime.ime.Diagnostics.log(
                     "engine", "rimeSlow op=Key ms=$ms raw=${lastState.composing.replace(" ", "").length}")
@@ -92,16 +113,20 @@ class RimeTextEngine(
                 }
             }
             is EngineCommand.MovePreeditCursor -> synchronized(gate) {
-                // #103：moved<0=错误码；0=已在边界无位移（不重算——纯
-                // 定位帧不得污染 hint 快照与候选身份）；1=已移动（一次
-                // Compose 重算，分段/候选变化是设计内行为）。
-                val moved = NativeSmoke.rimeMoveCaret(session, command.steps)
+                // #103 v2：光标是应用层状态——引擎不动（caret 恒尾=整串
+                // 分段/候选），本命令只推进 displayCaret（clamp 到 raw
+                // 长度）并重推状态（preedit/候选不变，caret 双域随
+                // displayCaret 换算）。滑到尾=非中置（displayCaret>=rawLen
+                // 归 -1，与正常输入态完全一致）。
+                // viewPage 归零：编辑视图操作与键入同款语义（Key 分支恒
+                // 归 0）。不归零时 JS 候选预取（pageNext）在光标移动后把
+                // viewPage 推到深页，候选栏显示成整串候选的第 N 页。
                 viewPage = 0
+                val base = if (displayCaret >= 0) displayCaret else rawLen
+                val target = (base + command.steps).coerceIn(0, rawLen)
+                displayCaret = if (target >= rawLen) -1 else target
                 lastState = parseState()
                 emit(event(Phase.READY, lastState))
-                if (moved < 0) {
-                    com.feelime.ime.Diagnostics.log("engine", "rimeMoveCaret code=$moved")
-                }
             }
             is EngineCommand.EnterRaw -> synchronized(gate) {
                 viewPage = 0
@@ -130,7 +155,16 @@ class RimeTextEngine(
             is EngineCommand.Backspace -> synchronized(gate) {
                 val t0 = android.os.SystemClock.elapsedRealtime()
                 val hadComposing = lastState.composing.isNotEmpty()
-                NativeSmoke.rimeProcessKey(session, BACKSPACE, 0)
+                // #103 v2 中置删除：瞬间落位（BeginEditing+set(caret)）
+                // → BACKSPACE → 回尾，一次只删光标左侧一个输入码；串首
+                // （displayCaret==0）无码可删=引擎空操作（不穿透宿主）。
+                // 非中置走原尾部路径——两条互斥，不得叠加（双删 bug）。
+                if (displayCaret in 0 until rawLen) {
+                    NativeSmoke.rimeProcessAt(session, displayCaret, BACKSPACE, 0)
+                    if (displayCaret > 0) displayCaret -= 1
+                } else {
+                    NativeSmoke.rimeProcessKey(session, BACKSPACE, 0)
+                }
                 val committed = commitHarvest()
                 viewPage = 0
                 val state = parseState()
@@ -257,7 +291,7 @@ class RimeTextEngine(
             emit(event(Phase.READY, lastState, consumed = false, code = EngineCode.PAGE_BOUNDARY))
             return@synchronized
         }
-        val json = JSONObject(NativeSmoke.rimeContextAtPage(session, target))
+        val json = JSONObject(NativeSmoke.rimeContextAtPage(session, target, displayCaret))
         if (json.optInt("code", -1) != 0) {
             // 越界/空页：保留当前视图页，如实上报边界。
             emit(event(Phase.READY, lastState, consumed = false, code = EngineCode.PAGE_BOUNDARY))
@@ -287,7 +321,7 @@ class RimeTextEngine(
         val absolute = shownCandidates[candidateId] ?: return false
         val text = shownTexts[candidateId] ?: return false
         if (lastPageSize <= 0) return false
-        val json = JSONObject(NativeSmoke.rimeContextAtPage(session, absolute / lastPageSize))
+        val json = JSONObject(NativeSmoke.rimeContextAtPage(session, absolute / lastPageSize, displayCaret))
         if (json.optInt("code", -1) != 0) return false
         val lines = json.optString("candidates").split("\n")
         val slot = absolute % lastPageSize
@@ -308,12 +342,12 @@ class RimeTextEngine(
 
     private fun parseState(page: JSONObject? = null): EngineState {
         // 只读通道：按应用视图页读取（键后恒为第 0 页，翻页只动 viewPage）。
-        var json = page ?: JSONObject(NativeSmoke.rimeContextAtPage(session, viewPage))
+        var json = page ?: JSONObject(NativeSmoke.rimeContextAtPage(session, viewPage, displayCaret))
         if (json.optInt("code", -1) != 0) {
             // 越界视图页（新组合重置了菜单）：回读第 0 页自愈。分页失败
             // 绝不能被解释成组合结束（codex 四轮 P1）。
             viewPage = 0
-            json = JSONObject(NativeSmoke.rimeContextAtPage(session, 0))
+            json = JSONObject(NativeSmoke.rimeContextAtPage(session, 0, displayCaret))
             if (json.optInt("code", -1) != 0) {
                 return EngineState("", "", emptyList(), false, false, null)
             }
@@ -323,6 +357,10 @@ class RimeTextEngine(
         if (pageSize > 0) lastPageSize = pageSize
         val isLastPage = json.optInt("isLastPage", 1) != 0
         val preedit = json.optString("preedit")
+        val inputKeys = json.optString("inputKeys", "")
+        rawLen = inputKeys.length
+        // 组合结束：中置态作废（下一次组合从正常尾部输入态开始）。
+        if (preedit.isEmpty()) displayCaret = -1
         if (preedit != shownPreedit) {
             shownCandidates.clear()
             shownTexts.clear()
@@ -348,11 +386,16 @@ class RimeTextEngine(
             candidates = candidates,
             hasPreviousPage = viewPage > 0,
             hasNextPage = candidates.isNotEmpty() && !isLastPage,
-            // #103 光标双域：raw 域（inputKeys/inputCaret）与显示域
-            // （preeditCaret，native 已换算 UTF-16）。缺字段（空组合/
-            // 快照失败）为 -1——JS 侧 -1=不渲染插入符。
-            inputCaret = json.optInt("inputCaret", -1),
-            preeditCaret = json.optInt("preeditCaret", -1),
+            // #103 v2 双域：非中置态恒 -1（JS 不渲染插入符）；中置时
+            // inputCaret=displayCaret、preeditCaret=native GetPreedit
+            // 换算的 UTF-16 显示位置（分段/候选=整串语义）。
+            // preeditCaret 直传 displayCaret（raw 域）：JS 的插入符渲染
+            // 挂在 lastRawInput（raw 域文本）上，同域对齐。native
+            // GetPreedit 的显示域换算（分段边界投影）不再使用——中置在
+            // 分段中间（如 nihao 的 4）时光标会兜底到串尾，renderPreeditCaret
+            // 的 c>=text.length 守卫直接不渲染（AVD 定罪）。
+            inputCaret = if (displayCaret in 0 until rawLen) displayCaret else -1,
+            preeditCaret = if (displayCaret in 0 until rawLen) displayCaret else -1,
         )
     }
 

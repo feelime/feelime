@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.107";
+  const KEYBOARD_VERSION = "3.73.108";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -698,6 +698,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     kaomoji: "toolKaomoji"
   };
   const HW_TEXT_MODES = /* @__PURE__ */ new Set(["pinyin", "double-pinyin", "flypy", "french", "russian", "japanese"]);
+  const PREEDIT_SCRUB_MODES = /* @__PURE__ */ new Set(["pinyin", "double-pinyin"]);
   const CHINESE_INPUT_MODES = /* @__PURE__ */ new Set(["pinyin", "double-pinyin", "t9", "stroke", "flypy"]);
   const TOOLBAR_DEFAULT = { left: ["ctrl", "ime"], right: ["clipboard", "favorites", "mic"] };
   const MIN_NATIVE_API = 1;
@@ -4313,14 +4314,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * 组合中=组合内拼音光标（首批判定后 gestureId 锁定，native 侧
      * 不转投宿主），非组合=宿主光标（存量语义）。首期模式白名单
      * 全拼/双拼（native PREEDIT_SCRUB_MODES 同款），T9/形码后续。 */
-    preeditScrubEligible(key) {
-      const isSpace = key && (key.id === "spaceKey" || key.dataset && key.dataset.key === " ");
-      return !!this.preeditScrub && isSpace;
+    preeditScrubEligible() {
+      return !!this.preeditScrub && PREEDIT_SCRUB_MODES.has(this.mode);
     }
     /** 统一派发：组合中走 scrubCursor(gestureId, steps)（native 锁定
      *  目标；JS 侧手势会话内复用同一 id），否则走存量 moveCursor。 */
     scrubDispatch(steps) {
-      if (this.composing && this.preeditScrub) {
+      if (this.composing && this.preeditScrub && PREEDIT_SCRUB_MODES.has(this.mode)) {
         if (!this.scrubGestureId) {
           this.scrubGestureId = "sg" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         }
@@ -10636,8 +10636,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       this.updateComposing(payload, payload.rawInput || payload.composing || "");
       if (payload.composing) {
-        const caretTag = Number.isInteger(payload.inputCaret) && payload.inputCaret >= 0 ? "#" + payload.inputCaret : "";
-        const key = (payload.rawInput || payload.composing || "") + caretTag;
+        const key = payload.rawInput || payload.composing || "";
         if (key && key !== this.expandKey) {
           this.expandKey = key;
           this.expandCandidates = [];

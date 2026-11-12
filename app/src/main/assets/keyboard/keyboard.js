@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.107';
+    const KEYBOARD_VERSION = '3.73.108';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -590,6 +590,9 @@ const TOOL_CATALOG = {
 };
 // #H 硬键盘接字符的模式（design §2，与 native hwCharModes 同源集）。
 const HW_TEXT_MODES = new Set(['pinyin', 'double-pinyin', 'flypy', 'french', 'russian', 'japanese']);
+// #103 组合光标模式白名单（与 native PREEDIT_SCRUB_MODES 同步）：首期
+// 全拼/双拼。T9 数字键横滑=字母选择、形码/音形显示映射未做，不放开。
+const PREEDIT_SCRUB_MODES = new Set(['pinyin', 'double-pinyin']);
 /** #95 中英快捷切换的「中」侧集合（能打中文的模式）：回退目标只从
  *  这里挑——orderedModeNames 是用户拖拽全序，法/俄/日可能排最前，
  *  但快捷对的语义是中英切换，不能落到外文键盘上。 */
@@ -4971,18 +4974,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 组合中=组合内拼音光标（首批判定后 gestureId 锁定，native 侧
          * 不转投宿主），非组合=宿主光标（存量语义）。首期模式白名单
          * 全拼/双拼（native PREEDIT_SCRUB_MODES 同款），T9/形码后续。 */
-        preeditScrubEligible(key) {
-            // 空格键源（26 键 id=spaceKey；T9/手写空格挂 data-key=' '）
-            // ——字母键组合中横滑维持不启动（字母键有自身的 flick 语义）。
-            const isSpace = key && (key.id === 'spaceKey' ||
-                (key.dataset && key.dataset.key === ' '));
-            return !!this.preeditScrub && isSpace;
+        preeditScrubEligible() {
+            // 用户验收调整：组合中横滑不限空格——所有 .kb-key 放行
+            // （字母键自身的上/下滑 flick 与横滑方向正交，不冲突）。模式
+            // 白名单与 native PREEDIT_SCRUB_MODES 同步：T9 数字键横滑是
+            // 字母选择的既有手势，白名单外不得抢占。
+            return !!this.preeditScrub && PREEDIT_SCRUB_MODES.has(this.mode);
         }
 
         /** 统一派发：组合中走 scrubCursor(gestureId, steps)（native 锁定
          *  目标；JS 侧手势会话内复用同一 id），否则走存量 moveCursor。 */
         scrubDispatch(steps) {
-            if (this.composing && this.preeditScrub) {
+            if (this.composing && this.preeditScrub && PREEDIT_SCRUB_MODES.has(this.mode)) {
                 if (!this.scrubGestureId) {
                     this.scrubGestureId = 'sg' + Date.now().toString(36) +
                         Math.random().toString(36).slice(2, 6);
@@ -12789,11 +12792,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // candidate and keep its head after the grid collapses - the old
             // per-page bar is what stranded it on a low-frequency page.
             if (payload.composing) {
-                // #103 池身份加 inputCaret：同 raw 不同光标位置的候选不同
-                //（同 preedit 误选旧池 = codex P0），回同位置沿用池。
-                const caretTag = Number.isInteger(payload.inputCaret) && payload.inputCaret >= 0
-                    ? '#' + payload.inputCaret : '';
-                const key = (payload.rawInput || payload.composing || '') + caretTag;
+                // #103 v2：候选=整串翻译（引擎 caret 恒尾），光标移动不改
+                // 候选——池身份不含 inputCaret。v1 的 caretTag 是引擎光标
+                // 时代产物：它让每次 Move 都清池重建，条带 tooShort 触发
+                // pageNext 预取，viewPage 被推到深页，候选栏显示成整串候选
+                // 的第 N 页（AVD 实测定罪：滑一下 viewPage 2→4）。
+                const key = payload.rawInput || payload.composing || '';
                 // Rewind bursts can emit a composing event with an EMPTY raw;
                 // only a real (non-empty) new input resets the accumulation.
                 if (key && key !== this.expandKey) {
