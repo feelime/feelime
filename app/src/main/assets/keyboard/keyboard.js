@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.108';
+    const KEYBOARD_VERSION = '3.73.109';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1535,6 +1535,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // preeditCaret 驱动插入符渲染。
             this.inputCaret = -1;
             this.preeditCaret = -1;
+            // #103 跟手渲染的本地光标镜像（v2.1）：null=本组合从未中置
+            // （不渲染，存量观感不变）；-1=回尾（渲染在串尾——中置会话
+            // 内滑回尾光标不消失）；0..rawLen-1=中置 raw 域。手势跨步时
+            // 乐观推进+立即渲染，引擎回声到达再校正——回声经
+            // evaluateJavascript 推送，touchmove 风暴期间会整批排队到
+            // 手势结束（AVD 实测定罪），不乐观渲染就完全没有跟手感。
+            this.localCaret = null;
             this.symbolCat = 'common';
             // 中/En table pins per category (常用/引号): a second tap on
             // the active tab pins 'zh'/'en'; a mode switch clears the
@@ -4986,6 +4993,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          *  目标；JS 侧手势会话内复用同一 id），否则走存量 moveCursor。 */
         scrubDispatch(steps) {
             if (this.composing && this.preeditScrub && PREEDIT_SCRUB_MODES.has(this.mode)) {
+                // v2.1 跟手：本地镜像先走（Kotlin displayCaret 同款推进
+                // 语义：base=尾或中置值，>=rawLen 归 -1，<0 钳 0），渲染
+                // 不等引擎回声——回声在 touchmove 风暴期间会整批排队到
+                // 手势结束才执行，「松手瞬移」就是没有这一步的直接产物。
+                this.optimisticCaretStep(steps);
                 if (!this.scrubGestureId) {
                     this.scrubGestureId = 'sg' + Date.now().toString(36) +
                         Math.random().toString(36).slice(2, 6);
@@ -4995,6 +5007,48 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             } else {
                 this.call(() => Native.moveCursor(steps, this.token));
             }
+        }
+
+        /** #103 v2.1 乐观步进：localCaret 镜像推进（引擎侧 displayCaret
+         *  同款 clamp 语义），随后立即重渲染插入符。raw 域字符数取
+         *  lastRawInput 去空格（分段显示串→引擎 raw 码序列）。 */
+        optimisticCaretStep(steps) {
+            const raw = (this.lastRawInput || '').replace(/ /g, '');
+            const len = raw.length;
+            if (!len) return;
+            const base = this.localCaret === null || this.localCaret < 0
+                ? len : this.localCaret;
+            let target = base + steps;
+            if (target >= len) target = -1;
+            if (target < 0 && target !== -1) target = 0;
+            this.localCaret = target;
+            this.renderLocalCaret();
+        }
+
+        /** #103 v2.1 raw 域光标位 → 显示域 index（lastRawInput 的空格
+         *  是分段符不在 raw 里：前 rawCaret 个非空格字符所在的显示
+         *  位置；-1=尾=显示串长）。 */
+        caretDisplayOffset(rawCaret, text) {
+            if (rawCaret < 0) return text.length;
+            let seen = 0;
+            for (let i = 0; i < text.length; i++) {
+                if (text[i] === ' ') continue;
+                if (seen === rawCaret) return i;
+                seen++;
+            }
+            return text.length;
+        }
+
+        /** #103 v2.1 手势期即时渲染：直接按 localCaret 画（含串首/尾
+         *  端点——中置会话内滑到头光标停在端点，不消失）。 */
+        renderLocalCaret() {
+            if (this.localCaret === null) return;
+            const preedit = document.getElementById('preeditLine');
+            if (!preedit || !this.composing) return;
+            const text = preedit.textContent;
+            if (!text) return;
+            const disp = this.caretDisplayOffset(this.localCaret, text);
+            this.renderPreeditCaretAt(preedit, disp, text);
         }
 
         /** 手势收尾（touchend/touchcancel）：释放 native 锁定。 */
@@ -10492,8 +10546,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          *  串同域（全拼/双拼 preedit=原始码序列化）。 */
         renderPreeditCaret(el, text) {
             if (!el || typeof text !== 'string' || !text) return;
-            const c = this.preeditCaret;
-            if (!Number.isInteger(c) || c <= 0 || c >= text.length) return;
+            // v2.1 双源裁决：手势会话内（localCaret 非 null）以本地镜像
+            // 为准（含回声排队期间的乐观值）；否则用回声 preeditCaret
+            // （存量语义：中置 1..len-1 才画——从未中置的组合不画）。
+            let c;
+            if (this.localCaret !== null) {
+                c = this.caretDisplayOffset(this.localCaret, text);
+            } else {
+                c = this.preeditCaret;
+                if (!Number.isInteger(c) || c <= 0 || c >= text.length) return;
+            }
+            this.renderPreeditCaretAt(el, c, text);
+        }
+
+        /** #103 v2.1 按显示域 index 落插入符（0..len 含端点；越界不画）。 */
+        renderPreeditCaretAt(el, c, text) {
+            if (!el || typeof text !== 'string' || !Number.isInteger(c) ||
+                c < 0 || c > text.length) return;
             const caret = document.createElement('span');
             caret.className = 'preedit-caret';
             // 前后段用 span 而非 TextNode：mock 世界（fake DOM）只有
@@ -10998,6 +11067,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #103 光标双域：-1=引擎不支持（不渲染/不参与池身份）。
             this.inputCaret = Number.isInteger(state.inputCaret) ? state.inputCaret : -1;
             this.preeditCaret = Number.isInteger(state.preeditCaret) ? state.preeditCaret : -1;
+            // v2.1 回声校正：引擎真值对齐 localCaret 镜像（手势排队期间
+            // 乐观值的最终裁决——中置回声取真值；非中置回声=回尾；组合
+            // 结束=会话关闭，镜像清空回到「从未中置不渲染」的存量观感）。
+            if (this.composing) {
+                if (this.inputCaret >= 0) this.localCaret = this.inputCaret;
+                else if (this.localCaret !== null) this.localCaret = -1;
+            } else {
+                this.localCaret = null;
+            }
             // 8 键组合中逗号的两步收尾（issue #18）：候选确认的回声把组合
             // 收掉后，直发挂起的全角 ，；组合继续且 raw 变了（用户接着打）
             // 或确认被拒超时（3s 无回声收尾）则作废——迟到的逗号比缺逗号

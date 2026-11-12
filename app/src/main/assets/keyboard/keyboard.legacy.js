@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.108";
+  const KEYBOARD_VERSION = "3.73.109";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1685,6 +1685,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.lastRawInput = "";
       this.inputCaret = -1;
       this.preeditCaret = -1;
+      this.localCaret = null;
       this.symbolCat = "common";
       this.tableVariants = {};
       this.keyLayer = "letters";
@@ -4321,6 +4322,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      *  目标；JS 侧手势会话内复用同一 id），否则走存量 moveCursor。 */
     scrubDispatch(steps) {
       if (this.composing && this.preeditScrub && PREEDIT_SCRUB_MODES.has(this.mode)) {
+        this.optimisticCaretStep(steps);
         if (!this.scrubGestureId) {
           this.scrubGestureId = "sg" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         }
@@ -4329,6 +4331,44 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       } else {
         this.call(() => Native.moveCursor(steps, this.token));
       }
+    }
+    /** #103 v2.1 乐观步进：localCaret 镜像推进（引擎侧 displayCaret
+     *  同款 clamp 语义），随后立即重渲染插入符。raw 域字符数取
+     *  lastRawInput 去空格（分段显示串→引擎 raw 码序列）。 */
+    optimisticCaretStep(steps) {
+      const raw = (this.lastRawInput || "").replace(/ /g, "");
+      const len = raw.length;
+      if (!len) return;
+      const base = this.localCaret === null || this.localCaret < 0 ? len : this.localCaret;
+      let target = base + steps;
+      if (target >= len) target = -1;
+      if (target < 0 && target !== -1) target = 0;
+      this.localCaret = target;
+      this.renderLocalCaret();
+    }
+    /** #103 v2.1 raw 域光标位 → 显示域 index（lastRawInput 的空格
+     *  是分段符不在 raw 里：前 rawCaret 个非空格字符所在的显示
+     *  位置；-1=尾=显示串长）。 */
+    caretDisplayOffset(rawCaret, text) {
+      if (rawCaret < 0) return text.length;
+      let seen = 0;
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] === " ") continue;
+        if (seen === rawCaret) return i;
+        seen++;
+      }
+      return text.length;
+    }
+    /** #103 v2.1 手势期即时渲染：直接按 localCaret 画（含串首/尾
+     *  端点——中置会话内滑到头光标停在端点，不消失）。 */
+    renderLocalCaret() {
+      if (this.localCaret === null) return;
+      const preedit = document.getElementById("preeditLine");
+      if (!preedit || !this.composing) return;
+      const text = preedit.textContent;
+      if (!text) return;
+      const disp = this.caretDisplayOffset(this.localCaret, text);
+      this.renderPreeditCaretAt(preedit, disp, text);
     }
     /** 手势收尾（touchend/touchcancel）：释放 native 锁定。 */
     endScrubGesture() {
@@ -8930,8 +8970,18 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      *  串同域（全拼/双拼 preedit=原始码序列化）。 */
     renderPreeditCaret(el, text) {
       if (!el || typeof text !== "string" || !text) return;
-      const c = this.preeditCaret;
-      if (!Number.isInteger(c) || c <= 0 || c >= text.length) return;
+      let c;
+      if (this.localCaret !== null) {
+        c = this.caretDisplayOffset(this.localCaret, text);
+      } else {
+        c = this.preeditCaret;
+        if (!Number.isInteger(c) || c <= 0 || c >= text.length) return;
+      }
+      this.renderPreeditCaretAt(el, c, text);
+    }
+    /** #103 v2.1 按显示域 index 落插入符（0..len 含端点；越界不画）。 */
+    renderPreeditCaretAt(el, c, text) {
+      if (!el || typeof text !== "string" || !Number.isInteger(c) || c < 0 || c > text.length) return;
       const caret = document.createElement("span");
       caret.className = "preedit-caret";
       const before = document.createElement("span");
@@ -9314,6 +9364,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (this.composing && rawInput !== void 0) this.lastRawInput = rawInput;
       this.inputCaret = Number.isInteger(state.inputCaret) ? state.inputCaret : -1;
       this.preeditCaret = Number.isInteger(state.preeditCaret) ? state.preeditCaret : -1;
+      if (this.composing) {
+        if (this.inputCaret >= 0) this.localCaret = this.inputCaret;
+        else if (this.localCaret !== null) this.localCaret = -1;
+      } else {
+        this.localCaret = null;
+      }
       if (this.pendingPunct) {
         const pending = this.pendingPunct;
         const staleGen = pending.gen !== void 0 && pending.gen !== this.hwGen;

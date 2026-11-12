@@ -2579,6 +2579,51 @@ test('preedit scrub: composing space swipe moves the pinyin caret, gesture-locke
     equal(on.native.of('scrubCursorEnd').length, 1, 'release ends the gesture session');
     equal(on.native.of('scrubCursorEnd')[0].args[0], gid, 'end carries the same id');
     equal(on.native.of('space').length, 0, 'scrubbed space never commits');
+});
+
+test('preedit scrub optimistic caret: renders before any echo, endpoints included (#103 v2.1)', {since: '3.73.109'}, () => {
+    // AVD 定罪：回声经 evaluateJavascript 在 touchmove 风暴期间整批
+    // 排队到手势结束——没有本地乐观渲染就完全没有跟手感（松手瞬移）。
+    // localCaret 镜像：跨步立即渲染（不等回声），端点（串首 0/回尾）
+    // 也画——中置会话内滑到头光标停在端点，不消失。
+    const w = fresh({ mode: 'pinyin', preeditScrub: true });
+    w.engineState({ mode: 'pinyin', revision: 1, composing: 'ni hao', rawInput: 'ni hao', candidates: ['你好'], hasNextPage: false });
+    const pl = () => w.$('preeditLine');
+    equal(pl().querySelector('.preedit-caret'), null, 'never-scrubbed composition paints no caret (legacy look)');
+
+    // 第一步（40px 位移恰跨 38px 阈值 = 1 步）：无回声也要立即画。
+    w.touchDown(w.$('spaceKey'), 20, 20);
+    w.move(w.$('spaceKey'), -20, 0);
+    let caret = pl().querySelector('.preedit-caret');
+    assert(caret, 'first crossed step renders the caret without any echo');
+    // raw 域 4（第 5 码前）→ 显示域 5（'o' 前：空格是分段符不占 raw 位）。
+    const kids = () => [...pl().children].map(n => n.textContent);
+    equal(pl().textContent, 'ni hao', 'text unchanged by the caret');
+    equal(kids()[0], 'ni ha', 'optimistic position: 5th code sits before o');
+    equal(kids()[2], 'o', 'tail half keeps the rest');
+
+    // 滑到串首（再 4 步）：端点 0 也渲染。
+    w.move(w.$('spaceKey'), -68, 0);
+    caret = pl().querySelector('.preedit-caret');
+    assert(caret, 'string head endpoint still paints');
+    equal(kids()[0], '', 'caret at display offset 0');
+
+    // 滑回尾（clamp：>=rawLen 归尾端点）：尾端点渲染，不消失。
+    w.move(w.$('spaceKey'), 80, 0);
+    caret = pl().querySelector('.preedit-caret');
+    assert(caret, 'tail endpoint still paints (no vanishing cursor)');
+    equal(kids()[2], '', 'caret sits at the display tail');
+    w.touchUp(w.$('spaceKey'), 80, 0);
+
+    // 回声校正：迟到回声的真值裁决本地镜像。
+    w.engineState({ mode: 'pinyin', revision: 2, composing: 'ni hao', rawInput: 'ni hao', candidates: ['你好'], hasNextPage: false, inputCaret: 1, preeditCaret: 1 });
+    caret = pl().querySelector('.preedit-caret');
+    assert(caret, 'echo keeps the caret alive');
+    equal([...pl().children].map(n => n.textContent)[0], 'n', 'echo inputCaret=1 wins over the optimistic tail');
+
+    // 组合结束：会话关闭，回到「从未中置不渲染」的存量观感。
+    w.engineState({ mode: 'pinyin', revision: 3, composing: '', rawInput: '', candidates: [], hasNextPage: false });
+    equal(pl().querySelector('.preedit-caret'), null, 'composition end clears the caret (back to legacy)');
 
     // 非组合：开关开着也维持宿主光标存量语义。
     const idle = fresh({ mode: 'pinyin', preeditScrub: true });
