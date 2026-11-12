@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.106";
+  const KEYBOARD_VERSION = "3.73.107";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -8761,7 +8761,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const rawEngine = this.expandCandidates.filter((candidate) => !String(candidate.id).startsWith("fav:") && !String(candidate.id).startsWith("dyn:") && !String(candidate.id).startsWith("alt:"));
       const ranks = this.symbolRanks || {};
       const freqOn = this.symbolFreqSort === true;
-      const symbolic = rawEngine.filter((candidate) => isSymbolicText(candidate.text));
+      const rankAllTexts = this.rankAllTexts || /* @__PURE__ */ new Set();
+      const symbolic = rawEngine.filter((candidate) => isSymbolicText(candidate.text) || rankAllTexts.has(candidate.text) && Number.isInteger(Number(ranks[candidate.text])) && Number(ranks[candidate.text]) >= 1 && Number(ranks[candidate.text]) <= 9);
       let engine = rawEngine;
       if (symbolic.length) {
         const slotted = /* @__PURE__ */ __name((candidate) => {
@@ -9140,7 +9141,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const ranks = this.symbolRanks || {};
       const pinOf = /* @__PURE__ */ __name((item) => {
         const rank = Number(ranks[item && item.text]);
-        return Number.isInteger(rank) && rank >= 1 && rank <= 9 && isSymbolicText(item && item.text) ? rank : 0;
+        return Number.isInteger(rank) && rank >= 1 && rank <= 9 && (isSymbolicText(item && item.text) || (this.rankAllTexts || /* @__PURE__ */ new Set()).has(item && item.text)) ? rank : 0;
       }, "pinOf");
       const pinned = [];
       const plain = [];
@@ -10361,6 +10362,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.mode = nextMode;
       this.hardwareKeyboard = !!payload.hardwareKeyboard;
       this.symbolRanks = payload.symbolRanks && typeof payload.symbolRanks === "object" ? payload.symbolRanks : {};
+      this.rankAllTexts = new Set(Array.isArray(payload.rankAll) ? payload.rankAll.filter((t2) => typeof t2 === "string") : []);
       this.symbolFreqSort = payload.symbolFreqSort === true;
       this.hwkbForm = payload.hwkbForm || "candidates";
       if (payload.quickSwitchPolicy !== void 0) {

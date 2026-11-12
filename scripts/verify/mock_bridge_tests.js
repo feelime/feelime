@@ -744,6 +744,56 @@ test('pinned symbols do not leak their slot into the unpinned head (issue #81, r
         'unpinned symbol keeps slot 3; pinned ones ride the tail then pin 8/9');
 });
 
+test('declared-table words pin across all text kinds (issue #107)', {since: '3.73.107'}, () => {
+    // 列头声明（columns: [text, code, rank]）导入的汉字/字母词不受 #81
+    // 纯符号门限制：带有效 rank 就参与钉位仲裁（slotted 分流）。
+    const world = fresh({ mode: 'pinyin' });
+    world.hello({ mode: 'pinyin',
+        symbolRanks: { '晓': 1, 'X光': 2 }, rankAll: ['晓', 'X光'] });
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'pan', rawInput: 'pan',
+        candidates: [
+            { id: 'c1', text: '盘' }, { id: 'c2', text: '判' },
+            { id: 'p0', text: '晓' }, { id: 'p1', text: 'X光' }, { id: 'c3', text: '潘' },
+        ], hasNextPage: false });
+    const bar = () => JSON.stringify([...world.$('candidates').querySelectorAll('.candidate')]
+        .map(node => node.textContent));
+    equal(bar(), JSON.stringify(['晓', 'X光', '盘', '判', '潘']),
+        'declared hanzi/latin words pin their slots like symbols do');
+});
+
+test('declared-table word without a valid rank keeps engine order (issue #107)', {since: '3.73.107'}, () => {
+    // 漂移防御：词面在 rankAll 集合里但 symbolRanks 无有效值（手管保存
+    // 路径 filter 掉了 rank 等）——不进仲裁，也不落「未指定符号默认钉 3」
+    // （那是符号词的折中，不外溢到普通词）。
+    const world = fresh({ mode: 'pinyin' });
+    world.hello({ mode: 'pinyin', symbolRanks: {}, rankAll: ['晓'] });
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'pan', rawInput: 'pan',
+        candidates: [
+            { id: 'c1', text: '盘' }, { id: 'c2', text: '判' },
+            { id: 'p0', text: '晓' }, { id: 'c3', text: '潘' },
+        ], hasNextPage: false });
+    const bar = () => JSON.stringify([...world.$('candidates').querySelectorAll('.candidate')]
+        .map(node => node.textContent));
+    equal(bar(), JSON.stringify(['盘', '判', '晓', '潘']),
+        'rankless declared word neither pins nor falls into the symbol default');
+});
+
+test('declared-table rank survives the English-candidate insertion (issue #107)', {since: '3.73.107'}, () => {
+    // 显示序裁决层（englishOrderedPool）的 pinOf 门同步放宽：声明表词
+    // rank=3 与英文插入并存时，「第 3 位」是用户看到的第 3 位。
+    const world = fresh({ mode: 'pinyin' });
+    world.hello({ mode: 'pinyin', symbolRanks: { '晓': 3 }, rankAll: ['晓'] });
+    world.engineState({ mode: 'pinyin', revision: 3, composing: 'pan', rawInput: 'pan',
+        candidates: [
+            { id: 'e0', text: 'pan' }, { id: 'p0', text: '晓' },
+            { id: 'c1', text: '盘' }, { id: 'c2', text: '判' }, { id: 'c3', text: '潘' },
+        ], hasNextPage: false });
+    const bar = () => JSON.stringify([...world.$('candidates').querySelectorAll('.candidate')]
+        .map(node => node.textContent));
+    equal(bar(), JSON.stringify(['盘', '判', '晓', 'pan', '潘']),
+        'declared word keeps its visible slot; English yields');
+});
+
 test('symbol use counts survive dirty storage (issue #81, review P2)', {since: '3.73.61'}, () => {
     // 数组/标量整体作废；逐项坏值（字符串/负数/小数/对象）按不存在处理
     // ——丢项会让符号从候选池消失、字符串会拼出 "41" 这类失真计数。

@@ -599,8 +599,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                         imported = state.imported, user = state.user,
                         englishEnabled = state.englishEnabled,
                         // #81 review P1：恢复重派生透传位次与开关，否则
-                        // 刚恢复的配置被这次 save 清掉。
-                        symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
+                        // 刚恢复的配置被这次 save 清掉。#107 rankAll 同理。
+                        symbolRanks = state.symbolRanks, rankAll = state.rankAll,
+                        symbolFreqSort = state.symbolFreqSort,
                     )
                 }
                 sendBroadcast(
@@ -2735,6 +2736,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 val phraseState = com.feelime.ime.engine.CustomPhraseStore.load(this@FeelimeService)
                 put("symbolRanks", org.json.JSONObject().apply {
                     phraseState.symbolRanks.forEach { (text, rank) -> put(text, rank) }
+                })
+                // #107 声明表（columns 含 rank）的全词面 rank 词面集合。
+                put("rankAll", org.json.JSONArray().apply {
+                    phraseState.rankAll.forEach { put(it) }
                 })
                 put("symbolFreqSort", phraseState.symbolFreqSort)
             }
