@@ -426,6 +426,22 @@ print_retry_summary() {
     fi
 }
 
+print_duration_summary() {
+    [[ "${#SEG_DUR[@]}" -gt 0 ]] || return 0
+    local total=0 label
+    echo "per-segment wall time (this run, slowest first):"
+    for label in "${!SEG_DUR[@]}"; do
+        printf '%d\t%s\n' "${SEG_DUR[$label]}" "$label"
+    done | sort -rn | while IFS=$'\t' read -r dur name; do
+        printf '  %6ds  %s\n' "$dur" "$name"
+    done
+    for label in "${!SEG_DUR[@]}"; do
+        total=$((total + SEG_DUR[$label]))
+    done
+    printf '  %6ds  = executed segments total\n' "$total"
+    printf '  %6ds  = whole gate (incl. reset/settle/ASR)\n' "$(( $(date +%s) - gate_t0 ))"
+}
+
 run_local_css() {
     node "$HERE/css_lint.js"
     python3 "$HERE/../generate-keyboard-data.py" --check
@@ -475,6 +491,8 @@ run_asr() {
 device_reset_pending=1
 skipped=0
 executed=0
+declare -A SEG_DUR   # label -> 本段墙钟秒（--resume 跳过的段不计，尾汇总用）
+gate_t0=$(date +%s)
 
 for entry in "${SEGMENTS[@]}"; do
     label="${entry%%|*}"
@@ -485,6 +503,7 @@ for entry in "${SEGMENTS[@]}"; do
         skipped=$((skipped + 1))
         continue
     fi
+    seg_t0=$(date +%s)
     case "$kind" in
         local)
             echo "== $label =="
@@ -539,6 +558,8 @@ for entry in "${SEGMENTS[@]}"; do
             ;;
     esac
     state_mark "$label"
+    SEG_DUR[$label]=$(($(date +%s) - seg_t0))
+    echo "-- $label: ${SEG_DUR[$label]}s"
     executed=$((executed + 1))
 done
 
@@ -550,6 +571,7 @@ if [[ ${#selected_names[@]} -gt 0 && "$executed" -eq 0 && "$skipped" -eq 0 ]]; t
 fi
 
 print_retry_summary
+print_duration_summary
 if [[ "$skipped" -gt 0 ]]; then
     echo "$skipped segment(s) skipped via --resume state"
 fi

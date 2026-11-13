@@ -166,6 +166,10 @@ profiles（按改动面选层，普通批次用 quick ≈ 30min，全量留给�
 | voice | gesture、voice-hold、fn-voice、asr |
 | resources | resource |
 
+跑完的尾表 `per-segment wall time` 按耗时降序列出各段墙钟（`--resume`
+跳过的段不计）；最慢段是下一轮套件优化的对象，retry summary 里
+retry-only 绿的段按 flaky 线索记录并治本。
+
 ### run-all 步骤
 
 | 步骤 | 内容 |
