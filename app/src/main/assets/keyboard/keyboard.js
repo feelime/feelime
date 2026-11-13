@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.114';
+    const KEYBOARD_VERSION = '3.73.115';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1652,6 +1652,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this._inkViewport = '';
             // 手写候选态的整行互斥位（setToolbarYield 的初值）。
             this.toolbarYield = false;
+            // 工具栏场景互斥守卫的纠正计数（enforceToolbarExclusion
+            // 文档：>0 = 存在绕过让位对账的写入点）。
+            this.toolbarExclusionFixes = 0;
             // #48 定制宏串行链（codex 评审 P1×2）：双击定制键时第二条
             // 宏排队，不插进第一条的 300ms 台阶窗口（其首个键步会把
             // 第一条的文本掐死）；编辑器换代/键盘收起时整链作废——延迟
@@ -3793,6 +3796,40 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             const clear = document.getElementById('composeClear');
             if (clear) clear.hidden = !active;
+            this.enforceToolbarExclusion();
+        }
+
+        /** 工具栏场景互斥不变量（用户 2026-11-13 裁定「几种场景严格
+         * 互斥」：候选场景 / 工具 icon 场景 / 剪贴板·常用语场景不得
+         * 混行）：候选类场景激活期间（组合 / 联想让位 / 手写候选 /
+         * T9 符号行），工具行按钮一律 hidden；唯一例外：语音
+         * recording 时 mic 是 overlay 外的兜底 stop 入口。让位语义是
+         * 横切的，而 hidden 写入点散布（updateComposing 的通用行与
+         * mic 行、applyInkBarChrome、auditToolbarTools、未来新代码）
+         * ——单点对账修不完（语音结束后 mic 插回联想候选行的用户
+         * 实录）。本函数把互斥升为运行时不变量：构造时挂的
+         * MutationObserver 在渲染前的微任务里对本行强制执行，任何
+         * 路径把按钮写回可见都在用户看到之前纠正；纠正计数暴露在
+         * Feelime.toolbarExclusionFixes()，计数 >0 = 存在漏网写入点
+         * （mock/设备测试据此定罪，回去收口那条路径）。幂等：无违反
+         * 时零成本通过；守卫自身的写入会再触发 observer 一轮但值
+         * 已一致，自然终止。 */
+        toolbarCandidatesSceneActive() {
+            return !!(this.composing || this.toolbarYield
+                || this.inkBarActive || this.t9BarChrome === true);
+        }
+
+        enforceToolbarExclusion() {
+            if (!this.toolbarCandidatesSceneActive()) return;
+            const recording = ['listening', 'loading', 'stopping']
+                .includes(this.voiceState);
+            ['setupButton', ...Object.values(TOOL_CATALOG)].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el || el.hidden) return;
+                if (recording && id === 'mic') return;
+                el.hidden = true;
+                this.toolbarExclusionFixes++;
+            });
         }
 
         /** 撤掉符号行 chrome：工具栏图标复位、× 隐藏。联想等引擎事件
@@ -13220,6 +13257,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             childList: true,
             subtree: true,
         });
+        // 工具栏场景互斥守卫（enforceToolbarExclusion 文档）：候选类
+        // 场景激活期间任何路径把工具按钮写回可见，渲染前的微任务里
+        // 自动纠正——散布的 hidden 写入点单点修不完，互斥是运行时
+        // 不变量而非约定。
+        new MutationObserver(() => keyboard.enforceToolbarExclusion())
+            .observe(document.getElementById('candidateBar'), {
+                subtree: true,
+                attributeFilter: ['hidden'],
+            });
     }
     defocusButtons();
     keyboard.cycleTheme = cycleTheme;
@@ -13227,6 +13273,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
     window.Feelime = {
         onBridgeHello: payload => keyboard.onBridgeHello(payload),
+        // 工具栏场景互斥守卫的纠正计数（enforceToolbarExclusion 文档）：
+        // mock/设备测试与现场诊断读它定罪「绕过让位对账的写入点」。
+        toolbarExclusionFixes: () => keyboard.toolbarExclusionFixes,
         // #93：native→JS 的用户反馈通道（分享无选区/面板拉起失败的
         // 提示）。此前 native evaluate 只有事件回调没有 toast 挂钩。
         showToast: msg => keyboard.showToast(String(msg || '')),
