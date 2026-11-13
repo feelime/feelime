@@ -597,9 +597,14 @@ object BaseDictInstaller {
         return code
     }
 
-    /** 留档目录里的表文件名（补编现场恢复用）。 */
+    /** 留档目录里的表文件名（补编现场恢复用）。顺序同样过
+     *  [orderImportTables]——模糊音补编会就地重写全量伞表，走回字典序
+     *  等于把主安装路径修好的 41448/8105 先后又改回去。 */
     private fun stagedTableNames(sourceDir: File): List<String> =
-        sourceDir.listFiles()?.filter { it.isFile && it.name.endsWith(".dict.yaml") }?.map { it.name }?.sorted() ?: emptyList()
+        orderImportTables(
+            sourceDir.listFiles()?.filter { it.isFile && it.name.endsWith(".dict.yaml") }
+                .orEmpty(),
+        ).map { it.name }
 
     /** umbrella 的行数注释位（补编路径拿不到精确值，留诊断提示）。 */
     private fun stagedLineHint(@Suppress("UNUSED_PARAMETER") prefs: android.content.SharedPreferences): Int = 0
@@ -1691,7 +1696,48 @@ object BaseDictInstaller {
      *  返回 (sha256, 落盘文件表)；sha 对最终落盘集合（名+内容，按名排序）
      *  计算，zip 后处理改写会体现在指纹里。null = 读取失败/超 150MB。
      *  空 zip（无可解析表）返回非 null 空文件表，由调用方按 EMPTY 报。 */
-    private class Staged(val sha: String, val files: List<File>)
+
+    /** import_tables 的书写顺序。rime 的规则是「重复 (词, 码) 靠前的表
+     *  先到先得」（EntryCollector::CreateEntry 对单字码重复直接丢弃后到
+     *  的），所以顺序决定谁的词频生效——不能用 listFiles() 的文件系统
+     *  顺序。判据：**带显式权重的表必须排在不带的前面**，不带词频信息
+     *  的表没有资格压过带的。反例（真机实测）：雾凇 41448 大字表 46055
+     *  行零权重，排到了 8105 字表（8765 行全带权重）前面，所有常用字的
+     *  词频被空权重顶成 log(DBL_EPSILON)≈-708，单字候选与造句全被生僻
+     *  字反超——`niuiuabima` 造句出「…是啥蓖麻」而不是「你是傻逼吗」。
+     *  同组内按文件名排序，与文件系统顺序解耦（确定性）。 */
+    internal fun orderImportTables(files: List<File>): List<File> =
+        if (files.size <= 1) files
+        else files.sortedWith(
+            compareByDescending<File> { hasExplicitWeight(it) }.thenBy { it.name },
+        )
+
+    /** 表里是否存在带显式权重的词条行（默认权重列=第三列）。扫到首个命中
+     *  即返回；无权重的表要扫全表（雾凇 tencent 98 万行，装库时跑一次，
+     *  几十毫秒量级）。注释/分隔行跳过；读失败按无权重处理——排序退化成
+     *  纯文件名序，不引入新行为。声明了 `columns: [text, weight]` 的无码
+     *  表本就靠编译期 encoder 注音（Pass2，恒在有码表之后入库），其在
+     *  import_tables 里的位置不影响重复裁决，按无权重归组无害。 */
+    internal fun hasExplicitWeight(file: File): Boolean = runCatching {
+        file.bufferedReader(Charsets.UTF_8).useLines { seq ->
+            for (raw in seq) {
+                if (!raw.contains('\t')) continue
+                val line = raw.trimStart()
+                if (line.startsWith('#') || line == "---" || line == "...") continue
+                val cols = raw.split('\t')
+                if (cols.size >= 3 && cols[2].trim().isNotEmpty()) return@useLines true
+            }
+            false
+        }
+    }.getOrDefault(false)
+
+    /** 落盘文件表。顺序在此钉死（见 [orderImportTables]）：伞表的
+     *  import_tables 与双拼/T9 子伞都直接透传 [files]，在下游各写一遍
+     *  容易漏。sha 由调用方按「名+内容、按名排序」算好传入，不受这里
+     *  重排影响。 */
+    private class Staged(val sha: String, rawFiles: List<File>) {
+        val files: List<File> = BaseDictInstaller.orderImportTables(rawFiles)
+    }
 
     /** #7 安装源：SAF Uri（新导入）或已导入槽（再次激活）。 */
     private sealed class SourceInput {
