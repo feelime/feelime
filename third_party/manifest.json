@@ -286,9 +286,9 @@
     {
       "apkPath": "lib/arm64-v8a/libfeelime_rime.so",
       "buildRecipe": "cmake-native",
-      "bytes": 4938600,
+      "bytes": 4939976,
       "path": "app/src/main/jniLibs/arm64-v8a/libfeelime_rime.so",
-      "sha256": "e298f7ce3d8eb8d973a41c287c86309e8f58c9d4aa948f48abeadf7420756361",
+      "sha256": "804fa15fcb88f6c94b5bf54c4721071262c4aca1acc336887cbbd0832a17d94c",
       "sources": [
         "librime",
         "darts-clone",
@@ -306,9 +306,9 @@
     {
       "apkPath": "lib/arm64-v8a/libfeelime_smoke.so",
       "buildRecipe": "cmake-native",
-      "bytes": 50760,
+      "bytes": 52152,
       "path": "app/src/main/jniLibs/arm64-v8a/libfeelime_smoke.so",
-      "sha256": "ab3d1e90775e9413238071c44276eef688132c324264e1f4dbba8200ea5f3444",
+      "sha256": "e7e10a9b5c9e4999902710450001d46dcdc94f7d519e4b3e1f497163d16d66e9",
       "sources": [
         "feelime-original-adapters"
       ]
@@ -349,9 +349,9 @@
     {
       "apkPath": "lib/x86_64/libfeelime_rime.so",
       "buildRecipe": "cmake-native",
-      "bytes": 4985344,
+      "bytes": 4986688,
       "path": "spikes/native-engine-smoke/app/src/main/jniLibs/x86_64/libfeelime_rime.so",
-      "sha256": "7f680bf3b0bed1c1eaf4c5946f0e55c06c6a96fc35859f5569169706d56d0e8b",
+      "sha256": "44e24c47a1acdb93af98c60e93a2cb1402f2821774376a4c2b5dbaf38dfb979f",
       "sources": [
         "librime",
         "darts-clone",
@@ -369,9 +369,9 @@
     {
       "apkPath": "lib/x86_64/libfeelime_smoke.so",
       "buildRecipe": "cmake-native",
-      "bytes": 51432,
+      "bytes": 53080,
       "path": "spikes/native-engine-smoke/app/src/main/jniLibs/x86_64/libfeelime_smoke.so",
-      "sha256": "4bcdb084d103f02ef5ad06eab7d22c15de70fed62c5299c9ae0d9cbeaeefb5fd",
+      "sha256": "f736956d5c45f43b12a8527f21c1136912c6d613e6fc919518a475e18ba01a35",
       "sources": [
         "feelime-original-adapters"
       ]

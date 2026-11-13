@@ -837,6 +837,8 @@ const I18N = {
         "input.feel.keyBubble": "按键气泡",
         "input.feel.cnEnComposingGuard": "拼音组词中禁止切换语言",
         "input.feel.cnEnComposingGuardHint": "防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。",
+        "input.feel.preeditScrub": "空格横滑移动拼音光标（实验）",
+        "input.feel.preeditScrubHint": "输入拼音时左右滑动空格键，移动拼音串内的光标方便修改错字；没有输入时仍移动正文光标。目前支持全拼与双拼（#103）。",
         "voice.readyHaptic": "语音就绪震动",
         "voice.readyHapticHint": "语音模型加载完成、开始聆听时震动提示一下；模型已就绪的再次进入不震（默认关闭）。",
         "input.feel.keyBubbleHint": "按下按键时在键帽上方放大显示所按的字符，方便确认有没有按错（默认关闭）。",
@@ -1657,6 +1659,8 @@ const I18N = {
         "input.feel.keyBubble": "Key bubble",
         "input.feel.cnEnComposingGuard": "Block language switch while composing",
         "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
+        "input.feel.preeditScrub": "Space swipe moves pinyin caret (experimental)",
+        "input.feel.preeditScrubHint": "While composing, swipe the space key sideways to move the caret inside the pinyin string for quick edits; with no composition it still moves the text caret. Pinyin & double-pinyin only for now (#103).",
         "voice.readyHaptic": "Vibrate when voice is ready",
         "voice.readyHapticHint": "A short buzz once the speech model finishes loading and listening starts; re-entering with the model already loaded does not buzz (off by default).",
         "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
@@ -2701,6 +2705,8 @@ function renderFeel(state) {
     if (bubble) bubble.checked = state.keyBubble === true;
     const guard = $("cnEnComposingGuard");
     if (guard) guard.checked = state.cnEnComposingGuard === true;
+    const scrub = $("preeditScrub");
+    if (scrub) scrub.checked = state.preeditScrub === true;
     const vrh = $("voiceReadyHaptic");
     if (vrh) vrh.checked = state.voiceReadyHaptic === true;
     const lingerSel = $("bubbleLinger");
@@ -4328,6 +4334,7 @@ $("keyOpacity").addEventListener("change", event => {
 // 底下弹出的预览键盘。
 $("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
 $("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposingGuard", event.target.checked));
+$("preeditScrub").addEventListener("change", event => call("setPreeditScrub", event.target.checked));
 $("voiceReadyHaptic").addEventListener("change", event => call("setVoiceReadyHaptic", event.target.checked));
 $("bubbleLinger").addEventListener("change", event => {
     call("setBubbleLinger", parseInt(event.target.value, 10) || 0);

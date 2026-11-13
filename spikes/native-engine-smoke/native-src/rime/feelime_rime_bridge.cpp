@@ -3,6 +3,16 @@
 
 #include <rime_api.h>
 
+// #103 preedit 光标：rime_api 公开层只有裸 set_caret_pos（不带编辑语
+// 义）；移动必须先 Context::BeginEditing()（host probe 实测：跳过它，
+// 中置退格会走 ReopenPreviousSelection 变成撤销选词而非删输入码——
+// editor.cc 的 RevertLastEdit 顺序所致）。与 rime_api_impl.h 的做法一
+// 致：经 Service::instance().GetSession 取 Context 直调内部方法。
+// context.h 给 Context 完整定义（service.h 只前置声明）。
+#include <rime/context.h>
+#include <rime/service.h>
+
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -309,6 +319,80 @@ FEELIME_EXPORT int feelime_rime_get_commit(std::uintptr_t session,
   const std::string value = commit.text == nullptr ? "" : commit.text;
   api->free_commit(&commit);
   return copy_result(value, output, output_size) ? 1 : -1;
+}
+
+// ---- #103 preedit 光标（组合内定位，issue #103 v2：应用层光标）----
+// 引擎常态 caret 恒在串尾（分段/候选按整串翻译——中置时不丢后半句的
+// 候选）；「光标位置」是应用层 displayCaret，只在插入/退格的瞬间经
+// process_at 临时落到 librime、执行完立刻回尾。
+
+// displayCaret 的双域换算：raw 域位置（由 Kotlin 传入、此侧 clamp 回
+// 显）+ 显示域位置（GetPreedit 纯渲染换算——用当前分段+给定光标，
+// 不重算分段、不动引擎状态）。
+// 返回：0 成功；-1 参数；-2 引擎/会话不可用；-3 缓冲不足。
+FEELIME_EXPORT int feelime_rime_caret_at(std::uintptr_t session,
+                                         std::size_t caret,
+                                         char* input,
+                                         std::size_t input_size,
+                                         int* input_caret,
+                                         int* preedit_caret_bytes) {
+  if (input == nullptr || input_size == 0 || input_caret == nullptr ||
+      preedit_caret_bytes == nullptr) {
+    return -1;
+  }
+  std::lock_guard<std::mutex> lock(g_mutex);
+  if (!g_initialized || session == 0) {
+    return -2;
+  }
+  const rime::an<rime::Session> rime_session =
+      rime::Service::instance().GetSession(session);
+  rime::Context* ctx =
+      rime_session ? rime_session->context() : nullptr;
+  if (ctx == nullptr) {
+    return -2;
+  }
+  const std::string& raw = ctx->input();
+  const std::size_t clamped = std::min(caret, raw.size());
+  *input_caret = static_cast<int>(clamped);
+  const rime::Preedit pre =
+      ctx->composition().GetPreedit(raw, clamped, " ");
+  *preedit_caret_bytes = static_cast<int>(pre.caret_pos);
+  return copy_result(raw, input, input_size) ? 0 : -3;
+}
+
+// 中置编辑原子序列：BeginEditing + set_caret(caret) + process_key +
+// 组合未清则回尾。BeginEditing 必须先调（跳过它，退格会走
+// ReopenPreviousSelection 变成撤销选词而非删输入码——host probe 定
+// 案）。返回 process_key 的 consumed（0/1）；-1 参数；-2 会话不可用。
+// *input_len_out=执行后原始串长（Kotlin 侧推进 displayCaret 后 clamp）。
+FEELIME_EXPORT int feelime_rime_process_at(std::uintptr_t session,
+                                           std::size_t caret,
+                                           int keycode,
+                                           int modifiers,
+                                           int* input_len_out) {
+  if (input_len_out == nullptr) {
+    return -1;
+  }
+  std::lock_guard<std::mutex> lock(g_mutex);
+  const RimeApi* api = rime_get_api();
+  if (!g_initialized || session == 0 || api == nullptr) {
+    return -2;
+  }
+  const rime::an<rime::Session> rime_session =
+      rime::Service::instance().GetSession(session);
+  rime::Context* ctx =
+      rime_session ? rime_session->context() : nullptr;
+  if (ctx == nullptr) {
+    return -2;
+  }
+  ctx->BeginEditing();
+  ctx->set_caret_pos(caret);
+  const int handled = api->process_key(session, keycode, modifiers) ? 1 : 0;
+  // 回尾（整串翻译态）；组合已被清空时 input 空，set(0) 无意义，跳过。
+  const std::size_t len = ctx->input().size();
+  if (len > 0) ctx->set_caret_pos(len);
+  *input_len_out = static_cast<int>(len);
+  return handled;
 }
 
 FEELIME_EXPORT void feelime_rime_destroy_session(std::uintptr_t session) {

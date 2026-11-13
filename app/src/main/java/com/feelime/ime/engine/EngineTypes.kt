@@ -35,6 +35,13 @@ data class EngineState(
     val hasPreviousPage: Boolean,
     val hasNextPage: Boolean,
     val commit: String? = null,
+    // #103 组合内光标（空格横滑定位，实验性开关默认关）：
+    // inputCaret=原始输入码域位置（"nihaoma" 的 ASCII 偏移），
+    // preeditCaret=显示串 UTF-16 偏移（已确认汉字前缀等会造成两域
+    // 错位，分开传）。-1=引擎/状态不支持该域，消费方不得当 0。
+    // 第一期限 rime 的全拼/双拼（JS 侧 PREEDIT_SCRUB_MODES 白名单）。
+    val inputCaret: Int = -1,
+    val preeditCaret: Int = -1,
 )
 
 data class EngineRequest(
@@ -51,6 +58,11 @@ sealed interface EngineCommand {
     data object Backspace : EngineCommand
     data object Space : EngineCommand
     data object EnterRaw : EngineCommand
+    /** #103 组合内光标原子批次移动（空格横滑）：native 侧
+     * clamp(caret+steps,0,len) + BeginEditing + set_caret_pos；
+     * 无位移（已在边界）不触发重算。仅 rime 引擎支持，其余引擎
+     * 回 INVALID_COMMAND（coordinator 侧按能力白名单先挡）。 */
+    data class MovePreeditCursor(val steps: Int) : EngineCommand
     data class Choose(val expectedRevision: Long, val candidateId: String) : EngineCommand
     data class PageNext(val expectedRevision: Long) : EngineCommand
     data class PagePrevious(val expectedRevision: Long) : EngineCommand

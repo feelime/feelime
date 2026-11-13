@@ -956,6 +956,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     )
                     .put("hasPreviousPage", event.state.hasPreviousPage)
                     .put("hasNextPage", event.state.hasNextPage)
+                    // #103 光标双域（-1=不支持，JS 不渲染插入符）：
+                    // inputCaret=原始输入码位置（候选池身份参与键），
+                    // preeditCaret=显示串 UTF-16 偏移（插入符落点）。
+                    .put("inputCaret", event.state.inputCaret)
+                    .put("preeditCaret", event.state.preeditCaret)
                 event.degrade?.let {
                     payload
                         .put("degraded", true)
@@ -2022,6 +2027,28 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      * A normal editor without full snapshots is reconstructed from its text
      * around the known host selection before falling back to native arrows.
      */
+    // #103 scrub 手势目标锁定表（gestureId → 是否锁定组合内光标）：
+    // accessOrder LRU，8 条上限兜底 JS 漏发 scrubCursorEnd 的泄漏。
+    private val scrubTargets = object : LinkedHashMap<String, Boolean>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>) = size > 8
+    }
+
+    /** 首批判定并锁定：实验开关开 + 模式白名单（第一期全拼/双拼）+
+     *  当前有组合 → 锁 preedit；否则锁宿主。手势期内不重判（组合态
+     *  漂移/回声滞后不改变目标）。 */
+    private fun scrubCursorLockedToPreedit(gestureId: String): Boolean =
+        synchronized(scrubTargets) {
+            scrubTargets.getOrPut(gestureId) {
+                com.feelime.ime.readPreeditScrub(this) &&
+                    coordinator.currentMode in PREEDIT_SCRUB_MODES &&
+                    coordinator.composingLive
+            }
+        }
+
+    private fun endScrubGesture(gestureId: String) {
+        synchronized(scrubTargets) { scrubTargets.remove(gestureId) }
+    }
+
     private fun moveCursorWithinEditor(delta: Int) = onMain {
         val connection = currentInputConnection ?: return@onMain
         val info = currentInputEditorInfo
@@ -2325,6 +2352,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             android.content.res.Configuration.UI_MODE_NIGHT_MASK
         return if (night == android.content.res.Configuration.UI_MODE_NIGHT_YES) "dark" else "light"
     }
+
+    // ---- #103 空格横滑组合光标：模式白名单（第一期）----
+    // T9（数字转拼音的显示映射）与 stroke（笔画汉字显示）的显示域坐
+    // 标换算未做，先不放开；FLYPY 音形码同批后续评估。
+    private val PREEDIT_SCRUB_MODES = setOf(
+        com.feelime.ime.engine.InputMode.PINYIN,
+        com.feelime.ime.engine.InputMode.DOUBLE_PINYIN,
+    )
 
     // ---- #H 硬件键盘决策表（design §2，六轮评审定稿）----
     /** 接硬字符的模式（design §2）：T9/笔画是触摸形态（字母无意义）、
@@ -2773,6 +2808,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("keyOpacity", readKeyOpacity(this))
             .put("keyBubble", readKeyBubble(this))
             .put("cnEnComposingGuard", readCnEnComposingGuard(this))
+            .put("preeditScrub", com.feelime.ime.readPreeditScrub(this))
             .put("bubbleLinger", readBubbleLinger(this))
             // #39 横屏三级页三项 + 挖孔安全区实测值（css px，竖屏恒 0）。
             // safeSide 只有横屏需要（SHORT_EDGES 铺进挖孔区后键区让位用），
@@ -3783,6 +3819,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     keyboardPrefs.edit().putBoolean(PREF_CN_EN_COMPOSING_GUARD, value == "1" || value == "true").commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
+                "preeditScrub" -> {
+                    // #103 实验性（默认关）：空格横滑组合内拼音光标
+                    keyboardPrefs.edit().putBoolean(PREF_PREEDIT_SCRUB, value == "1" || value == "true").commit()
+                    ACTION_KEYBOARD_PREFS_CHANGED
+                }
                 "themeMode" -> {
                     // 外观页的三态主题（设置 app 写、键盘 hello 读回应用）；
                     // 键盘侧 pushStores 会把 tile/工具的改动同步回这里。
@@ -4009,6 +4050,30 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 return@guarded
             }
             moveCursorWithinEditor(delta)
+        }
+
+        // #103 空格横滑统一入口（实验开关默认关）：组合中=组合内拼音
+        // 光标（首批判定后按 gestureId 锁定到手势结束——组合中途结束/
+        // 状态回声滞后时，后续批次不得转投宿主光标）；非组合=宿主光标
+        // （存量 moveCursor 语义）。模式白名单第一期全拼/双拼（T9/形码
+        // 的显示坐标映射后续开放）。scrubCursorEnd 释放锁定；漏发由
+        // LRU 上限兜底（手势串行，8 条绰绰有余）。
+        @JavascriptInterface
+        fun scrubCursor(gestureId: String, steps: Int, token: String) = guarded(token, limited = false) {
+            if (steps == 0 || steps < -MAX_CURSOR_DELTA || steps > MAX_CURSOR_DELTA) {
+                rejectedCalls += 1
+                return@guarded
+            }
+            if (::coordinator.isInitialized && scrubCursorLockedToPreedit(gestureId)) {
+                coordinator.movePreeditCursor(steps)
+            } else {
+                moveCursorWithinEditor(steps)
+            }
+        }
+
+        @JavascriptInterface
+        fun scrubCursorEnd(gestureId: String, token: String) = guarded(token, limited = false) {
+            endScrubGesture(gestureId)
         }
 
         /**

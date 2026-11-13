@@ -121,6 +121,8 @@ class MozcTextEngine(context: Context) : NativeTextEngine() {
             // No user-dict candidates to delete here.
             is EngineCommand.DeleteHighlighted -> DispatchAck.Rejected(EngineCode.NOT_DELETABLE)
             is EngineCommand.DeleteCandidate -> DispatchAck.Rejected(EngineCode.NOT_DELETABLE)
+            // #103 preedit 光标只有 rime 引擎支持（coordinator 白名单先挡）。
+            is EngineCommand.MovePreeditCursor -> DispatchAck.Rejected(EngineCode.INVALID_COMMAND)
             EngineCommand.Close -> close(emit)
             EngineCommand.Start -> return DispatchAck.Rejected(EngineCode.STALE_STAMP)
         }

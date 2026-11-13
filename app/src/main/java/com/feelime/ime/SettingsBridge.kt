@@ -237,6 +237,10 @@ const val PREF_KEY_OPACITY = "key_opacity"
 const val PREF_KEY_BUBBLE = "key_bubble"
 /** #89 拼音组词中防误触切换（默认关：组词中仍可切换，不改存量行为）。 */
 const val PREF_CN_EN_COMPOSING_GUARD = "cn_en_composing_guard"
+/** #103 空格横滑=组合内拼音光标（实验性，默认关）：有组合时移 preedit
+ *  光标方便改错字母，无组合时维持移宿主光标的存量语义；第一期限
+ *  全拼/双拼（JS 侧白名单），T9/形码后续开放。 */
+const val PREF_PREEDIT_SCRUB = "feelime_preedit_scrub"
 /** 语音就绪震动（公众号 NULL 留言，默认关）：语音模型加载完成、开始
  *  聆听那一刻震动提示——仅「未加载→已加载」的转换震；模型已加载的
  *  后续进入不震（JS 侧只在 loading→listening 转换时调桥）。 */
@@ -332,6 +336,10 @@ fun readKeyBubble(context: Context): Boolean =
 fun readCnEnComposingGuard(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_CN_EN_COMPOSING_GUARD, false)
+
+fun readPreeditScrub(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_PREEDIT_SCRUB, false)
 
 
 /** 键盘高度（竖屏存值；pref 物理px，对外统一转 CSS px；0=默认）。 */
@@ -939,6 +947,7 @@ class SettingsBridge(
             .put("landscapeOpacity", readLandscapeOpacity(context))
             .put("keyBubble", readKeyBubble(context))
             .put("cnEnComposingGuard", readCnEnComposingGuard(context))
+            .put("preeditScrub", readPreeditScrub(context))
             .put("voiceReadyHaptic", readVoiceReadyHapticEnabled(context))
             .put("bubbleLinger", readBubbleLinger(context))
             // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
@@ -1904,6 +1913,17 @@ class SettingsBridge(
         if (pct !in 0..100) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_KEY_OPACITY, pct).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 空格横滑组合内拼音光标（#103 实验开关，默认关）。 */
+    @JavascriptInterface
+    fun setPreeditScrub(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_PREEDIT_SCRUB, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

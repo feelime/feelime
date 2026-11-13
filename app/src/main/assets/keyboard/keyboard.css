@@ -365,6 +365,25 @@ body.landscape #symCatBar { margin-top: 3px; gap: 4px; }
     z-index: 5;
 }
 body.composing #preeditLine { display: flex; }
+/* #103 组合内光标（空格横滑，实验开关）：中置时插入的竖线。不占文本
+ * 内容（空元素），闪烁用柔和的两态——拖动中不闪（视觉稳定），静态
+ * 跟随 prefers-reduced-motion 收敛为常亮。 */
+.preedit-caret {
+    display: inline-block;
+    width: 2px;
+    height: 1.1em;
+    margin: 0 1px;
+    vertical-align: text-bottom;
+    background: var(--accent, var(--key-subtext, currentColor));
+    animation: preedit-caret-blink 1.1s steps(1) infinite;
+}
+@keyframes preedit-caret-blink {
+    0%, 55% { opacity: 1; }
+    56%, 100% { opacity: 0.25; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .preedit-caret { animation: none; }
+}
 
 /* ===== 单手模式（issue #15）=====
  * body[data-one-hand="left"|"right"] 时 #softKeyboard 用同侧 padding 让位
