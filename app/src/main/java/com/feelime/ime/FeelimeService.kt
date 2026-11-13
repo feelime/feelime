@@ -2815,6 +2815,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("cnEnComposingGuard", readCnEnComposingGuard(this))
             .put("preeditScrub", com.feelime.ime.readPreeditScrub(this))
             .put("bubbleLinger", readBubbleLinger(this))
+            .put("toastMs", readToastMs(this))
             // #39 横屏三级页三项 + 挖孔安全区实测值（css px，竖屏恒 0）。
             // safeSide 只有横屏需要（SHORT_EDGES 铺进挖孔区后键区让位用），
             // 与安全区开关分开下发：开关管要不要让，insets 管让多少。

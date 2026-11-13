@@ -1128,6 +1128,8 @@ class KeyboardWorld {
                 // #103 验收后默认开（与 SettingsBridge.readPreeditScrub
                 // 的 true 默认对齐）；测「手动关」分支显式传 false。
                 preeditScrub: true,
+                // toast 停留时长（与 SettingsBridge.readToastMs 的 1600 默认对齐）。
+                toastMs: 1600,
                 orientation: 'portrait',
                 engineDataReady: { pinyin: true, 'double-pinyin': true, japanese: true, french: true, russian: true },
             },

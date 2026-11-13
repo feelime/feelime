@@ -144,6 +144,7 @@ class MockSettingsNative {
     setCnEnComposingGuard(...a) { this._rec('setCnEnComposingGuard', a); }
     setVoiceReadyHaptic(...a) { this._rec('setVoiceReadyHaptic', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
+    setToastMs(...a) { this._rec('setToastMs', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
     setDoubleShiftLock(...a) { this._rec('setDoubleShiftLock', a); }
@@ -2455,6 +2456,22 @@ test('appearance page reflects state and commits themeMode / keyOpacity with the
     lingerSel.listeners.find(l => l.type === 'change').handler({ target: { value: '600' } });
     equal(world.lastCall('setBubbleLinger').args, [600, world.token],
         'linger tier commit + token');
+
+    // toast 停留时长滑杆（300-10000ms）：回显 + 拖动刷读数 + 松手才过桥。
+    const toastSlider = world.$('toastMs');
+    world.push({ ...BASE_STATE, toastMs: 500 });
+    equal(toastSlider.value, '500', 'toastMs echo renders the value');
+    equal(world.$('toastMsOut').textContent, '500 ms', 'toastMs readout follows the echo');
+    const tInput = toastSlider.listeners.find(l => l.type === 'input');
+    const tChange = toastSlider.listeners.find(l => l.type === 'change');
+    assert(tInput && tChange, 'toastMs slider has input + change listeners');
+    tInput.handler({ target: { value: '2500' } });
+    equal(world.$('toastMsOut').textContent, '2500 ms', 'dragging refreshes the readout');
+    equal(world.native.calls.filter(c => c.method === 'setToastMs').length, 0,
+        'dragging (input) does not commit');
+    tChange.handler({ target: { value: '2500' } });
+    equal(world.lastCall('setToastMs').args, [2500, world.token],
+        'toastMs commit + token');
 
     // Slider: input only marks dirty, change commits once with the parsed value.
     const slider = world.$('keyOpacity');

@@ -564,6 +564,8 @@ const I18N = {
     "input.keyboards.saved": "\u5DF2\u4FDD\u5B58\uFF0C\u952E\u76D8\u5373\u65F6\u751F\u6548",
     "input.feel.bubbleLinger": "\u6C14\u6CE1\u505C\u7559\u65F6\u957F",
     "input.feel.bubbleLingerHint": "\u677E\u624B\u540E\u6C14\u6CE1\u591A\u505C\u7559\u4E00\u4F1A\u513F\u518D\u6D88\u5931\uFF0C\u770B\u5F97\u6E05\u6309\u4E86\u4EC0\u4E48\uFF1B0 \u4E3A\u7ACB\u5373\u6D88\u5931\u3002",
+    "input.feel.toastMs": "\u63D0\u793A\u505C\u7559\u65F6\u957F",
+    "input.feel.toastMsHint": "\u952E\u76D8\u4E0A\u7684\u63D0\u793A\u6761\uFF08\u5982\u300C\u5DF2\u64A4\u9500\u672C\u6B21\u542C\u5199\u300D\uFF09\u663E\u793A\u591A\u4E45\uFF0C300-10000 \u6BEB\u79D2\uFF0C\u9ED8\u8BA4 1600\u3002",
     "search.placeholder": "\u641C\u7D22\u8BBE\u7F6E\uFF1A\u9AD8\u5EA6\u3001\u6C14\u6CE1\u3001\u53CC\u62FC\u3001\u8BCD\u5E93\u2026",
     "search.noResults": "\u6CA1\u6709\u5339\u914D\u7684\u8BBE\u7F6E\u9879",
     "action.saveCustom": "\u4FDD\u5B58\u5B9A\u5236",
@@ -1397,6 +1399,8 @@ const I18N = {
     "input.keyboards.saved": "Saved; the keyboard applies it immediately",
     "input.feel.bubbleLinger": "Bubble linger",
     "input.feel.bubbleLingerHint": "How long the bubble stays after release; 0 hides it instantly.",
+    "input.feel.toastMs": "Toast duration",
+    "input.feel.toastMsHint": "How long on-keyboard notices stay up, 300-10000 ms; default 1600.",
     "search.placeholder": "Search settings: height, bubble, double-pinyin, lexicon\u2026",
     "search.noResults": "No matching settings",
     "action.saveCustom": "Save custom layout",
@@ -2444,7 +2448,7 @@ function renderLandscape(state) {
 }
 __name(renderLandscape, "renderLandscape");
 function renderFeel(state) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
   const setSelect = /* @__PURE__ */ __name((id, value, allowed) => {
     const node = $(id);
     if (!node) return;
@@ -2638,6 +2642,12 @@ function renderFeel(state) {
     opacity.value = String(opPct);
     rangeOut("keyOpacity", opPct + "%");
   }
+  const toastMsInput = $("toastMs");
+  if (toastMsInput) {
+    const ms = Math.max(300, Math.min(1e4, Number((_j = state.toastMs) != null ? _j : 1600)));
+    toastMsInput.value = String(ms);
+    rangeOut("toastMs", ms + " ms");
+  }
   const pvBg = /* @__PURE__ */ __name((imgKey, srcKey) => state[srcKey] && state[srcKey] !== "none" && state[imgKey] ? `url("${state[imgKey].startsWith("https://feelime.local/keyboard/background/") ? state[imgKey] : "data:image/jpeg;base64," + state[imgKey]}")` : "none", "pvBg");
   pvBgLightImg = pvBg("bgImageLight", "bgImageLightSource");
   pvBgDarkImg = pvBg("bgImageDark", "bgImageDarkSource");
@@ -2652,16 +2662,16 @@ function renderFeel(state) {
   if (vrh) vrh.checked = state.voiceReadyHaptic === true;
   const lingerSel = $("bubbleLinger");
   if (lingerSel && document.activeElement !== lingerSel) {
-    lingerSel.value = String((_j = state.bubbleLinger) != null ? _j : 400);
+    lingerSel.value = String((_k = state.bubbleLinger) != null ? _k : 400);
   }
   const kbHeight = $("kbHeight");
   if (kbHeight) {
-    const min = Number((_k = state.kbHeightMin) != null ? _k : 226);
-    const max = Number((_l = state.kbHeightMax) != null ? _l : 400);
+    const min = Number((_l = state.kbHeightMin) != null ? _l : 226);
+    const max = Number((_m = state.kbHeightMax) != null ? _m : 400);
     kbHeight.min = String(min);
     kbHeight.max = String(max);
     kbHeight.step = "5";
-    const saved = Number((_m = state.kbHeightPortrait) != null ? _m : 0);
+    const saved = Number((_n = state.kbHeightPortrait) != null ? _n : 0);
     kbHeight.value = String(saved >= min ? saved : 272);
     kbHeight.dataset.default = "272";
     rangeOut("kbHeight", kbHeight.value + " px");
@@ -2680,23 +2690,23 @@ function renderFeel(state) {
     if (opt && src !== "custom") opt.remove();
     sel.value = src === "custom" ? "custom" : src;
   });
-  setSelect("holdMs", (_n = state.holdMs) != null ? _n : 350, ["200", "300", "350", "450", "600"]);
+  setSelect("holdMs", (_o = state.holdMs) != null ? _o : 350, ["200", "300", "350", "450", "600"]);
   setSelect("kbLayout", state.kbLayout === "14" ? "14" : "26", ["26", "14"]);
-  setSelect("scrubSpeed", (_o = state.scrubSpeed) != null ? _o : 3, ["1", "2", "3", "4", "5"]);
+  setSelect("scrubSpeed", (_p = state.scrubSpeed) != null ? _p : 3, ["1", "2", "3", "4", "5"]);
   const flickSwap = $("flickSwap");
   if (flickSwap) flickSwap.checked = state.flickSwap === true;
   const doubleShiftLock = $("doubleShiftLock");
   if (doubleShiftLock) doubleShiftLock.checked = state.doubleShiftLock === true;
-  setSelect("popupSnap", (_p = state.popupSnap) != null ? _p : 1, ["0", "1", "2"]);
+  setSelect("popupSnap", (_q = state.popupSnap) != null ? _q : 1, ["0", "1", "2"]);
   const setToggle = /* @__PURE__ */ __name((id, value) => {
     const node = $(id);
     if (node && document.activeElement !== node) node.checked = !!value;
   }, "setToggle");
   setToggle("keySound", state.keySound);
   const vol = $("keySoundVolume");
-  if (vol && document.activeElement !== vol) vol.value = String((_q = state.keySoundVolume) != null ? _q : 60);
+  if (vol && document.activeElement !== vol) vol.value = String((_r = state.keySoundVolume) != null ? _r : 60);
   if (vol) rangeOut("keySoundVolume", vol.value + "%");
-  setSelect("keyHapticStrength", String((_r = state.keyHapticStrength) != null ? _r : 1), ["0", "1", "2"]);
+  setSelect("keyHapticStrength", String((_s = state.keyHapticStrength) != null ? _s : 1), ["0", "1", "2"]);
   {
     const style = state.keySoundStyle || "default";
     const sel = $("keySoundStyle");
@@ -4075,6 +4085,10 @@ $("candidateFont").addEventListener("input", (event) => {
   $("candidateFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
 });
 $("candidateFont").addEventListener("change", (event) => call("setCandidateFont", parseInt(event.target.value, 10)));
+$("toastMs").addEventListener("input", (event) => {
+  rangeOut("toastMs", `${parseInt(event.target.value, 10)} ms`);
+});
+$("toastMs").addEventListener("change", (event) => call("setToastMs", parseInt(event.target.value, 10)));
 $("keycapFont").addEventListener("input", (event) => {
   $("keycapFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
 });

@@ -6008,6 +6008,38 @@ test('one-handed pad percent drives --side-pad-w (shrink tiers)', {since: '3.45.
     equal(padVar(), undefined, 'tier 0 removes the override (CSS default again)');
 });
 
+// ---- toast 停留时长（设置页外观页滑杆 300-10000ms，默认 1600） ----
+// 只断言 DOM 行为（open 的存活窗口），不拿键盘实例——testKeyboard 是
+// 各用例自己 eval 注入的，fresh() 拿不到；触发走真实的错误 toast 路径。
+test('toast window follows toastMs instead of the old hardcoded 1600', {since: '3.73.113'}, () => {
+    const fire = world => {
+        world.nativeState({ state: 'error', message: 'boom' });
+        assert(world.$('toast').classList.contains('open'), 'toast opens');
+    };
+    // 500ms 档：499 还在，跨过就收。
+    const short = fresh({ toastMs: 500 });
+    fire(short);
+    short.clock.advance(499);
+    assert(short.$('toast').classList.contains('open'), 'still open just before 500');
+    short.clock.advance(2);
+    assert(!short.$('toast').classList.contains('open'), 'closes at 500');
+    // 1600ms 档（默认）：窗口跟着设置走，不是写死值。
+    const normal = fresh({ toastMs: 1600 });
+    fire(normal);
+    normal.clock.advance(1599);
+    assert(normal.$('toast').classList.contains('open'), 'still open just before 1600');
+    normal.clock.advance(2);
+    assert(!normal.$('toast').classList.contains('open'), 'closes at 1600');
+    // 越界值不覆盖当前设置（旧 APK/脏值守卫）：仍是 1600 而非 99999。
+    normal.hello({ toastMs: 99999 });
+    fire(normal);
+    normal.clock.advance(1599);
+    assert(normal.$('toast').classList.contains('open'),
+        'out-of-range hello value ignored: window still 1600');
+    normal.clock.advance(2);
+    assert(!normal.$('toast').classList.contains('open'), 'closes at 1600 after the ignored hello');
+});
+
 // ---- 按键气泡（issue #30-1，外观开关默认关） ----
 test('key bubble stays off by default; hello arms it per press', {since: '3.60.0'}, () => {
     const world = fresh();

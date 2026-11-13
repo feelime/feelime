@@ -200,6 +200,16 @@
     </div>
     <div class="row language-row">
       <span class="row-label">
+        <span data-i18n="input.feel.toastMs">提示停留时长</span>
+        <small data-i18n="input.feel.toastMsHint">键盘上的提示条（如「已撤销本次听写」）显示多久，300-10000 毫秒，默认 1600。</small>
+      </span>
+      <span class="range-group">
+        <output id="toastMsOut" for="toastMs" class="range-out">1600 ms</output>
+        <input type="range" id="toastMs" class="slider" min="300" max="10000" step="100" value="1600" aria-label="提示停留时长" data-i18n-aria="input.feel.toastMs" data-keywords="toast 提示 停留 时长 撤销 时间 毫秒">
+      </span>
+    </div>
+    <div class="row language-row">
+      <span class="row-label">
         <span data-i18n="input.feel.kbHeight">键盘高度</span>
         <small data-i18n="input.feel.kbHeightHint">竖屏键盘的高度；键盘上拖拽调节与此处等效。</small>
       </span>
