@@ -337,9 +337,12 @@ fun readCnEnComposingGuard(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_CN_EN_COMPOSING_GUARD, false)
 
+/** #103 空格横滑移拼音光标：验收通过后默认开（2026-11-13）。
+ *  只有用户在设置里显式关过才会写进 pref 的 false——老用户没动过开关
+ *  的一律拿到新默认，手动关过的保持关。 */
 fun readPreeditScrub(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
-        .getBoolean(PREF_PREEDIT_SCRUB, false)
+        .getBoolean(PREF_PREEDIT_SCRUB, true)
 
 
 /** 键盘高度（竖屏存值；pref 物理px，对外统一转 CSS px；0=默认）。 */

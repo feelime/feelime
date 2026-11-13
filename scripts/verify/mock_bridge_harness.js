@@ -1125,6 +1125,9 @@ class KeyboardWorld {
                 // 界面语言「选择值」（auto/zh/en）；uiLocale 是解析结果。
                 uiLanguage: 'zh',
                 theme: 'light',
+                // #103 验收后默认开（与 SettingsBridge.readPreeditScrub
+                // 的 true 默认对齐）；测「手动关」分支显式传 false。
+                preeditScrub: true,
                 orientation: 'portrait',
                 engineDataReady: { pinyin: true, 'double-pinyin': true, japanese: true, french: true, russian: true },
             },

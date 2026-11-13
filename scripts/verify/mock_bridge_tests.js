@@ -2614,14 +2614,15 @@ test('fast scrub keeps all steps beyond the old 40-step cap', {since: '3.22.0'},
     assert(moves.length < 5, 'bounded batch avoids single-step call flood');
 });
 
-test('preedit scrub: composing space swipe moves the pinyin caret, gesture-locked; off keeps legacy (#103)', {since: '3.73.107'}, () => {
-    // 默认关（实验开关）：组合中空格横滑维持不启动（存量——组合中
-    // 宿主光标属于组合 span，动了会被 setComposingText 弹回）。
-    const off = fresh({ mode: 'pinyin' });
+test('preedit scrub: composing space swipe moves the pinyin caret, gesture-locked; manual off keeps legacy (#103)', {since: '3.73.107'}, () => {
+    // 默认开（#103 验收后，2026-11-13）；这里测的是用户手动关掉的
+    // 分支——组合中空格横滑不启动（存量语义：组合中宿主光标属于组合
+    // span，动了会被 setComposingText 弹回）。
+    const off = fresh({ mode: 'pinyin', preeditScrub: false });
     off.engineState({ mode: 'pinyin', revision: 1, composing: 'ni hao', rawInput: 'ni hao', candidates: [], hasNextPage: false });
     off.touchDown(off.$('spaceKey'), 20, 20);
     off.move(off.$('spaceKey'), -40, 0);
-    equal(off.native.of('moveCursor').length, 0, 'off (default): composing space drag stays inert');
+    equal(off.native.of('moveCursor').length, 0, 'off (manual): composing space drag stays inert');
     equal(off.native.of('scrubCursor').length, 0, 'off: no preedit channel either');
     off.touchUp(off.$('spaceKey'), -40, 0);
 
