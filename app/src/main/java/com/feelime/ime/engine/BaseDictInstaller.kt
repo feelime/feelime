@@ -752,7 +752,11 @@ object BaseDictInstaller {
     private fun cacheKey(context: Context): String {
         cachedCompileKey?.let { return it }
         val digest = MessageDigest.getInstance("SHA-256")
-        digest.update("base-cache-v1".toByteArray())
+        // v2：import_tables 改按「有权重的表在前」排序（修 41448 顶掉
+        // 8105 词频）。不递增的话老槽的 compile_key 仍命中，activateCached
+        // 直接还原那份错序的旧快照——已装过词库的用户（正是受影响人群）
+        // 永远拿不到修复。**凡是改变编译产物语义的改动都要在这里 +1。**
+        digest.update("base-cache-v2".toByteArray())
         listOf("engine-data/MANIFEST.json", BaseDictFiles.ASSETS_DEFAULT,
             BaseDictFiles.ASSETS_SYMBOLS).forEach { asset ->
             context.assets.open(asset).use { digest.update(it.readBytes()) }
