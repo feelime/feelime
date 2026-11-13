@@ -916,7 +916,7 @@ class TextInputCoordinator(
         return dispatch(EngineCommand.PageNext(expectedRevision))
     }
 
-    /** #103 组合内光标原子移动（空格横滑，实验开关默认关）：模式/开关
+    /** #103 组合内光标原子移动（空格横滑，默认开，可手动关）：模式/开关
      *  白名单由调用方（FeelimeService.scrubCursor 桥）判定——这里只面
      *  对活引擎。移动不改词缓存（不 invalidateWordUndo：内容未变，
      *  重算分段由引擎内部处理）。 */

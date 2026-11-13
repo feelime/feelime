@@ -2034,7 +2034,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>) = size > 8
     }
 
-    /** 首批判定并锁定：实验开关开 + 模式白名单（第一期全拼/双拼）+
+    /** 首批判定并锁定：开关开（2026-11-13 起默认开）+ 模式白名单（第一期全拼/双拼）+
      *  当前有组合 → 锁 preedit；否则锁宿主。手势期内不重判（组合态
      *  漂移/回声滞后不改变目标）。 */
     private fun scrubCursorLockedToPreedit(gestureId: String): Boolean =
@@ -3825,7 +3825,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
                 "preeditScrub" -> {
-                    // #103 实验性（默认关）：空格横滑组合内拼音光标
+                    // #103（默认开，可手动关）：空格横滑组合内拼音光标
                     keyboardPrefs.edit().putBoolean(PREF_PREEDIT_SCRUB, value == "1" || value == "true").commit()
                     ACTION_KEYBOARD_PREFS_CHANGED
                 }
@@ -4057,7 +4057,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             moveCursorWithinEditor(delta)
         }
 
-        // #103 空格横滑统一入口（实验开关默认关）：组合中=组合内拼音
+        // #103 空格横滑统一入口（默认开，可手动关）：组合中=组合内拼音
         // 光标（首批判定后按 gestureId 锁定到手势结束——组合中途结束/
         // 状态回声滞后时，后续批次不得转投宿主光标）；非组合=宿主光标
         // （存量 moveCursor 语义）。模式白名单第一期全拼/双拼（T9/形码

@@ -237,7 +237,7 @@ const val PREF_KEY_OPACITY = "key_opacity"
 const val PREF_KEY_BUBBLE = "key_bubble"
 /** #89 拼音组词中防误触切换（默认关：组词中仍可切换，不改存量行为）。 */
 const val PREF_CN_EN_COMPOSING_GUARD = "cn_en_composing_guard"
-/** #103 空格横滑=组合内拼音光标（实验性，默认关）：有组合时移 preedit
+/** #103 空格横滑=组合内拼音光标（默认开，可手动关）：有组合时移 preedit
  *  光标方便改错字母，无组合时维持移宿主光标的存量语义；第一期限
  *  全拼/双拼（JS 侧白名单），T9/形码后续开放。 */
 const val PREF_PREEDIT_SCRUB = "feelime_preedit_scrub"
@@ -1925,7 +1925,7 @@ class SettingsBridge(
         pushState()
     }
 
-    /** 空格横滑组合内拼音光标（#103 实验开关，默认关）。 */
+    /** 空格横滑组合内拼音光标（#103，默认开，可手动关）。 */
     @JavascriptInterface
     fun setPreeditScrub(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)

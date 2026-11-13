@@ -35,7 +35,7 @@ data class EngineState(
     val hasPreviousPage: Boolean,
     val hasNextPage: Boolean,
     val commit: String? = null,
-    // #103 组合内光标（空格横滑定位，实验性开关默认关）：
+    // #103 组合内光标（空格横滑定位，默认开，可手动关）：
     // inputCaret=原始输入码域位置（"nihaoma" 的 ASCII 偏移），
     // preeditCaret=显示串 UTF-16 偏移（已确认汉字前缀等会造成两域
     // 错位，分开传）。-1=引擎/状态不支持该域，消费方不得当 0。
