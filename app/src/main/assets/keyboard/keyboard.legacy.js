@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.112";
+  const KEYBOARD_VERSION = "3.73.113";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1788,6 +1788,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.floating = false;
       this.floatGeom = null;
       this.bubbleLinger = 400;
+      this.toastMs = 1600;
       this.themeMode = "auto";
       this.toolbarLeft = TOOLBAR_DEFAULT.left.slice();
       this.toolbarRight = TOOLBAR_DEFAULT.right.slice();
@@ -10267,6 +10268,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (typeof payload.preeditScrub === "boolean") this.preeditScrub = payload.preeditScrub;
       const lingerMs = Number(payload.bubbleLinger);
       if (lingerMs >= 0) this.bubbleLinger = lingerMs;
+      const toastMs = Number(payload.toastMs);
+      if (toastMs >= 300 && toastMs <= 1e4) this.toastMs = toastMs;
       this.applyOneHand();
       this.applyBackground();
       this.applyKeyOpacity();
@@ -10824,7 +10827,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       toast.textContent = message;
       toast.classList.add("open");
       clearTimeout(this.toastTimer);
-      this.toastTimer = setTimeout(() => toast.classList.remove("open"), 1600);
+      this.toastTimer = setTimeout(() => toast.classList.remove("open"), this.toastMs);
     }
   };
   __name(_FeelimeKeyboard, "FeelimeKeyboard");

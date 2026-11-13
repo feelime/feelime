@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.112';
+    const KEYBOARD_VERSION = '3.73.113';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1755,6 +1755,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.floating = false;
             this.floatGeom = null;
             this.bubbleLinger = 400;
+            // toast 停留时长（设置页外观页滑杆 300-10000ms，默认 1600）。
+            // keyNote 按键气泡不走这里，仍是固定 1600ms。
+            this.toastMs = 1600;
             // 色彩模式（auto/light/dark）：真相源是 native pref theme_mode，
             // hello 下发、tile 循环上报。AGENTS.md「设置不走 localStorage」。
             this.themeMode = 'auto';
@@ -12250,6 +12253,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof payload.preeditScrub === 'boolean') this.preeditScrub = payload.preeditScrub;
             const lingerMs = Number(payload.bubbleLinger);
             if (lingerMs >= 0) this.bubbleLinger = lingerMs;
+            // 旧 APK 不带 toastMs 时不覆盖默认值（同 keyBubble/preeditScrub 守卫）。
+            const toastMs = Number(payload.toastMs);
+            if (toastMs >= 300 && toastMs <= 10000) this.toastMs = toastMs;
             this.applyOneHand();
             this.applyBackground();
             this.applyKeyOpacity();
@@ -13095,9 +13101,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             toast.textContent = message;
             toast.classList.add('open');
             clearTimeout(this.toastTimer);
-            // 2600ms 拖得太久（「已撤销本次听写」这类盖在键盘上不走），
-            // 收到与 keyNote 按键气泡同档的 1600ms。
-            this.toastTimer = setTimeout(() => toast.classList.remove('open'), 1600);
+            // 时长走设置项 toastMs（默认 1600ms；原 2600ms 拖得太久——
+            // 「已撤销本次听写」这类盖在键盘上不走）。keyNote 按键气泡
+            // 不受影响，仍是固定 1600ms。
+            this.toastTimer = setTimeout(() => toast.classList.remove('open'), this.toastMs);
         }
     }
 

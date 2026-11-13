@@ -2436,8 +2436,13 @@ body.landscape #voiceSlideHint { margin-top: 48px; padding: 5px 13px; font-size:
     display: none;
     position: absolute;
     left: 50%;
-    top: 40px;
-    transform: translateX(-50%);
+    /* 钉在工具栏行的垂直中心：竖屏 = padding-top(--preedit-band) +
+     * candidateBar margin-top(2) + 半高(20)。原 top:40px 是「顶边」而非
+     * 中心，往下铺约 41px 盖到第一行键；改成中心线 + translate(-50%,-50%)
+     * 后上下各约 20px 正好填满 40px 的工具栏行，不碰键区。跟 band 走
+     * 才能在拼音字号三档（18/22/25）下都不偏。 */
+    top: calc(var(--preedit-band, 18px) + 22px);
+    transform: translate(-50%, -50%);
     z-index: 40;
     max-width: 88%;
     padding: 10px 16px;
@@ -2453,6 +2458,9 @@ body.landscape #voiceSlideHint { margin-top: 48px; padding: 5px 13px; font-size:
     white-space: nowrap;
 }
 #toast.open { display: block; }
+/* 横屏 #softKeyboard 的 padding-top 是 4px（不是 band），candidateBar
+ * 的 margin-top 又是 band，中心线 = band + 24。 */
+body.landscape #toast { top: calc(var(--preedit-band, 18px) + 24px); }
 /* 定制键备注：锚在键上方的气泡（同款高对比浮层） */
 #keyNote {
     position: fixed;

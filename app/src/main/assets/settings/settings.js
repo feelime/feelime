@@ -477,6 +477,8 @@ const I18N = {
         "input.keyboards.saved": "已保存，键盘即时生效",
         "input.feel.bubbleLinger": "气泡停留时长",
         "input.feel.bubbleLingerHint": "松手后气泡多停留一会儿再消失，看得清按了什么；0 为立即消失。",
+        "input.feel.toastMs": "提示停留时长",
+        "input.feel.toastMsHint": "键盘上的提示条（如「已撤销本次听写」）显示多久，300-10000 毫秒，默认 1600。",
         "search.placeholder": "搜索设置：高度、气泡、双拼、词库…",
         "search.noResults": "没有匹配的设置项",
         "action.saveCustom": "保存定制",
@@ -1309,6 +1311,8 @@ const I18N = {
         "input.keyboards.saved": "Saved; the keyboard applies it immediately",
         "input.feel.bubbleLinger": "Bubble linger",
         "input.feel.bubbleLingerHint": "How long the bubble stays after release; 0 hides it instantly.",
+        "input.feel.toastMs": "Toast duration",
+        "input.feel.toastMsHint": "How long on-keyboard notices stay up, 300-10000 ms; default 1600.",
         "search.placeholder": "Search settings: height, bubble, double-pinyin, lexicon…",
         "search.noResults": "No matching settings",
         "action.saveCustom": "Save custom layout",
@@ -2694,6 +2698,13 @@ function renderFeel(state) {
         pvKeyAlpha = opPct / 100;
         opacity.value = String(opPct);
         rangeOut("keyOpacity", opPct + "%");
+    }
+    // toast 停留时长回显（300-10000ms；脏值夹回默认，与 readToastMs 同口径）。
+    const toastMsInput = $("toastMs");
+    if (toastMsInput) {
+        const ms = Math.max(300, Math.min(10000, Number(state.toastMs ?? 1600)));
+        toastMsInput.value = String(ms);
+        rangeOut("toastMs", ms + " ms");
     }
     const pvBg = (imgKey, srcKey) => (state[srcKey] && state[srcKey] !== "none" && state[imgKey])
         ? `url("${state[imgKey].startsWith('https://feelime.local/keyboard/background/')
@@ -4289,6 +4300,11 @@ $("candidateFont").addEventListener("input", event => {
     $("candidateFontOut").textContent = `${parseInt(event.target.value, 10)}%`;
 });
 $("candidateFont").addEventListener("change", event => call("setCandidateFont", parseInt(event.target.value, 10)));
+// toast 停留时长：交互口径同候选字号（拖动实时读数，松手落盘一次）。
+$("toastMs").addEventListener("input", event => {
+    rangeOut("toastMs", `${parseInt(event.target.value, 10)} ms`);
+});
+$("toastMs").addEventListener("change", event => call("setToastMs", parseInt(event.target.value, 10)));
 // #70 键帽字号：交互口径同候选字号（拖动实时读数，松手落盘）。
 $("keycapFont").addEventListener("input", event => {
     $("keycapFontOut").textContent = `${parseInt(event.target.value, 10)}%`;

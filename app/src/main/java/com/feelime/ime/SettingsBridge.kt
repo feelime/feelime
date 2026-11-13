@@ -257,6 +257,15 @@ fun readBubbleLinger(context: Context): Int =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getInt(PREF_BUBBLE_LINGER, 400)
         .takeIf { it in BUBBLE_LINGER_STEPS.asList() } ?: 400
+/** toast 停留时长（用户要求 2026-11-13）：300-10000ms，默认 1600。
+ *  keyNote 按键气泡不走这个 pref，仍是固定 1600ms。 */
+const val PREF_TOAST_MS = "toast_ms"
+val TOAST_MS_RANGE = 300..10000
+
+fun readToastMs(context: Context): Int =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getInt(PREF_TOAST_MS, 1600)
+        .let { if (it in TOAST_MS_RANGE) it else 1600 }
 const val KB_HEIGHT_PORTRAIT_KEY = "keyboard_height_portrait"
 
 fun readKeyOpacity(context: Context): Int =
@@ -956,6 +965,7 @@ class SettingsBridge(
             .put("preeditScrub", readPreeditScrub(context))
             .put("voiceReadyHaptic", readVoiceReadyHapticEnabled(context))
             .put("bubbleLinger", readBubbleLinger(context))
+            .put("toastMs", readToastMs(context))
             // 验收 2026-09-24：state push 漏 flickSwap，设置页回显恒 false，
             // 点开开关后 pushState 一到就弹回——「开了看不出开」。
             .put("flickSwap", readFlickSwap(context))
@@ -1973,6 +1983,19 @@ class SettingsBridge(
         if (ms !in BUBBLE_LINGER_STEPS.asList()) return@guarded
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putInt(PREF_BUBBLE_LINGER, ms).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** toast 停留时长（300-10000ms）。越界静默夹紧回默认，不回错误：
+     *  滑杆本身已限幅，越界只可能来自旧版本写入的脏值。 */
+    @JavascriptInterface
+    fun setToastMs(ms: Int, token: String) = guarded(token) {
+        val clamped = if (ms in TOAST_MS_RANGE) ms else 1600
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putInt(PREF_TOAST_MS, clamped).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )
