@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.110";
+  const KEYBOARD_VERSION = "3.73.111";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -10824,7 +10824,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       toast.textContent = message;
       toast.classList.add("open");
       clearTimeout(this.toastTimer);
-      this.toastTimer = setTimeout(() => toast.classList.remove("open"), 2600);
+      this.toastTimer = setTimeout(() => toast.classList.remove("open"), 1600);
     }
   };
   __name(_FeelimeKeyboard, "FeelimeKeyboard");

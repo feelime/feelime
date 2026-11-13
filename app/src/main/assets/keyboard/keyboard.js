@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.110';
+    const KEYBOARD_VERSION = '3.73.111';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -13095,7 +13095,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             toast.textContent = message;
             toast.classList.add('open');
             clearTimeout(this.toastTimer);
-            this.toastTimer = setTimeout(() => toast.classList.remove('open'), 2600);
+            // 2600ms 拖得太久（「已撤销本次听写」这类盖在键盘上不走），
+            // 收到与 keyNote 按键气泡同档的 1600ms。
+            this.toastTimer = setTimeout(() => toast.classList.remove('open'), 1600);
         }
     }
 
