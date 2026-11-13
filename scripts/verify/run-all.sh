@@ -167,6 +167,22 @@ if [[ "$PROFILE" != "full" ]]; then
     [[ -n "$profile_line" ]] || { echo "unknown profile: $PROFILE" >&2; usage; }
     read -ra selected_names <<<"$profile_line"
 fi
+if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
+    if [[ "$PROFILE" != "full" ]]; then
+        # 并集：profile 核心之上追加位置参数（去重）
+        for seg in "${POSITIONAL[@]}"; do
+            dup=0
+            for have in "${selected_names[@]}"; do
+                [[ "$have" == "$seg" ]] && { dup=1; break; }
+            done
+            [[ "$dup" == "0" ]] && selected_names+=("$seg")
+        done
+        echo "selection: --profile $PROFILE core + extra: ${POSITIONAL[*]}"
+    else
+        # 纯位置参数：单段调试语义（不含 profile 核心）
+        selected_names=("${POSITIONAL[@]}")
+    fi
+fi
 
 # 把选择条件折算成"每个段是否启用"：--from/--profile 折算出的 selected_names
 # 与位置参数走同一条 label 前缀匹配（如 `9n`、`9g`）。
@@ -243,7 +259,7 @@ for record in out.split(b"\0"):
     if status.startswith("R"):
         # rename 记录尾随第二个 NUL 字段=新路径
         path = path.split("\0")[0]
-    h.update(status)
+    h.update(status.encode("utf-8", "surrogateescape"))
     h.update(path.encode("utf-8", "surrogateescape"))
     full = os.path.join(repo, path)
     if status.strip().lstrip("RCA") == "D" or not os.path.exists(full):
@@ -441,12 +457,17 @@ sweep_device() {
     # 开头的 reset_device）。
     for _ in 1 2 3; do
         pidof_out=$(adb -s "$FEELIME_ADB_SERIAL" shell pidof "$PKG" 2>/dev/null | tr -d '[:space:]')
-        [[ -z "$pidof_out" ]] && break
+        # if 形式而非 `[[ ]] && break`：后者为假时把非零退出码留给 for
+        # 复合命令，set -e 会在兜底 if 之前静默炸掉整跑（2026-11-14
+        # daily 实测实录：base 21/21 全绿却 GATE FAILED rc=1 且无输出）。
+        if [[ -z "$pidof_out" ]]; then break; fi
         sleep 1
     done
     if [[ -n "$pidof_out" ]]; then
-        echo "sweep: $PKG still alive (pid $pidof_out) after force-stop - refusing to sweep on a live process" >&2
-        return 1
+        # IME 绑定型服务被系统自动重拉是正常行为（不是停止失败）：
+        # 照常清理（复活进程加载的是清空后的 prefs，与原版行为一致），
+        # 打警告留痕即可。
+        echo "sweep: $PKG re-spawned (pid $pidof_out, IME rebind) - continuing with cleanup" >&2
     fi
     adb -s "$FEELIME_ADB_SERIAL" shell \
         "run-as "$PKG" sh -c 'rm -f shared_prefs/*.xml shared_prefs/*.xml.bak'" \
@@ -593,9 +614,10 @@ ASR_BLOCKED=0   # 1=本轮有 BLOCKED 段（未验证不记绿，尾部提示）
 # 只在非零退出时补打，正常路径维持尾部显式汇总。
 ACTIVE_SEG=""
 ACTIVE_T0=0
-trap 'rc=$?; if [[ "$rc" != "0" ]]; then
+trap 'rc=$?; if [[ "$rc" != "0" && "$rc" != "3" ]]; then
         # 失败中的活动段补记耗时（codex review P2：SEG_DUR 只在成功
-        # 路径记录，最长的失败段恰好不在表里）
+        # 路径记录，最长的失败段恰好不在表里）。rc=3 是 GATE_BLOCKED
+        # 的约定码（尾部分支已打过汇总），不在此重复。
         if [[ -n "$ACTIVE_SEG" ]]; then
             SEG_DUR["$ACTIVE_SEG (FAILED)"]=$(( $(date +%s) - ACTIVE_T0 ))
         fi
