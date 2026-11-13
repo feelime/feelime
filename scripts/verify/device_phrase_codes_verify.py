@@ -128,6 +128,14 @@ def clear_host_adb(keyboard, rounds=3):
 
 def prepare_readonly():
     """Prepare the debug host field without a DevTools write expression."""
+    # #H 形态夹具（同 d.prepare 的单跑兜底；本套件不走 d.prepare，9l 等
+    # 借道这里的套件靠这一层）：AVD qemu 键盘在场时 hwkb 默认 candidates
+    # 收缩键区，#modeToggle 长按入口直接 not visible。进程活着时
+    # SharedPreferences 不重读文件，先 force-stop 再落盘；下方 ime set
+    # 覆盖 force-stop 切走默认 IME 的副作用。
+    d.shell("am force-stop " + d.PKG)
+    time.sleep(0.5)
+    d.pin_hwkb_form()
     d.shell("svc power stayon true")
     d.shell("input keyevent KEYCODE_WAKEUP")
     d.shell("wm dismiss-keyguard")

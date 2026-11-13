@@ -1215,6 +1215,15 @@ def type_word(keyboard, word, wait=0.3):
 
 # ---------------------------------------------------------------- test cases
 def prepare():
+    # #H 形态夹具单跑兜底：run-all 的 reset/sweep 已 pin，但单段直跑
+    # （python3 device_xxx_verify.py）与 fresh install 后没有这层——
+    # AVD qemu 键盘在场时 hwkb 默认 candidates 收缩键区，套件在准备段
+    # 就假失败（#modeToggle not visible 实录，ace 与 AVD 同签名）。
+    # SharedPreferences 进程活着不重读文件，必须先 force-stop 再落盘；
+    # force-stop 切走默认 IME 的坑由下方 ime set 覆盖。
+    shell(f"am force-stop {PKG}")
+    time.sleep(0.5)
+    pin_hwkb_form()
     shell("svc power stayon true")
     shell("input keyevent KEYCODE_WAKEUP")
     shell("wm dismiss-keyguard")
