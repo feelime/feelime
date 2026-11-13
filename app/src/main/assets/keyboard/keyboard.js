@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.113';
+    const KEYBOARD_VERSION = '3.73.114';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -11213,6 +11213,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 1.3.8 丢图标的另一半触发点——本行在候选渲染高频路径上）。
             if (mic) mic.hidden =
                 (this.composing && !recording);
+            // 中文联想让位同款压回（用户 2026-11-13 报「候选词夹在
+            // 按钮中间」：语音结束后本函数的 mic 行只懂 composing/
+            // recording，把 mic 插回联想候选行；上面的 yield 对账又被
+            // mic 行盖掉。让位语义必须在 mic 行之后最后复核——同下
+            // 手写 applyInkBarChrome 的压回先例，recording 时 mic 仍为
+            // stop 入口不藏）。
+            if ((this.assocWords || []).length && !this.composing && !recording) {
+                this.setToolbarYield(true);
+            }
             // 手写候选态的整行互斥要压过上面 mic/工具的通用可见性规则：
             // 引擎回声（commitText 后的空事件等）不得把工具栏插回候选行。
             if (this.mode === 'handwriting') this.applyInkBarChrome();

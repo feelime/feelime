@@ -9729,6 +9729,32 @@ test('t9 1-key chrome: tap yields toolbar, pick/× restores, up-flick commits 1'
         'up-flick commits literal 1');
 });
 
+// 用户 2026-11-13 报「候选词夹在工具栏按钮中间」：语音结束后 mic 被通用
+// 可见性行插回联想候选行（updateComposing 的 mic 行只懂 composing/
+// recording，盖掉先前让位对账）。让位必须在 mic 行之后最后复核；
+// 语音中（recording）mic 仍为 overlay 外的兜底入口不藏。
+test('assoc yield survives a voice session ending (mic stays out of the bar)', {since: '3.73.114'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.assoc(['天气', '气候']);
+    assert(world.$('setupButton').hidden, 'assoc yields the toolbar');
+    assert(world.$('mic').hidden, 'assoc yields mic');
+    // 语音会话：开始时 overlay 接管（stop 入口在 overlay 上，工具栏让位
+    // 维持）；结束后让位必须恢复——mic 不得插回候选行。
+    world.nativeState({ state: 'listening' });
+    world.nativeState({ state: 'idle' });
+    assert(world.$('setupButton').hidden, 'yield holds after voice ends');
+    assert(world.$('mic').hidden, 'mic stays out of the assoc bar after voice ends');
+    assert(!world.$('composeClear').hidden, '× stays available');
+    // 空闲引擎刷新同样不得把工具栏插回（setToolbarYield 幂等复核）。
+    world.engineState({ composing: false, candidates: [], hasNextPage: false });
+    assert(world.$('mic').hidden, 'idle engine refresh keeps the yield');
+    // 联想消失后工具栏按通用规则恢复。
+    world.assoc([]);
+    world.engineState({ composing: false, candidates: [], hasNextPage: false });
+    assert(!world.$('setupButton').hidden, 'toolbar restored when assoc clears');
+    assert(!world.$('mic').hidden, 'mic restored when assoc clears');
+});
+
 test('t9 7/9 down-swipe opens the split popup (下左/下右)', {since: '3.35.0'}, () => {
     const world = fresh({ mode: 't9' });
     world.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',

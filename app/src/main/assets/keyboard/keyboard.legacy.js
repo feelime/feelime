@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.113";
+  const KEYBOARD_VERSION = "3.73.114";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -9432,6 +9432,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (!this.composing && this.expanded && !this.variantReplaying) this.setExpanded(false);
       const mic = document.getElementById("mic");
       if (mic) mic.hidden = this.composing && !recording;
+      if ((this.assocWords || []).length && !this.composing && !recording) {
+        this.setToolbarYield(true);
+      }
       if (this.mode === "handwriting") this.applyInkBarChrome();
       document.getElementById("hide").hidden = this.composing || this.mode === "handwriting" && !!this.inkBarActive;
       if (this.composing && !wasComposing && !this.settingsInputFocus) {
