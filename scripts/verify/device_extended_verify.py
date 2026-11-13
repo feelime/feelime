@@ -655,9 +655,11 @@ def main():
     )
     record(
         "I5 symbol category strip with kana content",
-        # The 定制 (custom) category joins the strip after common;
-        # 制表 (boxdraw) joins between 特殊 and 方向 (3.73.50).
-        ",".join(cats) == "common,custom,recent,quote,money,math,special,boxdraw,arrows,num,pinyin,hira,kata,greek"
+        # 分类全量名单由 mock 锁（'symbol category strip lists all batches
+        # with stable keys'，2026-11-14 codex 去重：设备层全名单比对=名单
+        # 漂移时双重维护）。设备层只保链路前提：hira/kata 在场（kana 内容
+        # 断言的前置）。
+        "hira" in cats and "kata" in cats
         and "あ" in hira_keys and backspace_role == "backspace",
         f"cats={cats} hira_has_a={'あ' in hira_keys} bs={backspace_role}",
     )

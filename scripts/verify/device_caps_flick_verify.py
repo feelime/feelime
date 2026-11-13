@@ -224,19 +224,13 @@ def main():
     time.sleep(0.4)
     clear(kb)
 
-    # ---- #10 collapse button has no UA border ring ----
-    ring = ev("(() => { const b = document.getElementById('expandCollapse');"
-              " return getComputedStyle(b).borderStyle; })()")
-    record("collapse button border removed", ring in ('none', None, ''), repr(ring))
-
-    # ---- #11 schema entry moved to the settings app (schemes joined) ----
-    ev("(() => { window.Feelime.toggleSettingsPanel(); return 1; })()")
-    time.sleep(0.5)
-    schema_labels = ev("[...document.querySelectorAll('#settingsPanel .set-label')]"
-                       ".map(b => b.textContent)") or []
-    record("quick panel carries no schema entry any more",
-           all('双拼键位' not in t and 'Pinyin key map' not in t for t in schema_labels),
-           f"labels={schema_labels}")
+    # ---- #10/#11 删除（2026-11-14 codex 去重）----
+    # 边框断言（UA border ring）与「双拼键位入口已撤除」均为纯 DOM 形态
+    # 检查：前者测的是 CSS 规则本身（css_lint 锁 touch/hidden/滚动规则，
+    # 视觉回归走截图验收），后者 mock 已精确断言
+    # （'double-pinyin key map lives in the settings app now'——tile 名单
+    # 不含双拼键位）。设备层不再重复跑真机 DOM 比对。
+    # 面板开合状态恢复仍走下面的清理段。
     ev("(() => { window.Feelime.closeSettingsPanel(); return 1; })()")
     time.sleep(0.4)
 
