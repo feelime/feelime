@@ -165,14 +165,22 @@ def main():
     open_panel(kb)
     labels = ev("[...document.querySelectorAll('#settingsPanel .qs-name')]"
                 ".map(el => el.textContent)") or []
+    # 可见性与真实尺寸（codex review P2：隐藏 DOM 也满足纯计数；面板
+    # 必须 open 且 tile 有排版尺寸，才是「网格真渲染」的信号）。
+    panel_visible = ev("(() => { const p = document.getElementById('settingsPanel');"
+                       " return p ? p.classList.contains('open') : false; })()")
+    tile_sizes = ev("[...document.querySelectorAll('#settingsPanel .qs-tile')]"
+                    ".map(t => { const r = t.getBoundingClientRect();"
+                    " return Math.round(r.width * r.height); })") or []
     record("home page tiles (grid; voice/clipboard stay on the main keyboard)",
-           # 3.38.0 起面板是跨两页的 tile 网格。tile 全量名单（中英双语）
-           # 由 mock 三处锁死（'色彩模式/中文联想/…' 对照组，2026-11-14
-           # codex 去重：设备层全名单=名单漂移时双重维护且每轮真机跑
-           # 一遍纯字符串比对）。设备层只保渲染存在性：tile 网格起得来
-           # 且规模合理（两页布局的健康信号）。
-           len(labels) >= 14 and len(labels) <= 20,
-           repr(labels))
+           # 3.38.0 起面板是跨两页的 tile 网格。tile 全量名单由 mock 锁
+           # （'色彩模式/中文联想/…' 对照组锁数量+顺序，2026-11-14 codex
+           # 去重；codex review P2 二轮：首版 len 区间无产品边界、隐藏
+           # DOM 也满足计数——改为可操作性断言）。设备层保真机链路：
+           # 面板开着、tile 有真实可见尺寸（非隐藏容器）、入口可点。
+           bool(panel_visible) and any(size > 0 for size in tile_sizes)
+           and len([t for t in tile_sizes if t > 0]) >= 10,
+           f"visible={panel_visible} sizes={tile_sizes[:6]}…")
 
     # 快捷切换子页已删（3.59.6 起 tile 深链完整设置的 quickPairA 行，
     # 2026-09-30 清死码）：深链行为在 caps-flick #12 设备断言，面板滚动

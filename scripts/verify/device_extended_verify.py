@@ -657,9 +657,11 @@ def main():
         "I5 symbol category strip with kana content",
         # 分类全量名单由 mock 锁（'symbol category strip lists all batches
         # with stable keys'，2026-11-14 codex 去重：设备层全名单比对=名单
-        # 漂移时双重维护）。设备层只保链路前提：hira/kata 在场（kana 内容
-        # 断言的前置）。
-        "hira" in cats and "kata" in cats
+        # 漂移时双重维护）。设备层保链路前提：定制表 seed 成功后 custom
+        # 在场（codex review P2：mock 名单无 custom、custom 由 3854 的
+        # saveCustomJson 用例锁，此处保「seed→分类出现」的真机链路）+
+        # hira/kata 在场（kana 内容断言的前置）。
+        seeded and "custom" in cats and "hira" in cats and "kata" in cats
         and "あ" in hira_keys and backspace_role == "backspace",
         f"cats={cats} hira_has_a={'あ' in hira_keys} bs={backspace_role}",
     )

@@ -27,7 +27,11 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 : "${FEELIME_ADB_SERIAL:?FEELIME_ADB_SERIAL is required (adb serial of the test device)}"
 : "${FEELIME_VERIFY_APK:?FEELIME_VERIFY_APK is required (exact installed APK)}"
-: "${FEELIME_ASR_FIXTURE:?FEELIME_ASR_FIXTURE is required (frozen ASR WAV)}"
+: "${FEELIME_ADB_SERIAL:?FEELIME_ADB_SERIAL is required (adb serial of the test device)}"
+: "${FEELIME_VERIFY_APK:?FEELIME_VERIFY_APK is required (exact installed APK)}"
+# FEELIME_ASR_FIXTURE 不在头部硬性必填（codex review P1 附）：只在
+# 本轮选中的段含 asr 时才要求——日常档/单段调试不需要录音。选中后
+# 缺失走 BLOCKED（run_asr），未设置在此拦截。
 
 # debug 构建包名带 .dev 后缀（与正式包共存）：FEELIME_PKG 显式指定 >
 # 设备装了 .dev 用 .dev > 正式包名（与 device_verify._resolve_pkg 同规）。
@@ -151,9 +155,11 @@ if [[ "$LOCK_HELD" != "1" ]]; then
 fi
 
 selected_names=()
-if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
-    selected_names=("${POSITIONAL[@]}")
-elif [[ "$PROFILE" != "full" ]]; then
+# codex review P1 修复（2026-11-14）：显式 profile 与位置参数取并集去重
+# ——「--profile daily 9d」是日常档+追加专项，旧实现位置参数会整个替换
+# 掉 profile 选择（固定核心静默丢失，连本地三层一起丢）。纯位置参数
+# （无 --profile）保持单段调试语义不变。
+if [[ "$PROFILE" != "full" ]]; then
     profile_line=""
     for entry in "${PROFILES[@]}"; do
         [[ "${entry%%|*}" == "$PROFILE" ]] && profile_line="${entry#*|}"
@@ -208,23 +214,64 @@ STATE_FILE="/tmp/feelime-gate-state-${FEELIME_ADB_SERIAL}.json"
 [[ -f "$FEELIME_VERIFY_APK" ]] || { echo "verification APK is missing: $FEELIME_VERIFY_APK" >&2; exit 2; }
 apk_sha=$(sha256sum "$FEELIME_VERIFY_APK" | awk '{print $1}')
 git_sha=$(git -C "$HERE/../.." rev-parse HEAD 2>/dev/null || echo "unknown")
-# 工作区指纹（2026-11-14 codex 方案核实修复）：旧实现只哈希
-# `git status --porcelain` 的状态行——已脏文件继续改内容时状态行不变，
-# tree_sha 不变，--resume 会沿用旧绿段。现在哈希每个脏文件的内容
-# （rename 的 new 端），工作区的任何实质变化都会翻转指纹。
-# git 瞬时失败（index.lock 竞争等）不能炸 gate：set -e 下管道 128 会无声退出
-tree_sha=$( { git -C "$HERE/../.." status --porcelain 2>/dev/null || echo not-a-repo; } \
-    | while IFS= read -r line; do
-        path=${line:3}          # 剥 XY␣ 状态前缀
-        path=${path#* -> }      # rename 行取新路径（非 rename 行原样）
-        [[ -n "$path" ]] || continue
-        if [[ -f "$HERE/../../$path" ]]; then
-            printf '%s ' "$path"
-            sha256sum "$HERE/../../$path" | cut -d' ' -f1
-        else
-            printf '%s missing\n' "$path"
-        fi
-      done | sha256sum | awk '{print $1}' | cut -c1-12)
+# 工作区+输入指纹（codex review P1-3/P1-4 重写）：-z NUL 分隔规避
+# 引号/转义路径（含空格、中文、` -> `字面量），--untracked-files=all
+# 展开 untracked 目录（旧输出 `?? dir/` 折叠成一条、内容变化不翻指纹）；
+# 单个 python 进程流式计算（状态+路径+类型+内容哈希），避免每文件两个
+# 外部进程。失败时输出 poisoned 值——指纹异常必须让续跑失效（codex：
+# 禁止复用旧状态），而不是拿固定占位值继续。fixture 与运行配置一并
+# 纳入：ASR 绿后换录音/删录音，旧绿段不得被沿用。
+gate_env_sha() {
+    python3 - "$HERE/../.." "$FEELIME_ASR_FIXTURE" <<'PYEOF2'
+import hashlib, os, subprocess, sys
+repo, fixture = sys.argv[1], sys.argv[2]
+h = hashlib.sha256()
+try:
+    out = subprocess.run(
+        ["git", "-C", repo, "status", "--porcelain=v1", "-z",
+         "--untracked-files=all"],
+        capture_output=True, timeout=30).stdout
+except Exception:
+    print("poisoned-git"); sys.exit(0)
+if not out and subprocess.run(["git", "-C", repo, "rev-parse", "--git-dir"],
+                              capture_output=True).returncode != 0:
+    print("poisoned-not-a-repo"); sys.exit(0)
+for record in out.split(b"\0"):
+    if not record: continue
+    entry = record.decode("utf-8", "surrogateescape")
+    status, path = entry[:2], entry[3:]
+    if status.startswith("R"):
+        # rename 记录尾随第二个 NUL 字段=新路径
+        path = path.split("\0")[0]
+    h.update(status)
+    h.update(path.encode("utf-8", "surrogateescape"))
+    full = os.path.join(repo, path)
+    if status.strip().lstrip("RCA") == "D" or not os.path.exists(full):
+        h.update(b"missing"); continue
+    try:
+        with open(full, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        h.update(b"unreadable")
+# fixture：存在则哈希内容，缺失编码为 blocked（缺失→存在会翻转）
+if fixture and os.path.isfile(fixture):
+    h.update(b"fixture")
+    try:
+        with open(fixture, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        h.update(b"fixture-unreadable")
+else:
+    h.update(b"fixture-missing")
+# 影响语义的运行配置
+h.update(os.environ.get("FEELIME_GATE_NO_RESET", "0").encode())
+h.update(os.environ.get("FEELIME_GATE_RETRIES", "").encode())
+print(h.hexdigest()[:12])
+PYEOF2
+}
+tree_sha=$(gate_env_sha)
 run_fingerprint="$apk_sha $git_sha $tree_sha"
 
 state_load() {
@@ -385,9 +432,26 @@ sweep_device() {
         sleep 1
     fi
     adb -s "$FEELIME_ADB_SERIAL" shell am force-stop "$PKG" >/dev/null 2>&1 || true
+    # codex review P2：确认进程停止（最多等 3s）——force-stop 异步未死透
+    # 时 SharedPreferences 仍可能落盘覆盖后续清理；清理范围含 .xml.bak
+    # （SP 的 backup 机制可从 .bak 恢复旧值，只删 .xml 留 .bak=清不干净）。
+    # 清理/停止失败不静默：sweep 是失败重试与段间隔离的地基，带着污染
+    # 重试比响亮中止更贵（9k 实录）。用户词库与 WebView 存储仍保留——
+    # 本函数是轻量清扫，不承诺「与首次相同的完整基线」（完整复位在
+    # 开头的 reset_device）。
+    for _ in 1 2 3; do
+        pidof_out=$(adb -s "$FEELIME_ADB_SERIAL" shell pidof "$PKG" 2>/dev/null | tr -d '[:space:]')
+        [[ -z "$pidof_out" ]] && break
+        sleep 1
+    done
+    if [[ -n "$pidof_out" ]]; then
+        echo "sweep: $PKG still alive (pid $pidof_out) after force-stop - refusing to sweep on a live process" >&2
+        return 1
+    fi
     adb -s "$FEELIME_ADB_SERIAL" shell \
-        "run-as "$PKG" sh -c 'rm -f shared_prefs/*.xml'" \
-        >/dev/null 2>&1 || true
+        "run-as "$PKG" sh -c 'rm -f shared_prefs/*.xml shared_prefs/*.xml.bak'" \
+        >/dev/null 2>&1 \
+        || { echo "sweep: prefs cleanup failed" >&2; return 1; }
     pin_hwkb_form
     adb -s "$FEELIME_ADB_SERIAL" shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
 }
@@ -450,8 +514,10 @@ run_suite() {
 }
 
 print_retry_summary() {
+    # codex review P2：旧文案「gate is green, but…」在失败汇总（trap）
+    # 路径里会误导；改中性表述。
     if [[ "${#RETRIED_STEPS[@]}" -gt 0 ]]; then
-        echo "gate is green, but ${#RETRIED_STEPS[@]} step(s) only passed on retry:"
+        echo "${#RETRIED_STEPS[@]} step(s) only passed on retry (flaky clues):"
         printf '  - %s\n' "${RETRIED_STEPS[@]}"
     fi
 }
@@ -525,7 +591,18 @@ ASR_BLOCKED=0   # 1=本轮有 BLOCKED 段（未验证不记绿，尾部提示）
 # 失败长尾也要有耗时账（2026-11-14 codex 方案：汇总原本只在正常尾部
 # 执行，段挂掉时 set -e 直接退出，本轮跑了什么/多久全丢）。EXIT trap
 # 只在非零退出时补打，正常路径维持尾部显式汇总。
-trap 'rc=$?; [[ "$rc" != "0" ]] && { echo "GATE FAILED (rc=$rc)"; print_retry_summary; print_duration_summary; }' EXIT
+ACTIVE_SEG=""
+ACTIVE_T0=0
+trap 'rc=$?; if [[ "$rc" != "0" ]]; then
+        # 失败中的活动段补记耗时（codex review P2：SEG_DUR 只在成功
+        # 路径记录，最长的失败段恰好不在表里）
+        if [[ -n "$ACTIVE_SEG" ]]; then
+            SEG_DUR["$ACTIVE_SEG (FAILED)"]=$(( $(date +%s) - ACTIVE_T0 ))
+        fi
+        echo "GATE FAILED (rc=$rc)"
+        print_retry_summary
+        print_duration_summary
+    fi' EXIT
 device_reset_pending=1
 skipped=0
 executed=0
@@ -542,6 +619,7 @@ for entry in "${SEGMENTS[@]}"; do
         continue
     fi
     seg_t0=$(date +%s)
+    ACTIVE_SEG="$label"; ACTIVE_T0=$seg_t0
     case "$kind" in
         local)
             echo "== $label =="
@@ -596,9 +674,10 @@ for entry in "${SEGMENTS[@]}"; do
             ;;
     esac
     # BLOCKED 段（ASR 缺 fixture 等）不落 done：本轮不算绿，--resume
-    # 在 fixture 补齐后仍会重跑该段。
+    # 在 fixture 补齐后仍会重跑该段。标志保留到尾部（codex review P1：
+    # 首版在此清零，尾部判断永远走不到 BLOCKED 分支=假绿）。
     if [[ "$ASR_BLOCKED" == "1" && "$label" == "11/11 asr" ]]; then
-        ASR_BLOCKED=0
+        :   # 不落 done
     else
         state_mark "$label"
     fi
@@ -619,11 +698,13 @@ print_duration_summary
 if [[ "$skipped" -gt 0 ]]; then
     echo "$skipped segment(s) skipped via --resume state"
 fi
+# BLOCKED 的退出语义（codex review P1）：GATE_BLOCKED + 非零码——
+# 自动化不得把它当通过；与「验证失败」的 GATE FAILED 区分开。
 if [[ "$ASR_BLOCKED" == "1" ]]; then
-    echo "GATE_OK (with BLOCKED segments: 11/11 asr 未验证，fixture 缺失——补齐后 --resume 会重跑)"
-else
-    echo "GATE_OK"
+    echo "GATE_BLOCKED: 11/11 asr 未验证（fixture 缺失），补齐后 --resume 会重跑"
+    exit 3
 fi
+echo "GATE_OK"
 
 # ---- 专项套件（不在全量序列里，按需单独跑；依赖额外宿主/探针 APK 或音频）----
 # device_cursor_host_verify.py   光标滑动宿主探针（需安装 cursor-host APK）
