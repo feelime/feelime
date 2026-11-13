@@ -73,10 +73,23 @@ def pin_hwkb_form(form="full"):
     candidates 会把引擎文本模式的软键盘收成候选条——断言绝对几何/完整
     键面的套件会整段假失败。写回单个键的 pref 文件（base64 规避 adb
     shell 转义），须在进程已停时调用（SharedPreferences 启动时加载）。
+    2026-11-13 教训（合并式）：prepare 系列把本夹具带进了「prefs 有
+    内容」的场景，此前整文件覆盖会把 feelime_keyboard.xml 里其他 pref
+    一并抹掉——套件用例间经 pref 传递的状态全断，9k 连跑逐轮劣化
+    （15/15→12/15→崩在 phraseCard）实录。只在键级替换/追加。
     """
     import base64 as _b64
-    xml = ("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>"
-           "<map><string name=\"feelime_hwkb_form\">%s</string></map>" % form)
+    import re as _re
+    entry = f'<string name="feelime_hwkb_form">{form}</string>'
+    existing = shell(f"run-as {PKG} cat shared_prefs/feelime_keyboard.xml 2>/dev/null") or ""
+    if "feelime_hwkb_form" in existing:
+        xml = _re.sub(r'<string name="feelime_hwkb_form">[^<]*</string>',
+                      entry, existing)
+    elif existing.strip():
+        xml = existing.replace("</map>", entry + "</map>")
+    else:
+        xml = ("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>"
+               f"<map>{entry}</map>")
     b64 = _b64.b64encode(xml.encode()).decode()
     shell(f"echo {b64} | base64 -d > /data/local/tmp/hwkb_pin.xml")
     shell(f"run-as {PKG} sh -c "

@@ -329,6 +329,11 @@ reset_device() {
 # 的段（法语弹层/键位图/候选池…）会整段假失败。#H 形态行为有专用 AVD
 # 验证（design hardware-keyboard.md §9），gate 在此固定 full 保持既有
 # 回归面。base64 落盘规避 adb shell 多参数转义（run-as 整串单参数）。
+# 注意：本函数整文件覆盖 feelime_keyboard.xml——仅限 pm clear / rm 之后
+# 的空 prefs 场景调用（reset_device/sweep_device）。「prefs 已有内容」的
+# 场景（单跑 prepare 等）必须用 device_verify.pin_hwkb_form 的键级合并式，
+# 否则其他 pref 被抹、套件用例间经 pref 传递的状态全断（2026-11-13
+# 9k 逐轮劣化实录）。
 pin_hwkb_form() {
     local b64
     b64=$(printf "%s" "<?xml version='1.0' encoding='utf-8' standalone='yes' ?><map><string name=\"feelime_hwkb_form\">full</string></map>" | base64 -w0)
