@@ -86,15 +86,21 @@ SEGMENTS=(
 )
 
 # 敏感度 profiles：按改动面选段（评审 P0-3「mock 优先在批次执行层失守」——
-# 普通批次的设备验证应该是 ~30min 的 L3 冒烟，不是 ~2h 的全量）。
+# 普通批次的设备验证应该是分层冒烟，不是全量）。
+# 2026-11-14 codex 方案落地：所有 profile 自动包含本地三段（css-lint/
+# mock/jvm 合计 ~53s，「改资产先跑 mock」从纪律变机制）；新增 daily 档
+# （固定核心 ~10min：本地三层+base+gesture+editor+panel+control-layer，
+# 预算=核心 596s+按 diff 追加专项 ≤180s+波动 ≤120s）。profile 只是起点，
+# 按 diff 映射表（docs/testing/verification.md）追加专项段。
 PROFILES=(
-    "quick|5/11 base 7/11 extended 9n feel-degrade 9o input-prefs 9/11 panel 9j height-card"
-    "input|5/11 base 9n feel-degrade 9o input-prefs 9p t9 9q appearance 9r stroke 9s handwriting"
-    "keyboard-js|5/11 base 7/11 extended 9a caps-flick 9c keymap 9d pool"
-    "native-engine|5/11 base 7/11 extended 9g backspace 9h delete"
-    "kotlin-service|5/11 base 8/11 editor 9n feel-degrade 9s handwriting 10/11 resource"
-    "voice|6/11 gesture 6b/11 voice-hold 9i fn-voice 11/11 asr"
-    "resources|10/11 resource"
+    "daily|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 6/11 gesture 8/11 editor 9/11 panel 9e control-layer"
+    "quick|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 7/11 extended 9n feel-degrade 9o input-prefs 9/11 panel 9j height-card"
+    "input|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 9n feel-degrade 9o input-prefs 9p t9 9q appearance 9r stroke 9s handwriting"
+    "keyboard-js|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 7/11 extended 9a caps-flick 9c keymap 9d pool"
+    "native-engine|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 7/11 extended 9g backspace 9h delete"
+    "kotlin-service|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 8/11 editor 9n feel-degrade 9s handwriting 10/11 resource"
+    "voice|1/11 css-lint 2/11 mock-suites 3/11 jvm 6/11 gesture 6b/11 voice-hold 9i fn-voice 11/11 asr"
+    "resources|1/11 css-lint 2/11 mock-suites 3/11 jvm 10/11 resource"
 )
 
 usage() {
@@ -202,9 +208,23 @@ STATE_FILE="/tmp/feelime-gate-state-${FEELIME_ADB_SERIAL}.json"
 [[ -f "$FEELIME_VERIFY_APK" ]] || { echo "verification APK is missing: $FEELIME_VERIFY_APK" >&2; exit 2; }
 apk_sha=$(sha256sum "$FEELIME_VERIFY_APK" | awk '{print $1}')
 git_sha=$(git -C "$HERE/../.." rev-parse HEAD 2>/dev/null || echo "unknown")
+# 工作区指纹（2026-11-14 codex 方案核实修复）：旧实现只哈希
+# `git status --porcelain` 的状态行——已脏文件继续改内容时状态行不变，
+# tree_sha 不变，--resume 会沿用旧绿段。现在哈希每个脏文件的内容
+# （rename 的 new 端），工作区的任何实质变化都会翻转指纹。
 # git 瞬时失败（index.lock 竞争等）不能炸 gate：set -e 下管道 128 会无声退出
 tree_sha=$( { git -C "$HERE/../.." status --porcelain 2>/dev/null || echo not-a-repo; } \
-    | sha256sum | awk '{print $1}' | cut -c1-12)
+    | while IFS= read -r line; do
+        path=${line:3}          # 剥 XY␣ 状态前缀
+        path=${path#* -> }      # rename 行取新路径（非 rename 行原样）
+        [[ -n "$path" ]] || continue
+        if [[ -f "$HERE/../../$path" ]]; then
+            printf '%s ' "$path"
+            sha256sum "$HERE/../../$path" | cut -d' ' -f1
+        else
+            printf '%s missing\n' "$path"
+        fi
+      done | sha256sum | awk '{print $1}' | cut -c1-12)
 run_fingerprint="$apk_sha $git_sha $tree_sha"
 
 state_load() {
@@ -410,6 +430,11 @@ run_suite() {
                 return 1
             fi
             echo "RETRY $attempt/$DEVICE_SUITE_RETRIES [$label]: previous attempt failed - rerunning"
+            # 重试前先清扫（2026-11-14 codex 方案核实：此前重试只 settle
+            # 不 sweep，失败段的残留态（prefs/页面/键盘形态）原样带进
+            # 重跑——9k 逐轮劣化的延续机制）。sweep 含 force-stop+清
+            # prefs+pin，让重跑从与首次相同的基线出发。
+            sweep_device
         fi
         settle_device
         if "$@"; then
@@ -474,10 +499,13 @@ run_local_jvm() {
 }
 
 run_asr() {
-    # fixture 是用户录音（刻意不入库）：文件不存在时本段不可运行——
-    # 显式跳过而不是整跑红在最后一段（红会误读成语音坏了）。
+    # fixture 是用户录音（刻意不入库）：文件不存在时本段不可运行。
+    # 2026-11-14 codex 方案核实修复：此前 SKIP 却 return 0，段会被
+    # state_mark 记为绿——--resume 永远跳过语音验证（假绿）。改为
+    # BLOCKED：本轮不算绿也不算红（语音没坏，是没验），但不落 done。
     if [[ ! -f "$FEELIME_ASR_FIXTURE" ]]; then
-        echo "== 11/11 asr: SKIP（FEELIME_ASR_FIXTURE 不存在: $FEELIME_ASR_FIXTURE；语音路径本批零改动） =="
+        echo "== 11/11 asr: BLOCKED（FEELIME_ASR_FIXTURE 不存在: $FEELIME_ASR_FIXTURE；本段未验证，不记绿） =="
+        ASR_BLOCKED=1
         return 0
     fi
     # 性能门只在真机上成立（baseline 是 arm64 物理设备录的，AVD 上不可
@@ -493,6 +521,11 @@ run_asr() {
 }
 
 # ---- 遍历段（set -e：段重试耗尽即整跑退出，退出码非零；修复后 --resume 续跑）----
+ASR_BLOCKED=0   # 1=本轮有 BLOCKED 段（未验证不记绿，尾部提示）
+# 失败长尾也要有耗时账（2026-11-14 codex 方案：汇总原本只在正常尾部
+# 执行，段挂掉时 set -e 直接退出，本轮跑了什么/多久全丢）。EXIT trap
+# 只在非零退出时补打，正常路径维持尾部显式汇总。
+trap 'rc=$?; [[ "$rc" != "0" ]] && { echo "GATE FAILED (rc=$rc)"; print_retry_summary; print_duration_summary; }' EXIT
 device_reset_pending=1
 skipped=0
 executed=0
@@ -562,7 +595,13 @@ for entry in "${SEGMENTS[@]}"; do
             run_asr
             ;;
     esac
-    state_mark "$label"
+    # BLOCKED 段（ASR 缺 fixture 等）不落 done：本轮不算绿，--resume
+    # 在 fixture 补齐后仍会重跑该段。
+    if [[ "$ASR_BLOCKED" == "1" && "$label" == "11/11 asr" ]]; then
+        ASR_BLOCKED=0
+    else
+        state_mark "$label"
+    fi
     SEG_DUR[$label]=$(($(date +%s) - seg_t0))
     echo "-- $label: ${SEG_DUR[$label]}s"
     executed=$((executed + 1))
@@ -580,7 +619,11 @@ print_duration_summary
 if [[ "$skipped" -gt 0 ]]; then
     echo "$skipped segment(s) skipped via --resume state"
 fi
-echo "GATE_OK"
+if [[ "$ASR_BLOCKED" == "1" ]]; then
+    echo "GATE_OK (with BLOCKED segments: 11/11 asr 未验证，fixture 缺失——补齐后 --resume 会重跑)"
+else
+    echo "GATE_OK"
+fi
 
 # ---- 专项套件（不在全量序列里，按需单独跑；依赖额外宿主/探针 APK 或音频）----
 # device_cursor_host_verify.py   光标滑动宿主探针（需安装 cursor-host APK）
