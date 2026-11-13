@@ -9729,6 +9729,71 @@ test('t9 1-key chrome: tap yields toolbar, pick/× restores, up-flick commits 1'
         'up-flick commits literal 1');
 });
 
+// 用户 2026-11-13 报「候选词夹在工具栏按钮中间」：语音结束后 mic 被通用
+// 可见性行插回联想候选行（updateComposing 的 mic 行只懂 composing/
+// recording，盖掉先前让位对账）。让位必须在 mic 行之后最后复核；
+// 语音中（recording）mic 仍为 overlay 外的兜底入口不藏。
+test('assoc yield survives a voice session ending (mic stays out of the bar)', {since: '3.73.114'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.assoc(['天气', '气候']);
+    assert(world.$('setupButton').hidden, 'assoc yields the toolbar');
+    assert(world.$('mic').hidden, 'assoc yields mic');
+    // 语音会话：开始时 overlay 接管（stop 入口在 overlay 上，工具栏让位
+    // 维持）；结束后让位必须恢复——mic 不得插回候选行。
+    world.nativeState({ state: 'listening' });
+    world.nativeState({ state: 'idle' });
+    assert(world.$('setupButton').hidden, 'yield holds after voice ends');
+    assert(world.$('mic').hidden, 'mic stays out of the assoc bar after voice ends');
+    assert(!world.$('composeClear').hidden, '× stays available');
+    // 空闲引擎刷新同样不得把工具栏插回（setToolbarYield 幂等复核）。
+    world.engineState({ composing: false, candidates: [], hasNextPage: false });
+    assert(world.$('mic').hidden, 'idle engine refresh keeps the yield');
+    // 联想消失后工具栏按通用规则恢复。
+    world.assoc([]);
+    world.engineState({ composing: false, candidates: [], hasNextPage: false });
+    assert(!world.$('setupButton').hidden, 'toolbar restored when assoc clears');
+    assert(!world.$('mic').hidden, 'mic restored when assoc clears');
+});
+
+// 用户 2026-11-13 裁定「工具栏几种场景严格互斥」（候选/工具 icon/
+// 剪贴板·常用语）：互斥是运行时不变量而非约定——守卫在渲染前的
+// 微任务里强制执行，未来任何新代码把按钮写回候选行都会被自动
+// 纠正（绕过一切对账路径直改 DOM 模拟手滑），纠正计数可观测。
+test('toolbar exclusion guard auto-reverts stray tool buttons (runtime invariant)', {since: '3.73.115'}, () => {
+    const world = fresh({ mode: 'pinyin' });
+    world.assoc(['天气']);
+    assert(world.$('mic').hidden, 'assoc yields mic');
+    // 模拟未来某条新路径手滑：直改 DOM，绕过所有对账函数。
+    world.$('mic').hidden = false;
+    world.$('clipboardButton').hidden = false;
+    // 守卫在渲染前（0ms 微任务）自动纠正：
+    world.clock.advance(0);
+    assert(world.$('mic').hidden, 'guard reverts stray mic before render');
+    assert(world.$('clipboardButton').hidden, 'guard reverts stray clipboard');
+    const fixes = world.context.window.Feelime.toolbarExclusionFixes();
+    assert(fixes >= 2, 'fixes counted for diagnostics (' + fixes + ')');
+    // 非候选场景守卫沉默（工具 icon 场景的按钮本来就该在）：
+    world.assoc([]);
+    world.engineState({ composing: false, candidates: [], hasNextPage: false });
+    world.clock.advance(0);
+    const before = world.context.window.Feelime.toolbarExclusionFixes();
+    world.$('mic').hidden = false;
+    world.clock.advance(0);
+    assert(!world.$('mic').hidden, 'guard silent outside candidate scenes');
+    assert(world.context.window.Feelime.toolbarExclusionFixes() === before,
+        'no fix recorded outside candidate scenes');
+    // 语音 recording 是唯一例外（mic 是 overlay 外的兜底 stop 入口）：
+    world.assoc(['气候']);
+    world.nativeState({ state: 'listening' });
+    world.clock.advance(0);
+    const recBefore = world.context.window.Feelime.toolbarExclusionFixes();
+    world.$('mic').hidden = false;
+    world.clock.advance(0);
+    assert(!world.$('mic').hidden, 'recording keeps mic as the stop entry');
+    assert(world.context.window.Feelime.toolbarExclusionFixes() === recBefore,
+        'recording exception records no fix');
+});
+
 test('t9 7/9 down-swipe opens the split popup (下左/下右)', {since: '3.35.0'}, () => {
     const world = fresh({ mode: 't9' });
     world.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',

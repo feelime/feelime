@@ -27,7 +27,11 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 : "${FEELIME_ADB_SERIAL:?FEELIME_ADB_SERIAL is required (adb serial of the test device)}"
 : "${FEELIME_VERIFY_APK:?FEELIME_VERIFY_APK is required (exact installed APK)}"
-: "${FEELIME_ASR_FIXTURE:?FEELIME_ASR_FIXTURE is required (frozen ASR WAV)}"
+: "${FEELIME_ADB_SERIAL:?FEELIME_ADB_SERIAL is required (adb serial of the test device)}"
+: "${FEELIME_VERIFY_APK:?FEELIME_VERIFY_APK is required (exact installed APK)}"
+# FEELIME_ASR_FIXTURE 不在头部硬性必填（codex review P1 附）：只在
+# 本轮选中的段含 asr 时才要求——日常档/单段调试不需要录音。选中后
+# 缺失走 BLOCKED（run_asr），未设置在此拦截。
 
 # debug 构建包名带 .dev 后缀（与正式包共存）：FEELIME_PKG 显式指定 >
 # 设备装了 .dev 用 .dev > 正式包名（与 device_verify._resolve_pkg 同规）。
@@ -86,15 +90,21 @@ SEGMENTS=(
 )
 
 # 敏感度 profiles：按改动面选段（评审 P0-3「mock 优先在批次执行层失守」——
-# 普通批次的设备验证应该是 ~30min 的 L3 冒烟，不是 ~2h 的全量）。
+# 普通批次的设备验证应该是分层冒烟，不是全量）。
+# 2026-11-14 codex 方案落地：所有 profile 自动包含本地三段（css-lint/
+# mock/jvm 合计 ~53s，「改资产先跑 mock」从纪律变机制）；新增 daily 档
+# （固定核心 ~10min：本地三层+base+gesture+editor+panel+control-layer，
+# 预算=核心 596s+按 diff 追加专项 ≤180s+波动 ≤120s）。profile 只是起点，
+# 按 diff 映射表（docs/testing/verification.md）追加专项段。
 PROFILES=(
-    "quick|5/11 base 7/11 extended 9n feel-degrade 9o input-prefs 9/11 panel 9j height-card"
-    "input|5/11 base 9n feel-degrade 9o input-prefs 9p t9 9q appearance 9r stroke 9s handwriting"
-    "keyboard-js|5/11 base 7/11 extended 9a caps-flick 9c keymap 9d pool"
-    "native-engine|5/11 base 7/11 extended 9g backspace 9h delete"
-    "kotlin-service|5/11 base 8/11 editor 9n feel-degrade 9s handwriting 10/11 resource"
-    "voice|6/11 gesture 6b/11 voice-hold 9i fn-voice 11/11 asr"
-    "resources|10/11 resource"
+    "daily|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 6/11 gesture 8/11 editor 9/11 panel 9e control-layer"
+    "quick|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 7/11 extended 9n feel-degrade 9o input-prefs 9/11 panel 9j height-card"
+    "input|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 9n feel-degrade 9o input-prefs 9p t9 9q appearance 9r stroke 9s handwriting"
+    "keyboard-js|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 7/11 extended 9a caps-flick 9c keymap 9d pool"
+    "native-engine|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 7/11 extended 9g backspace 9h delete"
+    "kotlin-service|1/11 css-lint 2/11 mock-suites 3/11 jvm 5/11 base 8/11 editor 9n feel-degrade 9s handwriting 10/11 resource"
+    "voice|1/11 css-lint 2/11 mock-suites 3/11 jvm 6/11 gesture 6b/11 voice-hold 9i fn-voice 11/11 asr"
+    "resources|1/11 css-lint 2/11 mock-suites 3/11 jvm 10/11 resource"
 )
 
 usage() {
@@ -145,15 +155,33 @@ if [[ "$LOCK_HELD" != "1" ]]; then
 fi
 
 selected_names=()
-if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
-    selected_names=("${POSITIONAL[@]}")
-elif [[ "$PROFILE" != "full" ]]; then
+# codex review P1 修复（2026-11-14）：显式 profile 与位置参数取并集去重
+# ——「--profile daily 9d」是日常档+追加专项，旧实现位置参数会整个替换
+# 掉 profile 选择（固定核心静默丢失，连本地三层一起丢）。纯位置参数
+# （无 --profile）保持单段调试语义不变。
+if [[ "$PROFILE" != "full" ]]; then
     profile_line=""
     for entry in "${PROFILES[@]}"; do
         [[ "${entry%%|*}" == "$PROFILE" ]] && profile_line="${entry#*|}"
     done
     [[ -n "$profile_line" ]] || { echo "unknown profile: $PROFILE" >&2; usage; }
     read -ra selected_names <<<"$profile_line"
+fi
+if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
+    if [[ "$PROFILE" != "full" ]]; then
+        # 并集：profile 核心之上追加位置参数（去重）
+        for seg in "${POSITIONAL[@]}"; do
+            dup=0
+            for have in "${selected_names[@]}"; do
+                [[ "$have" == "$seg" ]] && { dup=1; break; }
+            done
+            [[ "$dup" == "0" ]] && selected_names+=("$seg")
+        done
+        echo "selection: --profile $PROFILE core + extra: ${POSITIONAL[*]}"
+    else
+        # 纯位置参数：单段调试语义（不含 profile 核心）
+        selected_names=("${POSITIONAL[@]}")
+    fi
 fi
 
 # 把选择条件折算成"每个段是否启用"：--from/--profile 折算出的 selected_names
@@ -202,9 +230,64 @@ STATE_FILE="/tmp/feelime-gate-state-${FEELIME_ADB_SERIAL}.json"
 [[ -f "$FEELIME_VERIFY_APK" ]] || { echo "verification APK is missing: $FEELIME_VERIFY_APK" >&2; exit 2; }
 apk_sha=$(sha256sum "$FEELIME_VERIFY_APK" | awk '{print $1}')
 git_sha=$(git -C "$HERE/../.." rev-parse HEAD 2>/dev/null || echo "unknown")
-# git 瞬时失败（index.lock 竞争等）不能炸 gate：set -e 下管道 128 会无声退出
-tree_sha=$( { git -C "$HERE/../.." status --porcelain 2>/dev/null || echo not-a-repo; } \
-    | sha256sum | awk '{print $1}' | cut -c1-12)
+# 工作区+输入指纹（codex review P1-3/P1-4 重写）：-z NUL 分隔规避
+# 引号/转义路径（含空格、中文、` -> `字面量），--untracked-files=all
+# 展开 untracked 目录（旧输出 `?? dir/` 折叠成一条、内容变化不翻指纹）；
+# 单个 python 进程流式计算（状态+路径+类型+内容哈希），避免每文件两个
+# 外部进程。失败时输出 poisoned 值——指纹异常必须让续跑失效（codex：
+# 禁止复用旧状态），而不是拿固定占位值继续。fixture 与运行配置一并
+# 纳入：ASR 绿后换录音/删录音，旧绿段不得被沿用。
+gate_env_sha() {
+    python3 - "$HERE/../.." "$FEELIME_ASR_FIXTURE" <<'PYEOF2'
+import hashlib, os, subprocess, sys
+repo, fixture = sys.argv[1], sys.argv[2]
+h = hashlib.sha256()
+try:
+    out = subprocess.run(
+        ["git", "-C", repo, "status", "--porcelain=v1", "-z",
+         "--untracked-files=all"],
+        capture_output=True, timeout=30).stdout
+except Exception:
+    print("poisoned-git"); sys.exit(0)
+if not out and subprocess.run(["git", "-C", repo, "rev-parse", "--git-dir"],
+                              capture_output=True).returncode != 0:
+    print("poisoned-not-a-repo"); sys.exit(0)
+for record in out.split(b"\0"):
+    if not record: continue
+    entry = record.decode("utf-8", "surrogateescape")
+    status, path = entry[:2], entry[3:]
+    if status.startswith("R"):
+        # rename 记录尾随第二个 NUL 字段=新路径
+        path = path.split("\0")[0]
+    h.update(status.encode("utf-8", "surrogateescape"))
+    h.update(path.encode("utf-8", "surrogateescape"))
+    full = os.path.join(repo, path)
+    if status.strip().lstrip("RCA") == "D" or not os.path.exists(full):
+        h.update(b"missing"); continue
+    try:
+        with open(full, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        h.update(b"unreadable")
+# fixture：存在则哈希内容，缺失编码为 blocked（缺失→存在会翻转）
+if fixture and os.path.isfile(fixture):
+    h.update(b"fixture")
+    try:
+        with open(fixture, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        h.update(b"fixture-unreadable")
+else:
+    h.update(b"fixture-missing")
+# 影响语义的运行配置
+h.update(os.environ.get("FEELIME_GATE_NO_RESET", "0").encode())
+h.update(os.environ.get("FEELIME_GATE_RETRIES", "").encode())
+print(h.hexdigest()[:12])
+PYEOF2
+}
+tree_sha=$(gate_env_sha)
 run_fingerprint="$apk_sha $git_sha $tree_sha"
 
 state_load() {
@@ -329,6 +412,11 @@ reset_device() {
 # 的段（法语弹层/键位图/候选池…）会整段假失败。#H 形态行为有专用 AVD
 # 验证（design hardware-keyboard.md §9），gate 在此固定 full 保持既有
 # 回归面。base64 落盘规避 adb shell 多参数转义（run-as 整串单参数）。
+# 注意：本函数整文件覆盖 feelime_keyboard.xml——仅限 pm clear / rm 之后
+# 的空 prefs 场景调用（reset_device/sweep_device）。「prefs 已有内容」的
+# 场景（单跑 prepare 等）必须用 device_verify.pin_hwkb_form 的键级合并式，
+# 否则其他 pref 被抹、套件用例间经 pref 传递的状态全断（2026-11-13
+# 9k 逐轮劣化实录）。
 pin_hwkb_form() {
     local b64
     b64=$(printf "%s" "<?xml version='1.0' encoding='utf-8' standalone='yes' ?><map><string name=\"feelime_hwkb_form\">full</string></map>" | base64 -w0)
@@ -360,9 +448,34 @@ sweep_device() {
         sleep 1
     fi
     adb -s "$FEELIME_ADB_SERIAL" shell am force-stop "$PKG" >/dev/null 2>&1 || true
+    # codex review P2：确认进程停止（最多等 3s）——force-stop 异步未死透
+    # 时 SharedPreferences 仍可能落盘覆盖后续清理；清理范围含 .xml.bak
+    # （SP 的 backup 机制可从 .bak 恢复旧值，只删 .xml 留 .bak=清不干净）。
+    # 清理/停止失败不静默：sweep 是失败重试与段间隔离的地基，带着污染
+    # 重试比响亮中止更贵（9k 实录）。用户词库与 WebView 存储仍保留——
+    # 本函数是轻量清扫，不承诺「与首次相同的完整基线」（完整复位在
+    # 开头的 reset_device）。
+    for _ in 1 2 3; do
+        # `|| true` 必须有：pidof 无进程时退出码 1（shell 语义），set -o
+        # pipefail 把它带给赋值语句，set -e 会在 if 判空前就炸掉整跑
+        # （2026-11-14 trace 定罪：base 21/21 全绿、pidof_out 空、rc=1）。
+        pidof_out=$(adb -s "$FEELIME_ADB_SERIAL" shell pidof "$PKG" 2>/dev/null | tr -d '[:space:]') || true
+        # if 形式而非 `[[ ]] && break`：后者为假时把非零退出码留给 for
+        # 复合命令，set -e 会在兜底 if 之前静默炸掉整跑（2026-11-14
+        # daily 实测实录：base 21/21 全绿却 GATE FAILED rc=1 且无输出）。
+        if [[ -z "$pidof_out" ]]; then break; fi
+        sleep 1
+    done
+    if [[ -n "$pidof_out" ]]; then
+        # IME 绑定型服务被系统自动重拉是正常行为（不是停止失败）：
+        # 照常清理（复活进程加载的是清空后的 prefs，与原版行为一致），
+        # 打警告留痕即可。
+        echo "sweep: $PKG re-spawned (pid $pidof_out, IME rebind) - continuing with cleanup" >&2
+    fi
     adb -s "$FEELIME_ADB_SERIAL" shell \
-        "run-as "$PKG" sh -c 'rm -f shared_prefs/*.xml'" \
-        >/dev/null 2>&1 || true
+        "run-as "$PKG" sh -c 'rm -f shared_prefs/*.xml shared_prefs/*.xml.bak'" \
+        >/dev/null 2>&1 \
+        || { echo "sweep: prefs cleanup failed" >&2; return 1; }
     pin_hwkb_form
     adb -s "$FEELIME_ADB_SERIAL" shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
 }
@@ -405,6 +518,11 @@ run_suite() {
                 return 1
             fi
             echo "RETRY $attempt/$DEVICE_SUITE_RETRIES [$label]: previous attempt failed - rerunning"
+            # 重试前先清扫（2026-11-14 codex 方案核实：此前重试只 settle
+            # 不 sweep，失败段的残留态（prefs/页面/键盘形态）原样带进
+            # 重跑——9k 逐轮劣化的延续机制）。sweep 含 force-stop+清
+            # prefs+pin，让重跑从与首次相同的基线出发。
+            sweep_device
         fi
         settle_device
         if "$@"; then
@@ -420,10 +538,28 @@ run_suite() {
 }
 
 print_retry_summary() {
+    # codex review P2：旧文案「gate is green, but…」在失败汇总（trap）
+    # 路径里会误导；改中性表述。
     if [[ "${#RETRIED_STEPS[@]}" -gt 0 ]]; then
-        echo "gate is green, but ${#RETRIED_STEPS[@]} step(s) only passed on retry:"
+        echo "${#RETRIED_STEPS[@]} step(s) only passed on retry (flaky clues):"
         printf '  - %s\n' "${RETRIED_STEPS[@]}"
     fi
+}
+
+print_duration_summary() {
+    [[ "${#SEG_DUR[@]}" -gt 0 ]] || return 0
+    local total=0 label
+    echo "per-segment wall time (this run, slowest first):"
+    for label in "${!SEG_DUR[@]}"; do
+        printf '%d\t%s\n' "${SEG_DUR[$label]}" "$label"
+    done | sort -rn | while IFS=$'\t' read -r dur name; do
+        printf '  %6ds  %s\n' "$dur" "$name"
+    done
+    for label in "${!SEG_DUR[@]}"; do
+        total=$((total + SEG_DUR[$label]))
+    done
+    printf '  %6ds  = executed segments total\n' "$total"
+    printf '  %6ds  = whole gate (incl. reset/settle/ASR)\n' "$(( $(date +%s) - gate_t0 ))"
 }
 
 run_local_css() {
@@ -453,10 +589,13 @@ run_local_jvm() {
 }
 
 run_asr() {
-    # fixture 是用户录音（刻意不入库）：文件不存在时本段不可运行——
-    # 显式跳过而不是整跑红在最后一段（红会误读成语音坏了）。
+    # fixture 是用户录音（刻意不入库）：文件不存在时本段不可运行。
+    # 2026-11-14 codex 方案核实修复：此前 SKIP 却 return 0，段会被
+    # state_mark 记为绿——--resume 永远跳过语音验证（假绿）。改为
+    # BLOCKED：本轮不算绿也不算红（语音没坏，是没验），但不落 done。
     if [[ ! -f "$FEELIME_ASR_FIXTURE" ]]; then
-        echo "== 11/11 asr: SKIP（FEELIME_ASR_FIXTURE 不存在: $FEELIME_ASR_FIXTURE；语音路径本批零改动） =="
+        echo "== 11/11 asr: BLOCKED（FEELIME_ASR_FIXTURE 不存在: $FEELIME_ASR_FIXTURE；本段未验证，不记绿） =="
+        ASR_BLOCKED=1
         return 0
     fi
     # 性能门只在真机上成立（baseline 是 arm64 物理设备录的，AVD 上不可
@@ -472,9 +611,28 @@ run_asr() {
 }
 
 # ---- 遍历段（set -e：段重试耗尽即整跑退出，退出码非零；修复后 --resume 续跑）----
+ASR_BLOCKED=0   # 1=本轮有 BLOCKED 段（未验证不记绿，尾部提示）
+# 失败长尾也要有耗时账（2026-11-14 codex 方案：汇总原本只在正常尾部
+# 执行，段挂掉时 set -e 直接退出，本轮跑了什么/多久全丢）。EXIT trap
+# 只在非零退出时补打，正常路径维持尾部显式汇总。
+ACTIVE_SEG=""
+ACTIVE_T0=0
+trap 'rc=$?; if [[ "$rc" != "0" && "$rc" != "3" ]]; then
+        # 失败中的活动段补记耗时（codex review P2：SEG_DUR 只在成功
+        # 路径记录，最长的失败段恰好不在表里）。rc=3 是 GATE_BLOCKED
+        # 的约定码（尾部分支已打过汇总），不在此重复。
+        if [[ -n "$ACTIVE_SEG" ]]; then
+            SEG_DUR["$ACTIVE_SEG (FAILED)"]=$(( $(date +%s) - ACTIVE_T0 ))
+        fi
+        echo "GATE FAILED (rc=$rc)"
+        print_retry_summary
+        print_duration_summary
+    fi' EXIT
 device_reset_pending=1
 skipped=0
 executed=0
+declare -A SEG_DUR   # label -> 本段墙钟秒（--resume 跳过的段不计，尾汇总用）
+gate_t0=$(date +%s)
 
 for entry in "${SEGMENTS[@]}"; do
     label="${entry%%|*}"
@@ -485,6 +643,8 @@ for entry in "${SEGMENTS[@]}"; do
         skipped=$((skipped + 1))
         continue
     fi
+    seg_t0=$(date +%s)
+    ACTIVE_SEG="$label"; ACTIVE_T0=$seg_t0
     case "$kind" in
         local)
             echo "== $label =="
@@ -538,7 +698,16 @@ for entry in "${SEGMENTS[@]}"; do
             run_asr
             ;;
     esac
-    state_mark "$label"
+    # BLOCKED 段（ASR 缺 fixture 等）不落 done：本轮不算绿，--resume
+    # 在 fixture 补齐后仍会重跑该段。标志保留到尾部（codex review P1：
+    # 首版在此清零，尾部判断永远走不到 BLOCKED 分支=假绿）。
+    if [[ "$ASR_BLOCKED" == "1" && "$label" == "11/11 asr" ]]; then
+        :   # 不落 done
+    else
+        state_mark "$label"
+    fi
+    SEG_DUR[$label]=$(($(date +%s) - seg_t0))
+    echo "-- $label: ${SEG_DUR[$label]}s"
     executed=$((executed + 1))
 done
 
@@ -550,8 +719,15 @@ if [[ ${#selected_names[@]} -gt 0 && "$executed" -eq 0 && "$skipped" -eq 0 ]]; t
 fi
 
 print_retry_summary
+print_duration_summary
 if [[ "$skipped" -gt 0 ]]; then
     echo "$skipped segment(s) skipped via --resume state"
+fi
+# BLOCKED 的退出语义（codex review P1）：GATE_BLOCKED + 非零码——
+# 自动化不得把它当通过；与「验证失败」的 GATE FAILED 区分开。
+if [[ "$ASR_BLOCKED" == "1" ]]; then
+    echo "GATE_BLOCKED: 11/11 asr 未验证（fixture 缺失），补齐后 --resume 会重跑"
+    exit 3
 fi
 echo "GATE_OK"
 

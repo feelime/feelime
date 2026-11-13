@@ -147,6 +147,16 @@ def keyboard_theme_state():
         return {}
 
 
+def bg_image_served(state):
+    """内置背景图真实铺到键盘页。2026-11 存量断言漂移定案（发 v1.4.9 时）：
+    1.4.3 起（415796b）BackgroundImageStore.url() 恒回
+    https://feelime.local/keyboard/background/<variant>/<ver>.jpg，
+    不再内联 data:image。上面 eval 只截前 30 字符，URL 形态恰好截到
+    url("https://feelime.local/ke —— host 在窗口内、路径不在。"""
+    bg = state.get("bgImage", "")
+    return "data:image" in bg or "feelime.local/" in bg
+
+
 def main():
     d.prepare()
 
@@ -218,7 +228,7 @@ def main():
         d.fresh_kb(refocus=True)
         state = keyboard_theme_state()
         record("light keyboard shows the light bg image",
-               state.get("bgOn") is True and "data:image" in state.get("bgImage", ""),
+               state.get("bgOn") is True and bg_image_served(state),
                state)
         d.screenshot("/tmp/fv-appearance-light-bg.png")
 
@@ -235,7 +245,7 @@ def main():
         d.fresh_kb(refocus=True)
         state = keyboard_theme_state()
         record("dark keyboard keeps a bg image (dark group)",
-               state.get("bgOn") is True and "data:image" in state.get("bgImage", ""),
+               state.get("bgOn") is True and bg_image_served(state),
                state)
         d.screenshot("/tmp/fv-appearance-dark-bg.png")
 

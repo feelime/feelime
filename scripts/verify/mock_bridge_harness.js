@@ -64,6 +64,57 @@ function detachMockNode(node) {
     }
 }
 
+// —— MutationObserver 最小实现（工具栏互斥守卫的消费语义）——
+// 真实浏览器里 observer 回调在微任务时机（渲染前）执行；fake 世界
+// 用 0ms 定时任务对齐（scheduler 即 clock.setTimeout(fn, 0)，
+// advance(0) 冲洗——与 select 延迟派发同模式，同步派发会造出浏览器
+// 没有的时序）。只支持键盘页实际用到的形态：单属性 hidden 过滤 +
+// subtree。records 在派发前跨多次变更累积，回调一次收全。不做跨
+// 用例的全局去重：flush 排进的是 per-world 的 clock，旧 world 的
+// pending flush 永不被 advance，模块级 queued 标志会卡死后续所有
+// 用例的派发（首版实测教训）；flush 幂等（records 空=零成本），
+// 重复调度无害。
+const mutationObservers = [];
+
+class FakeMutationObserver {
+    constructor(callback) { this.callback = callback; this.records = []; }
+    observe(target, options) {
+        mutationObservers.push({ observer: this, target, options: options || {} });
+    }
+    disconnect() {
+        for (let i = mutationObservers.length - 1; i >= 0; i--) {
+            if (mutationObservers[i].observer === this) mutationObservers.splice(i, 1);
+        }
+    }
+    takeRecords() { const r = this.records; this.records = []; return r; }
+}
+
+function notifyHiddenMutation(el) {
+    let queued = false;
+    for (const entry of mutationObservers) {
+        const filter = entry.options.attributeFilter;
+        if (filter && !filter.includes('hidden')) continue;
+        let node = el;
+        while (node && node !== entry.target) node = node.parentNode;
+        if (node !== entry.target) continue;
+        entry.observer.records.push({ type: 'attributes', attributeName: 'hidden', target: el });
+        queued = true;
+    }
+    if (!queued) return;
+    const fire = () => {
+        for (const entry of [...mutationObservers]) {
+            if (!entry.observer.records.length) continue;
+            const records = entry.observer.records;
+            entry.observer.records = [];
+            // 不吞回调异常：守卫炸了就要炸出来（真实浏览器进
+            // window.onerror，fake 世界让错误直接显形）。
+            entry.observer.callback(records);
+        }
+    };
+    if (el.__scheduler) el.__scheduler(fire);
+    else Promise.resolve().then(fire);
+}
+
 class FakeElement {
     constructor(tagName, scheduler) {
         this.tagName = String(tagName || 'div').toUpperCase();
@@ -116,7 +167,21 @@ class FakeElement {
         // _textContent !== undefined; seeding '' would freeze every element
         // at "" and hide child text (settings.js buildModelRow regression).
         this.disabled = false;
-        this.hidden = false;
+        // hidden 走 accessor：值真正变化才派发 mutation（与真实 DOM
+        // 一致——同值重赋不触发 observer，引擎事件高频路径的幂等
+        // hidden 赋值不会刷守卫）。
+        let hiddenValue = false;
+        Object.defineProperty(this, 'hidden', {
+            get: () => hiddenValue,
+            set: value => {
+                const next = !!value;
+                if (next === hiddenValue) return;
+                hiddenValue = next;
+                notifyHiddenMutation(this);
+            },
+            configurable: true,
+            enumerable: true,
+        });
         // Form fields (panel add/edit inputs) carry a value.
         this.value = '';
         // 设置页外观预览嵌真键盘 iframe：contentWindow 只需要记录
@@ -1079,6 +1144,8 @@ class KeyboardWorld {
             Map,
             Set,
             Promise,
+            // 工具栏互斥守卫的消费通道（notifyHiddenMutation 见类注释）
+            MutationObserver: FakeMutationObserver,
         };
         sandbox.window = sandbox;
         sandbox.window.FeelimeNative = this.native;

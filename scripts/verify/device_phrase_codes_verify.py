@@ -128,6 +128,14 @@ def clear_host_adb(keyboard, rounds=3):
 
 def prepare_readonly():
     """Prepare the debug host field without a DevTools write expression."""
+    # #H 形态夹具（同 d.prepare 的单跑兜底；本套件不走 d.prepare，9l 等
+    # 借道这里的套件靠这一层）：AVD qemu 键盘在场时 hwkb 默认 candidates
+    # 收缩键区，#modeToggle 长按入口直接 not visible。进程活着时
+    # SharedPreferences 不重读文件，先 force-stop 再落盘；下方 ime set
+    # 覆盖 force-stop 切走默认 IME 的副作用。
+    d.shell("am force-stop " + d.PKG)
+    time.sleep(0.5)
+    d.pin_hwkb_form()
     d.shell("svc power stayon true")
     d.shell("input keyevent KEYCODE_WAKEUP")
     d.shell("wm dismiss-keyguard")
@@ -832,6 +840,21 @@ def case_settings_json_focus(keyboard):
                       lambda value: value == ["input"], timeout=4.0)
     # 2026-09-30 拆页：JSON 兜底框住进 customkeys 三级页的折叠卡——收起态
     # textarea 无几何，settings_tap 会点到下面的入口行（btnOpenKeyboards）。
+    # 自愈前置（2026-11-13 全量门禁实录）：符号页定制开关（custom_enabled
+    # 持久 pref）一旦为 false，#ckSymCard 整卡隐藏、导航死锁——且本套件
+    # 挂掉重试的 nudge-reflow swipe 曾误触该开关，把 false 固化成跨轮
+    # 持久态（pm clear 前的每一轮都挂「准备全灭」）。导航前检测卡隐藏
+    # 就直接经桥打开开关，任何来源的 false 都一轮内自愈。
+    if shared.sev("(() => { const c=document.getElementById('ckSymCard');"
+                  " return c ? c.hidden : 'missing'; })()") is True:
+        if not shared.sev(
+                "(() => { const sw=document.getElementById('customEnabled');"
+                " if (!sw) return false; sw.checked = true;"
+                " sw.dispatchEvent(new Event('change')); return true; })()"):
+            record("settings JSON page opens", False,
+                   "ckSymCard hidden and the toggle is unavailable")
+            return keyboard
+        time.sleep(0.8)
     shared.settings_tap('#btnOpenCustomKeys')
     ck_page = wait_until(shared.settings_visible_pages,
                          lambda value: value == ["customkeys"], timeout=4.0)

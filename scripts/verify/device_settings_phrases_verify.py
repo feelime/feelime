@@ -165,21 +165,22 @@ def main():
     open_panel(kb)
     labels = ev("[...document.querySelectorAll('#settingsPanel .qs-name')]"
                 ".map(el => el.textContent)") or []
+    # 可见性与真实尺寸（codex review P2：隐藏 DOM 也满足纯计数；面板
+    # 必须 open 且 tile 有排版尺寸，才是「网格真渲染」的信号）。
+    panel_visible = ev("(() => { const p = document.getElementById('settingsPanel');"
+                       " return p ? p.classList.contains('open') : false; })()")
+    tile_sizes = ev("[...document.querySelectorAll('#settingsPanel .qs-tile')]"
+                    ".map(t => { const r = t.getBoundingClientRect();"
+                    " return Math.round(r.width * r.height); })") or []
     record("home page tiles (grid; voice/clipboard stay on the main keyboard)",
-           # 3.38.0 起面板是跨两页的 tile 网格（DOM 全量可查）。名单随批次
-           # 漂移过：界面语言/定制键盘/双拼方案 tile 迁去了设置 app，
-           # 输入统计（#41）与编辑工具栏（#133）是新 tile；3.73.103 起
-           # 悬浮键盘快开+单手模式进第一页，快捷切换/长按菜单挪第二页
-           # ——改 tile 时同步这里，红=名单漂移不是套件坏。
-           labels == ['色彩模式', '中文联想', '按键声音', '按键振动',
-                      '键盘高度', '输入统计', '悬浮键盘', '单手模式',
-                      '候选字号', '底部留白', '长按时长', '滑动选字',
-                      '快捷切换', '长按菜单', '编辑工具栏', '完整设置']
-           or labels == ['Appearance', 'Associations', 'Key sound', 'Key vibration',
-                         'Keyboard height', 'Typing stats', 'Floating keyboard', 'One-handed',
-                         'Candidate size', 'Bottom padding', 'Long-press delay', 'Swipe reach',
-                         'Quick switch', 'Keyboard menu', 'Edit toolbar', 'All settings'],
-           repr(labels))
+           # 3.38.0 起面板是跨两页的 tile 网格。tile 全量名单由 mock 锁
+           # （'色彩模式/中文联想/…' 对照组锁数量+顺序，2026-11-14 codex
+           # 去重；codex review P2 二轮：首版 len 区间无产品边界、隐藏
+           # DOM 也满足计数——改为可操作性断言）。设备层保真机链路：
+           # 面板开着、tile 有真实可见尺寸（非隐藏容器）、入口可点。
+           bool(panel_visible) and any(size > 0 for size in tile_sizes)
+           and len([t for t in tile_sizes if t > 0]) >= 10,
+           f"visible={panel_visible} sizes={tile_sizes[:6]}…")
 
     # 快捷切换子页已删（3.59.6 起 tile 深链完整设置的 quickPairA 行，
     # 2026-09-30 清死码）：深链行为在 caps-flick #12 设备断言，面板滚动

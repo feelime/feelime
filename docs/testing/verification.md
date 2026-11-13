@@ -142,7 +142,8 @@ bash scripts/verify/run-all.sh --list        # 列出段与 profiles
 bash scripts/verify/run-all.sh 9n 9j         # 只跑指定段（前缀匹配）
 bash scripts/verify/run-all.sh --from 9g     # 从某段跑到尾
 bash scripts/verify/run-all.sh --resume      # 跳过状态文件里已绿的段
-bash scripts/verify/run-all.sh --profile quick   # 按改动面选段
+bash scripts/verify/run-all.sh --profile daily   # 日常档（固定核心 ~10min）
+bash scripts/verify/run-all.sh --profile quick   # 按改动面选层
 FEELIME_GATE_NO_RESET=1 bash scripts/verify/run-all.sh  # 调试：跳过基线复位
 # 另有 FEELIME_GATE_RETRIES=<n>（失败段自动重试次数）与 FEELIME_GATE_NO_RESET
 ```
@@ -150,21 +151,52 @@ FEELIME_GATE_NO_RESET=1 bash scripts/verify/run-all.sh  # 调试：跳过基线�
 段选择按 label 前缀匹配，可选中包括本地段在内的任意段，未知段名
 直接报错退出；`--resume` 对所有段生效。状态文件
 `/tmp/feelime-gate-state-<serial>.json` 记录 APK sha + git sha + 工作区
-指纹，换 APK/换 commit/改工作区自动作废（已绿的段重新验才算数）。
-qemu 死亡或单段重试耗尽时 gate 响亮退出，修复/重启后用 `--resume`
-续跑，不再整跑报废。
+指纹（哈希每个脏文件的内容，同文件继续改也会翻转），换 APK/换
+commit/改工作区自动作废（已绿的段重新验才算数）。qemu 死亡或单段
+重试耗尽时 gate 响亮退出（EXIT trap 补打本轮耗时汇总），修复/重启后
+用 `--resume` 续跑，不再整跑报废。段重试前会先 sweep（清 prefs+pin），
+失败态不带入重跑。ASR fixture 缺失时该段记 BLOCKED：不落 done、
+不算绿，补齐后 `--resume` 会重跑。
 
-profiles（按改动面选层，普通批次用 quick ≈ 30min，全量留给发版前）：
+profiles（2026-11-14 codex 方案落地：所有 profile 自动含本地三段——
+「改资产先跑 mock」从纪律变机制；日常默认 `daily` 档固定核心 ~10min，
+预算=核心 596s + 按 diff 映射追加专项 ≤180s + 波动 ≤120s）：
 
 | profile | 段 |
 | --- | --- |
-| quick | base、extended、feel-degrade、input-prefs、panel、height-card |
-| input | base、feel-degrade、input-prefs、t9、appearance、stroke |
-| keyboard-js | base、extended、caps-flick、keymap、pool |
-| native-engine | base、extended、backspace、delete |
-| kotlin-service | base、editor、feel-degrade、resource |
-| voice | gesture、voice-hold、fn-voice、asr |
-| resources | resource |
+| daily | 本地三层 + base、gesture、editor、panel、control-layer |
+| quick | 本地三层 + base、extended、feel-degrade、input-prefs、panel、height-card |
+| input | 本地三层 + base、feel-degrade、input-prefs、t9、appearance、stroke、handwriting |
+| keyboard-js | 本地三层 + base、extended、caps-flick、keymap、pool |
+| native-engine | 本地三层 + base、extended、backspace、delete |
+| kotlin-service | 本地三层 + base、editor、feel-degrade、handwriting、resource |
+| voice | 本地三层 + gesture、voice-hold、fn-voice、asr |
+| resources | 本地三层 + resource |
+
+diff → 追加专项映射表（profile 是起点，按改动面在预算内追加）：
+
+| 改动面 | 追加专项 |
+| --- | --- |
+| keyboard.js 输入/候选/触摸共享代码 | 候选池(9d)、回放(9m)、caps-flick(9a)；涉及模式分支再加 t9/stroke/handwriting |
+| keyboard.css / index.html | appearance(9q)、height-card(9j)、control-layer(9e) |
+| 设置页 / SettingsBridge / 偏好存储 | input-prefs(9o)、appearance(9q)、height-card(9j)、phrase-codes(9k) |
+| TextInputCoordinator / 引擎适配 / schema 数据 | extended(7)、keymap(9c)、delete(9h)；数据类型决定加 t9/stroke |
+| FeelimeService / InputConnection / 编辑器生命周期 | editor-modes(9l)、backspace(9g)、ctrl-switch(9f) |
+| 语音会话 / 模型 / ASR 参数 | voice-hold(6b)、asr(11)；性能相关在 ace 真机跑五跑 |
+| 手写 / ORT | handwriting(9s)；诊断/发布跑崩溃导出 |
+| 构建 / manifest / 打包资产 | firstlaunch/upgrade 专项 + resource(10) |
+| 共享夹具（fv_common/device_verify） | 所有依赖场景；稳定前完整回归 |
+| 纯文档 | 仅本地检查 |
+
+两条硬边界：keyboard.js / FeelimeService 这类大文件不能凭几行关键词
+推断精确影响面，映射表第一版保守（未知路径默认扩大验证并说明）；
+30 段之外的发布首启/升级/生产语音等专项仍要按需进入，「跑满 30 段」
+不代表覆盖所有功能。专项预算超 3 分钟就升整层 profile，不为档位
+截断必需测试。
+
+跑完的尾表 `per-segment wall time` 按耗时降序列出各段墙钟（`--resume`
+跳过的段不计）；最慢段是下一轮套件优化的对象，retry summary 里
+retry-only 绿的段按 flaky 线索记录并治本。
 
 ### run-all 步骤
 
