@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.111';
+    const KEYBOARD_VERSION = '3.73.112';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1745,7 +1745,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 预览所按字符。
             this.keyBubble = false;
             this.cnEnGuard = false; // #89 组词中防误触切换（默认关）
-            // #103 空格横滑组合内拼音光标（实验开关，默认关）：
+            // #103 空格横滑组合内拼音光标（2026-11-13 起默认开，可手动关）：
             // 组合中横滑空格=移动 preedit 光标（gestureId 会话锁定），
             // 非组合=宿主光标（存量）。首期全拼/双拼（native 白名单同款）。
             this.preeditScrub = false;
@@ -4873,7 +4873,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                         // composition is live the caret belongs to the
                         // composing span - moving it just makes the next
                         // setComposingText snap it back (jumpy).
-                        // #103 实验开关（默认关）放开「组合中空格横滑」：
+                        // #103 开关（默认开，可手动关）放开「组合中空格横滑」：
                         // 目标是组合内拼音光标（scrubDispatch 按 gestureId
                         // 锁定目标，native 侧不转投宿主）；其余键源仍维持
                         // 组合中不启动。
@@ -4977,7 +4977,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.finishTouchGesture = finish;
         }
 
-        /* ===== #103 空格横滑组合光标（实验开关默认关）=====
+        /* ===== #103 空格横滑组合光标（2026-11-13 起默认开，可手动关）=====
          * 组合中=组合内拼音光标（首批判定后 gestureId 锁定，native 侧
          * 不转投宿主），非组合=宿主光标（存量语义）。首期模式白名单
          * 全拼/双拼（native PREEDIT_SCRUB_MODES 同款），T9/形码后续。 */

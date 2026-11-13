@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.111";
+  const KEYBOARD_VERSION = "3.73.112";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -4311,7 +4311,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       root.addEventListener("touchend", (event) => finish(event, false), { capture: true });
       this.finishTouchGesture = finish;
     }
-    /* ===== #103 空格横滑组合光标（实验开关默认关）=====
+    /* ===== #103 空格横滑组合光标（2026-11-13 起默认开，可手动关）=====
      * 组合中=组合内拼音光标（首批判定后 gestureId 锁定，native 侧
      * 不转投宿主），非组合=宿主光标（存量语义）。首期模式白名单
      * 全拼/双拼（native PREEDIT_SCRUB_MODES 同款），T9/形码后续。 */

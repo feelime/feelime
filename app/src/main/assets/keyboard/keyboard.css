@@ -365,7 +365,7 @@ body.landscape #symCatBar { margin-top: 3px; gap: 4px; }
     z-index: 5;
 }
 body.composing #preeditLine { display: flex; }
-/* #103 组合内光标（空格横滑，实验开关）：中置时插入的竖线。不占文本
+/* #103 组合内光标（空格横滑，默认开）：中置时插入的竖线。不占文本
  * 内容（空元素），闪烁用柔和的两态——拖动中不闪（视觉稳定），静态
  * 跟随 prefers-reduced-motion 收敛为常亮。 */
 .preedit-caret {
