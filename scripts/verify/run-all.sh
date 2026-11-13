@@ -456,7 +456,10 @@ sweep_device() {
     # 本函数是轻量清扫，不承诺「与首次相同的完整基线」（完整复位在
     # 开头的 reset_device）。
     for _ in 1 2 3; do
-        pidof_out=$(adb -s "$FEELIME_ADB_SERIAL" shell pidof "$PKG" 2>/dev/null | tr -d '[:space:]')
+        # `|| true` 必须有：pidof 无进程时退出码 1（shell 语义），set -o
+        # pipefail 把它带给赋值语句，set -e 会在 if 判空前就炸掉整跑
+        # （2026-11-14 trace 定罪：base 21/21 全绿、pidof_out 空、rc=1）。
+        pidof_out=$(adb -s "$FEELIME_ADB_SERIAL" shell pidof "$PKG" 2>/dev/null | tr -d '[:space:]') || true
         # if 形式而非 `[[ ]] && break`：后者为假时把非零退出码留给 for
         # 复合命令，set -e 会在兜底 if 之前静默炸掉整跑（2026-11-14
         # daily 实测实录：base 21/21 全绿却 GATE FAILED rc=1 且无输出）。
