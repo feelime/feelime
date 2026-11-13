@@ -237,11 +237,28 @@ object CustomPhraseStore {
          *  rank 不进引擎 txt（引擎侧 quality 悬崖，位置只能渲染层控制），
          *  只随 hello/state 下发键盘页。 */
         val symbolRanks: Map<String, Int> = emptyMap(),
+        /** #107 列头声明表的「全词面 rank」集合：columns 声明含 rank 的
+         *  导入表中配了第三列的词面。集合内的词面在渲染层不受 #81 的
+         *  纯符号门限制，按 [symbolRanks] 的位次全类型钉位。随导入替换
+         *  式换表（无声明=空集）。 */
+        val rankAll: Set<String> = emptySet(),
         /** #81 总开关（默认关）：未指定位置的符号词按键盘侧使用词频排序
          *  （越用越前，5 次后可升首位）。关=未指定一律钉第 3 位（不影响
          *  正常输入），显式 rank 不受开关影响。 */
         val symbolFreqSort: Boolean = false,
     )
+
+    /** #107 rankAll json 段读取：[词面...]；与 symbolRanks 同源（声明表
+     *  的有效 rank 词面），防御性独立校验。 */
+    private fun readRankAll(root: JSONObject): Set<String> {
+        val array = root.optJSONArray("rankAll") ?: return emptySet()
+        val out = LinkedHashSet<String>()
+        for (i in 0 until array.length()) {
+            val text = array.optString(i)
+            if (text.isNotEmpty()) out.add(text)
+        }
+        return out
+    }
 
     /** #81 symbolRanks json 段读取：{词面: 1-9}；坏值（越界/非整数）
      *  丢弃——rank 只认 1..9。 */
@@ -298,11 +315,13 @@ object CustomPhraseStore {
             }
             val state = State(root.optBoolean("enabled", true), items, imported, user,
                 root.optBoolean("englishEnabled", true),
-                readSymbolRanks(root), root.optBoolean("symbolFreqSort", false))
+                readSymbolRanks(root), readRankAll(root),
+                root.optBoolean("symbolFreqSort", false))
             if (root.optInt("derive", 1) != DERIVE_VERSION) {
                 save(context, state.enabled, state.items, state.imported, state.user,
                     englishEnabled = state.englishEnabled,
-                    symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort)
+                    symbolRanks = state.symbolRanks, rankAll = state.rankAll,
+                    symbolFreqSort = state.symbolFreqSort)
                 // 迁移改写了 txt：已在跑的 IME 引擎还挂着旧 txt，广播让它
                 // 整引擎重载（stabledb 生命周期绑定引擎）。迁移只发生一次
                 // （版本戳落定），不会刷屏。
@@ -333,6 +352,7 @@ object CustomPhraseStore {
         seed: Boolean = false,
         englishEnabled: Boolean = true,
         symbolRanks: Map<String, Int> = emptyMap(),
+        rankAll: Set<String> = emptySet(),
         symbolFreqSort: Boolean = false,
     ) {
         val root = JSONObject()
@@ -352,6 +372,7 @@ object CustomPhraseStore {
             .put("symbolRanks", JSONObject().apply {
                 symbolRanks.forEach { (text, rank) -> put(text, rank) }
             })
+            .put("rankAll", JSONArray().apply { rankAll.forEach { put(it) } })
             .put("symbolFreqSort", symbolFreqSort)
         val dir = jsonFile(context).parentFile
         dir?.mkdirs()

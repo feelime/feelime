@@ -899,6 +899,9 @@ class SettingsBridge(
                 put("symbolRanks", JSONObject().apply {
                     state.symbolRanks.forEach { (text, rank) -> put(text, rank) }
                 })
+                // #107 全词面 rank 词面集合（声明表导入），设置页表单
+                // 回显不消费，仅随 state 透传。
+                put("rankAll", JSONArray().apply { state.rankAll.forEach { put(it) } })
                 put("symbolFreqSort", state.symbolFreqSort)
             })
             .put("userWords", JSONArray().apply {
@@ -2161,7 +2164,8 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, enabled, items, imported = state.imported, user = state.user,
             englishEnabled = state.englishEnabled,
-            symbolRanks = ranks, symbolFreqSort = state.symbolFreqSort,
+            symbolRanks = ranks, rankAll = state.rankAll,
+            symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2177,7 +2181,8 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = state.imported, user = state.user,
             englishEnabled = state.englishEnabled,
-            symbolRanks = state.symbolRanks, symbolFreqSort = enabled,
+            symbolRanks = state.symbolRanks, rankAll = state.rankAll,
+            symbolFreqSort = enabled,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2194,7 +2199,8 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = state.imported, user = state.user,
             englishEnabled = enabled,
-            symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
+            symbolRanks = state.symbolRanks, rankAll = state.rankAll,
+            symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2264,7 +2270,8 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = state.imported, user = items,
             englishEnabled = state.englishEnabled,
-            symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
+            symbolRanks = state.symbolRanks, rankAll = state.rankAll,
+            symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(
             Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2297,12 +2304,16 @@ class SettingsBridge(
             val state = com.feelime.ime.engine.CustomPhraseStore.load(context)
             // #81 位置列：导入是替换式换表——旧导入词的 rank 随表清掉，
             // 手管词（items 表单）的 rank 保留，新表的 ranks 覆盖并入。
+            // #107 rankAll 同步替换：仅声明表（columns 含 rank）导入时
+            // 非空，无声明/换了普通表=清空（回到 #81 仅符号词语义）。
             val managedTexts = state.items.map { it.first }.toSet()
             val ranks = state.symbolRanks.filterKeys { it in managedTexts } + result.ranks
+            val rankAll = if (result.rankDeclared) result.ranks.keys.toSet() else emptySet()
             com.feelime.ime.engine.CustomPhraseStore.save(
                 context, state.enabled, state.items, imported = result.items, user = state.user,
                 englishEnabled = state.englishEnabled,
-                symbolRanks = ranks, symbolFreqSort = state.symbolFreqSort,
+                symbolRanks = ranks, rankAll = rankAll,
+                symbolFreqSort = state.symbolFreqSort,
             )
             context.sendBroadcast(
                 Intent(ACTION_CUSTOM_PHRASES_CHANGED).setPackage(context.packageName),
@@ -2338,6 +2349,7 @@ class SettingsBridge(
         com.feelime.ime.engine.CustomPhraseStore.save(
             context, state.enabled, state.items, imported = emptyList(), user = state.user,
             englishEnabled = state.englishEnabled,
+            // rankAll 不透传（默认空集）：清空导入=清空声明表的词面集合。
             symbolRanks = state.symbolRanks, symbolFreqSort = state.symbolFreqSort,
         )
         context.sendBroadcast(

@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.109';
+    const KEYBOARD_VERSION = '3.73.110';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -10337,11 +10337,21 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             //     使用计数分层——≥SYMBOL_PROMOTE_AT 的按计数序升到池头
             //     （空格直选），组内按计数降序稳定排；关时保持引擎序。
             // 先排引擎序、后插 overlay，常用语 rank 位次与空格确认的池头
-            // 语义不被二次改写；中文自定义词（含汉字/字母）不动。bar/展
-            // 开层/选词通道共用同一池。
+            // 语义不被二次改写；bar/展开层/选词通道共用同一池。
+            // #107 例外：列头声明表（columns 含 rank）导入的词面不受
+            // 纯符号门限制——带有效 rank 的汉字/字母/Emoji 词同样走
+            // 钉位仲裁（slotted 分流）；无有效 rank 的声明词面不进仲裁
+            // （保持引擎序，也不落「未指定符号默认钉 3」——那是符号词
+            // 的折中，不外溢到普通词）。
             const ranks = this.symbolRanks || {};
             const freqOn = this.symbolFreqSort === true;
-            const symbolic = rawEngine.filter(candidate => isSymbolicText(candidate.text));
+            const rankAllTexts = this.rankAllTexts || new Set();
+            const symbolic = rawEngine.filter(candidate =>
+                isSymbolicText(candidate.text) ||
+                (rankAllTexts.has(candidate.text) &&
+                    Number.isInteger(Number(ranks[candidate.text])) &&
+                    Number(ranks[candidate.text]) >= 1 &&
+                    Number(ranks[candidate.text]) <= 9));
             let engine = rawEngine;
             if (symbolic.length) {
                 const slotted = candidate => {
@@ -10885,8 +10895,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const ranks = this.symbolRanks || {};
             const pinOf = item => {
                 const rank = Number(ranks[item && item.text]);
+                // #107：声明表词面（rankAllTexts）与符号词同权钉位——
+                // 仅对引擎候选；fav:/dyn:/alt: 等 overlay 自带位次规则
+                // （fav 的 exact rank splice），同词面不被 symbolRanks
+                // 改写（codex review P2）。
                 return Number.isInteger(rank) && rank >= 1 && rank <= 9
-                    && isSymbolicText(item && item.text) ? rank : 0;
+                    && !String(item && item.id).match(/^(fav|dyn|alt):/)
+                    && (isSymbolicText(item && item.text)
+                        || (this.rankAllTexts || new Set()).has(item && item.text))
+                    ? rank : 0;
             };
             const pinned = [];
             const plain = [];
@@ -12514,6 +12531,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // #81 符号词手动位次与词频排序开关（hello 随开关变更重推）。
             this.symbolRanks = payload.symbolRanks && typeof payload.symbolRanks === 'object'
                 ? payload.symbolRanks : {};
+            // #107 列头声明表（columns 含 rank）的全词面 rank 词面集合：
+            // 集合内的词面不受 #81 纯符号门限制，rank 位次全类型钉位。
+            this.rankAllTexts = new Set(Array.isArray(payload.rankAll)
+                ? payload.rankAll.filter(t => typeof t === 'string') : []);
             this.symbolFreqSort = payload.symbolFreqSort === true;
             this.hwkbForm = payload.hwkbForm || 'candidates';
             // #H 快捷切换策略/返回记忆快照（native 是真相源）。hello 未

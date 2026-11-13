@@ -94,4 +94,109 @@ class DictYamlImporterTest {
             DictYamlImporter.parse(StringReader("# only comments\n---\nname: x\n...\n")).items.size,
         )
     }
+
+    // ---- #107 columns 列头声明 ----
+
+    @Test
+    fun undeclaredThirdColumnKeepsLegacyRankSemantics() {
+        // 无声明：#81 现状——第三列仍按位置读（渲染层只放纯符号词）。
+        val result = DictYamlImporter.parse(StringReader("大学\tdaxue\t100\n"))
+        assertEquals(mapOf("大学" to 9), result.ranks)
+        assertEquals(false, result.rankDeclared)
+    }
+
+    @Test
+    fun inlineRankDeclarationMakesRankExplicit() {
+        val text = """
+            ---
+            name: mydict
+            columns: [text, code, rank]
+            ...
+            大学	daxue	1
+            你好	nihao	2
+            沉底	dingdi	99
+            无列	wulie
+        """.trimIndent()
+        val result = DictYamlImporter.parse(StringReader(text))
+        assertEquals(true, result.rankDeclared)
+        assertEquals(4, result.items.size)
+        assertEquals(mapOf("大学" to 1, "你好" to 2, "沉底" to 9), result.ranks)
+    }
+
+    @Test
+    fun blockRankDeclarationWithCommentsAndBlanks() {
+        // 块形态：列表内空行/注释不中断声明（与 BaseDictInstaller 同宽）。
+        val text = """
+            ---
+            columns:
+            # 角色列表
+              - text
+              - code
+
+              - rank
+            ...
+            大学	daxue	1
+        """.trimIndent()
+        val result = DictYamlImporter.parse(StringReader(text))
+        assertEquals(true, result.rankDeclared)
+        assertEquals(mapOf("大学" to 1), result.ranks)
+    }
+
+    @Test
+    fun declaredWeightColumnSuppressesLegacyRank() {
+        // 声明了 weight 语义=显式表态第三列是权重：不再按 #81 折中读位置。
+        val text = """
+            ---
+            columns: [text, code, weight]
+            ...
+            大学	daxue	100
+        """.trimIndent()
+        val result = DictYamlImporter.parse(StringReader(text))
+        assertEquals(false, result.rankDeclared)
+        assertEquals(emptyMap<String, Int>(), result.ranks)
+    }
+
+    @Test
+    fun columnsAfterFirstEntryIsIgnored() {
+        // codex review P2：无 `...` 的裸词表，词条后的声明不得追溯改写
+        // 整表语义（rankDeclared 不升级、已收 ranks 不清）。
+        val text = """
+            大学	daxue	100
+            columns: [text, code, rank]
+        """.trimIndent()
+        val result = DictYamlImporter.parse(StringReader(text))
+        assertEquals(false, result.rankDeclared)
+        // 正文前的第三列照 #81 现状读（100 钳 9）。
+        assertEquals(mapOf("大学" to 9), result.ranks)
+    }
+
+    @Test
+    fun trailingCommentOnInlineColumnsIsTolerated() {
+        // codex review P2：行尾注释（# 前带空白）不致声明静默失效。
+        val text = """
+            ---
+            columns: [text, code, rank] # 位次声明
+            ...
+            大学	daxue	1
+        """.trimIndent()
+        val result = DictYamlImporter.parse(StringReader(text))
+        assertEquals(true, result.rankDeclared)
+        assertEquals(mapOf("大学" to 1), result.ranks)
+    }
+
+    @Test
+    fun columnsAfterDocumentEndIsIgnored() {
+        // `...` 之后的正文区出现 columns 字样不构成声明。
+        val text = """
+            ---
+            name: x
+            ...
+            大学	daxue	1
+            columns: [text, code, rank]
+        """.trimIndent()
+        val result = DictYamlImporter.parse(StringReader(text))
+        assertEquals(false, result.rankDeclared)
+        // 正文里的第三列照 #81 现状读（1 在界内）。
+        assertEquals(mapOf("大学" to 1), result.ranks)
+    }
 }
