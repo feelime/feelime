@@ -3020,6 +3020,50 @@ test('lang keys: editor saves alt + flick slots into langKeys and the pack', () 
     equal(parsed.langKeys.pinyin.q.down, '[edit:copy]', 'down slot saved as [edit:x]');
 });
 
+test('lang keys: corner-mark checkbox links flick-up to the mark (altAsUp)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const qKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'q');
+    qKey.click();
+    let body = world.doc.getElementById('ckEditBody');
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 角标 € → 勾「上滑直接输入角标内容」→ 上滑槽=文本:€（裸文本 DSL）。
+    const alt = body.querySelector('input');
+    alt.value = '€'; fire(alt, 'input');
+    let cb = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    equal(cb.checked, false, 'unchecked while flick-up is keyboard default');
+    cb.checked = true; fire(cb, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    let parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, '€', 'flick-up saves as the literal mark');
+    equal(parsed.langKeys.pinyin.q.alt, '€', 'corner mark saved');
+    // 重开：勾选态派生（up 文本 == 角标）；改角标 → 上滑跟随。
+    qKey.click();
+    body = world.doc.getElementById('ckEditBody');
+    cb = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    equal(cb.checked, true, 'derived check on reopen');
+    const alt2 = body.querySelector('input');
+    alt2.value = '℃'; fire(alt2, 'input');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, '℃', 'flick-up follows the mark');
+    // 取消勾选 → 上滑回键盘默认（不落字段）。
+    qKey.click();
+    body = world.doc.getElementById('ckEditBody');
+    cb = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    cb.checked = false; fire(cb, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, undefined, 'uncheck falls back to keyboard default');
+    equal(parsed.langKeys.pinyin.q.alt, '℃', 'mark untouched by uncheck');
+});
+
 test('lang keys: none slot saves as empty string (gesture off)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });

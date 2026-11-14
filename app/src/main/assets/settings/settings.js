@@ -5660,7 +5660,19 @@ function ckBuildLangKeyForm(body, d) {
         alt.addEventListener("input", () => {
             const wasLinked = altUpLinked(); // 以改前的角标判断是否联动中
             d.alt = alt.value.trim();
-            if (wasLinked) d.up = { mode: "text", text: d.alt };
+            if (!wasLinked) return;
+            d.up = { mode: "text", text: d.alt };
+            // 上滑槽直通刷新，不 ckBuildForm 重建——角标框正在输入，
+            // 重建会清焦点打断输入（实测改角标后上滑文本框停在旧值）。
+            const upSec = body.querySelector(".ck-lang-sec");
+            const upText = upSec && upSec.querySelector("input.ck-input");
+            if (upText) upText.value = d.alt;
+            const upCur = upSec && upSec.querySelector(".ck-lang-sec-cur");
+            if (upCur) {
+                const tap = ckTapFromDraft(d.up);
+                upCur.textContent = tap;
+                upCur.classList.toggle("set", !!tap);
+            }
         });
         body.append(ckField(t("ck.lang.alt"), alt));
         const altUp = document.createElement("input");
@@ -5726,6 +5738,7 @@ function ckBuildLangKeyForm(body, d) {
             // 槽 draft 直通：ckBuildAction 的监听写到 d[slot] 上。
             ckBuildAction(holder, d[slot]);
         }
+        refreshCur(); // 存量死码激活：头部「当前值」摘要从未初始化过
         body.append(sec);
     }
 }
@@ -6267,7 +6280,11 @@ $("ckApply").addEventListener("click", () => {
         for (const slot of ["up", "down"]) {
             const m = d[slot] ? d[slot].mode : "def";
             if (m === "def") continue;
-            cell[slot] = m === "none" ? "" : ckTapFromDraft(d[slot]);
+            const dsl = m === "none" ? "" : ckTapFromDraft(d[slot]);
+            // 非空模式序列化出空串（text 空文本——角标联动勾了没填角标
+            // 的形态）当「未设置」不落，别降级成「关闭」语义。
+            if (m !== "none" && !dsl) continue;
+            cell[slot] = dsl;
         }
         if (Object.keys(cell).length) table[key] = cell;
         else delete table[key];
@@ -6443,7 +6460,12 @@ document.getElementById("cklangReset").addEventListener("click", () => {
  * textarea 内容不带 langKeys，会把语言键盘定制静默清掉；textarea 也不
  * 随编辑器改动刷新，「高级」看到的不是当前实际（验收实录）。 */
 function ckPackJson() {
-    const pack = { version: 1, rows: ckRows };
+    // rows 保底空数组：只定制语言键盘（rows 从未播种）时包是
+    // {"version":1,"rows":null,"langKeys":…}，native saveCustom 的
+    // rows==null 校验会整包拒绝（INVALID_CUSTOM_JSON，静默 toast 在
+    // 控制台看不到）——语言键盘定制在真机上保存假死。空数组与
+    // 「没有定制键行」同义。
+    const pack = { version: 1, rows: ckRows || [] };
     if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
     return pack;
 }

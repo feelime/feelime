@@ -5268,7 +5268,17 @@ function ckBuildLangKeyForm(body, d) {
     alt.addEventListener("input", () => {
       const wasLinked = altUpLinked();
       d.alt = alt.value.trim();
-      if (wasLinked) d.up = { mode: "text", text: d.alt };
+      if (!wasLinked) return;
+      d.up = { mode: "text", text: d.alt };
+      const upSec = body.querySelector(".ck-lang-sec");
+      const upText = upSec && upSec.querySelector("input.ck-input");
+      if (upText) upText.value = d.alt;
+      const upCur = upSec && upSec.querySelector(".ck-lang-sec-cur");
+      if (upCur) {
+        const tap = ckTapFromDraft(d.up);
+        upCur.textContent = tap;
+        upCur.classList.toggle("set", !!tap);
+      }
     });
     body.append(ckField(t("ck.lang.alt"), alt));
     const altUp = document.createElement("input");
@@ -5322,6 +5332,7 @@ function ckBuildLangKeyForm(body, d) {
       sec.append(holder);
       ckBuildAction(holder, d[slot]);
     }
+    refreshCur();
     body.append(sec);
   }
 }
@@ -5861,7 +5872,9 @@ $("ckApply").addEventListener("click", () => {
     for (const slot of ["up", "down"]) {
       const m = d[slot] ? d[slot].mode : "def";
       if (m === "def") continue;
-      cell2[slot] = m === "none" ? "" : ckTapFromDraft(d[slot]);
+      const dsl = m === "none" ? "" : ckTapFromDraft(d[slot]);
+      if (m !== "none" && !dsl) continue;
+      cell2[slot] = dsl;
     }
     if (Object.keys(cell2).length) table[key] = cell2;
     else delete table[key];
@@ -6010,7 +6023,7 @@ document.getElementById("cklangReset").addEventListener("click", () => {
   setNote("ckSaveNote", t("ck.lang.resetDone"));
 });
 function ckPackJson() {
-  const pack = { version: 1, rows: ckRows };
+  const pack = { version: 1, rows: ckRows || [] };
   if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
   return pack;
 }
