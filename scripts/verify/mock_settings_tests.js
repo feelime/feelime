@@ -3020,6 +3020,91 @@ test('lang keys: editor saves alt + flick slots into langKeys and the pack', () 
     equal(parsed.langKeys.pinyin.q.down, '[edit:copy]', 'down slot saved as [edit:x]');
 });
 
+test('lang keys: corner-mark checkbox links flick-up to the mark (altAsUp)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const qKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'q');
+    qKey.click();
+    let body = world.doc.getElementById('ckEditBody');
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 角标 € → 勾「上滑直接输入角标内容」→ 上滑槽=文本:€（裸文本 DSL）。
+    const alt = body.querySelector('input');
+    alt.value = '€'; fire(alt, 'input');
+    let cb = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    equal(cb.checked, false, 'unchecked while flick-up is keyboard default');
+    cb.checked = true; fire(cb, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    let parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, '€', 'flick-up saves as the literal mark');
+    equal(parsed.langKeys.pinyin.q.alt, '€', 'corner mark saved');
+    // 重开：勾选态派生（up 文本 == 角标）；改角标 → 上滑跟随。
+    qKey.click();
+    body = world.doc.getElementById('ckEditBody');
+    cb = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    equal(cb.checked, true, 'derived check on reopen');
+    const alt2 = body.querySelector('input');
+    alt2.value = '℃'; fire(alt2, 'input');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, '℃', 'flick-up follows the mark');
+    // 手动改上滑文本（联动断开，codex review P2 两连）：手动值必须胜出
+    // ——ckBuildAction 的 text 监听捕获 d.up 对象，联动若替换对象则
+    // 手动编辑写进孤儿丢失；派生勾选态必须原地弹起。
+    qKey.click();
+    body = world.doc.getElementById('ckEditBody');
+    // text 型控件 id 恒 ckText（ckBuildAction）且 modal 内唯一。
+    let upText = world.$('ckText');
+    equal(!!upText, true, 'text input renders while linked');
+    upText.value = '¥';
+    // 两个 input listener（ckBuildAction 的 d.text 写入 + 派生刷新）都要跑
+    upText.listeners.filter(l => l.type === 'input').forEach(l => l.handler());
+    const cbManual = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    equal(cbManual.checked, false, 'manual edit drops the derived check in place');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, '¥', 'manual flick-up text wins over the link');
+    // 取消勾选 → 上滑回键盘默认（不落字段）。
+    qKey.click();
+    body = world.doc.getElementById('ckEditBody');
+    cb = [...body.querySelectorAll('input')].find(el => el.type === 'checkbox');
+    cb.checked = false; fire(cb, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.pinyin.q.up, undefined, 'uncheck falls back to keyboard default');
+    equal(parsed.langKeys.pinyin.q.alt, '℃', 'mark untouched by uncheck');
+});
+
+test('lang keys: deep-link edit keeps existing customizations (codex review P1)', () => {
+    // 预置：英文键盘 w 已定制 + 空三行（native state 推送的真值）。
+    const preset = { version: 1, rows: [[], [], []],
+        langKeys: { english: { w: { alt: '$', up: '$' } } } };
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE,
+        custom: { enabled: true, summary: '已定制 1 个键', json: JSON.stringify(preset) } });
+    // 深链直进语言键盘页（不经 ckEnter，ckRows 仍 null）：修复前保存
+    // 整包 rows 被保底成 []、langKeys 只剩本次编辑——旧定制被覆盖丢。
+    world.FeelimeSettings().showPage('cklang');
+    world.doc.querySelector('[data-cklang="pinyin"]').click();
+    const qKey = [...world.doc.querySelectorAll('#cklangKb .ck-lang-key')]
+        .find(el => el.querySelector('.ck-lang-main').textContent === 'q');
+    qKey.click();
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    const alt = world.doc.getElementById('ckEditBody').querySelector('input');
+    alt.value = '€'; fire(alt, 'input');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.english.w.up, '$', 'other layouts survive a deep-link edit');
+    equal(parsed.langKeys.pinyin.q.alt, '€', 'the new edit saves too');
+});
+
 test('lang keys: none slot saves as empty string (gesture off)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });

@@ -9794,6 +9794,67 @@ test('toolbar exclusion guard auto-reverts stray tool buttons (runtime invariant
         'recording exception records no fix');
 });
 
+test('height refresh keeps composing tools hidden at the source (#109 root cause)', {since: '3.73.116'}, () => {
+    const world = fresh({ mode: 'double-pinyin' });
+    // #109 实况：组合打字中一次高度刷新（resize/应用切回/键盘收起再
+    // 弹），applyHeight→audit 按 composing 藏→fit→prune 的尾步曾把
+    // 工具又写回可见——3.73.115 前的版本随机出现「工具插进候选行」。
+    world.context.Feelime.toolbarSet(['edit'], ['clipboard']);
+    world.engineState({
+        mode: 'double-pinyin', composing: true, rawInput: 'ui', revision: 1,
+        candidates: [{ id: 'a', text: '是' }, { id: 'b', text: '时' }],
+        hasPreviousPage: false, hasNextPage: true,
+    });
+    equal(world.$('editTool').hidden, true, 'editTool yielded while composing');
+    equal(world.$('clipboardButton').hidden, true, 'clipboard yielded while composing');
+    const fixes0 = world.context.window.Feelime.toolbarExclusionFixes();
+    // advance(0) 之前读——证明源头就没写回，不是守卫微任务事后擦的。
+    world.context.window.Feelime.applyHeightNow();
+    equal(world.$('editTool').hidden, true, 'prune keeps editTool hidden (source)');
+    equal(world.$('clipboardButton').hidden, true, 'prune keeps clipboard hidden (source)');
+    world.clock.advance(0);
+    equal(world.context.window.Feelime.toolbarExclusionFixes(), fixes0,
+        'guard had nothing to fix: no stray un-hide during composing');
+});
+
+test('× during a variant replay unfreezes the composing UI instead of stranding it (#109 escape)', {since: '3.73.116'}, () => {
+    const world = fresh({ mode: 'double-pinyin' });
+    world.engineState({
+        mode: 'double-pinyin', composing: true, rawInput: "x'an", revision: 5,
+        candidates: [{ id: 'a', text: '西安' }, { id: 'b', text: '喜爱' }],
+        hasPreviousPage: false, hasNextPage: true,
+    });
+    world.tap(world.$('composeExpand'));
+    const target = [...world.$('expandVariants').querySelectorAll('.expand-variant')]
+        .find(el => el.textContent === "xi'an");
+    world.tap(target); // 进入回放等待：variantReplaying 冻结中间回声
+    equal(world.context.Feelime.debugState().vr, 1, 'replay wait is active');
+    // 回声未到时点 ×：重输=放弃组合，回放等待作废、UI 同步解冻——
+    // 否则 composing=false 而 preedit/候选残留，互斥守卫四条件全
+    // false，工具插回候选行无人纠正（codex 实证的逃逸路径）。
+    world.tap(world.$('composeClear'));
+    equal(world.context.Feelime.debugState().vr, 0, 'clear drops the replay wait');
+    equal(world.context.Feelime.debugState().comp, 0, 'composing flag cleared');
+    equal(world.$('preeditLine').textContent, '', 'preedit cleared with the UI unfrozen');
+    // 旧候选同步撤销（codex review P2，#109 收口）：不撤的话空回声到达
+    // 前旧候选与已恢复的工具混行，守卫条件全 false 无人纠正。
+    equal(world.$('candidates').children.length, 0, 'old candidates cleared with the composition');
+    equal(world.$('clipboardButton').hidden, false, 'toolbar restored after ×');
+    // 迟到的目标回声不再被回放吞掉：走正常链刷新引擎真实状态。
+    world.engineState({
+        mode: 'double-pinyin', composing: true, rawInput: "xi'an", revision: 6,
+        candidates: [{ id: 'a', text: '西安' }], hasPreviousPage: false, hasNextPage: false,
+    });
+    equal(world.$('preeditLine').textContent, "xi'an", 'late echo lands once the guard is lifted');
+    // native 侧 clear 的空回声最终收尾：终态干净。
+    world.engineState({
+        mode: 'double-pinyin', composing: false, rawInput: '', revision: 7,
+        candidates: [], hasPreviousPage: false, hasNextPage: false,
+    });
+    equal(world.$('preeditLine').textContent, '', 'final echo clears the preedit');
+    equal(world.$('clipboardButton').hidden, false, 'toolbar stays restored');
+});
+
 test('t9 7/9 down-swipe opens the split popup (下左/下右)', {since: '3.35.0'}, () => {
     const world = fresh({ mode: 't9' });
     world.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '', rawInput: '',

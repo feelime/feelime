@@ -370,6 +370,7 @@ const I18N = {
         "ck.lang.lockPunct": "输出逗号， · 单击与长按固定",
         "ck.lang.alt": "角标",
         "ck.lang.altPlaceholder": "默认：{0}",
+        "ck.lang.altAsUp": "上滑直接输入角标内容",
         "ck.lang.slotUp": "↗ 上滑",
         "ck.lang.slotDown": "↘ 下滑",
         "ck.lang.defUp": "键盘默认 · 大写 {0}",
@@ -1208,6 +1209,7 @@ const I18N = {
         "ck.lang.lockPunct": "Types comma · tap & long-press fixed",
         "ck.lang.alt": "Hint",
         "ck.lang.altPlaceholder": "Default: {0}",
+        "ck.lang.altAsUp": "Swipe up to type the hint",
         "ck.lang.slotUp": "↗ Flick up",
         "ck.lang.slotDown": "↘ Flick down",
         "ck.lang.defUp": "Default · uppercase {0}",
@@ -2186,6 +2188,10 @@ function showPage(name) {
     // flex 布局见 css）。离开家族（含回首页）时条随上一次所在子页
     // 隐藏，脏态由离开确认兜底。
     if (name === "cksymbol" || name === "cklang") {
+        // 深链直达（focusSetting/URL）没经过 ckEnter→ckLoad，rows=null：
+        // 此时「保存全部」的整包会把已有定制覆盖掉（codex review P1——
+        // rows 保底 [] 的前提是「草稿已加载」，未加载≠空表）。
+        if (!ckRows) ckLoad();
         const bar = document.getElementById("ckSaveBar");
         const pageEl = document.querySelector('[data-page="' + name + '"]');
         if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
@@ -5634,6 +5640,10 @@ function ckLangSlotParse(tap) {
  *  CK_MODES；槽 draft 存 d.up/d.down（各是 ckTapParse 形态）。 */
 function ckBuildLangKeyForm(body, d) {
     const isPunct = d.langKey === ".";
+    // 角标联动判定提函数体级：角标块（checkbox 挂点）与槽循环后的
+    // 手动编辑刷新点都要用（codex review P2：派生态只在重建时算，
+    // 手动编辑上滑文本后 checkbox/摘要停在旧态）。
+    const altUpLinked = () => d.up.mode === "text" && d.up.text === (d.alt || "");
     const lock = document.createElement("div");
     lock.className = "ck-row2 ck-row2-bare";
     lock.innerHTML = '<div class="ck-lang-lock"><span class="ck-lang-k">'
@@ -5649,8 +5659,40 @@ function ckBuildLangKeyForm(body, d) {
         const defAlt = ckLangDefaultAlt(d.langLay, d.langKey);
         alt.placeholder = t("ck.lang.altPlaceholder").replace("{0}", defAlt);
         alt.maxLength = 3;
-        alt.addEventListener("input", () => { d.alt = alt.value.trim(); });
+        // 上滑=文本角标联动（2026-11-14 需求）：勾选即把上滑槽设为
+        // 文本模式输入角标内容，取消则回到键盘默认；勾着时改角标，
+        // 上滑文本跟随。勾选态派生自「上滑是文本且内容==角标」
+        // （altUpLinked 提在函数体级），不另存联动标志——手动把上滑
+        // 改成别的（或改文本内容），复选框自然弹起，联动解除。
+        alt.addEventListener("input", () => {
+            const wasLinked = altUpLinked(); // 以改前的角标判断是否联动中
+            d.alt = alt.value.trim();
+            if (!wasLinked) return;
+            // 原地改 d.up.text，不替换对象——ckBuildAction 的 text 输入
+            // 监听闭包捕获原对象，替换后手动编辑上滑文本会写进孤儿对象
+            // 丢失（codex review P2）。
+            d.up.text = d.alt;
+            // 上滑槽直通刷新，不 ckBuildForm 重建——角标框正在输入，
+            // 重建会清焦点打断输入（实测改角标后上滑文本框停在旧值）。
+            const upSec = body.querySelector(".ck-lang-sec");
+            const upText = upSec && upSec.querySelector("input.ck-input");
+            if (upText) upText.value = d.alt;
+            const upCur = upSec && upSec.querySelector(".ck-lang-sec-cur");
+            if (upCur) {
+                upCur.textContent = d.alt;
+                upCur.classList.add("set");
+            }
+        });
         body.append(ckField(t("ck.lang.alt"), alt));
+        const altUp = document.createElement("input");
+        altUp.type = "checkbox";
+        altUp.className = "toggle";
+        altUp.checked = altUpLinked();
+        altUp.addEventListener("change", () => {
+            d.up = altUp.checked ? { mode: "text", text: d.alt || "" } : { mode: "def" };
+            ckBuildForm();
+        });
+        body.append(ckField(t("ck.lang.altAsUp"), altUp));
     }
 
     for (const [slot, labelKey] of [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]) {
@@ -5663,10 +5705,15 @@ function ckBuildLangKeyForm(body, d) {
         const cur = document.createElement("span");
         cur.className = "ck-lang-sec-cur";
         const refreshCur = () => {
-            const tap = ckTapFromDraft(d[slot]);
-            cur.textContent = tap ? tap : t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
-                .replace("{0}", d.langKey.toUpperCase());
-            cur.classList.toggle("set", !!tap);
+            // 三态摘要（codex review P2）：「关闭」序列化为空串，
+            // 只看串空会把显式关闭显示成「键盘默认」。
+            const m = d[slot].mode;
+            cur.textContent = m === "none" ? t("ck.f.mode.none")
+                : m === "def"
+                    ? t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
+                        .replace("{0}", d.langKey.toUpperCase())
+                    : ckTapFromDraft(d[slot]);
+            cur.classList.toggle("set", m !== "def");
         };
         head.append(title, cur);
         sec.append(head);
@@ -5705,7 +5752,22 @@ function ckBuildLangKeyForm(body, d) {
             // 槽 draft 直通：ckBuildAction 的监听写到 d[slot] 上。
             ckBuildAction(holder, d[slot]);
         }
+        refreshCur(); // 存量死码激活：头部「当前值」摘要从未初始化过
         body.append(sec);
+
+        if (slot === "up" && !isPunct && d.up.mode === "text") {
+            // 手动编辑上滑文本：派生勾选态与摘要原地刷新（codex review
+            // P2——派生只在重建时算，手改后 checkbox/摘要停在旧态）。
+            // text 型控件 id 恒 ckText（ckBuildAction）且 modal 内唯一，
+            // document 级取（fake DOM 的组合/id 选择器不可靠）。
+            const upText = document.getElementById("ckText");
+            if (upText) upText.addEventListener("input", () => {
+                const cb = [...body.querySelectorAll("input")]
+                    .find(el => el.type === "checkbox");
+                if (cb) cb.checked = altUpLinked();
+                refreshCur();
+            });
+        }
     }
 }
 
@@ -6246,7 +6308,11 @@ $("ckApply").addEventListener("click", () => {
         for (const slot of ["up", "down"]) {
             const m = d[slot] ? d[slot].mode : "def";
             if (m === "def") continue;
-            cell[slot] = m === "none" ? "" : ckTapFromDraft(d[slot]);
+            const dsl = m === "none" ? "" : ckTapFromDraft(d[slot]);
+            // 非空模式序列化出空串（text 空文本——角标联动勾了没填角标
+            // 的形态）当「未设置」不落，别降级成「关闭」语义。
+            if (m !== "none" && !dsl) continue;
+            cell[slot] = dsl;
         }
         if (Object.keys(cell).length) table[key] = cell;
         else delete table[key];
@@ -6422,7 +6488,12 @@ document.getElementById("cklangReset").addEventListener("click", () => {
  * textarea 内容不带 langKeys，会把语言键盘定制静默清掉；textarea 也不
  * 随编辑器改动刷新，「高级」看到的不是当前实际（验收实录）。 */
 function ckPackJson() {
-    const pack = { version: 1, rows: ckRows };
+    // rows 保底空数组：只定制语言键盘（rows 从未播种）时包是
+    // {"version":1,"rows":null,"langKeys":…}，native saveCustom 的
+    // rows==null 校验会整包拒绝（INVALID_CUSTOM_JSON，静默 toast 在
+    // 控制台看不到）——语言键盘定制在真机上保存假死。空数组与
+    // 「没有定制键行」同义。
+    const pack = { version: 1, rows: ckRows || [] };
     if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
     return pack;
 }

@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.115";
+  const KEYBOARD_VERSION = "3.73.116";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -3442,6 +3442,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       ["setupButton", ...Object.values(TOOL_CATALOG)].forEach((id) => {
         const el = document.getElementById(id);
         if (!el || el.hidden) return;
+        if (!el.closest("#candidateBar")) return;
         if (recording && id === "mic") return;
         el.hidden = true;
         this.toolbarExclusionFixes++;
@@ -7035,7 +7036,14 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       });
       [...this.toolbarLeft, ...this.toolbarRight].forEach((id) => {
         const el = document.getElementById(TOOL_CATALOG[id]);
-        if (el) el.hidden = this.toolbarYield || this._overflowTools.has(id);
+        if (!el) return;
+        const recording = ["listening", "loading", "stopping"].includes(this.voiceState);
+        if (recording && id === "mic") return;
+        if (this.toolbarCandidatesSceneActive()) {
+          el.hidden = true;
+          return;
+        }
+        el.hidden = this._overflowTools.has(id);
       });
     }
     enterToolbarEdit() {
@@ -8804,8 +8812,22 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     clearComposing() {
       this.pendingPunct = null;
       this.call(() => Native.clearComposing(this.token));
+      if (this.variantReplaying) {
+        clearTimeout(this.variantReplayTimer);
+        this.variantReplayTimer = null;
+        this.variantReplaying = false;
+        this.variantTarget = null;
+        document.getElementById("expandGrid").classList.remove("reloading");
+      }
       this.composing = false;
       this.updateComposing({ composing: false }, "");
+      this.expandCandidates = [];
+      this.renderCandidates({
+        composing: false,
+        candidates: [],
+        hasPreviousPage: false,
+        hasNextPage: false
+      });
       if (this.expanded) this.setExpanded(false);
     }
     setExpanded(expanded) {

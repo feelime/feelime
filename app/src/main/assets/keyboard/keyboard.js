@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.115';
+    const KEYBOARD_VERSION = '3.73.116';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3826,6 +3826,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             ['setupButton', ...Object.values(TOOL_CATALOG)].forEach(id => {
                 const el = document.getElementById(id);
                 if (!el || el.hidden) return;
+                // 只管候选行里的按钮：编辑仓库格子（toolbarEditorGrid）
+                // 的按钮由 audit 一律置可见（容器自身藏着），不归候选行
+                // 互斥管——否则每次 applyHeightNow 都狂涨误伤计数，
+                // 「fixes>0=漏网写入点」的定罪语义被噪音淹没（#109
+                // codex 判别点名的解释边界）。
+                if (!el.closest('#candidateBar')) return;
                 if (recording && id === 'mic') return;
                 el.hidden = true;
                 this.toolbarExclusionFixes++;
@@ -8228,8 +8234,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             });
             [...this.toolbarLeft, ...this.toolbarRight].forEach(id => {
                 const el = document.getElementById(TOOL_CATALOG[id]);
-                // 让位态优先（手写候选整行互斥）：溢出对账不得把工具置回。
-                if (el) el.hidden = this.toolbarYield || this._overflowTools.has(id);
+                if (!el) return;
+                // #109 根因（codex 判别 2026-11-14）：prune 是高度刷新链
+                // （applyHeight→audit 按 composing 藏→fitFloatingToolbar→
+                // prune）的尾步，旧判定只看让位+溢出，把组合中刚藏好的
+                // 工具又写回可见——随机 resize/重唤键盘后工具插回候选行
+                // （1.4.7-1.4.9 用户实录）。候选场景（组合/让位/手写/T9）
+                // 在此与 auditToolbarTools/enforceToolbarExclusion 同口径；
+                // 语音 recording 的 mic 例外同守卫（overlay 外的兜底 stop
+                // 入口）——例外即不动，保持现状。
+                const recording = ['listening', 'loading', 'stopping']
+                    .includes(this.voiceState);
+                if (recording && id === 'mic') return;
+                if (this.toolbarCandidatesSceneActive()) {
+                    el.hidden = true;
+                    return;
+                }
+                // 让位态已在上面分支拦下（sceneActive 的子集），这里只剩溢出。
+                el.hidden = this._overflowTools.has(id);
             });
         }
 
@@ -10273,12 +10295,32 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 把 pendingPunct 提前补出去）。
             this.pendingPunct = null;
             this.call(() => Native.clearComposing(this.token));
+            // #109 残余逃逸（codex 判别 2026-11-14）：等在半路的解析回放
+            // 会让下面的 updateComposing 早退——composing 已置 false 而
+            // preedit/候选残留在屏上，互斥守卫四条件全 false，工具插回
+            // 候选行不被纠正。重输=用户明确放弃当前组合，回放等待一并
+            // 作废（同 degrade 打断先例 §2.3）；迟到的目标回声不再被
+            // 吞，走正常链刷新引擎的真实状态。
+            if (this.variantReplaying) {
+                clearTimeout(this.variantReplayTimer);
+                this.variantReplayTimer = null;
+                this.variantReplaying = false;
+                this.variantTarget = null;
+                document.getElementById('expandGrid').classList.remove('reloading');
+            }
             // Optimistic local restore: the engine event roundtrip also clears
             // composing, but the toolbar must not lag a roundtrip behind the
             // tap. If the bridge rejects (stale token), the next engine event
             // repaints the true state anyway.
             this.composing = false;
             this.updateComposing({ composing: false }, '');
+            // 候选同步撤销（codex review P2，#109 收口）：不撤的话空回声
+            // 到达前旧候选还挂在屏上，工具已恢复——旧候选与工具混行
+            // 的窗口仍在。池在 expandCandidates（渲染只认它），清池+
+            // 重绘；联想词不动（组合结束后的联想由 assoc 通道接管）。
+            this.expandCandidates = [];
+            this.renderCandidates({ composing: false, candidates: [],
+                hasPreviousPage: false, hasNextPage: false });
             if (this.expanded) this.setExpanded(false);
         }
 
