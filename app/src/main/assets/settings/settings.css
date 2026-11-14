@@ -508,6 +508,38 @@ textarea { resize: vertical; min-height: 96px; font-family: var(--mono); font-si
 .toggle:active { background: var(--pressed); }
 .toggle:checked:active { background: #18ad7c; }
 
+/* 定制键编辑器里的紧凑勾选框（角标联动上滑）：.toggle 是 46×26 的
+   整行级滑块，塞进编辑器行又大又突兀（用户实测吐槽）；这里同款
+   appearance 方案（#90 旧 WebView 的 webkit 前缀教训同 toggle 注释）
+   收成 20×20 方块，选中态 accent 填底 + L 形勾（border 旋转画法，
+   不依赖字体字形）。 */
+.ck-check {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 0 20px;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    border: 1.5px solid var(--line);
+    border-radius: 6px;
+    background: var(--pill);
+    position: relative;
+    transition: background .15s ease, border-color .15s ease;
+}
+.ck-check:checked { border-color: var(--accent); background: var(--accent); }
+.ck-check:checked::after {
+    content: '';
+    position: absolute;
+    left: 5.5px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid var(--accent-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.ck-check:active { background: var(--pressed); }
+
 .actions {
     display: flex;
     align-items: center;

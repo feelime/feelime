@@ -5283,7 +5283,7 @@ function ckBuildLangKeyForm(body, d) {
     body.append(ckField(t("ck.lang.alt"), alt));
     const altUp = document.createElement("input");
     altUp.type = "checkbox";
-    altUp.className = "toggle";
+    altUp.className = "ck-check";
     altUp.checked = altUpLinked();
     altUp.addEventListener("change", () => {
       d.up = altUp.checked ? { mode: "text", text: d.alt || "" } : { mode: "def" };
