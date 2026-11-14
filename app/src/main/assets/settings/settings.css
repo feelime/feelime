@@ -1241,6 +1241,84 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
     -webkit-appearance: none; appearance: none;
     background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 10px center; }
+/* 角标字段下面的附属选项行（「上滑直接输入角标内容」）：
+   根因是 ckField 给控件挂 .ck-row2-ctl（flex:1，本文件后定义同优先级
+   覆盖 .ck-check 的 flex），checkbox 被拉成全宽长条——真机观感即绿长条。
+   方案 A（codex 2026-11-15）：整行浅底选项行、18×18 方框靠左、整行可点
+   （ckField 本就生成 label，点文字/空白即切换），min-height 44px，
+   长文案不再挤 84px 标签列。控件尺寸用高优先级选择器钉死。 */
+.ck-row2.ck-hint-option {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    min-height: 44px;
+    margin: 4px 0 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--panel);
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.ck-hint-option > .ck-row2-label {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--card-text);
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+/* 显式覆盖 ckField 添加的伸展规则 */
+.ck-hint-option > .ck-check.ck-row2-ctl {
+    -webkit-appearance: none;
+    appearance: none;
+    order: -1;
+    display: block;
+    flex: 0 0 18px;
+    box-sizing: border-box;
+    width: 18px;
+    min-width: 18px;
+    max-width: 18px;
+    height: 18px;
+    margin: 0 10px 0 0;
+    padding: 0;
+    border: 1.5px solid var(--muted);
+    border-radius: 4px;
+    background: var(--pill);
+    position: relative;
+    cursor: pointer;
+    transition: none;
+}
+.ck-hint-option > .ck-check:checked {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+.ck-hint-option > .ck-check:checked::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    box-sizing: content-box;
+    width: 5px;
+    height: 9px;
+    border: solid var(--accent-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.ck-hint-option:active {
+    background: var(--pressed);
+}
+.ck-hint-option:focus-within {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+.ck-hint-option > .ck-check:focus {
+    outline: none;
+}
 .ck-mode-seg { margin: 4px 0 10px; }
 /* 「常用」起点区（新建 popup 顶部，点开展开） */
 .ck-common { margin: 2px 0 8px; }

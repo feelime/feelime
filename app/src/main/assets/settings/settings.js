@@ -5692,7 +5692,7 @@ function ckBuildLangKeyForm(body, d) {
             d.up = altUp.checked ? { mode: "text", text: d.alt || "" } : { mode: "def" };
             ckBuildForm();
         });
-        body.append(ckField(t("ck.lang.altAsUp"), altUp));
+        body.append(ckField(t("ck.lang.altAsUp"), altUp, "ck-hint-option"));
     }
 
     for (const [slot, labelKey] of [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]) {
