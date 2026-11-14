@@ -457,6 +457,7 @@ const I18N = {
     "ck.lang.lockPunct": "\u8F93\u51FA\u9017\u53F7\uFF0C \xB7 \u5355\u51FB\u4E0E\u957F\u6309\u56FA\u5B9A",
     "ck.lang.alt": "\u89D2\u6807",
     "ck.lang.altPlaceholder": "\u9ED8\u8BA4\uFF1A{0}",
+    "ck.lang.altAsUp": "\u4E0A\u6ED1\u76F4\u63A5\u8F93\u5165\u89D2\u6807\u5185\u5BB9",
     "ck.lang.slotUp": "\u2197 \u4E0A\u6ED1",
     "ck.lang.slotDown": "\u2198 \u4E0B\u6ED1",
     "ck.lang.defUp": "\u952E\u76D8\u9ED8\u8BA4 \xB7 \u5927\u5199 {0}",
@@ -1296,6 +1297,7 @@ const I18N = {
     "ck.lang.lockPunct": "Types comma \xB7 tap & long-press fixed",
     "ck.lang.alt": "Hint",
     "ck.lang.altPlaceholder": "Default: {0}",
+    "ck.lang.altAsUp": "Flick up types the hint",
     "ck.lang.slotUp": "\u2197 Flick up",
     "ck.lang.slotDown": "\u2198 Flick down",
     "ck.lang.defUp": "Default \xB7 uppercase {0}",
@@ -5262,10 +5264,22 @@ function ckBuildLangKeyForm(body, d) {
     const defAlt = ckLangDefaultAlt(d.langLay, d.langKey);
     alt.placeholder = t("ck.lang.altPlaceholder").replace("{0}", defAlt);
     alt.maxLength = 3;
+    const altUpLinked = /* @__PURE__ */ __name(() => d.up.mode === "text" && d.up.text === (d.alt || ""), "altUpLinked");
     alt.addEventListener("input", () => {
+      const wasLinked = altUpLinked();
       d.alt = alt.value.trim();
+      if (wasLinked) d.up = { mode: "text", text: d.alt };
     });
     body.append(ckField(t("ck.lang.alt"), alt));
+    const altUp = document.createElement("input");
+    altUp.type = "checkbox";
+    altUp.className = "toggle";
+    altUp.checked = altUpLinked();
+    altUp.addEventListener("change", () => {
+      d.up = altUp.checked ? { mode: "text", text: d.alt || "" } : { mode: "def" };
+      ckBuildForm();
+    });
+    body.append(ckField(t("ck.lang.altAsUp"), altUp));
   }
   for (const [slot, labelKey] of [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]) {
     const sec = document.createElement("div");

@@ -370,6 +370,7 @@ const I18N = {
         "ck.lang.lockPunct": "输出逗号， · 单击与长按固定",
         "ck.lang.alt": "角标",
         "ck.lang.altPlaceholder": "默认：{0}",
+        "ck.lang.altAsUp": "上滑直接输入角标内容",
         "ck.lang.slotUp": "↗ 上滑",
         "ck.lang.slotDown": "↘ 下滑",
         "ck.lang.defUp": "键盘默认 · 大写 {0}",
@@ -1208,6 +1209,7 @@ const I18N = {
         "ck.lang.lockPunct": "Types comma · tap & long-press fixed",
         "ck.lang.alt": "Hint",
         "ck.lang.altPlaceholder": "Default: {0}",
+        "ck.lang.altAsUp": "Flick up types the hint",
         "ck.lang.slotUp": "↗ Flick up",
         "ck.lang.slotDown": "↘ Flick down",
         "ck.lang.defUp": "Default · uppercase {0}",
@@ -5649,8 +5651,27 @@ function ckBuildLangKeyForm(body, d) {
         const defAlt = ckLangDefaultAlt(d.langLay, d.langKey);
         alt.placeholder = t("ck.lang.altPlaceholder").replace("{0}", defAlt);
         alt.maxLength = 3;
-        alt.addEventListener("input", () => { d.alt = alt.value.trim(); });
+        // 上滑=文本角标联动（2026-11-14 需求）：勾选即把上滑槽设为
+        // 文本模式输入角标内容，取消则回到键盘默认；勾着时改角标，
+        // 上滑文本跟随。勾选态派生自「上滑是文本且内容==角标」，
+        // 不另存联动标志——手动把上滑改成别的（或改文本内容），
+        // 复选框自然弹起，联动解除。
+        const altUpLinked = () => d.up.mode === "text" && d.up.text === (d.alt || "");
+        alt.addEventListener("input", () => {
+            const wasLinked = altUpLinked(); // 以改前的角标判断是否联动中
+            d.alt = alt.value.trim();
+            if (wasLinked) d.up = { mode: "text", text: d.alt };
+        });
         body.append(ckField(t("ck.lang.alt"), alt));
+        const altUp = document.createElement("input");
+        altUp.type = "checkbox";
+        altUp.className = "toggle";
+        altUp.checked = altUpLinked();
+        altUp.addEventListener("change", () => {
+            d.up = altUp.checked ? { mode: "text", text: d.alt || "" } : { mode: "def" };
+            ckBuildForm();
+        });
+        body.append(ckField(t("ck.lang.altAsUp"), altUp));
     }
 
     for (const [slot, labelKey] of [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]) {
