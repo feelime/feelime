@@ -10314,6 +10314,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // repaints the true state anyway.
             this.composing = false;
             this.updateComposing({ composing: false }, '');
+            // 候选同步撤销（codex review P2，#109 收口）：不撤的话空回声
+            // 到达前旧候选还挂在屏上，工具已恢复——旧候选与工具混行
+            // 的窗口仍在。池在 expandCandidates（渲染只认它），清池+
+            // 重绘；联想词不动（组合结束后的联想由 assoc 通道接管）。
+            this.expandCandidates = [];
+            this.renderCandidates({ composing: false, candidates: [],
+                hasPreviousPage: false, hasNextPage: false });
             if (this.expanded) this.setExpanded(false);
         }
 

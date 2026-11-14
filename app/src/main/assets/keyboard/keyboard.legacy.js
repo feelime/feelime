@@ -8821,6 +8821,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       this.composing = false;
       this.updateComposing({ composing: false }, "");
+      this.expandCandidates = [];
+      this.renderCandidates({
+        composing: false,
+        candidates: [],
+        hasPreviousPage: false,
+        hasNextPage: false
+      });
       if (this.expanded) this.setExpanded(false);
     }
     setExpanded(expanded) {

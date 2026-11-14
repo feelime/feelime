@@ -238,7 +238,7 @@ git_sha=$(git -C "$HERE/../.." rev-parse HEAD 2>/dev/null || echo "unknown")
 # 禁止复用旧状态），而不是拿固定占位值继续。fixture 与运行配置一并
 # 纳入：ASR 绿后换录音/删录音，旧绿段不得被沿用。
 gate_env_sha() {
-    python3 - "$HERE/../.." "$FEELIME_ASR_FIXTURE" <<'PYEOF2'
+    python3 - "$HERE/../.." "${FEELIME_ASR_FIXTURE:-}" <<'PYEOF2'
 import hashlib, os, subprocess, sys
 repo, fixture = sys.argv[1], sys.argv[2]
 h = hashlib.sha256()

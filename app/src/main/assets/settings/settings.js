@@ -1209,7 +1209,7 @@ const I18N = {
         "ck.lang.lockPunct": "Types comma · tap & long-press fixed",
         "ck.lang.alt": "Hint",
         "ck.lang.altPlaceholder": "Default: {0}",
-        "ck.lang.altAsUp": "Flick up types the hint",
+        "ck.lang.altAsUp": "Swipe up to type the hint",
         "ck.lang.slotUp": "↗ Flick up",
         "ck.lang.slotDown": "↘ Flick down",
         "ck.lang.defUp": "Default · uppercase {0}",
@@ -2188,6 +2188,10 @@ function showPage(name) {
     // flex 布局见 css）。离开家族（含回首页）时条随上一次所在子页
     // 隐藏，脏态由离开确认兜底。
     if (name === "cksymbol" || name === "cklang") {
+        // 深链直达（focusSetting/URL）没经过 ckEnter→ckLoad，rows=null：
+        // 此时「保存全部」的整包会把已有定制覆盖掉（codex review P1——
+        // rows 保底 [] 的前提是「草稿已加载」，未加载≠空表）。
+        if (!ckRows) ckLoad();
         const bar = document.getElementById("ckSaveBar");
         const pageEl = document.querySelector('[data-page="' + name + '"]');
         if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
@@ -5636,6 +5640,10 @@ function ckLangSlotParse(tap) {
  *  CK_MODES；槽 draft 存 d.up/d.down（各是 ckTapParse 形态）。 */
 function ckBuildLangKeyForm(body, d) {
     const isPunct = d.langKey === ".";
+    // 角标联动判定提函数体级：角标块（checkbox 挂点）与槽循环后的
+    // 手动编辑刷新点都要用（codex review P2：派生态只在重建时算，
+    // 手动编辑上滑文本后 checkbox/摘要停在旧态）。
+    const altUpLinked = () => d.up.mode === "text" && d.up.text === (d.alt || "");
     const lock = document.createElement("div");
     lock.className = "ck-row2 ck-row2-bare";
     lock.innerHTML = '<div class="ck-lang-lock"><span class="ck-lang-k">'
@@ -5653,15 +5661,17 @@ function ckBuildLangKeyForm(body, d) {
         alt.maxLength = 3;
         // 上滑=文本角标联动（2026-11-14 需求）：勾选即把上滑槽设为
         // 文本模式输入角标内容，取消则回到键盘默认；勾着时改角标，
-        // 上滑文本跟随。勾选态派生自「上滑是文本且内容==角标」，
-        // 不另存联动标志——手动把上滑改成别的（或改文本内容），
-        // 复选框自然弹起，联动解除。
-        const altUpLinked = () => d.up.mode === "text" && d.up.text === (d.alt || "");
+        // 上滑文本跟随。勾选态派生自「上滑是文本且内容==角标」
+        // （altUpLinked 提在函数体级），不另存联动标志——手动把上滑
+        // 改成别的（或改文本内容），复选框自然弹起，联动解除。
         alt.addEventListener("input", () => {
             const wasLinked = altUpLinked(); // 以改前的角标判断是否联动中
             d.alt = alt.value.trim();
             if (!wasLinked) return;
-            d.up = { mode: "text", text: d.alt };
+            // 原地改 d.up.text，不替换对象——ckBuildAction 的 text 输入
+            // 监听闭包捕获原对象，替换后手动编辑上滑文本会写进孤儿对象
+            // 丢失（codex review P2）。
+            d.up.text = d.alt;
             // 上滑槽直通刷新，不 ckBuildForm 重建——角标框正在输入，
             // 重建会清焦点打断输入（实测改角标后上滑文本框停在旧值）。
             const upSec = body.querySelector(".ck-lang-sec");
@@ -5669,9 +5679,8 @@ function ckBuildLangKeyForm(body, d) {
             if (upText) upText.value = d.alt;
             const upCur = upSec && upSec.querySelector(".ck-lang-sec-cur");
             if (upCur) {
-                const tap = ckTapFromDraft(d.up);
-                upCur.textContent = tap;
-                upCur.classList.toggle("set", !!tap);
+                upCur.textContent = d.alt;
+                upCur.classList.add("set");
             }
         });
         body.append(ckField(t("ck.lang.alt"), alt));
@@ -5696,10 +5705,15 @@ function ckBuildLangKeyForm(body, d) {
         const cur = document.createElement("span");
         cur.className = "ck-lang-sec-cur";
         const refreshCur = () => {
-            const tap = ckTapFromDraft(d[slot]);
-            cur.textContent = tap ? tap : t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
-                .replace("{0}", d.langKey.toUpperCase());
-            cur.classList.toggle("set", !!tap);
+            // 三态摘要（codex review P2）：「关闭」序列化为空串，
+            // 只看串空会把显式关闭显示成「键盘默认」。
+            const m = d[slot].mode;
+            cur.textContent = m === "none" ? t("ck.f.mode.none")
+                : m === "def"
+                    ? t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
+                        .replace("{0}", d.langKey.toUpperCase())
+                    : ckTapFromDraft(d[slot]);
+            cur.classList.toggle("set", m !== "def");
         };
         head.append(title, cur);
         sec.append(head);
@@ -5740,6 +5754,20 @@ function ckBuildLangKeyForm(body, d) {
         }
         refreshCur(); // 存量死码激活：头部「当前值」摘要从未初始化过
         body.append(sec);
+
+        if (slot === "up" && !isPunct && d.up.mode === "text") {
+            // 手动编辑上滑文本：派生勾选态与摘要原地刷新（codex review
+            // P2——派生只在重建时算，手改后 checkbox/摘要停在旧态）。
+            // text 型控件 id 恒 ckText（ckBuildAction）且 modal 内唯一，
+            // document 级取（fake DOM 的组合/id 选择器不可靠）。
+            const upText = document.getElementById("ckText");
+            if (upText) upText.addEventListener("input", () => {
+                const cb = [...body.querySelectorAll("input")]
+                    .find(el => el.type === "checkbox");
+                if (cb) cb.checked = altUpLinked();
+                refreshCur();
+            });
+        }
     }
 }
 

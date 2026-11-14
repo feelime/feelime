@@ -1297,7 +1297,7 @@ const I18N = {
     "ck.lang.lockPunct": "Types comma \xB7 tap & long-press fixed",
     "ck.lang.alt": "Hint",
     "ck.lang.altPlaceholder": "Default: {0}",
-    "ck.lang.altAsUp": "Flick up types the hint",
+    "ck.lang.altAsUp": "Swipe up to type the hint",
     "ck.lang.slotUp": "\u2197 Flick up",
     "ck.lang.slotDown": "\u2198 Flick down",
     "ck.lang.defUp": "Default \xB7 uppercase {0}",
@@ -2219,6 +2219,7 @@ function showPage(name) {
     else window.scrollTo(0, 0);
   }
   if (name === "cksymbol" || name === "cklang") {
+    if (!ckRows) ckLoad();
     const bar = document.getElementById("ckSaveBar");
     const pageEl = document.querySelector('[data-page="' + name + '"]');
     if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
@@ -5253,6 +5254,7 @@ function ckLangSlotParse(tap) {
 __name(ckLangSlotParse, "ckLangSlotParse");
 function ckBuildLangKeyForm(body, d) {
   const isPunct = d.langKey === ".";
+  const altUpLinked = /* @__PURE__ */ __name(() => d.up.mode === "text" && d.up.text === (d.alt || ""), "altUpLinked");
   const lock = document.createElement("div");
   lock.className = "ck-row2 ck-row2-bare";
   lock.innerHTML = '<div class="ck-lang-lock"><span class="ck-lang-k">' + (isPunct ? "\uFF0C" : d.langKey.toUpperCase()) + "</span><span>" + t(isPunct ? "ck.lang.lockPunct" : "ck.lang.lock").replace("{0}", d.langKey) + "</span></div>";
@@ -5264,20 +5266,18 @@ function ckBuildLangKeyForm(body, d) {
     const defAlt = ckLangDefaultAlt(d.langLay, d.langKey);
     alt.placeholder = t("ck.lang.altPlaceholder").replace("{0}", defAlt);
     alt.maxLength = 3;
-    const altUpLinked = /* @__PURE__ */ __name(() => d.up.mode === "text" && d.up.text === (d.alt || ""), "altUpLinked");
     alt.addEventListener("input", () => {
       const wasLinked = altUpLinked();
       d.alt = alt.value.trim();
       if (!wasLinked) return;
-      d.up = { mode: "text", text: d.alt };
+      d.up.text = d.alt;
       const upSec = body.querySelector(".ck-lang-sec");
       const upText = upSec && upSec.querySelector("input.ck-input");
       if (upText) upText.value = d.alt;
       const upCur = upSec && upSec.querySelector(".ck-lang-sec-cur");
       if (upCur) {
-        const tap = ckTapFromDraft(d.up);
-        upCur.textContent = tap;
-        upCur.classList.toggle("set", !!tap);
+        upCur.textContent = d.alt;
+        upCur.classList.add("set");
       }
     });
     body.append(ckField(t("ck.lang.alt"), alt));
@@ -5301,9 +5301,9 @@ function ckBuildLangKeyForm(body, d) {
     const cur = document.createElement("span");
     cur.className = "ck-lang-sec-cur";
     const refreshCur = /* @__PURE__ */ __name(() => {
-      const tap = ckTapFromDraft(d[slot]);
-      cur.textContent = tap ? tap : t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown").replace("{0}", d.langKey.toUpperCase());
-      cur.classList.toggle("set", !!tap);
+      const m = d[slot].mode;
+      cur.textContent = m === "none" ? t("ck.f.mode.none") : m === "def" ? t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown").replace("{0}", d.langKey.toUpperCase()) : ckTapFromDraft(d[slot]);
+      cur.classList.toggle("set", m !== "def");
     }, "refreshCur");
     head.append(title, cur);
     sec.append(head);
@@ -5334,6 +5334,14 @@ function ckBuildLangKeyForm(body, d) {
     }
     refreshCur();
     body.append(sec);
+    if (slot === "up" && !isPunct && d.up.mode === "text") {
+      const upText = document.getElementById("ckText");
+      if (upText) upText.addEventListener("input", () => {
+        const cb = [...body.querySelectorAll("input")].find((el) => el.type === "checkbox");
+        if (cb) cb.checked = altUpLinked();
+        refreshCur();
+      });
+    }
   }
 }
 __name(ckBuildLangKeyForm, "ckBuildLangKeyForm");

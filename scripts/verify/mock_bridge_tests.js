@@ -9836,6 +9836,9 @@ test('× during a variant replay unfreezes the composing UI instead of stranding
     equal(world.context.Feelime.debugState().vr, 0, 'clear drops the replay wait');
     equal(world.context.Feelime.debugState().comp, 0, 'composing flag cleared');
     equal(world.$('preeditLine').textContent, '', 'preedit cleared with the UI unfrozen');
+    // 旧候选同步撤销（codex review P2，#109 收口）：不撤的话空回声到达
+    // 前旧候选与已恢复的工具混行，守卫条件全 false 无人纠正。
+    equal(world.$('candidates').children.length, 0, 'old candidates cleared with the composition');
     equal(world.$('clipboardButton').hidden, false, 'toolbar restored after ×');
     // 迟到的目标回声不再被回放吞掉：走正常链刷新引擎真实状态。
     world.engineState({
