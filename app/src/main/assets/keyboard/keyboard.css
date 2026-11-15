@@ -783,17 +783,15 @@ body.landscape { --kb-gap: 4px; }
 .kb-align-11 > .kb-letter { width: calc((100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
 .kb-align-11 > .kb-mod { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
 .kb-align-11 > .kb-special { flex: 1; }
-/* #113 四轮：底行【符号】=第三行 Shift/分词宽（kb-mod 的 indent+1格
- * calc）、【123】=字母键宽（kb-letter 的 1 格 calc）——kb-unit-* 按
- * renderLetters 记的格数复刻同款公式（kb-mod/kb-letter 规则在行内，
- * 底行键拿不到，这里重申；两处公式改动须同步）。dp14 布局不挂此类
- * （其 shift 本身是 flex 键，底行走 flex 1.4/flex 1 同款回落）。
+/* #113 四轮→五轮：底行【符号】=英文键盘第三行 Shift/分词宽（kb-mod
+ * 的 indent+1 格 calc）、【123】=字母键宽（kb-letter 的 1 格 calc）。
+ * 2026-11-16 用户裁定恒用 9 格（qwerty 标准格）——俄语 11 格布局下
+ * 随格变窄会让 123 装不下，跨布局统一，kb-unit-11 分支已删。
  * 复合 .kb-key. 提特异性：.kb-key{flex:1}（basis 0%）在同特异性下
- * 按源序压掉这里的 width/flex:none（AVD 实测符号键被压成 36px）。 */
+ * 按源序压掉这里的 width/flex:none（AVD 实测符号键被压成 36px）。
+ * 公式与 kb-align-9 行内 kb-mod/kb-letter 同款，两处改动须同步。 */
 .kb-key.kb-unit-9 { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); flex: none; }
 .kb-key.kb-unit-9.kb-bottom-num { width: calc((100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); }
-.kb-key.kb-unit-11 { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
-.kb-key.kb-unit-11.kb-bottom-num { width: calc((100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); }
 /* 14 键贴合（kb-align-dp14）：第二行 5 键帽 4 缝共 9 半键。第三行
  * 半键/键帽显式定宽与第二行等宽（消漂移），差值由两侧功能键均分。 */
 .kb-align-dp14 > .kb-letter { width: calc((100% - 2 * var(--kb-indent) - 4 * var(--kb-gap)) / 9); flex: none; }

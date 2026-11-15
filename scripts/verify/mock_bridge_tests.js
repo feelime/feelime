@@ -11694,6 +11694,16 @@ test('bottom sym split: off keeps single 123 key, on splits symbols/123 (#113)',
         '符号 key mirrors the shift/sep calc width via kb-unit-9 (round 4)');
     equal(numKey.className.includes('kb-bottom-num'), true,
         'dedicated 123 key mirrors the letter calc width (round 4)');
+    // 五轮（2026-11-16 用户裁定）：俄语 11 格布局下两键恒用 9 格定宽
+    //（随格变窄 123 装不下）——不再按布局分支。模式切换走 engineState
+    //（fresh 的 overrides 只进 hello 载荷，不渲染键面）。
+    const ru = fresh({ bottomSymSplit: true });
+    ru.engineState({ mode: 'russian', revision: 2, composing: '', rawInput: '', candidates: [], hasNextPage: false });
+    const ruBottom = [...ru.document.querySelectorAll('#qwertyLayer .kb-row')].pop();
+    // fake DOM 的 querySelector 不认复合类选择器（.a.b）——逐元素过滤。
+    equal([...ruBottom.querySelectorAll('.kb-key')].some(el =>
+        el.className.includes('kb-bottom-num') && el.className.includes('kb-unit-9')), true,
+        'russian layout keeps the fixed 9-cell width for 123 (round 5)');
     equal(numKey.dataset.lp, undefined, 'no long-press overload on the dedicated 123 key');
     on.tap(numKey);
     assert(!on.$('numPadLayer').hidden, 'tapping 123 opens the number pad directly');
