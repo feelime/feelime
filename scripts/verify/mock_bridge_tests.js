@@ -11738,3 +11738,44 @@ test('t9 side strip customization: t9Strip list wins, bad/empty falls back, stro
         .map(c => c.textContent);
     equal(labels[0], '，', 'stroke strip stays stock despite t9 customization');
 });
+
+test('stroke and handwriting strips honor their own custom lists (#112 extension)', {since: '3.73.118'}, () => {
+    // strokeStrip 定制：笔画左列按定制序（不再钉内置）。
+    const stroke = fresh({ mode: 'stroke' });
+    stroke.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], strokeStrip: ['；', '：'] }));
+    stroke.engineState({ phase: 'READY', mode: 'stroke', revision: 2, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    let labels = [...stroke.document.querySelectorAll('#t9Strip .t9-side-cell')]
+        .map(c => c.textContent);
+    equal(labels.join(''), '；：', 'stroke strip uses strokeStrip, not the stock list');
+
+    // 三字段独立：只写 inkStrip 不影响 T9/stroke。
+    const inkOnly = fresh({ mode: 't9' });
+    inkOnly.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], inkStrip: ['％'] }));
+    inkOnly.engineState({ phase: 'READY', mode: 't9', revision: 2, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    labels = [...inkOnly.document.querySelectorAll('#t9Strip .t9-side-cell')]
+        .map(c => c.textContent);
+    equal(labels[0], '，', 'inkStrip customization leaves the t9 strip stock');
+
+    // inkStrip 定制：手写滚动列渲染定制清单（重发 hello 触发手写层
+    // 重建，同既有手写用例的驱动形态）。
+    const ink = new KeyboardWorld();
+    ink.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], inkStrip: ['～', '＠'] }));
+    ink.build();
+    ink.hello({ mode: 'handwriting' });
+    const cells = [...ink.document.querySelectorAll('.ink-scroll .ink-sym')]
+        .map(c => c.textContent);
+    equal(cells.join(''), '～＠', 'handwriting scroller uses inkStrip');
+    // 畸形 inkStrip（空串）回内置默认（首项「，」）。
+    const badInk = new KeyboardWorld();
+    badInk.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], inkStrip: ['ok', ''] }));
+    badInk.build();
+    badInk.hello({ mode: 'handwriting' });
+    equal([...badInk.document.querySelectorAll('.ink-scroll .ink-sym')][0].textContent,
+        '，', 'malformed inkStrip falls back to the stock list');
+});

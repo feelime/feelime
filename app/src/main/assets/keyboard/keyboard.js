@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.117';
+    const KEYBOARD_VERSION = '3.73.118';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3072,11 +3072,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** 滚动符号列：常驻滚动列表，初始露前三格，上滑滚出更多。
-         * 滚动走 CSS overflow（触摸原生滚动），点按=sendSymbol 直上屏。 */
+         * 滚动走 CSS overflow（触摸原生滚动），点按=sendSymbol 直上屏。
+         * #112（2026-11-15 扩展）：清单可定制（inkStrip 字段）。 */
         inkSymbolScroller() {
             const scroller = document.createElement('div');
             scroller.className = 'ink-scroll';
-            INK_SIDE_SYMBOLS.forEach(char => scroller.append(this.inkSymbolCell(char)));
+            this.sideCharsList('ink').forEach(char => scroller.append(this.inkSymbolCell(char)));
             return scroller;
         }
 
@@ -3715,12 +3716,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!strip || (this.mode !== 't9' && this.mode !== 'stroke')) return;
             if (this.mode === 'stroke') {
                 // 笔画左列（issue #18）：常用字符恒定——笔画无音节枚举
-                // 语义，组合中不变。#112 定制只影响 T9 的符号栏，笔画
-                // 左列保持内置清单（骨架共用，语义独立）。
-                if (this.t9SideSig === 'sym') return;
-                this.t9SideSig = 'sym';
+                // 语义，组合中不变。#112（2026-11-15 扩展）：笔画符号栏
+                // 同样可定制（strokeStrip 字段），sig 含内容才能识别变化。
+                const strokeList = this.sideCharsList('stroke');
+                const sSig = `sym:${strokeList.join('')}`;
+                if (this.t9SideSig === sSig) return;
+                this.t9SideSig = sSig;
                 strip.replaceChildren();
-                T9_SIDE_CHARS.forEach(char => strip.append(this.t9SideCell(char)));
+                strokeList.forEach(char => strip.append(this.t9SideCell(char)));
                 return;
             }
             const seg = this.composing ? this.t9PendingSegment() : '';
@@ -6289,22 +6292,31 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return null;
         }
 
-        /** #112 T9 左侧符号栏：定制清单存 CUSTOM_KEYS_STORE 的 t9Strip
-         *  字段（设置页「定制按键 → 九宫格键盘 → 左侧符号栏」编辑）。
-         *  缺失/畸形/空表一律回内置默认——空数组与未定制同义（设置页
-         *  「全部恢复」写的就是默认内容数组）。防呆上限 32 与每项长度
-         *  ≤3（设置页 maxlength=3 + 上限 24，键盘端再兜一层）。 */
-        t9SideCharsList() {
+        /** #112 符号栏定制（T9/笔画/手写三栏，用户 2026-11-15 扩展）：
+         *  定制清单存 CUSTOM_KEYS_STORE 的 t9Strip/strokeStrip/inkStrip
+         *  字段（设置页「定制按键 → 符号栏」一页三段编辑）。三栏默认
+         *  清单各自独立（T9/笔画共用 T9_SIDE_CHARS，手写是
+         *  INK_SIDE_SYMBOLS）。缺失/畸形/空表一律回各自内置默认——
+         *  空数组与未定制同义（设置页「全部恢复」写的就是默认内容）。
+         *  防呆上限 32 与每项长度 ≤3（设置页 maxlength=3 + 上限 24，
+         *  键盘端再兜一层）。 */
+        sideCharsList(kind) {
+            const DEFAULTS = { t9: T9_SIDE_CHARS, stroke: T9_SIDE_CHARS, ink: INK_SIDE_SYMBOLS };
+            const field = { t9: 't9Strip', stroke: 'strokeStrip', ink: 'inkStrip' }[kind];
             try {
                 const parsed = JSON.parse(localStorage.getItem(CUSTOM_KEYS_STORE) || 'null');
-                const list = parsed && parsed.t9Strip;
+                const list = parsed && parsed[field];
                 if (Array.isArray(list) && list.length &&
                     list.length <= 32 &&
                     list.every(s => typeof s === 'string' && s.length > 0 && s.length <= 3)) {
                     return list;
                 }
             } catch (_) { /* unset/坏 JSON → 默认 */ }
-            return T9_SIDE_CHARS;
+            return DEFAULTS[kind] || T9_SIDE_CHARS;
+        }
+
+        t9SideCharsList() {
+            return this.sideCharsList('t9');
         }
 
         /** 语言键盘定制变化后的字母层重画：只在当前显示的就是字母层
@@ -6552,22 +6564,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             const langParsed = this.parseLangKeys(data.langKeys || null);
             if (langParsed.error) return { error: langParsed.error };
-            // #112 t9Strip 段（T9 左侧符号栏）宽松解析：畸形=忽略（undefined），
-            // 不让符号栏定制毁掉整包定制键的解析。
-            let t9Strip;
-            if (data.t9Strip != null) {
-                const list = data.t9Strip;
+            // #112 符号栏段（T9/笔画/手写三栏）宽松解析：畸形=忽略
+            // （undefined），不让符号栏定制毁掉整包定制键的解析。
+            const strips = {};
+            let anyStrip = false;
+            for (const field of ['t9Strip', 'strokeStrip', 'inkStrip']) {
+                const list = data[field];
+                if (list == null) continue;
                 if (Array.isArray(list) && list.length <= 32 &&
                     list.every(s => typeof s === 'string' && s.length > 0 && s.length <= 3)) {
-                    t9Strip = list.slice();
+                    strips[field] = list.slice();
+                    anyStrip = true;
                 }
             }
-            if (!rows.some(row => row.length) && !langParsed.value && !t9Strip) {
+            if (!rows.some(row => row.length) && !langParsed.value && !anyStrip) {
                 return { error: t("至少要定义一个键") };
             }
             const out = { rows };
             if (langParsed.value) out.langKeys = langParsed.value;
-            if (t9Strip) out.t9Strip = t9Strip;
+            for (const field of Object.keys(strips)) out[field] = strips[field];
             return out;
         }
 
@@ -12610,17 +12625,36 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             const prevLang = this.storedLangKeys();
                             const langChanged = JSON.stringify(prevLang || null)
                                 !== JSON.stringify(parsed.langKeys || null);
-                            // #112：t9Strip 变化（含首次出现）时重画 T9 左列
-                            // ——renderT9Side 的内容签名会识别变化。
-                            const prevStrip = this.t9SideCharsList().join('');
-                            const stripChanged = parsed.t9Strip
-                                && parsed.t9Strip.join('') !== prevStrip;
+                            // #112：符号栏变化（含首次出现）时重画对应列——
+                            // t9/stroke 走 renderT9Side（sig 含内容），ink 重画
+                            // 手写层（scroller 只在 renderHandwriting 建）。
+                            const stripChanged = kind => {
+                                const field = { t9: 't9Strip', stroke: 'strokeStrip',
+                                    ink: 'inkStrip' }[kind];
+                                const next = parsed[field];
+                                if (!next) return false;
+                                return next.join('') !== this.sideCharsList(kind).join('');
+                            };
+                            const t9LikeChanged = stripChanged('t9') || stripChanged('stroke');
+                            const inkChanged = stripChanged('ink');
                             localStorage.setItem(CUSTOM_KEYS_STORE,
                                 JSON.stringify({ version: 1, rows: parsed.rows,
                                     langKeys: parsed.langKeys || undefined,
-                                    t9Strip: parsed.t9Strip || undefined }));
+                                    t9Strip: parsed.t9Strip || undefined,
+                                    strokeStrip: parsed.strokeStrip || undefined,
+                                    inkStrip: parsed.inkStrip || undefined }));
                             if (langChanged) this.rerenderLangKeys();
-                            if (stripChanged) this.renderT9Side();
+                            if (t9LikeChanged) this.renderT9Side();
+                            // ink 只换 scroller 格子，不整层重画——
+                            // renderHandwriting 会清 canvas 打断书写会话。
+                            if (inkChanged) {
+                                const scroller = document.querySelector('.ink-scroll');
+                                if (scroller) {
+                                    scroller.replaceChildren();
+                                    this.sideCharsList('ink')
+                                        .forEach(c => scroller.append(this.inkSymbolCell(c)));
+                                }
+                            }
                         }
                     } else {
                         // A keyboard upgraded from a pre-migration

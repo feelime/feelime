@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.117";
+  const KEYBOARD_VERSION = "3.73.118";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -2784,11 +2784,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       return keys;
     }
     /** 滚动符号列：常驻滚动列表，初始露前三格，上滑滚出更多。
-     * 滚动走 CSS overflow（触摸原生滚动），点按=sendSymbol 直上屏。 */
+     * 滚动走 CSS overflow（触摸原生滚动），点按=sendSymbol 直上屏。
+     * #112（2026-11-15 扩展）：清单可定制（inkStrip 字段）。 */
     inkSymbolScroller() {
       const scroller = document.createElement("div");
       scroller.className = "ink-scroll";
-      INK_SIDE_SYMBOLS.forEach((char) => scroller.append(this.inkSymbolCell(char)));
+      this.sideCharsList("ink").forEach((char) => scroller.append(this.inkSymbolCell(char)));
       return scroller;
     }
     /** 滚动列里的单个符号格。 */
@@ -3341,10 +3342,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const strip = document.getElementById("t9Strip");
       if (!strip || this.mode !== "t9" && this.mode !== "stroke") return;
       if (this.mode === "stroke") {
-        if (this.t9SideSig === "sym") return;
-        this.t9SideSig = "sym";
+        const strokeList = this.sideCharsList("stroke");
+        const sSig = `sym:${strokeList.join("")}`;
+        if (this.t9SideSig === sSig) return;
+        this.t9SideSig = sSig;
         strip.replaceChildren();
-        T9_SIDE_CHARS.forEach((char) => strip.append(this.t9SideCell(char)));
+        strokeList.forEach((char) => strip.append(this.t9SideCell(char)));
         return;
       }
       const seg = this.composing ? this.t9PendingSegment() : "";
@@ -5381,21 +5384,29 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       return null;
     }
-    /** #112 T9 左侧符号栏：定制清单存 CUSTOM_KEYS_STORE 的 t9Strip
-     *  字段（设置页「定制按键 → 九宫格键盘 → 左侧符号栏」编辑）。
-     *  缺失/畸形/空表一律回内置默认——空数组与未定制同义（设置页
-     *  「全部恢复」写的就是默认内容数组）。防呆上限 32 与每项长度
-     *  ≤3（设置页 maxlength=3 + 上限 24，键盘端再兜一层）。 */
-    t9SideCharsList() {
+    /** #112 符号栏定制（T9/笔画/手写三栏，用户 2026-11-15 扩展）：
+     *  定制清单存 CUSTOM_KEYS_STORE 的 t9Strip/strokeStrip/inkStrip
+     *  字段（设置页「定制按键 → 符号栏」一页三段编辑）。三栏默认
+     *  清单各自独立（T9/笔画共用 T9_SIDE_CHARS，手写是
+     *  INK_SIDE_SYMBOLS）。缺失/畸形/空表一律回各自内置默认——
+     *  空数组与未定制同义（设置页「全部恢复」写的就是默认内容）。
+     *  防呆上限 32 与每项长度 ≤3（设置页 maxlength=3 + 上限 24，
+     *  键盘端再兜一层）。 */
+    sideCharsList(kind) {
+      const DEFAULTS = { t9: T9_SIDE_CHARS, stroke: T9_SIDE_CHARS, ink: INK_SIDE_SYMBOLS };
+      const field = { t9: "t9Strip", stroke: "strokeStrip", ink: "inkStrip" }[kind];
       try {
         const parsed = JSON.parse(localStorage.getItem(CUSTOM_KEYS_STORE) || "null");
-        const list = parsed && parsed.t9Strip;
+        const list = parsed && parsed[field];
         if (Array.isArray(list) && list.length && list.length <= 32 && list.every((s) => typeof s === "string" && s.length > 0 && s.length <= 3)) {
           return list;
         }
       } catch (_) {
       }
-      return T9_SIDE_CHARS;
+      return DEFAULTS[kind] || T9_SIDE_CHARS;
+    }
+    t9SideCharsList() {
+      return this.sideCharsList("t9");
     }
     /** 语言键盘定制变化后的字母层重画：只在当前显示的就是字母层
      *  时立即重渲染（符号/T9 层的角标不来自 langKeys，切回时
@@ -5631,19 +5642,22 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       const langParsed = this.parseLangKeys(data.langKeys || null);
       if (langParsed.error) return { error: langParsed.error };
-      let t9Strip;
-      if (data.t9Strip != null) {
-        const list = data.t9Strip;
+      const strips = {};
+      let anyStrip = false;
+      for (const field of ["t9Strip", "strokeStrip", "inkStrip"]) {
+        const list = data[field];
+        if (list == null) continue;
         if (Array.isArray(list) && list.length <= 32 && list.every((s) => typeof s === "string" && s.length > 0 && s.length <= 3)) {
-          t9Strip = list.slice();
+          strips[field] = list.slice();
+          anyStrip = true;
         }
       }
-      if (!rows.some((row) => row.length) && !langParsed.value && !t9Strip) {
+      if (!rows.some((row) => row.length) && !langParsed.value && !anyStrip) {
         return { error: t("\u81F3\u5C11\u8981\u5B9A\u4E49\u4E00\u4E2A\u952E") };
       }
       const out = { rows };
       if (langParsed.value) out.langKeys = langParsed.value;
-      if (t9Strip) out.t9Strip = t9Strip;
+      for (const field of Object.keys(strips)) out[field] = strips[field];
       return out;
     }
     /** langKeys 段（语言键盘定制）校验：{layout:{key:{alt,up,down}}}。
@@ -10519,19 +10533,38 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
             if (!parsed.error) {
               const prevLang = this.storedLangKeys();
               const langChanged = JSON.stringify(prevLang || null) !== JSON.stringify(parsed.langKeys || null);
-              const prevStrip = this.t9SideCharsList().join("");
-              const stripChanged = parsed.t9Strip && parsed.t9Strip.join("") !== prevStrip;
+              const stripChanged = /* @__PURE__ */ __name((kind) => {
+                const field = {
+                  t9: "t9Strip",
+                  stroke: "strokeStrip",
+                  ink: "inkStrip"
+                }[kind];
+                const next = parsed[field];
+                if (!next) return false;
+                return next.join("") !== this.sideCharsList(kind).join("");
+              }, "stripChanged");
+              const t9LikeChanged = stripChanged("t9") || stripChanged("stroke");
+              const inkChanged = stripChanged("ink");
               localStorage.setItem(
                 CUSTOM_KEYS_STORE,
                 JSON.stringify({
                   version: 1,
                   rows: parsed.rows,
                   langKeys: parsed.langKeys || void 0,
-                  t9Strip: parsed.t9Strip || void 0
+                  t9Strip: parsed.t9Strip || void 0,
+                  strokeStrip: parsed.strokeStrip || void 0,
+                  inkStrip: parsed.inkStrip || void 0
                 })
               );
               if (langChanged) this.rerenderLangKeys();
-              if (stripChanged) this.renderT9Side();
+              if (t9LikeChanged) this.renderT9Side();
+              if (inkChanged) {
+                const scroller = document.querySelector(".ink-scroll");
+                if (scroller) {
+                  scroller.replaceChildren();
+                  this.sideCharsList("ink").forEach((c) => scroller.append(this.inkSymbolCell(c)));
+                }
+              }
             }
           } else {
             const local = localStorage.getItem(CUSTOM_KEYS_STORE);

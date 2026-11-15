@@ -3607,35 +3607,52 @@ test('#113 bottom sym split switch: state echo + change persists via bridge', ()
         'toggling calls setBottomSymSplit(value, token)');
 });
 
-test('#112 t9 strip editor: entry routes, add/remove reorder the draft, save packs t9Strip', () => {
+test('#112 strip editors: three independent sections, add/reorder/reset, save packs each field', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     const FS = world.FeelimeSettings();
     FS.showPage('customkeys');
     FS.showPage('ckt9strip');
-    // 空表起步=内置默认 16 项；添加一个符号 → 草稿 17 项且脏。
-    world.$('ckt9AddInput').value = '¥';
-    world.$('ckt9AddBtn').listeners.find(l => l.type === 'click').handler();
-    const rowsAfterAdd = [...world.doc.querySelectorAll('#ckt9List .row')];
-    equal(rowsAfterAdd.length, 17, 'add appends to the default 16');
-    // 删除最后一项（¥）：列表行内第三个按钮是 ✕。
-    const delBtn = [...rowsAfterAdd[rowsAfterAdd.length - 1].querySelectorAll('button')]
-        .find(b => b.textContent === '✕');
-    delBtn.listeners.find(l => l.type === 'click').handler();
-    equal([...world.doc.querySelectorAll('#ckt9List .row')].length, 16, 'remove drops it back');
-    // 上移：第二项 ↑ 与第一项交换（默认序 ，。？… → 。，？…）。断言要
-    // 在点击后重抓列表（renderT9StripPage 整表重建，旧引用全失效）。
-    const rows = [...world.doc.querySelectorAll('#ckt9List .row')];
-    const upBtn = [...rows[1].querySelectorAll('button')].find(b => b.textContent === '↑');
-    upBtn.listeners.find(l => l.type === 'click').handler();
-    const freshRows = [...world.doc.querySelectorAll('#ckt9List .row')];
-    equal(freshRows[0].querySelector('.row-label span').textContent, '。',
-        'move-up swaps the first two symbols');
-    // 保存：统一保存条（编辑只标脏，保存按钮先吸收 textarea——空串
-    // 会被当坏 JSON 拒绝，先播种合法空模板）再提交。
-    world.$('customJson').value = '{"version":1,"rows":[[[]]],"langKeys":{},"t9Strip":null}';
+    // 三段都渲染：T9/笔画默认 16 项，手写 12 项。
+    equal([...world.doc.querySelectorAll('#ckt9List-t9 .row')].length, 16, 't9 section lists 16 defaults');
+    equal([...world.doc.querySelectorAll('#ckt9List-stroke .row')].length, 16, 'stroke section lists 16 defaults');
+    equal([...world.doc.querySelectorAll('#ckt9List-ink .row')].length, 12, 'ink section lists 12 defaults');
+    // T9 段添加 ¥ → 17 项。
+    const t9Input = [...world.doc.querySelectorAll('#ckt9Sections input')]
+        .find(el => el.dataset.stripKind === 't9');
+    t9Input.value = '¥';
+    [...world.doc.querySelectorAll('#ckt9Sections button')]
+        .find(b => b.textContent === '添加' && b.dataset.stripKind === 't9')
+        .listeners.find(l => l.type === 'click').handler();
+    equal([...world.doc.querySelectorAll('#ckt9List-t9 .row')].length, 17, 't9 add appends ¥');
+    // ink 段添加 ％ → 13 项（与 t9 段互不影响）。
+    const inkInput = [...world.doc.querySelectorAll('#ckt9Sections input')]
+        .find(el => el.dataset.stripKind === 'ink');
+    inkInput.value = '％';
+    [...world.doc.querySelectorAll('#ckt9Sections button')]
+        .find(b => b.textContent === '添加' && b.dataset.stripKind === 'ink')
+        .listeners.find(l => l.type === 'click').handler();
+    equal([...world.doc.querySelectorAll('#ckt9List-ink .row')].length, 13, 'ink add appends ％');
+    equal([...world.doc.querySelectorAll('#ckt9List-t9 .row')].length, 17, 't9 untouched by ink edits');
+    // stroke 段上移交换前两项。
+    const rows = [...world.doc.querySelectorAll('#ckt9List-stroke .row')];
+    [...rows[1].querySelectorAll('button')].find(b => b.textContent === '↑')
+        .listeners.find(l => l.type === 'click').handler();
+    const fresh = [...world.doc.querySelectorAll('#ckt9List-stroke .row')];
+    equal(fresh[0].querySelector('.row-label span').textContent, '。', 'stroke move-up swaps');
+    // stroke 段恢复默认。
+    const strokeReset = [...world.doc.querySelectorAll('.section-heading button')]
+        .find(b => b.textContent === '恢复默认'
+            && b.closest('.strip-editor') && b.closest('.strip-editor').dataset.stripKind === 'stroke');
+    strokeReset.listeners.find(l => l.type === 'click').handler();
+    const restored = [...world.doc.querySelectorAll('#ckt9List-stroke .row')];
+    equal(restored[0].querySelector('.row-label span').textContent, '，', 'stroke reset restores default order');
+    // 保存：三字段独立打包（stroke 恢复=显式默认数组也打包）。
+    world.$('customJson').value = '{"version":1,"rows":[[]],"t9Strip":null}';
     world.$('btnSaveCustom').click();
     const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
-    equal(saved.t9Strip[0], '。', 'packed t9Strip reflects the edit');
-    equal(saved.t9Strip.length, 16, 'packed t9Strip keeps 16 entries');
+    equal(saved.t9Strip[saved.t9Strip.length - 1], '¥', 'packed t9Strip has the appended ¥');
+    equal(saved.inkStrip[saved.inkStrip.length - 1], '％', 'packed inkStrip has the appended ％');
+    equal(saved.strokeStrip[0], '，', 'packed strokeStrip is the explicit default array');
 });
+

@@ -1358,14 +1358,15 @@
         </div>
       </div>
     </section>
-    <!-- #112 九宫格 T9 左侧符号栏定制：入口行 + 四级页（ckt9strip）。
-         数据挂同一份定制 JSON 的 t9Strip 字段（saveCustom 对多余字段
-         宽松，native 校验只盯 rows）。 -->
+    <!-- #112 键盘符号栏定制（T9/笔画/手写三栏，2026-11-15 扩展）：入口行
+         + 四级页（ckt9strip）。数据挂同一份定制 JSON 的 t9Strip/
+         strokeStrip/inkStrip 字段（saveCustom 对多余字段宽松，native 校验
+         只盯 rows）。 -->
     <section class="card" aria-labelledby="ckT9Head">
-      <div class="section-heading"><h2 id="ckT9Head" data-i18n="ck.t9.title">九宫格键盘</h2></div>
+      <div class="section-heading"><h2 id="ckT9Head" data-i18n="ck.t9.title">键盘符号栏</h2></div>
       <div class="rows">
-        <div class="row" id="ckT9StripEntry" data-keywords="T9 九宫格 符号栏 左侧 定制 排序">
-          <span class="row-label"><span data-i18n="ck.t9.strip">左侧符号栏</span><small id="ckT9StripSummary">默认</small></span>
+        <div class="row" id="ckT9StripEntry" data-keywords="T9 九宫格 笔画 手写 符号栏 左侧 定制 排序">
+          <span class="row-label"><span data-i18n="ck.t9.strip">T9 / 笔画 / 手写符号栏</span><small id="ckT9StripSummary">默认</small></span>
           <span class="chev">›</span>
         </div>
       </div>
@@ -1449,26 +1450,18 @@
   </main>
 </div>
 
-<!-- #112 T9 左侧符号栏四级页：排序（上移/下移）、删除、添加、恢复默认。
-     编辑即写草稿（ckT9Strip），保存走定制按键页统一保存条（saveCustom）。 -->
+<!-- #112 键盘符号栏四级页（T9/笔画/手写三栏，2026-11-15 扩展）：每栏
+     排序/删除/添加/恢复默认，三栏独立。编辑即写草稿（ckStrips），保存走
+     定制按键页统一保存条（saveCustom）。三段列表由 JS 渲染。 -->
 <div class="page" data-page="ckt9strip" hidden>
   <header class="page-head">
     <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
-    <h2 class="page-title" data-i18n="ck.t9.pageTitle">左侧符号栏</h2>
-    <button class="btn" id="ckt9Reset" type="button" data-i18n="ck.lang.reset">全部恢复</button>
+    <h2 class="page-title" data-i18n="ck.t9.pageTitle">键盘符号栏</h2>
   </header>
   <main>
     <section class="card">
-      <p class="hint" data-i18n="ck.t9.hint">九宫格键盘空闲时左列的常用符号，按这里的顺序从上到下排列；打字中该列会临时显示拼音音节，与符号栏互不影响。</p>
-      <div id="ckt9List"></div>
-      <div class="row">
-        <span class="row-label"><span data-i18n="ck.t9.addLabel">添加符号</span></span>
-        <span class="ck-row2-ctl ck-input" style="display:flex;gap:8px;">
-          <input type="text" id="ckt9AddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
-          <button class="btn" id="ckt9AddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
-        </span>
-      </div>
-      <p class="hint" id="ckt9LimitHint" data-i18n="ck.t9.limitHint" hidden>最多 24 个符号</p>
+      <p class="hint" data-i18n="ck.t9.hint">三栏各自独立定制：T9 与笔画键盘空闲时左列的常用符号、手写键盘右侧滚动符号列，按这里的顺序从上到下排列。T9/笔画打字中左列会临时显示拼音音节，与符号栏互不影响。</p>
+      <div id="ckt9Sections"></div>
     </section>
   </main>
 </div>

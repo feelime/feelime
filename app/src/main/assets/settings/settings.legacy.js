@@ -439,10 +439,14 @@ const I18N = {
     "ck.f.mode.panel": "\u9762\u677F",
     "ck.f.kind": "\u7C7B\u578B",
     "ck.lang.title": "\u8BED\u8A00\u952E\u76D8",
-    "ck.t9.title": "\u4E5D\u5BAB\u683C\u952E\u76D8",
-    "ck.t9.strip": "\u5DE6\u4FA7\u7B26\u53F7\u680F",
-    "ck.t9.pageTitle": "\u5DE6\u4FA7\u7B26\u53F7\u680F",
-    "ck.t9.hint": "\u4E5D\u5BAB\u683C\u952E\u76D8\u7A7A\u95F2\u65F6\u5DE6\u5217\u7684\u5E38\u7528\u7B26\u53F7\uFF0C\u6309\u8FD9\u91CC\u7684\u987A\u5E8F\u4ECE\u4E0A\u5230\u4E0B\u6392\u5217\uFF1B\u6253\u5B57\u4E2D\u8BE5\u5217\u4F1A\u4E34\u65F6\u663E\u793A\u62FC\u97F3\u97F3\u8282\uFF0C\u4E0E\u7B26\u53F7\u680F\u4E92\u4E0D\u5F71\u54CD\u3002",
+    "ck.t9.title": "\u952E\u76D8\u7B26\u53F7\u680F",
+    "ck.t9.strip": "T9 / \u7B14\u753B / \u624B\u5199\u7B26\u53F7\u680F",
+    "ck.t9.pageTitle": "\u952E\u76D8\u7B26\u53F7\u680F",
+    "ck.t9.hint": "\u4E09\u680F\u5404\u81EA\u72EC\u7ACB\u5B9A\u5236\uFF1AT9 \u4E0E\u7B14\u753B\u952E\u76D8\u7A7A\u95F2\u65F6\u5DE6\u5217\u7684\u5E38\u7528\u7B26\u53F7\u3001\u624B\u5199\u952E\u76D8\u53F3\u4FA7\u6EDA\u52A8\u7B26\u53F7\u5217\uFF0C\u6309\u8FD9\u91CC\u7684\u987A\u5E8F\u4ECE\u4E0A\u5230\u4E0B\u6392\u5217\u3002T9/\u7B14\u753B\u6253\u5B57\u4E2D\u5DE6\u5217\u4F1A\u4E34\u65F6\u663E\u793A\u62FC\u97F3\u97F3\u8282\uFF0C\u4E0E\u7B26\u53F7\u680F\u4E92\u4E0D\u5F71\u54CD\u3002",
+    "ck.t9.secT9": "T9 \u4E5D\u5BAB\u683C",
+    "ck.t9.secStroke": "\u7B14\u753B\u952E\u76D8",
+    "ck.t9.secInk": "\u624B\u5199\u952E\u76D8",
+    "ck.t9.resetOne": "\u6062\u590D\u9ED8\u8BA4",
     "ck.t9.addLabel": "\u6DFB\u52A0\u7B26\u53F7",
     "ck.t9.addPlaceholder": "\u7B26\u53F7",
     "ck.t9.addBtn": "\u6DFB\u52A0",
@@ -1294,10 +1298,14 @@ const I18N = {
     "ck.f.mode.panel": "Panel",
     "ck.f.kind": "Type",
     "ck.lang.title": "Language keyboards",
-    "ck.t9.title": "Nine-key keyboard",
-    "ck.t9.strip": "Left symbol strip",
-    "ck.t9.pageTitle": "Left symbol strip",
-    "ck.t9.hint": "Symbols shown in the left column of the nine-key keyboard when idle, ordered top to bottom as listed here; while typing, that column temporarily shows pinyin syllables instead.",
+    "ck.t9.title": "Keyboard symbol strips",
+    "ck.t9.strip": "T9 / stroke / handwriting strips",
+    "ck.t9.pageTitle": "Keyboard symbol strips",
+    "ck.t9.hint": "Each strip is customized independently: the left column of the T9 and stroke keyboards when idle, and the scrolling symbol column on the right of the handwriting keyboard, ordered top to bottom as listed. While typing, the T9/stroke column temporarily shows pinyin syllables instead.",
+    "ck.t9.secT9": "T9 nine-key",
+    "ck.t9.secStroke": "Stroke keyboard",
+    "ck.t9.secInk": "Handwriting keyboard",
+    "ck.t9.resetOne": "Reset",
     "ck.t9.addLabel": "Add symbol",
     "ck.t9.addPlaceholder": "Symbol",
     "ck.t9.addBtn": "Add",
@@ -2255,7 +2263,7 @@ function showPage(name) {
     if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
   }
   if (name === "cklang") renderLangKb(ckLangCurrent);
-  if (name === "ckt9strip") renderT9StripPage();
+  if (name === "ckt9strip") renderStripPage();
   if (name === "customkeys" && !wasCustomkeys && typeof refreshLangCounts === "function") {
     refreshLangCounts();
   }
@@ -4725,7 +4733,7 @@ let ckSel = null;
 let ckDraft = null;
 let ckDirty = false;
 let ckLangKeys = {};
-let ckT9Strip = null;
+let ckStrips = { t9: null, stroke: null, ink: null };
 let ckLeaveTarget = null;
 function ckReportState() {
   call("reportCkState", !!ckEditMode, !!ckDirty);
@@ -4826,7 +4834,11 @@ function ckLoad() {
     const parsed = JSON.parse($("customJson").value || "null");
     if (parsed && parsed.version === 1 && Array.isArray(parsed.rows)) rows = parsed.rows;
     ckLangKeys = parsed && parsed.langKeys && typeof parsed.langKeys === "object" && !Array.isArray(parsed.langKeys) ? parsed.langKeys : {};
-    ckT9Strip = parsed && Array.isArray(parsed.t9Strip) ? parsed.t9Strip.slice() : null;
+    ckStrips = {
+      t9: parsed && Array.isArray(parsed.t9Strip) ? parsed.t9Strip.slice() : null,
+      stroke: parsed && Array.isArray(parsed.strokeStrip) ? parsed.strokeStrip.slice() : null,
+      ink: parsed && Array.isArray(parsed.inkStrip) ? parsed.inkStrip.slice() : null
+    };
   } catch (_) {
   }
   if (!rows || !rows.some((row) => row && row.length)) rows = JSON.parse(CK_TEMPLATE).rows;
@@ -6078,87 +6090,145 @@ const T9_STRIP_DEFAULT = [
   "\xB7",
   "\u2014"
 ];
+const INK_STRIP_DEFAULT = ["\uFF0C", "\u3002", "\uFF1F", "\uFF01", "\uFF1A", "\uFF1B", "\u3001", "\uFF5E", "\u2026\u2026", "\xB7", "\uFF03", "\uFF20"];
 const T9_STRIP_MAX = 24;
-function t9StripDraft() {
-  return ckT9Strip ? ckT9Strip.slice() : T9_STRIP_DEFAULT.slice();
+const STRIP_KINDS = [
+  { kind: "t9", field: "t9Strip", titleKey: "ck.t9.secT9", def: T9_STRIP_DEFAULT },
+  { kind: "stroke", field: "strokeStrip", titleKey: "ck.t9.secStroke", def: T9_STRIP_DEFAULT },
+  { kind: "ink", field: "inkStrip", titleKey: "ck.t9.secInk", def: INK_STRIP_DEFAULT }
+];
+function stripDraft(kind) {
+  const cfg = STRIP_KINDS.find((k) => k.kind === kind);
+  return ckStrips[kind] ? ckStrips[kind].slice() : cfg.def.slice();
 }
-__name(t9StripDraft, "t9StripDraft");
-function renderT9StripPage() {
-  const list = document.getElementById("ckt9List");
-  if (!list) return;
-  const cur = t9StripDraft();
-  list.replaceChildren();
-  cur.forEach((sym, i) => {
-    const row = document.createElement("div");
-    row.className = "row";
-    const label = document.createElement("span");
-    label.className = "row-label";
-    const big = document.createElement("span");
-    big.textContent = sym;
-    big.style.fontSize = "20px";
-    big.style.minWidth = "1.6em";
-    label.append(big);
-    row.append(label);
-    const mk = /* @__PURE__ */ __name((text, title, fn) => {
-      const b = document.createElement("button");
-      b.className = "btn";
-      b.type = "button";
-      b.textContent = text;
-      b.setAttribute("aria-label", title);
-      b.addEventListener("click", fn);
-      row.append(b);
-    }, "mk");
-    mk("\u2191", t("ck.t9.up"), () => {
-      if (i === 0) return;
-      const d = t9StripDraft();
-      [d[i - 1], d[i]] = [d[i], d[i - 1]];
-      commitT9Strip(d);
-    });
-    mk("\u2193", t("ck.t9.down"), () => {
-      if (i === cur.length - 1) return;
-      const d = t9StripDraft();
-      [d[i + 1], d[i]] = [d[i], d[i + 1]];
-      commitT9Strip(d);
-    });
-    mk("\u2715", t("ck.t9.remove"), () => {
-      const d = t9StripDraft();
-      d.splice(i, 1);
-      commitT9Strip(d);
-    });
-    list.append(row);
-  });
-  refreshT9StripSummary();
-}
-__name(renderT9StripPage, "renderT9StripPage");
-function commitT9Strip(arr) {
-  ckT9Strip = arr;
+__name(stripDraft, "stripDraft");
+function commitStrip(kind, arr) {
+  ckStrips[kind] = arr;
   ckMarkDirty(true);
-  renderT9StripPage();
+  renderStripPage();
 }
-__name(commitT9Strip, "commitT9Strip");
-function refreshT9StripSummary() {
+__name(commitStrip, "commitStrip");
+function renderStripPage() {
+  const host = document.getElementById("ckt9Sections");
+  if (!host) return;
+  host.replaceChildren();
+  for (const cfg of STRIP_KINDS) {
+    const section = document.createElement("div");
+    section.className = "strip-editor";
+    section.dataset.stripKind = cfg.kind;
+    const head = document.createElement("div");
+    head.className = "section-heading";
+    const h3 = document.createElement("h2");
+    h3.textContent = t(cfg.titleKey);
+    head.append(h3);
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "btn";
+    resetBtn.type = "button";
+    resetBtn.textContent = t("ck.t9.resetOne");
+    resetBtn.addEventListener("click", () => {
+      commitStrip(cfg.kind, cfg.def.slice());
+      setNote("ckSaveNote", t("ck.lang.resetDone"));
+    });
+    head.append(resetBtn);
+    section.append(head);
+    const list = document.createElement("div");
+    list.className = "strip-list";
+    list.id = `ckt9List-${cfg.kind}`;
+    const cur = stripDraft(cfg.kind);
+    cur.forEach((sym, i) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const label = document.createElement("span");
+      label.className = "row-label";
+      const big = document.createElement("span");
+      big.textContent = sym;
+      big.style.fontSize = "20px";
+      big.style.minWidth = "1.6em";
+      label.append(big);
+      row.append(label);
+      const mk = /* @__PURE__ */ __name((text, title, fn) => {
+        const b = document.createElement("button");
+        b.className = "btn";
+        b.type = "button";
+        b.textContent = text;
+        b.setAttribute("aria-label", title);
+        b.addEventListener("click", fn);
+        row.append(b);
+      }, "mk");
+      mk("\u2191", t("ck.t9.up"), () => {
+        if (i === 0) return;
+        const d = stripDraft(cfg.kind);
+        [d[i - 1], d[i]] = [d[i], d[i - 1]];
+        commitStrip(cfg.kind, d);
+      });
+      mk("\u2193", t("ck.t9.down"), () => {
+        if (i === cur.length - 1) return;
+        const d = stripDraft(cfg.kind);
+        [d[i + 1], d[i]] = [d[i], d[i + 1]];
+        commitStrip(cfg.kind, d);
+      });
+      mk("\u2715", t("ck.t9.remove"), () => {
+        const d = stripDraft(cfg.kind);
+        d.splice(i, 1);
+        commitStrip(cfg.kind, d);
+      });
+      list.append(row);
+    });
+    section.append(list);
+    const addRow = document.createElement("div");
+    addRow.className = "row";
+    const addLabel = document.createElement("span");
+    addLabel.className = "row-label";
+    const addSpan = document.createElement("span");
+    addSpan.textContent = t("ck.t9.addLabel");
+    addLabel.append(addSpan);
+    addRow.append(addLabel);
+    const ctl = document.createElement("span");
+    ctl.className = "ck-row2-ctl";
+    ctl.style.cssText = "display:flex;gap:8px;";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 3;
+    input.placeholder = t("ck.t9.addPlaceholder");
+    input.dataset.stripKind = cfg.kind;
+    ctl.append(input);
+    const addBtn = document.createElement("button");
+    addBtn.className = "btn";
+    addBtn.type = "button";
+    addBtn.textContent = t("ck.t9.addBtn");
+    addBtn.dataset.stripKind = cfg.kind;
+    addBtn.addEventListener("click", () => {
+      const v = (input.value || "").trim();
+      if (!v) return;
+      const d = stripDraft(cfg.kind);
+      if (d.length >= T9_STRIP_MAX) {
+        setNote("ckSaveNote", t("ck.t9.limitHint"));
+        return;
+      }
+      d.push(v);
+      input.value = "";
+      commitStrip(cfg.kind, d);
+    });
+    ctl.append(addBtn);
+    addRow.append(ctl);
+    section.append(addRow);
+    host.append(section);
+  }
+  refreshStripSummary();
+}
+__name(renderStripPage, "renderStripPage");
+function refreshStripSummary() {
   const el = document.getElementById("ckT9StripSummary");
-  if (el) el.textContent = ckT9Strip ? ckT9Strip.length === T9_STRIP_DEFAULT.length && ckT9Strip.every((s, i) => s === T9_STRIP_DEFAULT[i]) ? t("ck.t9.sameAsDefault") : `${ckT9Strip.length}` : t("ck.t9.defaultSummary");
-}
-__name(refreshT9StripSummary, "refreshT9StripSummary");
-document.getElementById("ckt9AddBtn").addEventListener("click", () => {
-  const input = document.getElementById("ckt9AddInput");
-  const v = (input.value || "").trim();
-  if (!v) return;
-  const d = t9StripDraft();
-  if (d.length >= T9_STRIP_MAX) {
-    document.getElementById("ckt9LimitHint").hidden = false;
+  if (!el) return;
+  const anyCustom = STRIP_KINDS.some((cfg) => ckStrips[cfg.kind]);
+  if (!anyCustom) {
+    el.textContent = t("ck.t9.defaultSummary");
     return;
   }
-  d.push(v);
-  input.value = "";
-  document.getElementById("ckt9LimitHint").hidden = true;
-  commitT9Strip(d);
-});
-document.getElementById("ckt9Reset").addEventListener("click", () => {
-  commitT9Strip(T9_STRIP_DEFAULT.slice());
-  setNote("ckSaveNote", t("ck.lang.resetDone"));
-});
+  const parts = STRIP_KINDS.map((cfg) => ckStrips[cfg.kind] ? "\u2713" : "\u2013");
+  el.textContent = parts.join(" ");
+}
+__name(refreshStripSummary, "refreshStripSummary");
 document.getElementById("cklangReset").addEventListener("click", () => {
   delete ckLangKeys[ckLangCurrent];
   renderLangKb(ckLangCurrent);
@@ -6169,7 +6239,9 @@ document.getElementById("cklangReset").addEventListener("click", () => {
 function ckPackJson() {
   const pack = { version: 1, rows: ckRows || [] };
   if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
-  if (ckT9Strip) pack.t9Strip = ckT9Strip.slice();
+  if (ckStrips.t9) pack.t9Strip = ckStrips.t9.slice();
+  if (ckStrips.stroke) pack.strokeStrip = ckStrips.stroke.slice();
+  if (ckStrips.ink) pack.inkStrip = ckStrips.ink.slice();
   return pack;
 }
 __name(ckPackJson, "ckPackJson");
