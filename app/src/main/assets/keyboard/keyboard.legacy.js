@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.119";
+  const KEYBOARD_VERSION = "3.73.120";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -2024,6 +2024,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.renderMode();
       this.renderSymbols();
       document.querySelector('[data-action="letters"]').addEventListener("click", () => this.showLetters());
+      document.querySelector('[data-action="numpad"]').addEventListener("click", () => this.showNumpad());
       this.renderSymbolCats();
       document.getElementById("setupButton").addEventListener("click", () => this.toggleSettingsPanel());
       {
@@ -2472,7 +2473,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       });
       const bottom = this.row();
       if (this.bottomSymSplit) {
-        bottom.append(this.specialKey("symbols", t("\u7B26\u53F7"), () => this.showSymbols(), "kb-wide-1_15 kb-special"));
+        bottom.append(this.specialKey("symbols", t("\u7B26\u53F7"), () => this.showSymbols(), "kb-wide-1_4 kb-special"));
         bottom.append(this.specialKey("numpad", "123", () => this.showNumpad(), "kb-wide-1_15 kb-special"));
       } else {
         bottom.append(this.specialKey("symbols", "123", () => this.showSymbols(), "kb-wide-2_1 kb-special", "numpad"));

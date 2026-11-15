@@ -319,6 +319,9 @@
         <div id="symGrid"></div>
         <div id="symCatBar">
             <button class="kb-key kb-special" data-action="letters">ABC</button>
+            <!-- #113 二轮（用户 2026-11-15）：符号层也留 123 直达数字九宫格
+                 （数字层的「符号」键反向闭环），不再绕回主键盘。 -->
+            <button class="kb-key kb-special" data-action="numpad">123</button>
             <div id="symCats"></div>
             <!-- ⌫ 由 setup 注入（specialKey repeat，占换行键原位）：
                  符号层不设换行——换行走 ABC 回主键盘（2026-10-28 用户定案）。 -->

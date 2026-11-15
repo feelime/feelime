@@ -11685,11 +11685,24 @@ test('bottom sym split: off keeps single 123 key, on splits symbols/123 (#113)',
     const numKey = [...onBottom.querySelectorAll('.kb-special')]
         .filter(el => el.textContent === '123')[0];
     assert(symKey && numKey, 'split renders 符号 + 123 keys');
+    equal(symKey.className.includes('kb-wide-1_4'), true,
+        '符号 key widened to 1.4 (2026-11-15 user acceptance)');
     equal(numKey.dataset.lp, undefined, 'no long-press overload on the dedicated 123 key');
     on.tap(numKey);
     assert(!on.$('numPadLayer').hidden, 'tapping 123 opens the number pad directly');
     on.tap(symKey);
     assert(!on.$('symbolLayer').hidden, 'tapping 符号 opens the symbol panel');
+    // #113 二轮：符号层底条自带 123 直达数字九宫格（不绕回主键盘），
+    // 数字层的「符号」键反向闭环。
+    const symBar123 = on.$('symCatBar').querySelector('[data-action="numpad"]');
+    assert(symBar123, 'symbol layer carries the 123 key in its cat bar');
+    on.tap(symBar123);
+    assert(!on.$('numPadLayer').hidden, 'symbol-layer 123 opens the nine-pad directly');
+    const numSym = [...on.$('numPadLayer').querySelectorAll('.num-fn')]
+        .find(el => el.textContent === '符号');
+    assert(numSym, 'nine-pad still carries the 符号 key back');
+    on.tap(numSym);
+    assert(!on.$('symbolLayer').hidden, 'round trip: nine-pad 符号 returns to the symbol layer');
 });
 
 test('t9 side strip customization: t9Strip list wins, bad/empty falls back, stroke stays stock (#112)', {since: '3.73.117'}, () => {
