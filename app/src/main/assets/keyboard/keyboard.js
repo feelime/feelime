@@ -2672,6 +2672,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // screen to make room).
             const layer = document.getElementById('qwertyLayer');
             layer.replaceChildren();
+            let bottomUnit = 0;   // #113 四轮：字母格数（0=dp14/未知）
             layout.rows.forEach(definition => {
                 const config = typeof definition === 'string' ? { keys: definition } : definition;
                 const row = this.row(config.indent);
@@ -2687,6 +2688,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     const paired = indentKeys.includes('|') ||
                         String(config.keys).includes('|');
                     const letters = indentKeys.replace(/\|/g, '').length;
+                    // #113 四轮：底行【符号】/【123】与第三行 Shift/字母
+                    // 同宽——记下格数供 bottom 行选 kb-unit-* 定宽 class
+                    //（dp14 无格数：shift 本身是 flex 键，底行同走 flex）。
+                    bottomUnit = paired ? 0 : letters;
                     if (paired) row.classList.add('kb-align-dp14');
                     else if (letters === 9) row.classList.add('kb-align-9');
                     else if (letters === 11) row.classList.add('kb-align-11');
@@ -2738,13 +2743,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // toggle for the system IME picker (the old globe slot).
             const bottom = this.row();
             // #113（默认关）：开=左下拆【符号】+【123】两键，123 直达数字
-            // 键盘；符号键=Shift/分词宽（kb-wide-1_4）、123=字母键宽
-            // （无宽度类=flex 1，2026-11-15 用户四轮验收定宽），空格
-            // flex 自动吸收差额变窄。关=存量单键：点=符号面板、长按=
-            // 数字键盘。
+            // 键盘；符号键=第三行 Shift/分词宽、123=字母键宽（kb-unit-*
+            // 复刻 kb-align 行的 kb-mod/kb-letter calc，2026-11-15 用户
+            // 四轮验收定宽；dp14 回落 shift 同款 flex 1.4 + flex 1）。
+            // 关=存量单键：点=符号面板、长按=数字键盘。
             if (this.bottomSymSplit) {
-                bottom.append(this.specialKey('symbols', t("符号"), () => this.showSymbols(), 'kb-wide-1_4 kb-special'));
-                bottom.append(this.specialKey('numpad', '123', () => this.showNumpad(), 'kb-special'));
+                const unitCls = bottomUnit === 9 ? 'kb-unit-9'
+                    : bottomUnit === 11 ? 'kb-unit-11' : '';
+                bottom.append(this.specialKey('symbols', t("符号"), () => this.showSymbols(),
+                    (unitCls ? 'kb-mod ' : 'kb-wide-1_4 ') + 'kb-special ' + unitCls));
+                bottom.append(this.specialKey('numpad', '123', () => this.showNumpad(),
+                    'kb-special kb-bottom-num ' + unitCls));
             } else {
                 bottom.append(this.specialKey('symbols', '123', () => this.showSymbols(), 'kb-wide-2_1 kb-special', 'numpad'));
             }

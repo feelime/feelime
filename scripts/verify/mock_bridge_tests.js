@@ -11690,10 +11690,10 @@ test('bottom sym split: off keeps single 123 key, on splits symbols/123 (#113)',
     const numKey = [...onBottom.querySelectorAll('.kb-special')]
         .filter(el => el.textContent === '123')[0];
     assert(symKey && numKey, 'split renders 符号 + 123 keys');
-    equal(symKey.className.includes('kb-wide-1_4'), true,
-        '符号 key matches the shift/sep width (2026-11-15 user acceptance round 4)');
-    equal(numKey.className.includes('kb-wide'), false,
-        'dedicated 123 key matches the letter width (no width class = flex 1)');
+    equal(symKey.className.includes('kb-unit-9'), true,
+        '符号 key mirrors the shift/sep calc width via kb-unit-9 (round 4)');
+    equal(numKey.className.includes('kb-bottom-num'), true,
+        'dedicated 123 key mirrors the letter calc width (round 4)');
     equal(numKey.dataset.lp, undefined, 'no long-press overload on the dedicated 123 key');
     on.tap(numKey);
     assert(!on.$('numPadLayer').hidden, 'tapping 123 opens the number pad directly');

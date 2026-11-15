@@ -2439,6 +2439,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.lettersLayout = layoutName;
       const layer = document.getElementById("qwertyLayer");
       layer.replaceChildren();
+      let bottomUnit = 0;
       layout.rows.forEach((definition) => {
         const config = typeof definition === "string" ? { keys: definition } : definition;
         const row = this.row(config.indent);
@@ -2447,6 +2448,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           const indentKeys = String(indentDef ? indentDef.keys : "");
           const paired = indentKeys.includes("|") || String(config.keys).includes("|");
           const letters = indentKeys.replace(/\|/g, "").length;
+          bottomUnit = paired ? 0 : letters;
           if (paired) row.classList.add("kb-align-dp14");
           else if (letters === 9) row.classList.add("kb-align-9");
           else if (letters === 11) row.classList.add("kb-align-11");
@@ -2473,8 +2475,19 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       });
       const bottom = this.row();
       if (this.bottomSymSplit) {
-        bottom.append(this.specialKey("symbols", t("\u7B26\u53F7"), () => this.showSymbols(), "kb-wide-1_4 kb-special"));
-        bottom.append(this.specialKey("numpad", "123", () => this.showNumpad(), "kb-special"));
+        const unitCls = bottomUnit === 9 ? "kb-unit-9" : bottomUnit === 11 ? "kb-unit-11" : "";
+        bottom.append(this.specialKey(
+          "symbols",
+          t("\u7B26\u53F7"),
+          () => this.showSymbols(),
+          (unitCls ? "kb-mod " : "kb-wide-1_4 ") + "kb-special " + unitCls
+        ));
+        bottom.append(this.specialKey(
+          "numpad",
+          "123",
+          () => this.showNumpad(),
+          "kb-special kb-bottom-num " + unitCls
+        ));
       } else {
         bottom.append(this.specialKey("symbols", "123", () => this.showSymbols(), "kb-wide-2_1 kb-special", "numpad"));
       }

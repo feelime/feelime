@@ -783,6 +783,15 @@ body.landscape { --kb-gap: 4px; }
 .kb-align-11 > .kb-letter { width: calc((100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
 .kb-align-11 > .kb-mod { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
 .kb-align-11 > .kb-special { flex: 1; }
+/* #113 四轮：底行【符号】=第三行 Shift/分词宽（kb-mod 的 indent+1格
+ * calc）、【123】=字母键宽（kb-letter 的 1 格 calc）——kb-unit-* 按
+ * renderLetters 记的格数复刻同款公式（kb-mod/kb-letter 规则在行内，
+ * 底行键拿不到，这里重申；两处公式改动须同步）。dp14 布局不挂此类
+ * （其 shift 本身是 flex 键，底行走 flex 1.4/flex 1 同款回落）。 */
+.kb-unit-9 { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); flex: none; }
+.kb-unit-9.kb-bottom-num { width: calc((100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); }
+.kb-unit-11 { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
+.kb-unit-11.kb-bottom-num { width: calc((100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); }
 /* 14 键贴合（kb-align-dp14）：第二行 5 键帽 4 缝共 9 半键。第三行
  * 半键/键帽显式定宽与第二行等宽（消漂移），差值由两侧功能键均分。 */
 .kb-align-dp14 > .kb-letter { width: calc((100% - 2 * var(--kb-indent) - 4 * var(--kb-gap)) / 9); flex: none; }
@@ -889,19 +898,23 @@ body[data-cap-single="on"] .kb-key.kb-letter .kb-main {
 /* Margin 9 -> 5 - the taller candidate bar consumed the slack and
  * the four symbol rows must stay inside the same 272px budget. */
 #symCatBar { display: flex; gap: 5px; margin-top: 5px; }
-/* #113 四轮（用户定宽）：ABC 与键盘底行【符号】同宽、同 Shift/分词键
- * （1.4）；123 与键盘【123】同宽、同字母键（1）。flex 按行内总份瓜分
- * ——本条总份凑成与键盘底行一致（1.4+1+1+4.15+1.15+2.25=10.95），
- * 份额同源即像素对齐（两行 gap 数不同残余 ~2px 不可辨）。键盘底行
- * 份数变动须同步分类条/⌫ 的补份（6.68/1.87）。 */
-#symCatBar [data-action="letters"] { flex: 1.4; font-size: 13px; }
-#symCatBar [data-action="numpad"] { flex: 1; font-size: 13px; }
+/* #113 四轮（用户定宽）：ABC 与键盘底行【符号】同宽（=第三行 Shift/
+ * 分词的 kb-mod calc）、123 与键盘【123】同宽（=字母键 calc）。定宽
+ * 公式与 kb-unit-* 同款（qwerty 9 格；符号面板单形态，不随布局类走），
+ * symCats/⌫ 回 flex 分剩余。 */
+#symCatBar [data-action="letters"] {
+    width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9);
+    flex: none; font-size: 13px;
+}
+#symCatBar [data-action="numpad"] {
+    width: calc((100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9);
+    flex: none; font-size: 13px;
+}
 /* ⌫ 顶替换行键位（setup 注入）：长按连删（bar 在滚动容器外，
- * bindTouch 合法——numpad back 同判定）。flex 1.87 与 symCats 6.68
- * 是补份（见上注释），不是独立设计值。 */
-#symCatBar [data-role="backspace"] { flex: 1.87; }
+ * bindTouch 合法——numpad back 同判定）。 */
+#symCatBar [data-role="backspace"] { flex: 1.35; }
 #symCats {
-    flex: 6.68;
+    flex: 4.8;
     display: flex;
     gap: 5px;
     overflow-x: auto;
