@@ -1274,14 +1274,14 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     equal(hiddenMap(), {
         home: false, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
-        ckt9strip: true, licenses: true, test: true,
+        ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
         home: true, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
-        ckt9strip: true, licenses: true, test: true,
+        ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', 'home', world.token], 'reportPage(page, parent) on sub-page');
 
@@ -3587,14 +3587,7 @@ test('#85 page reports gesture capability to native', () => {
         'page declares imeGestureSupport on hello');
 });
 
-// 统计必须在全部测试注册之后求值（曾因提前求值吞掉尾部用例的失败，
-// 119/119 假绿实为 118/119——codex 复审 P1）。
-const failed = RESULTS.filter(([, ok]) => !ok);
-console.log(`\n== settings mock-bridge suite: ${RESULTS.length - failed.length}/${RESULTS.length} passed ==`);
-if (failed.length) {
-    console.log('failures: ' + failed.map(([name]) => name).join(' | '));
-    process.exit(1);
-}
+
 
 test('#113 bottom sym split switch: state echo + change persists via bridge', () => {
     const world = new SettingsWorld();
@@ -3607,52 +3600,92 @@ test('#113 bottom sym split switch: state echo + change persists via bridge', ()
         'toggling calls setBottomSymSplit(value, token)');
 });
 
-test('#112 strip editors: three independent sections, add/reorder/reset, save packs each field', () => {
+test('#112 strip pages: three entries route to independent pages, drag reorder, delete/add/reset, save packs fields', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     const FS = world.FeelimeSettings();
+    // 三入口 → 三个独立页，各自渲染自己的清单（t9/stroke 16、ink 12）。
     FS.showPage('customkeys');
     FS.showPage('ckt9strip');
-    // 三段都渲染：T9/笔画默认 16 项，手写 12 项。
-    equal([...world.doc.querySelectorAll('#ckt9List-t9 .row')].length, 16, 't9 section lists 16 defaults');
-    equal([...world.doc.querySelectorAll('#ckt9List-stroke .row')].length, 16, 'stroke section lists 16 defaults');
-    equal([...world.doc.querySelectorAll('#ckt9List-ink .row')].length, 12, 'ink section lists 12 defaults');
-    // T9 段添加 ¥ → 17 项。
-    const t9Input = [...world.doc.querySelectorAll('#ckt9Sections input')]
-        .find(el => el.dataset.stripKind === 't9');
-    t9Input.value = '¥';
-    [...world.doc.querySelectorAll('#ckt9Sections button')]
-        .find(b => b.textContent === '添加' && b.dataset.stripKind === 't9')
-        .listeners.find(l => l.type === 'click').handler();
-    equal([...world.doc.querySelectorAll('#ckt9List-t9 .row')].length, 17, 't9 add appends ¥');
-    // ink 段添加 ％ → 13 项（与 t9 段互不影响）。
-    const inkInput = [...world.doc.querySelectorAll('#ckt9Sections input')]
-        .find(el => el.dataset.stripKind === 'ink');
+    equal([...world.doc.querySelectorAll('#ckt9List .ck-strip-row')].length, 16, 't9 page lists 16 defaults');
+    FS.showPage('ckstrokestrip');
+    equal([...world.doc.querySelectorAll('#ckstrokeList .ck-strip-row')].length, 16, 'stroke page lists 16 defaults');
+    FS.showPage('ckinkstrip');
+    equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 12, 'ink page lists 12 defaults');
+    // ink 添加 ％ → 13 项；t9 页不受影响。
+    const inkInput = world.$('ckinkAddInput');
     inkInput.value = '％';
-    [...world.doc.querySelectorAll('#ckt9Sections button')]
-        .find(b => b.textContent === '添加' && b.dataset.stripKind === 'ink')
-        .listeners.find(l => l.type === 'click').handler();
-    equal([...world.doc.querySelectorAll('#ckt9List-ink .row')].length, 13, 'ink add appends ％');
-    equal([...world.doc.querySelectorAll('#ckt9List-t9 .row')].length, 17, 't9 untouched by ink edits');
-    // stroke 段上移交换前两项。
-    const rows = [...world.doc.querySelectorAll('#ckt9List-stroke .row')];
-    [...rows[1].querySelectorAll('button')].find(b => b.textContent === '↑')
-        .listeners.find(l => l.type === 'click').handler();
-    const fresh = [...world.doc.querySelectorAll('#ckt9List-stroke .row')];
-    equal(fresh[0].querySelector('.row-label span').textContent, '。', 'stroke move-up swaps');
-    // stroke 段恢复默认。
-    const strokeReset = [...world.doc.querySelectorAll('.section-heading button')]
-        .find(b => b.textContent === '恢复默认'
-            && b.closest('.strip-editor') && b.closest('.strip-editor').dataset.stripKind === 'stroke');
-    strokeReset.listeners.find(l => l.type === 'click').handler();
-    const restored = [...world.doc.querySelectorAll('#ckt9List-stroke .row')];
-    equal(restored[0].querySelector('.row-label span').textContent, '，', 'stroke reset restores default order');
-    // 保存：三字段独立打包（stroke 恢复=显式默认数组也打包）。
-    world.$('customJson').value = '{"version":1,"rows":[[]],"t9Strip":null}';
+    world.$('ckinkAddBtn').listeners.find(l => l.type === 'click').handler();
+    equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 13, 'ink add appends ％');
+    // 回 t9 页：仍 16（页面独立，草稿互不影响）。
+    FS.showPage('ckt9strip');
+    equal([...world.doc.querySelectorAll('#ckt9List .ck-strip-row')].length, 16, 't9 untouched by ink edits');
+    // 拖动：row6（'、'）上拖越过 row1 中心 → 落第 2 位（跨多行直接映射）。
+    // 桩与事件形态照抄键盘选择拖动用例（rect 等高排布 + 裸事件直调）。
+    const rows = [...world.doc.querySelectorAll('#ckt9List .ck-strip-row')];
+    rows.forEach((r, i) => {
+        r.getBoundingClientRect = () => ({ x: 0, y: 100 + i * 44, top: 100 + i * 44,
+            height: 40, width: 300, bottom: 140 + i * 44, left: 0, right: 300 });
+    });
+    const host = rows[0].parentElement;
+    host.setPointerCapture = () => {}; host.releasePointerCapture = () => {};
+    const mkEv = (y) => ({ pointerId: 7, clientX: 10, clientY: y, pointerType: 'touch',
+        isPrimary: true, button: 0, preventDefault: () => {} });
+    // handler 靠 ev.type 区分 pointerup/cancel：emit 注入真实事件名。
+    const emit = (el, type, ev) => (el.listeners || []).filter(l => l.type === type)
+        .forEach(l => l.handler(Object.assign({}, ev, { type })));
+    const handle = rows[6].querySelector('.ck-strip-handle');
+
+    emit(handle, 'pointerdown', mkEv(100 + 6 * 44 + 20));   // row6（'、'）中心
+
+    emit(host, 'pointermove', mkEv(100 + 0 * 44 + 2));      // 上拖过 row0 中心 → 落第 1 位
+
+    emit(host, 'pointerup', mkEv(100 + 0 * 44 + 2));
+
+    const after = [...world.doc.querySelectorAll('#ckt9List .ck-strip-row')]
+        .map(r => r.dataset.stripValue);
+    equal(after[0], '、', 'dragged row lands first');
+    equal(after[1], '，', 'original first row follows');
+    // 松手即标脏、DOM 顺序=草稿；保存后三字段独立打包。
+    world.$('customJson').value = '{"version":1,"rows":[[]]}';
     world.$('btnSaveCustom').click();
     const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
-    equal(saved.t9Strip[saved.t9Strip.length - 1], '¥', 'packed t9Strip has the appended ¥');
-    equal(saved.inkStrip[saved.inkStrip.length - 1], '％', 'packed inkStrip has the appended ％');
-    equal(saved.strokeStrip[0], '，', 'packed strokeStrip is the explicit default array');
+    equal(saved.t9Strip[0], '、', 'packed t9Strip reflects drag order');
+    equal(saved.inkStrip[saved.inkStrip.length - 1], '％', 'packed inkStrip keeps ％');
+    equal(saved.strokeStrip, undefined, 'stroke untouched = field omitted');
+    // 删除：重排后删的是当前行（row0 现在是 '、'）。
+    FS.showPage('ckt9strip');
+    const fresh = [...world.doc.querySelectorAll('#ckt9List .ck-strip-row')];
+    const del = fresh[0].querySelectorAll('button')[1];
+    equal(del.textContent, '✕', 'delete button rendered');
+    del.listeners.find(l => l.type === 'click').handler();
+    const afterDel = [...world.doc.querySelectorAll('#ckt9List .ck-strip-row')]
+        .map(r => r.dataset.stripValue);
+    equal(afterDel[0], '，', 'delete removes the dragged-first row');
+    assert(!afterDel.includes('、'), '、 is gone');
+    // 最后一项禁删（新页删到 1 项时按钮 disabled）。
+    FS.showPage('ckinkstrip');
+    for (let i = 0; i < 12; i++) {
+        const rs = [...world.doc.querySelectorAll('#ckinkList .ck-strip-row')];
+        rs[rs.length - 1].querySelectorAll('button')[1]
+            .listeners.find(l => l.type === 'click').handler();
+    }
+    const lastRow = [...world.doc.querySelectorAll('#ckinkList .ck-strip-row')][0];
+    assert(lastRow.querySelectorAll('button')[1].disabled, 'last remaining row disables delete');
+    // 恢复默认（页内 confirm 桩）：sandbox.window === sandbox，stub 挂这。
+    world.sandbox.confirm = () => true;
+    world.$('ckinkReset').listeners.find(l => l.type === 'click').handler();
+    delete world.sandbox.confirm;
+    equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 12, 'reset restores 12 defaults');
 });
 
+
+// 统计必须在全部测试注册之后求值（曾因提前求值吞掉尾部用例的失败，
+// 119/119 假绿实为 118/119——codex 复审 P1；2026-11-15 再犯：strip 用例
+// append 在汇总之后，FAIL 不影响退出码——汇总块必须在真实文件末尾）。
+const failed = RESULTS.filter(([, ok]) => !ok);
+console.log(`\n== settings mock-bridge suite: ${RESULTS.length - failed.length}/${RESULTS.length} passed ==`);
+if (failed.length) {
+    console.log('failures: ' + failed.map(([name]) => name).join(' | '));
+    process.exit(1);
+}

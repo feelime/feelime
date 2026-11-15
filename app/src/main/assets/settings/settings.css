@@ -1091,7 +1091,10 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
  * 页底内容，用户两轮实录）。body 底 padding 兜 safe area。 */
 .page[data-page="customkeys"],
 .page[data-page="cksymbol"],
-.page[data-page="cklang"] {
+.page[data-page="cklang"],
+.page[data-page="ckt9strip"],
+.page[data-page="ckstrokestrip"],
+.page[data-page="ckinkstrip"] {
     display: flex; flex-direction: column;
     height: calc(100dvh - 16px - max(env(safe-area-inset-bottom), var(--app-inset-bottom, 0px)));
 }
@@ -1450,3 +1453,40 @@ select.ck-row2-ctl { flex: 1; padding: 8px 30px 8px 10px;
 .dict-slot .slot-label small { color: var(--muted, #888); }
 .dict-slot .slot-del { flex: none; border: 0; background: none; color: #dc2626;
     font-size: 13px; padding: 6px 10px; cursor: pointer; }
+
+/* ===== #112 符号栏编辑页（2026-11-15 二轮：拖动排序） ===== */
+/* 拖柄：复用键盘选择页 ≡ 的视觉，触摸区扩到 44px（codex 方案：图形紧凑、
+ * 热区不妥协）；只对拖柄关 touch-action——列表保持原生纵向滚动。 */
+.ck-strip-handle {
+    min-width: 44px;
+    min-height: 44px;
+    touch-action: none;
+    cursor: grab;
+}
+.ck-strip-row {
+    touch-action: pan-y;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.ck-strip-row > * + * { margin-left: 8px; }
+/* 拖动中的原行=等高占位（内容隐藏+虚线框），浮动预览（ghost）跟随指针。 */
+.ck-strip-row.dragging {
+    outline: 1px dashed var(--accent);
+    outline-offset: -1px;
+}
+.ck-strip-row.dragging > *:not(.ck-strip-handle) { visibility: hidden; }
+.ck-strip-ghost {
+    position: fixed;
+    z-index: 40;
+    pointer-events: none;
+    background: var(--pill, #3d3d3d);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+    padding: 8px 14px;
+    font-size: 20px;
+}
+.ck-strip-row .strip-glyph {
+    font-size: 20px;
+    min-width: 1.6em;
+}

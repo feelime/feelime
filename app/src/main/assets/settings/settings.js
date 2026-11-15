@@ -353,12 +353,18 @@ const I18N = {
         "ck.f.kind": "类型",
         "ck.lang.title": "语言键盘",
         "ck.t9.title": "键盘符号栏",
-        "ck.t9.strip": "T9 / 笔画 / 手写符号栏",
-        "ck.t9.pageTitle": "键盘符号栏",
-        "ck.t9.hint": "三栏各自独立定制：T9 与笔画键盘空闲时左列的常用符号、手写键盘右侧滚动符号列，按这里的顺序从上到下排列。T9/笔画打字中左列会临时显示拼音音节，与符号栏互不影响。",
-        "ck.t9.secT9": "T9 九宫格",
-        "ck.t9.secStroke": "笔画键盘",
-        "ck.t9.secInk": "手写键盘",
+        "ck.t9.entryT9": "T9 九宫格符号栏",
+        "ck.t9.entryStroke": "笔画键盘符号栏",
+        "ck.t9.entryInk": "手写键盘符号栏",
+        "ck.t9.pageTitleT9": "T9 符号栏",
+        "ck.t9.pageTitleStroke": "笔画符号栏",
+        "ck.t9.pageTitleInk": "手写符号栏",
+        "ck.t9.hintT9": "九宫格键盘空闲时左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除；打字中该列临时显示拼音音节，与符号栏互不影响。",
+        "ck.t9.hintStroke": "笔画键盘左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除。",
+        "ck.t9.hintInk": "手写键盘右侧滚动符号列，拖动 ≡ 调整顺序，点 ✕ 删除。",
+        "ck.t9.drag": "拖动排序",
+        "ck.t9.resetConfirm": "恢复此符号栏的默认内容和顺序？",
+        "ck.t9.lastOne": "至少保留一个符号",
         "ck.t9.resetOne": "恢复默认",
         "ck.t9.addLabel": "添加符号",
         "ck.t9.addPlaceholder": "符号",
@@ -1211,12 +1217,18 @@ const I18N = {
         "ck.f.kind": "Type",
         "ck.lang.title": "Language keyboards",
         "ck.t9.title": "Keyboard symbol strips",
-        "ck.t9.strip": "T9 / stroke / handwriting strips",
-        "ck.t9.pageTitle": "Keyboard symbol strips",
-        "ck.t9.hint": "Each strip is customized independently: the left column of the T9 and stroke keyboards when idle, and the scrolling symbol column on the right of the handwriting keyboard, ordered top to bottom as listed. While typing, the T9/stroke column temporarily shows pinyin syllables instead.",
-        "ck.t9.secT9": "T9 nine-key",
-        "ck.t9.secStroke": "Stroke keyboard",
-        "ck.t9.secInk": "Handwriting keyboard",
+        "ck.t9.entryT9": "T9 nine-key strip",
+        "ck.t9.entryStroke": "Stroke keyboard strip",
+        "ck.t9.entryInk": "Handwriting strip",
+        "ck.t9.pageTitleT9": "T9 strip",
+        "ck.t9.pageTitleStroke": "Stroke strip",
+        "ck.t9.pageTitleInk": "Handwriting strip",
+        "ck.t9.hintT9": "Symbols in the left column of the nine-key keyboard when idle. Drag ≡ to reorder, tap ✕ to remove; while typing the column shows pinyin syllables instead.",
+        "ck.t9.hintStroke": "Symbols in the stroke keyboard's left column. Drag ≡ to reorder, tap ✕ to remove.",
+        "ck.t9.hintInk": "Symbols in the handwriting keyboard's scrolling column. Drag ≡ to reorder, tap ✕ to remove.",
+        "ck.t9.drag": "Drag to reorder",
+        "ck.t9.resetConfirm": "Restore the default symbols and order for this strip?",
+        "ck.t9.lastOne": "Keep at least one symbol",
         "ck.t9.resetOne": "Reset",
         "ck.t9.addLabel": "Add symbol",
         "ck.t9.addPlaceholder": "Symbol",
@@ -1827,7 +1839,7 @@ const I18N = {
 };
 
 // #39-12：customkeys（二级）与 customkeys-editor（三级）。
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -2177,12 +2189,14 @@ let currentPage = "home";
 const pageScrolls = {};
 
 function showPage(name) {
+    // 拖动会话不能跨页存活：先取消（回滚），再走既有切换流程。
+    if (typeof cancelStripDrag === "function") cancelStripDrag();
     if (!PAGES.includes(name)) return;
     // #39-12 定制按键页：脏态离开先弹页内确认（改完退出没保存都不
     // 知道——用户验收实录；不用 confirm：WebChromeClient 不处理时恒
     // false 会把用户锁死）。收口在本函数里——包装外层函数会漏掉已
     // 导出的旧引用。ckEnter 同理在进页时统一触发。
-    const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip"];
+    const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"];
     if (typeof ckDirty !== "undefined" && CK_FAMILY.includes(currentPage)
         && !CK_FAMILY.includes(name) && ckDirty) {
         ckLeaveTarget = name;
@@ -2225,7 +2239,7 @@ function showPage(name) {
     // 动作）：DOM 随当前页移动（page = header + 滚动 main + 保存条的
     // flex 布局见 css）。离开家族（含回首页）时条随上一次所在子页
     // 隐藏，脏态由离开确认兜底。
-    if (name === "cksymbol" || name === "cklang" || name === "ckt9strip") {
+    if (["cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"].includes(name)) {
         // 深链直达（focusSetting/URL）没经过 ckEnter→ckLoad，rows=null：
         // 此时「保存全部」的整包会把已有定制覆盖掉（codex review P1——
         // rows 保底 [] 的前提是「草稿已加载」，未加载≠空表）。
@@ -2235,7 +2249,7 @@ function showPage(name) {
         if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
     }
     if (name === "cklang") renderLangKb(ckLangCurrent);
-    if (name === "ckt9strip") renderStripPage();
+    if (CK_STRIP_PAGES[name]) renderStripPage(CK_STRIP_PAGES[name]);
     if (name === "customkeys" && !wasCustomkeys && typeof refreshLangCounts === "function") {
         refreshLangCounts();
     }
@@ -6526,149 +6540,286 @@ document.querySelectorAll("[data-cklang]").forEach(row => {
 });
 document.getElementById("ckSymbolEntry").addEventListener("click", () => showPage("cksymbol"));
 document.getElementById("ckT9StripEntry").addEventListener("click", () => showPage("ckt9strip"));
+document.getElementById("ckStrokeStripEntry").addEventListener("click", () => showPage("ckstrokestrip"));
+document.getElementById("ckInkStripEntry").addEventListener("click", () => showPage("ckinkstrip"));
 
-/* ===== #112 键盘符号栏（四级页，T9/笔画/手写三栏）：排序/删除/添加/恢复 =====
- * 草稿即真相：每次编辑原地改 ckStrips[kind] + ckMarkDirty(true)，保存走
- * 统一保存条（ckPackJson 打 t9Strip/strokeStrip/inkStrip 字段）。null=未
- * 定制（summary 显示「默认」）；编辑动作一旦发生即落具体数组（含「恢复
- * 默认」——显式数组与内置默认内容相同即可，不必回 null）。
- * 默认清单与键盘端常量同步维护（T9/笔画=T9_SIDE_CHARS，手写=
- * INK_SIDE_SYMBOLS，keyboard.js）——两处漂移时键盘端是权威。 */
+/* ===== #112 键盘符号栏（2026-11-15 二轮：三键盘独立页面+拖动排序） =====
+ * 信息架构（codex 方案）：customkeys 三行入口 → 三个独立编辑页
+ * （ckt9strip/ckstrokestrip/ckinkstrip），路由映射 CK_STRIP_PAGES；
+ * 单 kind 渲染（不猜 currentKind）。排序=拖柄拖动（beginStripRowDrag：
+ * host capture+指针 y 落点直接映射+浮起 ghost+边缘自动滚动+中断回滚），
+ * 删除 ✕（最后一项禁删——键盘端空表=回默认的语义矛盾）、添加固定尾部、
+ * 恢复默认页内确认。草稿与保存沿用 ck 家族：编辑写 ckStrips[kind]+
+ * ckMarkDirty(true)，统一保存条提交整包（跨页未保存修改一并生效——
+ * CK 家族既有语义，不为此引入独立保存事务）。 */
 const T9_STRIP_DEFAULT = ['，', '。', '？', '！', '；', '：', '、',
     '“', '”', '（', '）', '《', '》', '…', '·', '—'];
 const INK_STRIP_DEFAULT = ['，', '。', '？', '！', '：', '；', '、', '～', '……', '·', '＃', '＠'];
 const T9_STRIP_MAX = 24;
 const STRIP_KINDS = [
-    { kind: "t9", field: "t9Strip", titleKey: "ck.t9.secT9", def: T9_STRIP_DEFAULT },
-    { kind: "stroke", field: "strokeStrip", titleKey: "ck.t9.secStroke", def: T9_STRIP_DEFAULT },
-    { kind: "ink", field: "inkStrip", titleKey: "ck.t9.secInk", def: INK_STRIP_DEFAULT },
+    { kind: "t9", page: "ckt9strip", field: "t9Strip",
+      titleKey: "ck.t9.pageTitleT9", hintKey: "ck.t9.hintT9", def: T9_STRIP_DEFAULT },
+    { kind: "stroke", page: "ckstrokestrip", field: "strokeStrip",
+      titleKey: "ck.t9.pageTitleStroke", hintKey: "ck.t9.hintStroke", def: T9_STRIP_DEFAULT },
+    { kind: "ink", page: "ckinkstrip", field: "inkStrip",
+      titleKey: "ck.t9.pageTitleInk", hintKey: "ck.t9.hintInk", def: INK_STRIP_DEFAULT },
 ];
+const CK_STRIP_PAGES = {};
+STRIP_KINDS.forEach(cfg => { CK_STRIP_PAGES[cfg.page] = cfg.kind; });
+const stripCfg = kind => STRIP_KINDS.find(k => k.kind === kind);
 function stripDraft(kind) {
-    const cfg = STRIP_KINDS.find(k => k.kind === kind);
-    return ckStrips[kind] ? ckStrips[kind].slice() : cfg.def.slice();
+    return ckStrips[kind] ? ckStrips[kind].slice() : stripCfg(kind).def.slice();
 }
-function commitStrip(kind, arr) {
-    ckStrips[kind] = arr;
-    ckMarkDirty(true);
-    renderStripPage();
+function sameStrip(a, b) {
+    return a.length === b.length && a.every((v, i) => v === b[i]);
 }
-function renderStripPage() {
-    const host = document.getElementById("ckt9Sections");
-    if (!host) return;
-    host.replaceChildren();
-    for (const cfg of STRIP_KINDS) {
-        const section = document.createElement("div");
-        section.className = "strip-editor";
-        section.dataset.stripKind = cfg.kind;
-        const head = document.createElement("div");
-        head.className = "section-heading";
-        const h3 = document.createElement("h2");
-        h3.textContent = t(cfg.titleKey);
-        head.append(h3);
-        const resetBtn = document.createElement("button");
-        resetBtn.className = "btn";
-        resetBtn.type = "button";
-        resetBtn.textContent = t("ck.t9.resetOne");
-        resetBtn.addEventListener("click", () => {
-            commitStrip(cfg.kind, cfg.def.slice());
-            setNote("ckSaveNote", t("ck.lang.resetDone"));
-        });
-        head.append(resetBtn);
-        section.append(head);
-        const list = document.createElement("div");
-        list.className = "strip-list";
-        list.id = `ckt9List-${cfg.kind}`;
-        const cur = stripDraft(cfg.kind);
-        cur.forEach((sym, i) => {
-            const row = document.createElement("div");
-            row.className = "row";
-            const label = document.createElement("span");
-            label.className = "row-label";
-            const big = document.createElement("span");
-            big.textContent = sym;
-            big.style.fontSize = "20px";
-            big.style.minWidth = "1.6em";
-            label.append(big);
-            row.append(label);
-            const mk = (text, title, fn) => {
-                const b = document.createElement("button");
-                b.className = "btn";
-                b.type = "button";
-                b.textContent = text;
-                b.setAttribute("aria-label", title);
-                b.addEventListener("click", fn);
-                row.append(b);
-            };
-            mk("↑", t("ck.t9.up"), () => {
-                if (i === 0) return;
-                const d = stripDraft(cfg.kind);
-                [d[i - 1], d[i]] = [d[i], d[i - 1]];
-                commitStrip(cfg.kind, d);
-            });
-            mk("↓", t("ck.t9.down"), () => {
-                if (i === cur.length - 1) return;
-                const d = stripDraft(cfg.kind);
-                [d[i + 1], d[i]] = [d[i], d[i + 1]];
-                commitStrip(cfg.kind, d);
-            });
-            mk("✕", t("ck.t9.remove"), () => {
-                const d = stripDraft(cfg.kind);
-                d.splice(i, 1);
-                commitStrip(cfg.kind, d);
-            });
-            list.append(row);
-        });
-        section.append(list);
-        // 添加行（每段独立输入框，data-kind 绑定）。
-        const addRow = document.createElement("div");
-        addRow.className = "row";
-        const addLabel = document.createElement("span");
-        addLabel.className = "row-label";
-        const addSpan = document.createElement("span");
-        addSpan.textContent = t("ck.t9.addLabel");
-        addLabel.append(addSpan);
-        addRow.append(addLabel);
-        const ctl = document.createElement("span");
-        ctl.className = "ck-row2-ctl";
-        ctl.style.cssText = "display:flex;gap:8px;";
-        const input = document.createElement("input");
-        input.type = "text";
-        input.maxLength = 3;
-        input.placeholder = t("ck.t9.addPlaceholder");
-        input.dataset.stripKind = cfg.kind;
-        ctl.append(input);
-        const addBtn = document.createElement("button");
-        addBtn.className = "btn";
-        addBtn.type = "button";
-        addBtn.textContent = t("ck.t9.addBtn");
-        addBtn.dataset.stripKind = cfg.kind;
-        addBtn.addEventListener("click", () => {
-            const v = (input.value || "").trim();
-            if (!v) return;
-            const d = stripDraft(cfg.kind);
-            if (d.length >= T9_STRIP_MAX) {
-                setNote("ckSaveNote", t("ck.t9.limitHint"));
-                return;
-            }
-            d.push(v);
-            input.value = "";
-            commitStrip(cfg.kind, d);
-        });
-        ctl.append(addBtn);
-        addRow.append(ctl);
-        section.append(addRow);
-        host.append(section);
-    }
-    refreshStripSummary();
+function stripSummaryText(kind) {
+    const cur = ckStrips[kind];
+    if (!cur) return t("ck.t9.defaultSummary");
+    return sameStrip(cur, stripCfg(kind).def)
+        ? t("ck.t9.sameAsDefault") : `${cur.length}`;
 }
 function refreshStripSummary() {
-    const el = document.getElementById("ckT9StripSummary");
-    if (!el) return;
-    const anyCustom = STRIP_KINDS.some(cfg => ckStrips[cfg.kind]);
-    if (!anyCustom) { el.textContent = t("ck.t9.defaultSummary"); return; }
-    const parts = STRIP_KINDS.map(cfg => ckStrips[cfg.kind] ? "✓" : "–");
-    el.textContent = parts.join(" ");
+    for (const cfg of STRIP_KINDS) {
+        const el = document.getElementById(`ck${cfg.kind === "t9" ? "T9" : cfg.kind === "stroke" ? "Stroke" : "Ink"}StripSummary`);
+        if (el) el.textContent = stripSummaryText(cfg.kind);
+    }
 }
+function updateStripControls(kind) {
+    const count = document.getElementById(`ck${kind}Count`);
+    if (count) count.textContent = `${stripDraft(kind).length} / ${T9_STRIP_MAX}`;
+}
+/** 提交草稿；与现值相同不制造新脏态（拖回原位/恢复时已等于默认）。 */
+function commitStrip(kind, next) {
+    if (sameStrip(stripDraft(kind), next)) return false;
+    ckStrips[kind] = next.slice();
+    ckMarkDirty(true);
+    refreshStripSummary();
+    updateStripControls(kind);
+    return true;
+}
+function renderStripList(kind) {
+    const host = document.getElementById(`ck${kind}List`);
+    if (!host) return;
+    const cur = stripDraft(kind);
+    host.replaceChildren();
+    cur.forEach((sym, i) => {
+        const row = document.createElement("div");
+        row.className = "row ck-strip-row";
+        row.dataset.stripValue = sym;
+        // 拖柄（≈ 键盘选择页 ≡ 的形态，热区 44px）。
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.className = "btn small kb-drag ck-strip-handle";
+        handle.textContent = "≡";
+        handle.setAttribute("aria-label", t("ck.t9.drag"));
+        handle.addEventListener("pointerdown", e => beginStripRowDrag(e, kind, row));
+        row.append(handle);
+        const label = document.createElement("span");
+        label.className = "row-label";
+        const big = document.createElement("span");
+        big.className = "strip-glyph";
+        big.textContent = sym;
+        label.append(big);
+        row.append(label);
+        // 删除：捕获 row 而非渲染下标（拖动后下标失效会删错项）。
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "btn";
+        del.textContent = "✕";
+        del.setAttribute("aria-label", t("ck.t9.remove"));
+        del.addEventListener("click", () => removeStripRow(kind, row));
+        if (cur.length <= 1) {
+            del.disabled = true;   // 键盘端空表=回默认，删空会语义矛盾
+            del.setAttribute("title", t("ck.t9.lastOne"));
+        }
+        row.append(del);
+        host.append(row);
+    });
+    updateStripControls(kind);
+}
+function renderStripPage(kind) {
+    renderStripList(kind);
+    refreshStripSummary();
+}
+function removeStripRow(kind, row) {
+    if (stripDrag) return;
+    const host = row.parentElement;
+    const index = Array.from(host.children).indexOf(row);
+    const next = stripDraft(kind);
+    if (index < 0 || next.length <= 1) return;
+    next.splice(index, 1);
+    if (commitStrip(kind, next)) renderStripList(kind);
+}
+// 三页的添加与恢复（固定 id 前缀 ck<kind>）。
+for (const cfg of STRIP_KINDS) {
+    const kind = cfg.kind;
+    const addBtn = document.getElementById(`ck${kind}AddBtn`);
+    const input = document.getElementById(`ck${kind}AddInput`);
+    if (addBtn) addBtn.addEventListener("click", () => {
+        const v = (input.value || "").trim();
+        if (!v) return;
+        const d = stripDraft(kind);
+        if (d.length >= T9_STRIP_MAX) { setNote("ckSaveNote", t("ck.t9.limitHint")); return; }
+        d.push(v);
+        input.value = "";
+        if (commitStrip(kind, d)) renderStripList(kind);
+        // 添加后列表重建，输入框是静态 HTML 不受影响（焦点保留，连续添加）。
+        input.focus();
+    });
+    // Enter 提交；composition 会话中的 Enter（中文选词确认）不提交。
+    if (input) input.addEventListener("keydown", ev => {
+        if (ev.key !== "Enter" || ev.isComposing) return;
+        addBtn.click();
+    });
+    const reset = document.getElementById(`ck${kind === "t9" ? "t9" : kind}Reset`);
+    if (reset) reset.addEventListener("click", () => {
+        const cur = stripDraft(kind);
+        if (sameStrip(cur, cfg.def)) { setNote("ckSaveNote", t("ck.t9.sameAsDefault")); return; }
+        if (window.confirm(t("ck.t9.resetConfirm"))) {
+            if (commitStrip(kind, cfg.def.slice())) renderStripList(kind);
+            setNote("ckSaveNote", t("ck.lang.resetDone"));
+        }
+    });
+}
+
+/* ---- 拖动会话（codex 方案 2026-11-15：保留 beginKbRowDrag 两条经验——
+ * capture/move 挂不移动的 host；指针 y 落点直接映射跨多行。新增：6px
+ * 误触阈值、浮起 ghost+原行占位、main 边缘自动滚动、中断（cancel/丢
+ * capture/切页/resize）回滚到拖动前顺序、松手仅在顺序确有变化时提交。） */
+let stripDrag = null;
+function beginStripRowDrag(e, kind, row) {
+    if (stripDrag || e.isPrimary === false) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    const host = row.parentElement;
+    if (!host) return;
+    const s = stripDrag = {
+        kind, row, host,
+        scroller: row.closest("main") || document.body,
+        pid: e.pointerId,
+        startY: e.clientY,
+        y: e.clientY,
+        x: e.clientX,
+        originalRows: Array.from(host.children),
+        before: stripDraft(kind),
+        active: false,
+        done: false,
+        ghost: null,
+        raf: 0,
+        lastT: 0,
+    };
+    const move = ev => { if (ev.pointerId === s.pid) moveStripDrag(s, ev); };
+    const finish = ev => {
+        if (ev.pointerId !== s.pid && ev.type !== "lostpointercapture") return;
+        finishStripDrag(s, ev.type === "pointerup");
+    };
+    s.unbind = () => {
+        host.removeEventListener("pointermove", move);
+        host.removeEventListener("pointerup", finish);
+        host.removeEventListener("pointercancel", finish);
+        host.removeEventListener("lostpointercapture", finish);
+    };
+    host.addEventListener("pointermove", move);
+    host.addEventListener("pointerup", finish);
+    host.addEventListener("pointercancel", finish);
+    host.addEventListener("lostpointercapture", finish);
+    try { host.setPointerCapture(s.pid); }
+    catch (_) { finishStripDrag(s, false); }
+}
+function moveStripDrag(s, ev) {
+    if (s.done) return;
+    s.y = ev.clientY;
+    s.x = ev.clientX;
+    if (!s.active && Math.abs(s.y - s.startY) < 6) return;
+    if (!s.active) {
+        s.active = true;
+        s.row.classList.add("dragging");
+        // 浮起预览：只挂符号文本，不克隆按钮（避免重复焦点/aria）。
+        s.ghost = document.createElement("div");
+        s.ghost.className = "ck-strip-ghost";
+        s.ghost.textContent = s.row.dataset.stripValue;
+        document.body.append(s.ghost);
+        const rc = s.row.getBoundingClientRect();
+        s.ghostOffX = s.x - rc.left;
+        s.ghostOffY = s.y - rc.top;
+        startStripAutoScroll(s);
+    }
+    placeStripRow(s);
+    updateStripGhost(s);
+}
+function placeStripRow(s) {
+    const siblings = Array.from(s.host.children).filter(n => n !== s.row);
+    let anchor = null;
+    for (const sib of siblings) {
+        const rc = sib.getBoundingClientRect();
+        if (s.y < rc.top + rc.height / 2) { anchor = sib; break; }
+    }
+    const inPlace = anchor ? s.row.nextElementSibling === anchor
+        : s.host.lastElementChild === s.row;
+    if (!inPlace) s.host.insertBefore(s.row, anchor);
+}
+function updateStripGhost(s) {
+    if (!s.ghost) return;
+    s.ghost.style.left = (s.x - s.ghostOffX) + "px";
+    s.ghost.style.top = (s.y - s.ghostOffY) + "px";
+}
+// 边缘自动滚动：指针进入 main 上下 ~40px 区域时按帧推进；指针停住不动
+// 也要继续（无 pointermove 时的持续滚动），rAF 循环内自驱。
+function startStripAutoScroll(s) {
+    const EDGE = 40, SPEED = 480;
+    // sandbox（mock settings）无 performance：Date.now 兜底（dt<=0 防御
+    // 会让同步 rAF 环境的自动滚动自停，这里只是取初值）。
+    s.lastT = (typeof performance !== "undefined" && performance.now)
+        ? performance.now() : Date.now();
+    const tick = now => {
+        if (s.done) return;
+        const dt = Math.min(32, now - s.lastT);
+        // dt<=0 或 NaN（同步 rAF/回调参数与初值时钟不同源的测试环境）自停：
+        // 防 fake DOM 的立即执行 rAF 同步无限递归；真实浏览器 rAF 异步
+        // dt 恒为正不受影响。
+        if (!(dt > 0)) return;
+        s.lastT = now;
+        const rc = s.scroller.getBoundingClientRect();
+        let dy = 0;
+        if (s.y < rc.top + EDGE) dy = -SPEED * dt / 1000;
+        else if (s.y > rc.bottom - EDGE) dy = SPEED * dt / 1000;
+        if (dy) {
+            s.scroller.scrollTop += dy;
+            placeStripRow(s);
+        }
+        s.raf = requestAnimationFrame(tick);
+    };
+    s.raf = requestAnimationFrame(tick);
+}
+function finishStripDrag(s, accept) {
+    if (!s || s.done) return;
+    s.done = true;   // 防 release 触发的 lostpointercapture 二次进入
+    if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(s.raf);
+    s.unbind();
+    try { s.host.releasePointerCapture(s.pid); } catch (_) { /* 无捕获 */ }
+    const next = Array.from(s.host.children).map(r => r.dataset.stripValue);
+    if (!accept) {
+        // 回滚：按拖动前顺序原样放回（originalRows 引用即原节点）。
+        s.originalRows.forEach(r => s.host.append(r));
+    }
+    s.row.classList.remove("dragging");
+    if (s.ghost) { s.ghost.remove(); s.ghost = null; }
+    stripDrag = null;
+    if (accept && s.active && !sameStrip(s.before, next)) {
+        // DOM 已是目标顺序，直接写草稿不重画。
+        ckStrips[s.kind] = next.slice();
+        ckMarkDirty(true);
+        refreshStripSummary();
+        updateStripControls(s.kind);
+    }
+}
+// 中断源：切页/页面隐藏/旋转（拖动中 DOM 重建会把状态打烂）。
+function cancelStripDrag() {
+    if (stripDrag) finishStripDrag(stripDrag, false);
+}
+document.addEventListener("visibilitychange", cancelStripDrag);
+window.addEventListener("resize", cancelStripDrag);
 document.getElementById("cklangReset").addEventListener("click", () => {
     delete ckLangKeys[ckLangCurrent];
     renderLangKb(ckLangCurrent);
