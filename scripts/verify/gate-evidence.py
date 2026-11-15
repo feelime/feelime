@@ -92,13 +92,23 @@ def cmd_record(args):
 
 
 def is_ancestor(old, new):
-    """old 是 new 的祖先（或相同）。git 不可用/sha 不在历史 → None（按 STALE 处理）。"""
+    """old 是 new 的祖先（或相同）。git 不可用/sha 不在历史 → None（按 STALE 处理）。
+
+    squash/rebase 合并会把记账 commit 挤出新历史——内容相同的续命规则：
+    祖先判定失败时比较 tree id（git rev-parse <sha>^{tree}），tree 一致
+    视为同一代码（2026-11-15 squash 合并后 8 段 FRESH 被误作废的实录）。
+    """
     if old == new:
         return True
     r = git("merge-base", "--is-ancestor", old, new)
     if r.returncode == 0:
         return True
     if r.returncode == 1:
+        t_old = git("rev-parse", f"{old}^{{tree}}")
+        t_new = git("rev-parse", f"{new}^{{tree}}")
+        if (t_old.returncode == 0 and t_new.returncode == 0
+                and t_old.stdout.strip() == t_new.stdout.strip()):
+            return True
         return False
     return None  # 仓库异常（sha 漂移/gc 掉了）
 
