@@ -889,19 +889,19 @@ body[data-cap-single="on"] .kb-key.kb-letter .kb-main {
 /* Margin 9 -> 5 - the taller candidate bar consumed the slack and
  * the four symbol rows must stay inside the same 272px budget. */
 #symCatBar { display: flex; gap: 5px; margin-top: 5px; }
-/* #113 三轮（用户定宽）：ABC 与键盘底行【符号】同宽（2.1）、123 与
- * 键盘底行【123】同宽（1.15）。flex 按行内总份瓜分——本条总份凑成与
- * 键盘底行一致（2.1+1.15+1+4.15+1.15+2.25=11.8），份额同源即像素
- * 对齐（两行 gap 数不同残余 ~2px 不可辨）。键盘底行份数变动须同步
- * 分类条/⌫ 的补份（6.75/1.80）。 */
-#symCatBar [data-action="letters"] { flex: 2.1; font-size: 13px; }
-#symCatBar [data-action="numpad"] { flex: 1.15; font-size: 13px; }
+/* #113 四轮（用户定宽）：ABC 与键盘底行【符号】同宽、同 Shift/分词键
+ * （1.4）；123 与键盘【123】同宽、同字母键（1）。flex 按行内总份瓜分
+ * ——本条总份凑成与键盘底行一致（1.4+1+1+4.15+1.15+2.25=10.95），
+ * 份额同源即像素对齐（两行 gap 数不同残余 ~2px 不可辨）。键盘底行
+ * 份数变动须同步分类条/⌫ 的补份（6.68/1.87）。 */
+#symCatBar [data-action="letters"] { flex: 1.4; font-size: 13px; }
+#symCatBar [data-action="numpad"] { flex: 1; font-size: 13px; }
 /* ⌫ 顶替换行键位（setup 注入）：长按连删（bar 在滚动容器外，
- * bindTouch 合法——numpad back 同判定）。flex 1.80 与 symCats 6.75
+ * bindTouch 合法——numpad back 同判定）。flex 1.87 与 symCats 6.68
  * 是补份（见上注释），不是独立设计值。 */
-#symCatBar [data-role="backspace"] { flex: 1.80; }
+#symCatBar [data-role="backspace"] { flex: 1.87; }
 #symCats {
-    flex: 6.75;
+    flex: 6.68;
     display: flex;
     gap: 5px;
     overflow-x: auto;
