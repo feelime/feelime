@@ -787,11 +787,13 @@ body.landscape { --kb-gap: 4px; }
  * calc）、【123】=字母键宽（kb-letter 的 1 格 calc）——kb-unit-* 按
  * renderLetters 记的格数复刻同款公式（kb-mod/kb-letter 规则在行内，
  * 底行键拿不到，这里重申；两处公式改动须同步）。dp14 布局不挂此类
- * （其 shift 本身是 flex 键，底行走 flex 1.4/flex 1 同款回落）。 */
-.kb-unit-9 { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); flex: none; }
-.kb-unit-9.kb-bottom-num { width: calc((100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); }
-.kb-unit-11 { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
-.kb-unit-11.kb-bottom-num { width: calc((100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); }
+ * （其 shift 本身是 flex 键，底行走 flex 1.4/flex 1 同款回落）。
+ * 复合 .kb-key. 提特异性：.kb-key{flex:1}（basis 0%）在同特异性下
+ * 按源序压掉这里的 width/flex:none（AVD 实测符号键被压成 36px）。 */
+.kb-key.kb-unit-9 { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); flex: none; }
+.kb-key.kb-unit-9.kb-bottom-num { width: calc((100% - 2 * var(--kb-indent) - 8 * var(--kb-gap)) / 9); }
+.kb-key.kb-unit-11 { width: calc(var(--kb-indent) + (100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); flex: none; }
+.kb-key.kb-unit-11.kb-bottom-num { width: calc((100% - 2 * var(--kb-indent) - 10 * var(--kb-gap)) / 11); }
 /* 14 键贴合（kb-align-dp14）：第二行 5 键帽 4 缝共 9 半键。第三行
  * 半键/键帽显式定宽与第二行等宽（消漂移），差值由两侧功能键均分。 */
 .kb-align-dp14 > .kb-letter { width: calc((100% - 2 * var(--kb-indent) - 4 * var(--kb-gap)) / 9); flex: none; }
