@@ -1152,10 +1152,16 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
  * 与其他页左对齐不一致——用户实录）：显式拉满。 */
 .page[data-page="customkeys"] > .page-head,
 .page[data-page="cksymbol"] > .page-head,
-.page[data-page="cklang"] > .page-head { width: 100%; }
+.page[data-page="cklang"] > .page-head,
+.page[data-page="ckt9strip"] > .page-head,
+.page[data-page="ckstrokestrip"] > .page-head,
+.page[data-page="ckinkstrip"] > .page-head { width: 100%; }
 .page[data-page="customkeys"] > main,
 .page[data-page="cksymbol"] > main,
-.page[data-page="cklang"] > main {
+.page[data-page="cklang"] > main,
+.page[data-page="ckt9strip"] > main,
+.page[data-page="ckstrokestrip"] > main,
+.page[data-page="ckinkstrip"] > main {
     flex: 1; min-height: 0; overflow-y: auto;
     width: 100%; max-width: 680px; margin: 0 auto;
     padding-bottom: 4px;
