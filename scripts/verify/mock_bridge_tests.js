@@ -11665,3 +11665,76 @@ if (failed) {
     console.log('failures:', failures.join(' | '));
     process.exit(1);
 }
+
+test('bottom sym split: off keeps single 123 key, on splits symbols/123 (#113)', {since: '3.73.117'}, () => {
+    // 默认关：底行左下一个 123 键（点=符号面板、长按=数字键盘）。
+    const off = fresh({ mode: 'pinyin' });
+    const offBottom = [...off.document.querySelectorAll('#qwertyLayer .kb-row')].pop();
+    let off123 = [...offBottom.querySelectorAll('.kb-special')]
+        .filter(el => el.textContent === '123');
+    equal(off123.length, 1, 'single 123 key when split is off');
+    equal(off123[0].dataset.lp, 'numpad', 'legacy long-press goes to numpad');
+    equal(offBottom.querySelectorAll('.kb-key').length, 5, 'five bottom keys (123 . space cn/en enter)');
+
+    // 开：拆【符号】+【123】两键，123 直达数字键盘（无长按态）。
+    const on = fresh({ mode: 'pinyin' });
+    on.hello({ bottomSymSplit: true });
+    const onBottom = [...on.document.querySelectorAll('#qwertyLayer .kb-row')].pop();
+    const symKey = [...onBottom.querySelectorAll('.kb-special')]
+        .find(el => el.textContent === '符号');
+    const numKey = [...onBottom.querySelectorAll('.kb-special')]
+        .filter(el => el.textContent === '123')[0];
+    assert(symKey && numKey, 'split renders 符号 + 123 keys');
+    equal(numKey.dataset.lp, undefined, 'no long-press overload on the dedicated 123 key');
+    on.tap(numKey);
+    assert(!on.$('numPadLayer').hidden, 'tapping 123 opens the number pad directly');
+    on.tap(symKey);
+    assert(!on.$('symbolLayer').hidden, 'tapping 符号 opens the symbol panel');
+});
+
+test('t9 side strip customization: t9Strip list wins, bad/empty falls back, stroke stays stock (#112)', {since: '3.73.117'}, () => {
+    // 默认：内置清单（首个是「，」）。
+    const stock = fresh({ mode: 't9' });
+    let labels = [...stock.document.querySelectorAll('#t9Strip .t9-side-cell')]
+        .map(c => c.textContent);
+    equal(labels[0], '，', 'stock strip leads with ，');
+    equal(labels.length, 16, 'stock strip has 16 cells');
+
+    // 定制：localStorage 播种 t9Strip（native→镜像落地后的形态），
+    // renderT9Side 按定制序重画。
+    const custom = fresh({ mode: 't9' });
+    custom.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], t9Strip: ['¥', '€', '，', '。'] }));
+    // 镜像落地后的自然驱动：引擎事件（onNativeState 链）触发 renderT9Side。
+    custom.engineState({ phase: 'READY', mode: 't9', revision: 2, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    labels = [...custom.document.querySelectorAll('#t9Strip .t9-side-cell')]
+        .map(c => c.textContent);
+    equal(labels.join(''), '¥€，。', 'custom order replaces the stock strip');
+
+    // 组合中仍走音节态（符号栏定制不影响音节枚举）。
+    custom.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: '64',
+        rawInput: '64', candidates: [], hasNextPage: false });
+    labels = [...custom.document.querySelectorAll('#t9Strip .t9-side-cell')]
+        .map(c => c.textContent);
+    assert(labels.includes('ni'), 'composing state shows syllables regardless of custom strip');
+
+    // 畸形/空表回默认（设置页「全部恢复」与越界写死的防呆兜底）。
+    const bad = fresh({ mode: 't9' });
+    bad.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], t9Strip: ['ok', ''] }));
+    bad.engineState({ phase: 'READY', mode: 't9', revision: 2, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    equal([...bad.document.querySelectorAll('#t9Strip .t9-side-cell')][0].textContent,
+        '，', 'malformed strip entry falls back to stock');
+
+    // 笔画左列不受 T9 定制影响（骨架共用、语义独立）。
+    const stroke = fresh({ mode: 'stroke' });
+    stroke.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], t9Strip: ['¥'] }));
+    stroke.engineState({ phase: 'READY', mode: 'stroke', revision: 2, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    labels = [...stroke.document.querySelectorAll('#t9Strip .t9-side-cell')]
+        .map(c => c.textContent);
+    equal(labels[0], '，', 'stroke strip stays stock despite t9 customization');
+});

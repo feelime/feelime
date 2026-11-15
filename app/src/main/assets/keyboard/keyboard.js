@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.116';
+    const KEYBOARD_VERSION = '3.73.117';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1753,6 +1753,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 非组合=宿主光标（存量）。首期全拼/双拼（native 白名单同款）。
             this.preeditScrub = false;
             this.scrubGestureId = null;
+            // #113 底行符号/数字分键（默认关）：开=底行左下拆【符号】+【123】
+            // 两键（123 直达数字键盘）；关=存量单键（点=符号面板/长按=数字）。
+            this.bottomSymSplit = false;
             // #55 悬浮键盘几何（css px，画布坐标=WebView 视口）：
             // spike 首版内存态（方向无关），进悬浮时按视口给安全初值。
             this.floating = false;
@@ -2732,7 +2735,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // [123] [punct] [space(+mic)] [中/英] [enter]; long-press the
             // toggle for the system IME picker (the old globe slot).
             const bottom = this.row();
-            bottom.append(this.specialKey('symbols', '123', () => this.showSymbols(), 'kb-wide-2_1 kb-special', 'numpad'));
+            // #113（默认关）：开=左下拆【符号】+【123】两键，123 直达数字
+            // 键盘；合计宽 2.3（1.15×2）略增于单键 2.1，空格 flex 自动吸收
+            // 差额变窄。关=存量单键：点=符号面板、长按=数字键盘。
+            if (this.bottomSymSplit) {
+                bottom.append(this.specialKey('symbols', t("符号"), () => this.showSymbols(), 'kb-wide-1_15 kb-special'));
+                bottom.append(this.specialKey('numpad', '123', () => this.showNumpad(), 'kb-wide-1_15 kb-special'));
+            } else {
+                bottom.append(this.specialKey('symbols', '123', () => this.showSymbols(), 'kb-wide-2_1 kb-special', 'numpad'));
+            }
             bottom.append(this.letterKey('.'));
             // 26 键空格挂 data-key 借横滑光标 scrub 通道（手势层只认
             // .kb-key[data-key]，同 T9/手写空格）。值取 ' '：bubbleGlyph
@@ -3704,7 +3715,8 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (!strip || (this.mode !== 't9' && this.mode !== 'stroke')) return;
             if (this.mode === 'stroke') {
                 // 笔画左列（issue #18）：常用字符恒定——笔画无音节枚举
-                // 语义，组合中不变。
+                // 语义，组合中不变。#112 定制只影响 T9 的符号栏，笔画
+                // 左列保持内置清单（骨架共用，语义独立）。
                 if (this.t9SideSig === 'sym') return;
                 this.t9SideSig = 'sym';
                 strip.replaceChildren();
@@ -3712,12 +3724,13 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 return;
             }
             const seg = this.composing ? this.t9PendingSegment() : '';
-            const sig = this.composing && seg ? `syl:${seg}` : 'sym';
+            const sig = this.composing && seg
+                ? `syl:${seg}` : `sym:${this.t9SideCharsList().join('')}`;
             if (sig === this.t9SideSig) return;
             this.t9SideSig = sig;
             strip.replaceChildren();
-            if (sig === 'sym') {
-                T9_SIDE_CHARS.forEach(char => strip.append(this.t9SideCell(char)));
+            if (sig.startsWith('sym:')) {
+                this.t9SideCharsList().forEach(char => strip.append(this.t9SideCell(char)));
                 return;
             }
             const { full, pre } = this.t9SegmentSyllables(seg);
@@ -6276,6 +6289,24 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return null;
         }
 
+        /** #112 T9 左侧符号栏：定制清单存 CUSTOM_KEYS_STORE 的 t9Strip
+         *  字段（设置页「定制按键 → 九宫格键盘 → 左侧符号栏」编辑）。
+         *  缺失/畸形/空表一律回内置默认——空数组与未定制同义（设置页
+         *  「全部恢复」写的就是默认内容数组）。防呆上限 32 与每项长度
+         *  ≤3（设置页 maxlength=3 + 上限 24，键盘端再兜一层）。 */
+        t9SideCharsList() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(CUSTOM_KEYS_STORE) || 'null');
+                const list = parsed && parsed.t9Strip;
+                if (Array.isArray(list) && list.length &&
+                    list.length <= 32 &&
+                    list.every(s => typeof s === 'string' && s.length > 0 && s.length <= 3)) {
+                    return list;
+                }
+            } catch (_) { /* unset/坏 JSON → 默认 */ }
+            return T9_SIDE_CHARS;
+        }
+
         /** 语言键盘定制变化后的字母层重画：只在当前显示的就是字母层
          *  时立即重渲染（符号/T9 层的角标不来自 langKeys，切回时
          *  renderLetters 自然读新值）。 */
@@ -6521,11 +6552,22 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             const langParsed = this.parseLangKeys(data.langKeys || null);
             if (langParsed.error) return { error: langParsed.error };
-            if (!rows.some(row => row.length) && !langParsed.value) {
+            // #112 t9Strip 段（T9 左侧符号栏）宽松解析：畸形=忽略（undefined），
+            // 不让符号栏定制毁掉整包定制键的解析。
+            let t9Strip;
+            if (data.t9Strip != null) {
+                const list = data.t9Strip;
+                if (Array.isArray(list) && list.length <= 32 &&
+                    list.every(s => typeof s === 'string' && s.length > 0 && s.length <= 3)) {
+                    t9Strip = list.slice();
+                }
+            }
+            if (!rows.some(row => row.length) && !langParsed.value && !t9Strip) {
                 return { error: t("至少要定义一个键") };
             }
             const out = { rows };
             if (langParsed.value) out.langKeys = langParsed.value;
+            if (t9Strip) out.t9Strip = t9Strip;
             return out;
         }
 
@@ -12339,6 +12381,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
             if (typeof payload.cnEnComposingGuard === 'boolean') this.cnEnGuard = payload.cnEnComposingGuard;
             if (typeof payload.preeditScrub === 'boolean') this.preeditScrub = payload.preeditScrub;
+            if (typeof payload.bottomSymSplit === 'boolean') this.bottomSymSplit = payload.bottomSymSplit;
             const lingerMs = Number(payload.bubbleLinger);
             if (lingerMs >= 0) this.bubbleLinger = lingerMs;
             // 旧 APK 不带 toastMs 时不覆盖默认值（同 keyBubble/preeditScrub 守卫）。
@@ -12567,10 +12610,17 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             const prevLang = this.storedLangKeys();
                             const langChanged = JSON.stringify(prevLang || null)
                                 !== JSON.stringify(parsed.langKeys || null);
+                            // #112：t9Strip 变化（含首次出现）时重画 T9 左列
+                            // ——renderT9Side 的内容签名会识别变化。
+                            const prevStrip = this.t9SideCharsList().join('');
+                            const stripChanged = parsed.t9Strip
+                                && parsed.t9Strip.join('') !== prevStrip;
                             localStorage.setItem(CUSTOM_KEYS_STORE,
                                 JSON.stringify({ version: 1, rows: parsed.rows,
-                                    langKeys: parsed.langKeys || undefined }));
+                                    langKeys: parsed.langKeys || undefined,
+                                    t9Strip: parsed.t9Strip || undefined }));
                             if (langChanged) this.rerenderLangKeys();
+                            if (stripChanged) this.renderT9Side();
                         }
                     } else {
                         // A keyboard upgraded from a pre-migration

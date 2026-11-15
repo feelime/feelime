@@ -640,6 +640,14 @@
         <input type="checkbox" id="preeditScrub" data-keywords="拼音 光标 空格 滑动 修改 错字 preedit caret space swipe experimental" class="toggle">
       </label>
 
+      <label class="row switch-row" for="bottomSymSplit">
+        <span class="row-label">
+          <span data-i18n="input.feel.bottomSymSplit">底行符号/数字分键</span>
+          <small data-i18n="input.feel.bottomSymSplitHint">开启后键盘底行左下的【123】拆成【符号】和【123】两个键：符号进符号面板，123 直接进数字键盘。默认关闭，关闭时点 123 进符号面板、长按进数字键盘（#113）。</small>
+        </span>
+        <input type="checkbox" id="bottomSymSplit" data-keywords="底行 符号 数字 123 九宫格 分键 拆分 numpad symbols split bottom" class="toggle">
+      </label>
+
       <div class="row language-row">
         <span class="row-label">
           <span data-i18n="input.feel.scrub">光标移动速度</span>
@@ -1350,6 +1358,18 @@
         </div>
       </div>
     </section>
+    <!-- #112 九宫格 T9 左侧符号栏定制：入口行 + 四级页（ckt9strip）。
+         数据挂同一份定制 JSON 的 t9Strip 字段（saveCustom 对多余字段
+         宽松，native 校验只盯 rows）。 -->
+    <section class="card" aria-labelledby="ckT9Head">
+      <div class="section-heading"><h2 id="ckT9Head" data-i18n="ck.t9.title">九宫格键盘</h2></div>
+      <div class="rows">
+        <div class="row" id="ckT9StripEntry" data-keywords="T9 九宫格 符号栏 左侧 定制 排序">
+          <span class="row-label"><span data-i18n="ck.t9.strip">左侧符号栏</span><small id="ckT9StripSummary">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+      </div>
+    </section>
     <!-- 「定制」符号页（原有 tab 迁入四级页）：关闭符号页定制时整卡
          隐藏（开关在符号页内，renderCustom 按 state 显隐）。 -->
     <section class="card" id="ckSymCard" aria-labelledby="ckSymHead">
@@ -1425,6 +1445,30 @@
       <p class="hint" data-i18n="ck.lang.hint1">点字母键 / 逗号句号键定制角标与上滑、下滑；布局、单击与长按不变。</p>
       <div id="cklangKb" class="ck-lang-kb"></div>
       <p class="hint" data-i18n="ck.lang.hint2">分词 / 退格 / 123 / 中英 / 回车不可定制；空格长按沿用「长按空格动作」（跨键盘统一）。</p>
+    </section>
+  </main>
+</div>
+
+<!-- #112 T9 左侧符号栏四级页：排序（上移/下移）、删除、添加、恢复默认。
+     编辑即写草稿（ckT9Strip），保存走定制按键页统一保存条（saveCustom）。 -->
+<div class="page" data-page="ckt9strip" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.t9.pageTitle">左侧符号栏</h2>
+    <button class="btn" id="ckt9Reset" type="button" data-i18n="ck.lang.reset">全部恢复</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.t9.hint">九宫格键盘空闲时左列的常用符号，按这里的顺序从上到下排列；打字中该列会临时显示拼音音节，与符号栏互不影响。</p>
+      <div id="ckt9List"></div>
+      <div class="row">
+        <span class="row-label"><span data-i18n="ck.t9.addLabel">添加符号</span></span>
+        <span class="ck-row2-ctl ck-input" style="display:flex;gap:8px;">
+          <input type="text" id="ckt9AddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
+          <button class="btn" id="ckt9AddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
+        </span>
+      </div>
+      <p class="hint" id="ckt9LimitHint" data-i18n="ck.t9.limitHint" hidden>最多 24 个符号</p>
     </section>
   </main>
 </div>

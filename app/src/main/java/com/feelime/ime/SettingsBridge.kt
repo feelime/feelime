@@ -241,6 +241,10 @@ const val PREF_CN_EN_COMPOSING_GUARD = "cn_en_composing_guard"
  *  光标方便改错字母，无组合时维持移宿主光标的存量语义；第一期限
  *  全拼/双拼（JS 侧白名单），T9/形码后续开放。 */
 const val PREF_PREEDIT_SCRUB = "feelime_preedit_scrub"
+/** 底行符号/数字分键（#113，默认关）：开启后 26 键底行左下的【123】拆成
+ *  【符号】+【123】两键——前者进符号面板、后者直达九宫格数字键盘
+ *  （存量是点=符号面板、长按=数字键盘，两段式）。 */
+const val PREF_BOTTOM_SYM_SPLIT = "feelime_bottom_sym_split"
 /** 语音就绪震动（公众号 NULL 留言，默认关）：语音模型加载完成、开始
  *  聆听那一刻震动提示——仅「未加载→已加载」的转换震；模型已加载的
  *  后续进入不震（JS 侧只在 loading→listening 转换时调桥）。 */
@@ -352,6 +356,11 @@ fun readCnEnComposingGuard(context: Context): Boolean =
 fun readPreeditScrub(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_PREEDIT_SCRUB, true)
+
+/** 底行符号/数字分键（#113，默认关）。 */
+fun readBottomSymSplit(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_BOTTOM_SYM_SPLIT, false)
 
 
 /** 键盘高度（竖屏存值；pref 物理px，对外统一转 CSS px；0=默认）。 */
@@ -963,6 +972,7 @@ class SettingsBridge(
             .put("keyBubble", readKeyBubble(context))
             .put("cnEnComposingGuard", readCnEnComposingGuard(context))
             .put("preeditScrub", readPreeditScrub(context))
+            .put("bottomSymSplit", readBottomSymSplit(context))
             .put("voiceReadyHaptic", readVoiceReadyHapticEnabled(context))
             .put("bubbleLinger", readBubbleLinger(context))
             .put("toastMs", readToastMs(context))
@@ -1940,6 +1950,17 @@ class SettingsBridge(
     fun setPreeditScrub(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_PREEDIT_SCRUB, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 底行符号/数字分键（#113，默认关）。 */
+    @JavascriptInterface
+    fun setBottomSymSplit(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_BOTTOM_SYM_SPLIT, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

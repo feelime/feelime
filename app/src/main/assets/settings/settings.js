@@ -352,6 +352,19 @@ const I18N = {
         "ck.f.mode.panel": "面板",
         "ck.f.kind": "类型",
         "ck.lang.title": "语言键盘",
+        "ck.t9.title": "九宫格键盘",
+        "ck.t9.strip": "左侧符号栏",
+        "ck.t9.pageTitle": "左侧符号栏",
+        "ck.t9.hint": "九宫格键盘空闲时左列的常用符号，按这里的顺序从上到下排列；打字中该列会临时显示拼音音节，与符号栏互不影响。",
+        "ck.t9.addLabel": "添加符号",
+        "ck.t9.addPlaceholder": "符号",
+        "ck.t9.addBtn": "添加",
+        "ck.t9.limitHint": "最多 24 个符号",
+        "ck.t9.up": "上移",
+        "ck.t9.down": "下移",
+        "ck.t9.remove": "删除",
+        "ck.t9.defaultSummary": "默认",
+        "ck.t9.sameAsDefault": "与默认相同",
         "ck.lang.pinyin": "全拼键盘",
         "ck.lang.dp": "双拼键盘",
         "ck.lang.english": "英文键盘",
@@ -842,6 +855,8 @@ const I18N = {
         "input.feel.cnEnComposingGuardHint": "防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。",
         "input.feel.preeditScrub": "空格横滑移动拼音光标",
         "input.feel.preeditScrubHint": "输入拼音时左右滑动空格键，移动拼音串内的光标方便修改错字；没有输入时仍移动正文光标。默认开启，不需要可在本行关掉。目前支持全拼与双拼（#103）。",
+        "input.feel.bottomSymSplit": "底行符号/数字分键",
+        "input.feel.bottomSymSplitHint": "开启后键盘底行左下的【123】拆成【符号】和【123】两个键：符号进符号面板，123 直接进数字键盘。默认关闭，关闭时点 123 进符号面板、长按进数字键盘（#113）。",
         "voice.readyHaptic": "语音就绪震动",
         "voice.readyHapticHint": "语音模型加载完成、开始聆听时震动提示一下；模型已就绪的再次进入不震（默认关闭）。",
         "input.feel.keyBubbleHint": "按下按键时在键帽上方放大显示所按的字符，方便确认有没有按错（默认关闭）。",
@@ -1191,6 +1206,19 @@ const I18N = {
         "ck.f.mode.panel": "Panel",
         "ck.f.kind": "Type",
         "ck.lang.title": "Language keyboards",
+        "ck.t9.title": "Nine-key keyboard",
+        "ck.t9.strip": "Left symbol strip",
+        "ck.t9.pageTitle": "Left symbol strip",
+        "ck.t9.hint": "Symbols shown in the left column of the nine-key keyboard when idle, ordered top to bottom as listed here; while typing, that column temporarily shows pinyin syllables instead.",
+        "ck.t9.addLabel": "Add symbol",
+        "ck.t9.addPlaceholder": "Symbol",
+        "ck.t9.addBtn": "Add",
+        "ck.t9.limitHint": "Up to 24 symbols",
+        "ck.t9.up": "Move up",
+        "ck.t9.down": "Move down",
+        "ck.t9.remove": "Remove",
+        "ck.t9.defaultSummary": "Default",
+        "ck.t9.sameAsDefault": "Same as default",
         "ck.lang.pinyin": "Pinyin (26-key)",
         "ck.lang.dp": "Double Pinyin",
         "ck.lang.english": "English",
@@ -1667,6 +1695,8 @@ const I18N = {
         "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
         "input.feel.preeditScrub": "Space swipe moves pinyin caret",
         "input.feel.preeditScrubHint": "While composing, swipe the space key sideways to move the caret inside the pinyin string for quick edits; with no composition it still moves the text caret. On by default; turn it off from this row. Pinyin & double-pinyin only for now (#103).",
+        "input.feel.bottomSymSplit": "Split bottom symbols/digits key",
+        "input.feel.bottomSymSplitHint": "Splits the bottom-left [123] key into [Symbols] and [123]: symbols opens the symbol panel, 123 goes straight to the number pad. Off by default; when off, tapping 123 opens symbols and long-press opens the number pad (#113).",
         "voice.readyHaptic": "Vibrate when voice is ready",
         "voice.readyHapticHint": "A short buzz once the speech model finishes loading and listening starts; re-entering with the model already loaded does not buzz (off by default).",
         "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
@@ -1789,7 +1819,7 @@ const I18N = {
 };
 
 // #39-12：customkeys（二级）与 customkeys-editor（三级）。
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -2144,7 +2174,7 @@ function showPage(name) {
     // 知道——用户验收实录；不用 confirm：WebChromeClient 不处理时恒
     // false 会把用户锁死）。收口在本函数里——包装外层函数会漏掉已
     // 导出的旧引用。ckEnter 同理在进页时统一触发。
-    const CK_FAMILY = ["customkeys", "cksymbol", "cklang"];
+    const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip"];
     if (typeof ckDirty !== "undefined" && CK_FAMILY.includes(currentPage)
         && !CK_FAMILY.includes(name) && ckDirty) {
         ckLeaveTarget = name;
@@ -2187,7 +2217,7 @@ function showPage(name) {
     // 动作）：DOM 随当前页移动（page = header + 滚动 main + 保存条的
     // flex 布局见 css）。离开家族（含回首页）时条随上一次所在子页
     // 隐藏，脏态由离开确认兜底。
-    if (name === "cksymbol" || name === "cklang") {
+    if (name === "cksymbol" || name === "cklang" || name === "ckt9strip") {
         // 深链直达（focusSetting/URL）没经过 ckEnter→ckLoad，rows=null：
         // 此时「保存全部」的整包会把已有定制覆盖掉（codex review P1——
         // rows 保底 [] 的前提是「草稿已加载」，未加载≠空表）。
@@ -2197,6 +2227,7 @@ function showPage(name) {
         if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
     }
     if (name === "cklang") renderLangKb(ckLangCurrent);
+    if (name === "ckt9strip") renderT9StripPage();
     if (name === "customkeys" && !wasCustomkeys && typeof refreshLangCounts === "function") {
         refreshLangCounts();
     }
@@ -2724,6 +2755,8 @@ function renderFeel(state) {
     if (guard) guard.checked = state.cnEnComposingGuard === true;
     const scrub = $("preeditScrub");
     if (scrub) scrub.checked = state.preeditScrub === true;
+    const symSplit = $("bottomSymSplit");
+    if (symSplit) symSplit.checked = state.bottomSymSplit === true;
     const vrh = $("voiceReadyHaptic");
     if (vrh) vrh.checked = state.voiceReadyHaptic === true;
     const lingerSel = $("bubbleLinger");
@@ -4357,6 +4390,7 @@ $("keyOpacity").addEventListener("change", event => {
 $("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
 $("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", event => call("setPreeditScrub", event.target.checked));
+$("bottomSymSplit").addEventListener("change", event => call("setBottomSymSplit", event.target.checked));
 $("voiceReadyHaptic").addEventListener("change", event => call("setVoiceReadyHaptic", event.target.checked));
 $("bubbleLinger").addEventListener("change", event => {
     call("setBubbleLinger", parseInt(event.target.value, 10) || 0);
@@ -4974,6 +5008,8 @@ let ckDirty = false;
 // 同一脏态草稿、保存条随子页各自触发提交（分页保存）。来源是 customJson
 // textarea 的 JSON（state 推送或用户粘贴），编辑器改动写回草稿。
 let ckLangKeys = {};
+// #112 T9 左侧符号栏草稿：null=未定制（用键盘内置默认）；数组=已定制。
+let ckT9Strip = null;
 let ckLeaveTarget = null;   // 脏态离开确认的目标页
 
 /** 脏态驱动的保存条：变更必须让用户看得见（用户验收实录）。
@@ -5094,6 +5130,8 @@ function ckLoad() {
         // 语言键盘定制段同步进草稿（rows 为空模板时 langKeys 仍独立生效）。
         ckLangKeys = parsed && parsed.langKeys && typeof parsed.langKeys === "object"
             && !Array.isArray(parsed.langKeys) ? parsed.langKeys : {};
+        // #112 T9 左侧符号栏：数组才进草稿（null=未定制，用键盘内置默认）。
+        ckT9Strip = parsed && Array.isArray(parsed.t9Strip) ? parsed.t9Strip.slice() : null;
     } catch (_) { /* textarea 空/坏 JSON → 模板 */ }
     if (!rows || !rows.some(row => row && row.length)) rows = JSON.parse(CK_TEMPLATE).rows;
     ckRows = [0, 1, 2].map(i => Array.isArray(rows[i]) ? rows[i].slice() : []);
@@ -6474,6 +6512,96 @@ document.querySelectorAll("[data-cklang]").forEach(row => {
     });
 });
 document.getElementById("ckSymbolEntry").addEventListener("click", () => showPage("cksymbol"));
+document.getElementById("ckT9StripEntry").addEventListener("click", () => showPage("ckt9strip"));
+
+/* ===== #112 T9 左侧符号栏（四级页）：排序/删除/添加/恢复默认 =====
+ * 草稿即真相：每次编辑原地改 ckT9Strip + ckMarkDirty(true)，保存走
+ * 统一保存条（ckPackJson 打 t9Strip 字段）。null=未定制（summary 显示
+ * 「默认」）；编辑动作一旦发生即落具体数组（含「恢复默认」——显式数组
+ * 与内置默认内容相同即可，不必回 null）。 */
+const T9_STRIP_DEFAULT = ['，', '。', '？', '！', '；', '：', '、',
+    '“', '”', '（', '）', '《', '》', '…', '·', '—'];
+const T9_STRIP_MAX = 24;
+function t9StripDraft() {
+    return ckT9Strip ? ckT9Strip.slice() : T9_STRIP_DEFAULT.slice();
+}
+function renderT9StripPage() {
+    const list = document.getElementById("ckt9List");
+    if (!list) return;
+    const cur = t9StripDraft();
+    list.replaceChildren();
+    cur.forEach((sym, i) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        const label = document.createElement("span");
+        label.className = "row-label";
+        const big = document.createElement("span");
+        big.textContent = sym;
+        big.style.fontSize = "20px";
+        big.style.minWidth = "1.6em";
+        label.append(big);
+        row.append(label);
+        const mk = (text, title, fn) => {
+            const b = document.createElement("button");
+            b.className = "btn";
+            b.type = "button";
+            b.textContent = text;
+            b.setAttribute("aria-label", title);
+            b.addEventListener("click", fn);
+            row.append(b);
+        };
+        mk("↑", t("ck.t9.up"), () => {
+            if (i === 0) return;
+            const d = t9StripDraft();
+            [d[i - 1], d[i]] = [d[i], d[i - 1]];
+            commitT9Strip(d);
+        });
+        mk("↓", t("ck.t9.down"), () => {
+            if (i === cur.length - 1) return;
+            const d = t9StripDraft();
+            [d[i + 1], d[i]] = [d[i], d[i + 1]];
+            commitT9Strip(d);
+        });
+        mk("✕", t("ck.t9.remove"), () => {
+            const d = t9StripDraft();
+            d.splice(i, 1);
+            commitT9Strip(d);
+        });
+        list.append(row);
+    });
+    refreshT9StripSummary();
+}
+function commitT9Strip(arr) {
+    ckT9Strip = arr;
+    ckMarkDirty(true);
+    renderT9StripPage();
+}
+function refreshT9StripSummary() {
+    const el = document.getElementById("ckT9StripSummary");
+    if (el) el.textContent = ckT9Strip
+        ? (ckT9Strip.length === T9_STRIP_DEFAULT.length &&
+           ckT9Strip.every((s, i) => s === T9_STRIP_DEFAULT[i])
+            ? t("ck.t9.sameAsDefault") : `${ckT9Strip.length}`)
+        : t("ck.t9.defaultSummary");
+}
+document.getElementById("ckt9AddBtn").addEventListener("click", () => {
+    const input = document.getElementById("ckt9AddInput");
+    const v = (input.value || "").trim();
+    if (!v) return;
+    const d = t9StripDraft();
+    if (d.length >= T9_STRIP_MAX) {
+        document.getElementById("ckt9LimitHint").hidden = false;
+        return;
+    }
+    d.push(v);
+    input.value = "";
+    document.getElementById("ckt9LimitHint").hidden = true;
+    commitT9Strip(d);
+});
+document.getElementById("ckt9Reset").addEventListener("click", () => {
+    commitT9Strip(T9_STRIP_DEFAULT.slice());
+    setNote("ckSaveNote", t("ck.lang.resetDone"));
+});
 document.getElementById("cklangReset").addEventListener("click", () => {
     delete ckLangKeys[ckLangCurrent];
     renderLangKb(ckLangCurrent);
@@ -6495,6 +6623,9 @@ function ckPackJson() {
     // 「没有定制键行」同义。
     const pack = { version: 1, rows: ckRows || [] };
     if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
+    // #112 T9 左侧符号栏：null=未定制（键盘用内置默认）；空数组=显式清空
+    // 会退回默认（键盘端空表 fallback 默认，与「空 rows=无定制键行」同义）。
+    if (ckT9Strip) pack.t9Strip = ckT9Strip.slice();
     return pack;
 }
 /** 最近一次投影/保存写进 textarea 的串：区分「textarea 手上有更新」

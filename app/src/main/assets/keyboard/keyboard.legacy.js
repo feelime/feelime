@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.116";
+  const KEYBOARD_VERSION = "3.73.117";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1786,6 +1786,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.cnEnGuard = false;
       this.preeditScrub = false;
       this.scrubGestureId = null;
+      this.bottomSymSplit = false;
       this.floating = false;
       this.floatGeom = null;
       this.bubbleLinger = 400;
@@ -2470,7 +2471,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         layer.append(row);
       });
       const bottom = this.row();
-      bottom.append(this.specialKey("symbols", "123", () => this.showSymbols(), "kb-wide-2_1 kb-special", "numpad"));
+      if (this.bottomSymSplit) {
+        bottom.append(this.specialKey("symbols", t("\u7B26\u53F7"), () => this.showSymbols(), "kb-wide-1_15 kb-special"));
+        bottom.append(this.specialKey("numpad", "123", () => this.showNumpad(), "kb-wide-1_15 kb-special"));
+      } else {
+        bottom.append(this.specialKey("symbols", "123", () => this.showSymbols(), "kb-wide-2_1 kb-special", "numpad"));
+      }
       bottom.append(this.letterKey("."));
       const space = this.spaceKey();
       space.dataset.key = " ";
@@ -3342,12 +3348,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         return;
       }
       const seg = this.composing ? this.t9PendingSegment() : "";
-      const sig = this.composing && seg ? `syl:${seg}` : "sym";
+      const sig = this.composing && seg ? `syl:${seg}` : `sym:${this.t9SideCharsList().join("")}`;
       if (sig === this.t9SideSig) return;
       this.t9SideSig = sig;
       strip.replaceChildren();
-      if (sig === "sym") {
-        T9_SIDE_CHARS.forEach((char) => strip.append(this.t9SideCell(char)));
+      if (sig.startsWith("sym:")) {
+        this.t9SideCharsList().forEach((char) => strip.append(this.t9SideCell(char)));
         return;
       }
       const { full, pre } = this.t9SegmentSyllables(seg);
@@ -5375,6 +5381,22 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       return null;
     }
+    /** #112 T9 左侧符号栏：定制清单存 CUSTOM_KEYS_STORE 的 t9Strip
+     *  字段（设置页「定制按键 → 九宫格键盘 → 左侧符号栏」编辑）。
+     *  缺失/畸形/空表一律回内置默认——空数组与未定制同义（设置页
+     *  「全部恢复」写的就是默认内容数组）。防呆上限 32 与每项长度
+     *  ≤3（设置页 maxlength=3 + 上限 24，键盘端再兜一层）。 */
+    t9SideCharsList() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(CUSTOM_KEYS_STORE) || "null");
+        const list = parsed && parsed.t9Strip;
+        if (Array.isArray(list) && list.length && list.length <= 32 && list.every((s) => typeof s === "string" && s.length > 0 && s.length <= 3)) {
+          return list;
+        }
+      } catch (_) {
+      }
+      return T9_SIDE_CHARS;
+    }
     /** 语言键盘定制变化后的字母层重画：只在当前显示的就是字母层
      *  时立即重渲染（符号/T9 层的角标不来自 langKeys，切回时
      *  renderLetters 自然读新值）。 */
@@ -5609,11 +5631,19 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       const langParsed = this.parseLangKeys(data.langKeys || null);
       if (langParsed.error) return { error: langParsed.error };
-      if (!rows.some((row) => row.length) && !langParsed.value) {
+      let t9Strip;
+      if (data.t9Strip != null) {
+        const list = data.t9Strip;
+        if (Array.isArray(list) && list.length <= 32 && list.every((s) => typeof s === "string" && s.length > 0 && s.length <= 3)) {
+          t9Strip = list.slice();
+        }
+      }
+      if (!rows.some((row) => row.length) && !langParsed.value && !t9Strip) {
         return { error: t("\u81F3\u5C11\u8981\u5B9A\u4E49\u4E00\u4E2A\u952E") };
       }
       const out = { rows };
       if (langParsed.value) out.langKeys = langParsed.value;
+      if (t9Strip) out.t9Strip = t9Strip;
       return out;
     }
     /** langKeys 段（语言键盘定制）校验：{layout:{key:{alt,up,down}}}。
@@ -10322,6 +10352,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (typeof payload.keyBubble === "boolean") this.keyBubble = payload.keyBubble;
       if (typeof payload.cnEnComposingGuard === "boolean") this.cnEnGuard = payload.cnEnComposingGuard;
       if (typeof payload.preeditScrub === "boolean") this.preeditScrub = payload.preeditScrub;
+      if (typeof payload.bottomSymSplit === "boolean") this.bottomSymSplit = payload.bottomSymSplit;
       const lingerMs = Number(payload.bubbleLinger);
       if (lingerMs >= 0) this.bubbleLinger = lingerMs;
       const toastMs = Number(payload.toastMs);
@@ -10488,15 +10519,19 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
             if (!parsed.error) {
               const prevLang = this.storedLangKeys();
               const langChanged = JSON.stringify(prevLang || null) !== JSON.stringify(parsed.langKeys || null);
+              const prevStrip = this.t9SideCharsList().join("");
+              const stripChanged = parsed.t9Strip && parsed.t9Strip.join("") !== prevStrip;
               localStorage.setItem(
                 CUSTOM_KEYS_STORE,
                 JSON.stringify({
                   version: 1,
                   rows: parsed.rows,
-                  langKeys: parsed.langKeys || void 0
+                  langKeys: parsed.langKeys || void 0,
+                  t9Strip: parsed.t9Strip || void 0
                 })
               );
               if (langChanged) this.rerenderLangKeys();
+              if (stripChanged) this.renderT9Side();
             }
           } else {
             const local = localStorage.getItem(CUSTOM_KEYS_STORE);

@@ -2814,6 +2814,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("keyBubble", readKeyBubble(this))
             .put("cnEnComposingGuard", readCnEnComposingGuard(this))
             .put("preeditScrub", com.feelime.ime.readPreeditScrub(this))
+            .put("bottomSymSplit", com.feelime.ime.readBottomSymSplit(this))
             .put("bubbleLinger", readBubbleLinger(this))
             .put("toastMs", readToastMs(this))
             // #39 横屏三级页三项 + 挖孔安全区实测值（css px，竖屏恒 0）。

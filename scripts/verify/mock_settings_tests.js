@@ -145,6 +145,7 @@ class MockSettingsNative {
     setVoiceReadyHaptic(...a) { this._rec('setVoiceReadyHaptic', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
     setToastMs(...a) { this._rec('setToastMs', a); }
+    setBottomSymSplit(...a) { this._rec('setBottomSymSplit', a); }
     saveUserWords(...a) { this._rec('saveUserWords', a); }
     setFlickSwap(...a) { this._rec('setFlickSwap', a); }
     setDoubleShiftLock(...a) { this._rec('setDoubleShiftLock', a); }
@@ -1273,14 +1274,14 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     equal(hiddenMap(), {
         home: false, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
-        licenses: true, test: true,
+        ckt9strip: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
         home: true, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
-        licenses: true, test: true,
+        ckt9strip: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', 'home', world.token], 'reportPage(page, parent) on sub-page');
 
@@ -3594,3 +3595,47 @@ if (failed.length) {
     console.log('failures: ' + failed.map(([name]) => name).join(' | '));
     process.exit(1);
 }
+
+test('#113 bottom sym split switch: state echo + change persists via bridge', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE, bottomSymSplit: true });
+    equal(world.$('bottomSymSplit').checked, true, 'state.bottomSymSplit echoes to the toggle');
+    world.$('bottomSymSplit').checked = false;
+    world.$('bottomSymSplit').listeners.find(l => l.type === 'change')
+        .handler({ target: world.$('bottomSymSplit') });
+    equal(world.lastCall('setBottomSymSplit').args, [false, world.token],
+        'toggling calls setBottomSymSplit(value, token)');
+});
+
+test('#112 t9 strip editor: entry routes, add/remove reorder the draft, save packs t9Strip', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const FS = world.FeelimeSettings();
+    FS.showPage('customkeys');
+    FS.showPage('ckt9strip');
+    // 空表起步=内置默认 16 项；添加一个符号 → 草稿 17 项且脏。
+    world.$('ckt9AddInput').value = '¥';
+    world.$('ckt9AddBtn').listeners.find(l => l.type === 'click').handler();
+    const rowsAfterAdd = [...world.doc.querySelectorAll('#ckt9List .row')];
+    equal(rowsAfterAdd.length, 17, 'add appends to the default 16');
+    // 删除最后一项（¥）：列表行内第三个按钮是 ✕。
+    const delBtn = [...rowsAfterAdd[rowsAfterAdd.length - 1].querySelectorAll('button')]
+        .find(b => b.textContent === '✕');
+    delBtn.listeners.find(l => l.type === 'click').handler();
+    equal([...world.doc.querySelectorAll('#ckt9List .row')].length, 16, 'remove drops it back');
+    // 上移：第二项 ↑ 与第一项交换（默认序 ，。？… → 。，？…）。断言要
+    // 在点击后重抓列表（renderT9StripPage 整表重建，旧引用全失效）。
+    const rows = [...world.doc.querySelectorAll('#ckt9List .row')];
+    const upBtn = [...rows[1].querySelectorAll('button')].find(b => b.textContent === '↑');
+    upBtn.listeners.find(l => l.type === 'click').handler();
+    const freshRows = [...world.doc.querySelectorAll('#ckt9List .row')];
+    equal(freshRows[0].querySelector('.row-label span').textContent, '。',
+        'move-up swaps the first two symbols');
+    // 保存：统一保存条（编辑只标脏，保存按钮先吸收 textarea——空串
+    // 会被当坏 JSON 拒绝，先播种合法空模板）再提交。
+    world.$('customJson').value = '{"version":1,"rows":[[[]]],"langKeys":{},"t9Strip":null}';
+    world.$('btnSaveCustom').click();
+    const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(saved.t9Strip[0], '。', 'packed t9Strip reflects the edit');
+    equal(saved.t9Strip.length, 16, 'packed t9Strip keeps 16 entries');
+});

@@ -439,6 +439,19 @@ const I18N = {
     "ck.f.mode.panel": "\u9762\u677F",
     "ck.f.kind": "\u7C7B\u578B",
     "ck.lang.title": "\u8BED\u8A00\u952E\u76D8",
+    "ck.t9.title": "\u4E5D\u5BAB\u683C\u952E\u76D8",
+    "ck.t9.strip": "\u5DE6\u4FA7\u7B26\u53F7\u680F",
+    "ck.t9.pageTitle": "\u5DE6\u4FA7\u7B26\u53F7\u680F",
+    "ck.t9.hint": "\u4E5D\u5BAB\u683C\u952E\u76D8\u7A7A\u95F2\u65F6\u5DE6\u5217\u7684\u5E38\u7528\u7B26\u53F7\uFF0C\u6309\u8FD9\u91CC\u7684\u987A\u5E8F\u4ECE\u4E0A\u5230\u4E0B\u6392\u5217\uFF1B\u6253\u5B57\u4E2D\u8BE5\u5217\u4F1A\u4E34\u65F6\u663E\u793A\u62FC\u97F3\u97F3\u8282\uFF0C\u4E0E\u7B26\u53F7\u680F\u4E92\u4E0D\u5F71\u54CD\u3002",
+    "ck.t9.addLabel": "\u6DFB\u52A0\u7B26\u53F7",
+    "ck.t9.addPlaceholder": "\u7B26\u53F7",
+    "ck.t9.addBtn": "\u6DFB\u52A0",
+    "ck.t9.limitHint": "\u6700\u591A 24 \u4E2A\u7B26\u53F7",
+    "ck.t9.up": "\u4E0A\u79FB",
+    "ck.t9.down": "\u4E0B\u79FB",
+    "ck.t9.remove": "\u5220\u9664",
+    "ck.t9.defaultSummary": "\u9ED8\u8BA4",
+    "ck.t9.sameAsDefault": "\u4E0E\u9ED8\u8BA4\u76F8\u540C",
     "ck.lang.pinyin": "\u5168\u62FC\u952E\u76D8",
     "ck.lang.dp": "\u53CC\u62FC\u952E\u76D8",
     "ck.lang.english": "\u82F1\u6587\u952E\u76D8",
@@ -928,6 +941,8 @@ const I18N = {
     "input.feel.cnEnComposingGuardHint": "\u9632\u6B62\u5FEB\u901F\u6253\u5B57\u8BEF\u89E6\u4E2D\u82F1\u5207\u6362\u952E\u628A\u7EC4\u8BCD\u6253\u65AD\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF0C\u5F00\u542F\u540E\u7EC4\u8BCD\u4E2D\u5355\u51FB\u5207\u6362\u952E\u4E0D\u751F\u6548\uFF09\u3002",
     "input.feel.preeditScrub": "\u7A7A\u683C\u6A2A\u6ED1\u79FB\u52A8\u62FC\u97F3\u5149\u6807",
     "input.feel.preeditScrubHint": "\u8F93\u5165\u62FC\u97F3\u65F6\u5DE6\u53F3\u6ED1\u52A8\u7A7A\u683C\u952E\uFF0C\u79FB\u52A8\u62FC\u97F3\u4E32\u5185\u7684\u5149\u6807\u65B9\u4FBF\u4FEE\u6539\u9519\u5B57\uFF1B\u6CA1\u6709\u8F93\u5165\u65F6\u4ECD\u79FB\u52A8\u6B63\u6587\u5149\u6807\u3002\u9ED8\u8BA4\u5F00\u542F\uFF0C\u4E0D\u9700\u8981\u53EF\u5728\u672C\u884C\u5173\u6389\u3002\u76EE\u524D\u652F\u6301\u5168\u62FC\u4E0E\u53CC\u62FC\uFF08#103\uFF09\u3002",
+    "input.feel.bottomSymSplit": "\u5E95\u884C\u7B26\u53F7/\u6570\u5B57\u5206\u952E",
+    "input.feel.bottomSymSplitHint": "\u5F00\u542F\u540E\u952E\u76D8\u5E95\u884C\u5DE6\u4E0B\u7684\u3010123\u3011\u62C6\u6210\u3010\u7B26\u53F7\u3011\u548C\u3010123\u3011\u4E24\u4E2A\u952E\uFF1A\u7B26\u53F7\u8FDB\u7B26\u53F7\u9762\u677F\uFF0C123 \u76F4\u63A5\u8FDB\u6570\u5B57\u952E\u76D8\u3002\u9ED8\u8BA4\u5173\u95ED\uFF0C\u5173\u95ED\u65F6\u70B9 123 \u8FDB\u7B26\u53F7\u9762\u677F\u3001\u957F\u6309\u8FDB\u6570\u5B57\u952E\u76D8\uFF08#113\uFF09\u3002",
     "voice.readyHaptic": "\u8BED\u97F3\u5C31\u7EEA\u9707\u52A8",
     "voice.readyHapticHint": "\u8BED\u97F3\u6A21\u578B\u52A0\u8F7D\u5B8C\u6210\u3001\u5F00\u59CB\u8046\u542C\u65F6\u9707\u52A8\u63D0\u793A\u4E00\u4E0B\uFF1B\u6A21\u578B\u5DF2\u5C31\u7EEA\u7684\u518D\u6B21\u8FDB\u5165\u4E0D\u9707\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09\u3002",
     "input.feel.keyBubbleHint": "\u6309\u4E0B\u6309\u952E\u65F6\u5728\u952E\u5E3D\u4E0A\u65B9\u653E\u5927\u663E\u793A\u6240\u6309\u7684\u5B57\u7B26\uFF0C\u65B9\u4FBF\u786E\u8BA4\u6709\u6CA1\u6709\u6309\u9519\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF09\u3002",
@@ -1279,6 +1294,19 @@ const I18N = {
     "ck.f.mode.panel": "Panel",
     "ck.f.kind": "Type",
     "ck.lang.title": "Language keyboards",
+    "ck.t9.title": "Nine-key keyboard",
+    "ck.t9.strip": "Left symbol strip",
+    "ck.t9.pageTitle": "Left symbol strip",
+    "ck.t9.hint": "Symbols shown in the left column of the nine-key keyboard when idle, ordered top to bottom as listed here; while typing, that column temporarily shows pinyin syllables instead.",
+    "ck.t9.addLabel": "Add symbol",
+    "ck.t9.addPlaceholder": "Symbol",
+    "ck.t9.addBtn": "Add",
+    "ck.t9.limitHint": "Up to 24 symbols",
+    "ck.t9.up": "Move up",
+    "ck.t9.down": "Move down",
+    "ck.t9.remove": "Remove",
+    "ck.t9.defaultSummary": "Default",
+    "ck.t9.sameAsDefault": "Same as default",
     "ck.lang.pinyin": "Pinyin (26-key)",
     "ck.lang.dp": "Double Pinyin",
     "ck.lang.english": "English",
@@ -1755,6 +1783,8 @@ const I18N = {
     "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
     "input.feel.preeditScrub": "Space swipe moves pinyin caret",
     "input.feel.preeditScrubHint": "While composing, swipe the space key sideways to move the caret inside the pinyin string for quick edits; with no composition it still moves the text caret. On by default; turn it off from this row. Pinyin & double-pinyin only for now (#103).",
+    "input.feel.bottomSymSplit": "Split bottom symbols/digits key",
+    "input.feel.bottomSymSplitHint": "Splits the bottom-left [123] key into [Symbols] and [123]: symbols opens the symbol panel, 123 goes straight to the number pad. Off by default; when off, tapping 123 opens symbols and long-press opens the number pad (#113).",
     "voice.readyHaptic": "Vibrate when voice is ready",
     "voice.readyHapticHint": "A short buzz once the speech model finishes loading and listening starts; re-entering with the model already loaded does not buzz (off by default).",
     "input.feel.keyBubbleHint": "Enlarge the pressed character above the keycap while held, so mis-presses are obvious (off by default).",
@@ -1877,7 +1907,7 @@ const I18N = {
     "error.INVALID_MODEL_SOURCE": "A custom source needs an HTTPS repository URL and its matching tar.bz2 archive URL."
   }
 };
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter((key) => key.startsWith("error.")));
 const progressPercent = {};
 function browserLocale() {
@@ -2194,7 +2224,7 @@ const pageScrolls = {};
 function showPage(name) {
   var _a;
   if (!PAGES.includes(name)) return;
-  const CK_FAMILY = ["customkeys", "cksymbol", "cklang"];
+  const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip"];
   if (typeof ckDirty !== "undefined" && CK_FAMILY.includes(currentPage) && !CK_FAMILY.includes(name) && ckDirty) {
     ckLeaveTarget = name;
     document.getElementById("ckLeaveModal").hidden = false;
@@ -2218,13 +2248,14 @@ function showPage(name) {
     if (typeof memo === "number" && memo > 0) window.scrollTo(0, memo);
     else window.scrollTo(0, 0);
   }
-  if (name === "cksymbol" || name === "cklang") {
+  if (name === "cksymbol" || name === "cklang" || name === "ckt9strip") {
     if (!ckRows) ckLoad();
     const bar = document.getElementById("ckSaveBar");
     const pageEl = document.querySelector('[data-page="' + name + '"]');
     if (bar && pageEl && bar.parentElement !== pageEl) pageEl.append(bar);
   }
   if (name === "cklang") renderLangKb(ckLangCurrent);
+  if (name === "ckt9strip") renderT9StripPage();
   if (name === "customkeys" && !wasCustomkeys && typeof refreshLangCounts === "function") {
     refreshLangCounts();
   }
@@ -2661,6 +2692,8 @@ function renderFeel(state) {
   if (guard) guard.checked = state.cnEnComposingGuard === true;
   const scrub = $("preeditScrub");
   if (scrub) scrub.checked = state.preeditScrub === true;
+  const symSplit = $("bottomSymSplit");
+  if (symSplit) symSplit.checked = state.bottomSymSplit === true;
   const vrh = $("voiceReadyHaptic");
   if (vrh) vrh.checked = state.voiceReadyHaptic === true;
   const lingerSel = $("bubbleLinger");
@@ -4131,6 +4164,7 @@ $("keyOpacity").addEventListener("change", (event) => {
 $("keyBubble").addEventListener("change", (event) => call("setKeyBubble", event.target.checked));
 $("cnEnComposingGuard").addEventListener("change", (event) => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", (event) => call("setPreeditScrub", event.target.checked));
+$("bottomSymSplit").addEventListener("change", (event) => call("setBottomSymSplit", event.target.checked));
 $("voiceReadyHaptic").addEventListener("change", (event) => call("setVoiceReadyHaptic", event.target.checked));
 $("bubbleLinger").addEventListener("change", (event) => {
   call("setBubbleLinger", parseInt(event.target.value, 10) || 0);
@@ -4691,6 +4725,7 @@ let ckSel = null;
 let ckDraft = null;
 let ckDirty = false;
 let ckLangKeys = {};
+let ckT9Strip = null;
 let ckLeaveTarget = null;
 function ckReportState() {
   call("reportCkState", !!ckEditMode, !!ckDirty);
@@ -4791,6 +4826,7 @@ function ckLoad() {
     const parsed = JSON.parse($("customJson").value || "null");
     if (parsed && parsed.version === 1 && Array.isArray(parsed.rows)) rows = parsed.rows;
     ckLangKeys = parsed && parsed.langKeys && typeof parsed.langKeys === "object" && !Array.isArray(parsed.langKeys) ? parsed.langKeys : {};
+    ckT9Strip = parsed && Array.isArray(parsed.t9Strip) ? parsed.t9Strip.slice() : null;
   } catch (_) {
   }
   if (!rows || !rows.some((row) => row && row.length)) rows = JSON.parse(CK_TEMPLATE).rows;
@@ -6023,6 +6059,106 @@ document.querySelectorAll("[data-cklang]").forEach((row) => {
   });
 });
 document.getElementById("ckSymbolEntry").addEventListener("click", () => showPage("cksymbol"));
+document.getElementById("ckT9StripEntry").addEventListener("click", () => showPage("ckt9strip"));
+const T9_STRIP_DEFAULT = [
+  "\uFF0C",
+  "\u3002",
+  "\uFF1F",
+  "\uFF01",
+  "\uFF1B",
+  "\uFF1A",
+  "\u3001",
+  "\u201C",
+  "\u201D",
+  "\uFF08",
+  "\uFF09",
+  "\u300A",
+  "\u300B",
+  "\u2026",
+  "\xB7",
+  "\u2014"
+];
+const T9_STRIP_MAX = 24;
+function t9StripDraft() {
+  return ckT9Strip ? ckT9Strip.slice() : T9_STRIP_DEFAULT.slice();
+}
+__name(t9StripDraft, "t9StripDraft");
+function renderT9StripPage() {
+  const list = document.getElementById("ckt9List");
+  if (!list) return;
+  const cur = t9StripDraft();
+  list.replaceChildren();
+  cur.forEach((sym, i) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    const label = document.createElement("span");
+    label.className = "row-label";
+    const big = document.createElement("span");
+    big.textContent = sym;
+    big.style.fontSize = "20px";
+    big.style.minWidth = "1.6em";
+    label.append(big);
+    row.append(label);
+    const mk = /* @__PURE__ */ __name((text, title, fn) => {
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.type = "button";
+      b.textContent = text;
+      b.setAttribute("aria-label", title);
+      b.addEventListener("click", fn);
+      row.append(b);
+    }, "mk");
+    mk("\u2191", t("ck.t9.up"), () => {
+      if (i === 0) return;
+      const d = t9StripDraft();
+      [d[i - 1], d[i]] = [d[i], d[i - 1]];
+      commitT9Strip(d);
+    });
+    mk("\u2193", t("ck.t9.down"), () => {
+      if (i === cur.length - 1) return;
+      const d = t9StripDraft();
+      [d[i + 1], d[i]] = [d[i], d[i + 1]];
+      commitT9Strip(d);
+    });
+    mk("\u2715", t("ck.t9.remove"), () => {
+      const d = t9StripDraft();
+      d.splice(i, 1);
+      commitT9Strip(d);
+    });
+    list.append(row);
+  });
+  refreshT9StripSummary();
+}
+__name(renderT9StripPage, "renderT9StripPage");
+function commitT9Strip(arr) {
+  ckT9Strip = arr;
+  ckMarkDirty(true);
+  renderT9StripPage();
+}
+__name(commitT9Strip, "commitT9Strip");
+function refreshT9StripSummary() {
+  const el = document.getElementById("ckT9StripSummary");
+  if (el) el.textContent = ckT9Strip ? ckT9Strip.length === T9_STRIP_DEFAULT.length && ckT9Strip.every((s, i) => s === T9_STRIP_DEFAULT[i]) ? t("ck.t9.sameAsDefault") : `${ckT9Strip.length}` : t("ck.t9.defaultSummary");
+}
+__name(refreshT9StripSummary, "refreshT9StripSummary");
+document.getElementById("ckt9AddBtn").addEventListener("click", () => {
+  const input = document.getElementById("ckt9AddInput");
+  const v = (input.value || "").trim();
+  if (!v) return;
+  const d = t9StripDraft();
+  if (d.length >= T9_STRIP_MAX) {
+    document.getElementById("ckt9LimitHint").hidden = false;
+    return;
+  }
+  d.push(v);
+  input.value = "";
+  document.getElementById("ckt9LimitHint").hidden = true;
+  commitT9Strip(d);
+});
+document.getElementById("ckt9Reset").addEventListener("click", () => {
+  commitT9Strip(T9_STRIP_DEFAULT.slice());
+  setNote("ckSaveNote", t("ck.lang.resetDone"));
+});
 document.getElementById("cklangReset").addEventListener("click", () => {
   delete ckLangKeys[ckLangCurrent];
   renderLangKb(ckLangCurrent);
@@ -6033,6 +6169,7 @@ document.getElementById("cklangReset").addEventListener("click", () => {
 function ckPackJson() {
   const pack = { version: 1, rows: ckRows || [] };
   if (Object.keys(ckLangKeys).length) pack.langKeys = ckLangKeys;
+  if (ckT9Strip) pack.t9Strip = ckT9Strip.slice();
   return pack;
 }
 __name(ckPackJson, "ckPackJson");
