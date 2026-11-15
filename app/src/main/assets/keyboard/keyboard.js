@@ -12399,7 +12399,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
             if (typeof payload.cnEnComposingGuard === 'boolean') this.cnEnGuard = payload.cnEnComposingGuard;
             if (typeof payload.preeditScrub === 'boolean') this.preeditScrub = payload.preeditScrub;
-            if (typeof payload.bottomSymSplit === 'boolean') this.bottomSymSplit = payload.bottomSymSplit;
+            // #113 二轮（AVD 定罪）：值变化要重画底行——只赋值时已渲染
+            // 键面停在旧形态，用户须收起再唤起才见拆键。字母层在显示时
+            // 立即重画（rerenderLangKeys 同守卫；其他层切回时自然读新值）。
+            if (typeof payload.bottomSymSplit === 'boolean' &&
+                payload.bottomSymSplit !== this.bottomSymSplit) {
+                this.bottomSymSplit = payload.bottomSymSplit;
+                this.rerenderLangKeys();
+            }
             const lingerMs = Number(payload.bubbleLinger);
             if (lingerMs >= 0) this.bubbleLinger = lingerMs;
             // 旧 APK 不带 toastMs 时不覆盖默认值（同 keyBubble/preeditScrub 守卫）。

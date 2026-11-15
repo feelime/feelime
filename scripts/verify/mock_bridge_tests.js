@@ -11678,7 +11678,12 @@ test('bottom sym split: off keeps single 123 key, on splits symbols/123 (#113)',
 
     // 开：拆【符号】+【123】两键，123 直达数字键盘（无长按态）。
     const on = fresh({ mode: 'pinyin' });
+    // #113 二轮（AVD 定罪）：hello 开关变化须立即重画已渲染的底行
+    // （只赋值不重画=用户要收起再唤起才见拆键）。
     on.hello({ bottomSymSplit: true });
+    const swapped = [...on.document.querySelectorAll('#qwertyLayer .kb-row')].pop();
+    equal([...swapped.querySelectorAll('.kb-special')].some(el => el.textContent === '符号'),
+        true, 'hello flips the rendered bottom row without a re-show');
     const onBottom = [...on.document.querySelectorAll('#qwertyLayer .kb-row')].pop();
     const symKey = [...onBottom.querySelectorAll('.kb-special')]
         .find(el => el.textContent === '符号');

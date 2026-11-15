@@ -10367,7 +10367,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (typeof payload.keyBubble === "boolean") this.keyBubble = payload.keyBubble;
       if (typeof payload.cnEnComposingGuard === "boolean") this.cnEnGuard = payload.cnEnComposingGuard;
       if (typeof payload.preeditScrub === "boolean") this.preeditScrub = payload.preeditScrub;
-      if (typeof payload.bottomSymSplit === "boolean") this.bottomSymSplit = payload.bottomSymSplit;
+      if (typeof payload.bottomSymSplit === "boolean" && payload.bottomSymSplit !== this.bottomSymSplit) {
+        this.bottomSymSplit = payload.bottomSymSplit;
+        this.rerenderLangKeys();
+      }
       const lingerMs = Number(payload.bubbleLinger);
       if (lingerMs >= 0) this.bubbleLinger = lingerMs;
       const toastMs = Number(payload.toastMs);
