@@ -1,0 +1,53 @@
+{
+  "_comment": "段级证据失效映射（发版 15 分钟改造，codex 方案 2026-11-15）。gate-evidence.py check 判定「段 X 在 commit C 的证据是否仍有效」：从最近一次 PASS 的 git_sha 到 C 的 diff 中，任一文件命中该段失效触发面即 STALE（发版前须补跑）。规则保守优先：段未列出=任何代码变化都失效。version_bump_only：app/build.gradle.kts 的 diff 若只动 versionCode/versionName 两行，视为无触发（发版 bump commit 不烧毁已有证据）。weekly_days：设备段距上次 PASS 超过该天数=WEEKLY_DUE（周回归逾期，发版前补跑），发版入口 --release-evidence 据此判定 READY。",
+  "global_triggers": [
+    "app/src/main/java/**",
+    "scripts/verify/**",
+    "app/build.gradle.kts",
+    "build.gradle.kts",
+    "settings.gradle.kts",
+    "gradle/**",
+    "test-fixtures/**"
+  ],
+  "version_bump_only_file": "app/build.gradle.kts",
+  "whitelist": [
+    "docs/**",
+    "**/*.md",
+    ".github/**",
+    "scripts/generate-release-pages.py",
+    "scripts/publish-release.sh"
+  ],
+  "weekly_days": 7,
+  "segments": {
+    "5/11 base":          { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "6/11 gesture":       { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "6b/11 voice-hold":   { "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/settings/**"] },
+    "7/11 extended":      { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "8/11 editor":        { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9/11 panel":         { "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/settings/**"] },
+    "9a caps-flick":      { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9b settings-phrases":{ "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/settings/**"] },
+    "9c keymap":          { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9d pool":            { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9e control-layer":   { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9f ctrl-switch":     { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9g backspace":       { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9h delete":          { "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/settings/**"] },
+    "9i fn-voice":        { "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/settings/**"] },
+    "9j height-card":     { "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/settings/**"] },
+    "9k phrase-codes":    { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9l editor-modes":    { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9m replay-geometry": { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9n feel-degrade":    { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9o input-prefs":     { "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/settings/**"] },
+    "9p t9":              { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9q appearance":      { "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/settings/**"] },
+    "9r stroke":          { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "9s handwriting":     { "triggers": ["app/src/main/assets/keyboard/**"] },
+    "10/11 resource":     { "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/**"] },
+    "11/11 asr":          { "triggers": ["app/src/main/assets/keyboard/**", "app/src/main/assets/settings/**"] },
+    "1/11 css-lint":      { "triggers": ["app/src/main/assets/**"] },
+    "2/11 mock-suites":   { "triggers": ["app/src/main/assets/**"] },
+    "3/11 jvm":           { "triggers": ["app/src/main/**"] }
+  }
+}

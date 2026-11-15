@@ -22,35 +22,25 @@
 #                                   SwiftShader 死亡前会刷 bad color buffer）
 #   FEELIME_EMU_RESTART_CMD         重启模拟器的命令（可选；配合上一项在段边界
 #                                   计划内重启，命令需自行后台化）
+#
+# 发版证据（15 分钟改造，codex 方案 2026-11-15）：
+#   run-all.sh --release-evidence    只查不发：按 gate-trigger-map.json 判定每段
+#                                    证据对 HEAD 是否有效（FRESH/STALE/WEEKLY_DUE），
+#                                    全部 FRESH 退出 0（READY），否则退出 4 并列出
+#                                    须补跑段。不碰设备，无需 ADB 环境变量。
+#   每段跑绿后自动追加持久账本（~/.config/feelime/gate-evidence.jsonl，
+#   gate-evidence.py record）——跨 commit 的发版证据，与 /tmp 的中断续跑
+#   state 是两回事。
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
-: "${FEELIME_ADB_SERIAL:?FEELIME_ADB_SERIAL is required (adb serial of the test device)}"
-: "${FEELIME_VERIFY_APK:?FEELIME_VERIFY_APK is required (exact installed APK)}"
-: "${FEELIME_ADB_SERIAL:?FEELIME_ADB_SERIAL is required (adb serial of the test device)}"
-: "${FEELIME_VERIFY_APK:?FEELIME_VERIFY_APK is required (exact installed APK)}"
+# 设备环境必填校验放在参数解析/--list/--release-evidence 之后（这些
+# 模式不碰设备，无 ADB 环境的机器也要能查证据/看帮助）。
+
 # FEELIME_ASR_FIXTURE 不在头部硬性必填（codex review P1 附）：只在
 # 本轮选中的段含 asr 时才要求——日常档/单段调试不需要录音。选中后
 # 缺失走 BLOCKED（run_asr），未设置在此拦截。
-
-# debug 构建包名带 .dev 后缀（与正式包共存）：FEELIME_PKG 显式指定 >
-# 设备装了 .dev 用 .dev > 正式包名（与 device_verify._resolve_pkg 同规）。
-FEELIME_PKG_RESOLVED="${FEELIME_PKG:-}"
-if [ -z "$FEELIME_PKG_RESOLVED" ]; then
-    if adb -s "$FEELIME_ADB_SERIAL" shell pm list packages 2>/dev/null \
-        | grep -q '^package:com\.feelime\.ime\.dev$'; then
-        FEELIME_PKG_RESOLVED=com.feelime.ime.dev
-    else
-        FEELIME_PKG_RESOLVED=com.feelime.ime
-    fi
-fi
-PKG="$FEELIME_PKG_RESOLVED"
-# shell `ime` 按 flattenToShortString 精确匹配（同 device_verify.IME_SVC）
-if [ "$PKG" = com.feelime.ime ]; then
-    IME_SVC="$PKG/.FeelimeService"
-else
-    IME_SVC="$PKG/com.feelime.ime.FeelimeService"
-fi
+# （PKG/IME_SVC 解析同样后置到设备环境校验之后。）
 
 # ---- 段定义（label|kind）。kind: local | device | asr ----
 SEGMENTS=(
@@ -114,11 +104,13 @@ usage() {
 }
 
 LIST_ONLY=0; RESUME=0; FROM_SEG=""; PROFILE="full"; LOCK_HELD=0; POSITIONAL=()
+RELEASE_EVIDENCE=0
 ORIG_ARGS=("$@")   # 解析循环会 shift 光 $@；flock 重入要带原始参数
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --list) LIST_ONLY=1 ;;
         --resume) RESUME=1 ;;
+        --release-evidence) RELEASE_EVIDENCE=1 ;;
         --gate-lock-held) LOCK_HELD=1 ;;   # 内部标志：由下面的 flock 包装传入
         --from) [[ $# -ge 2 ]] || { echo "--from needs a segment label" >&2; usage; }; FROM_SEG="$2"; shift ;;
         --profile) [[ $# -ge 2 ]] || { echo "--profile needs a name" >&2; usage; }; PROFILE="$2"; shift ;;
@@ -135,6 +127,34 @@ if [[ "$LIST_ONLY" == "1" ]]; then
     echo "profiles:"
     printf '  %s\n' "${PROFILES[@]%%|*}"
     exit 0
+fi
+
+# 发版证据查询：纯 git/账本操作，不碰设备——放在 ADB/APK 环境校验之前，
+# 无设备的机器（或设备正被别的 gate 占着）也能查。
+if [[ "$RELEASE_EVIDENCE" == "1" ]]; then
+    exec python3 "$HERE/gate-evidence.py" check --for-ref "${FEELIME_EVIDENCE_REF:-HEAD}"
+fi
+
+: "${FEELIME_ADB_SERIAL:?FEELIME_ADB_SERIAL is required (adb serial of the test device)}"
+: "${FEELIME_VERIFY_APK:?FEELIME_VERIFY_APK is required (exact installed APK)}"
+
+# debug 构建包名带 .dev 后缀（与正式包共存）：FEELIME_PKG 显式指定 >
+# 设备装了 .dev 用 .dev > 正式包名（与 device_verify._resolve_pkg 同规）。
+FEELIME_PKG_RESOLVED="${FEELIME_PKG:-}"
+if [ -z "$FEELIME_PKG_RESOLVED" ]; then
+    if adb -s "$FEELIME_ADB_SERIAL" shell pm list packages 2>/dev/null \
+        | grep -q '^package:com\.feelime\.ime\.dev$'; then
+        FEELIME_PKG_RESOLVED=com.feelime.ime.dev
+    else
+        FEELIME_PKG_RESOLVED=com.feelime.ime
+    fi
+fi
+PKG="$FEELIME_PKG_RESOLVED"
+# shell `ime` 按 flattenToShortString 精确匹配（同 device_verify.IME_SVC）
+if [ "$PKG" = com.feelime.ime ]; then
+    IME_SVC="$PKG/.FeelimeService"
+else
+    IME_SVC="$PKG/com.feelime.ime.FeelimeService"
 fi
 
 # 并发锁：一台设备同时只允许一个 gate/驱动（2026-09-11 reg1 教训：两个驱动
@@ -612,6 +632,7 @@ run_asr() {
 
 # ---- 遍历段（set -e：段重试耗尽即整跑退出，退出码非零；修复后 --resume 续跑）----
 ASR_BLOCKED=0   # 1=本轮有 BLOCKED 段（未验证不记绿，尾部提示）
+KNOWN_ENV_SKIPPED=0   # 1=本轮有已知环境缺陷跳过的段（9l on AVD）
 # 失败长尾也要有耗时账（2026-11-14 codex 方案：汇总原本只在正常尾部
 # 执行，段挂掉时 set -e 直接退出，本轮跑了什么/多久全丢）。EXIT trap
 # 只在非零退出时补打，正常路径维持尾部显式汇总。
@@ -645,6 +666,7 @@ for entry in "${SEGMENTS[@]}"; do
     fi
     seg_t0=$(date +%s)
     ACTIVE_SEG="$label"; ACTIVE_T0=$seg_t0
+    seg_no_mark=0
     case "$kind" in
         local)
             echo "== $label =="
@@ -679,7 +701,19 @@ for entry in "${SEGMENTS[@]}"; do
                 "9i fn-voice") run_suite "$label" python3 "$HERE/device_fn_custom_verify.py" ;;
                 "9j height-card") run_suite "$label" python3 "$HERE/device_height_card_verify.py" ;;
                 "9k phrase-codes") run_suite "$label" python3 "$HERE/device_phrase_codes_verify.py" ;;
-                "9l editor-modes") run_suite "$label" python3 "$HERE/device_editor_modes_verify.py" ;;
+                # 9l 的 cursor scrub 断言依赖 host 合成手势推进键盘光标——
+                # AVD 上「IME 服务给自己前台 Activity 提供键盘」的注入到不了
+                # 键盘窗口（1.3.12 同 APK 对照定罪的环境缺陷），每版在 AVD
+                # 烧 ~694s 重试无意义。AVD 直接 KNOWN-ENV-SKIP（不记绿、
+                # 尾部 GATE_BLOCKED 语义），该段验证归属真机。
+                "9l editor-modes")
+                    if [[ "$(adb -s "$FEELIME_ADB_SERIAL" shell getprop ro.kernel.qemu 2>/dev/null | tr -d '[:space:]')" == "1" ]]; then
+                        echo "== $label: KNOWN-ENV-SKIP（AVD 合成手势到不了自身键盘窗口；此段归属真机，1.3.12 定罪）=="
+                        KNOWN_ENV_SKIPPED=1
+                        seg_no_mark=1
+                    else
+                        run_suite "$label" python3 "$HERE/device_editor_modes_verify.py"
+                    fi ;;
                 "9m replay-geometry") run_suite "$label" python3 "$HERE/device_replay_geometry_verify.py" ;;
                 "9n feel-degrade") run_suite "$label" python3 "$HERE/device_feel_degrade_verify.py" ;;
                 "9o input-prefs") run_suite "$label" python3 "$HERE/device_input_prefs_verify.py" ;;
@@ -701,10 +735,15 @@ for entry in "${SEGMENTS[@]}"; do
     # BLOCKED 段（ASR 缺 fixture 等）不落 done：本轮不算绿，--resume
     # 在 fixture 补齐后仍会重跑该段。标志保留到尾部（codex review P1：
     # 首版在此清零，尾部判断永远走不到 BLOCKED 分支=假绿）。
-    if [[ "$ASR_BLOCKED" == "1" && "$label" == "11/11 asr" ]]; then
+    # KNOWN-ENV-SKIP（9l on AVD）同语义：不落 done 也不记证据。
+    if [[ "$ASR_BLOCKED" == "1" && "$label" == "11/11 asr" ]] || [[ "$seg_no_mark" == "1" ]]; then
         :   # 不落 done
     else
         state_mark "$label"
+        # 发版证据账本（跨 commit 持久；与 /tmp 中断续跑 state 互补）。
+        python3 "$HERE/gate-evidence.py" record --label "$label" \
+            --result PASS --git-sha "$git_sha" --apk-sha "$apk_sha" \
+            --dur "$(( $(date +%s) - seg_t0 ))" || true
     fi
     SEG_DUR[$label]=$(($(date +%s) - seg_t0))
     echo "-- $label: ${SEG_DUR[$label]}s"
@@ -727,6 +766,10 @@ fi
 # 自动化不得把它当通过；与「验证失败」的 GATE FAILED 区分开。
 if [[ "$ASR_BLOCKED" == "1" ]]; then
     echo "GATE_BLOCKED: 11/11 asr 未验证（fixture 缺失），补齐后 --resume 会重跑"
+    exit 3
+fi
+if [[ "$KNOWN_ENV_SKIPPED" == "1" ]]; then
+    echo "GATE_BLOCKED: 9l editor-modes 在 AVD 属已知环境缺陷被跳过（未验证，不记绿）——该段归属真机；证据账本无本段记录，发版 --release-evidence 会提示补跑"
     exit 3
 fi
 echo "GATE_OK"

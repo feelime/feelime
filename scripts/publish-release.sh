@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 发版产物构建 + 硬校验 + （可选）上传 GitHub release。
+# 发版产物构建 + 硬校验 + GitHub 发布（分阶段）。
 #
 # 为什么存在：发版序列曾复用 gate 验证过的 direct/debug 产物，而 1.0.19
 # 起 debug 构建 applicationId 带 .dev 后缀（与正式包共存的设计）——照老
@@ -10,27 +10,39 @@
 #      一律拒绝）、versionName 精确等于 tag、签名者非 debug 证书
 #   3. thin→cp→full→cp 顺序坑固化（同路径输出互相覆盖，memory 1.0.14）
 #
-# 用法: scripts/publish-release.sh v<version> [--upload] [--notes-file <file>] [--verify-sha <file>]
+# 用法: scripts/publish-release.sh v<version> [模式] [选项]
 #   v<version>      版本 tag（如 v1.2.2），必须与 app versionName 一致
-#   --upload        校验全过后发布 GitHub release（release 不存在会自动
-#                   create；上传后自动核验资产 state/digest/包名）
-#   --notes-file F  create 时用的发布说明文件（缺省 --generate-notes，
-#                   发布说明可事后 gh release edit 补）
-#   --verify-sha F  冒烟验收时记录的 sha256sum 清单（相对 release-dist 的
-#                   文件名）。--upload 时强制：重建出的 thin/full APK 字节
-#                   必须与验收清单一致（构建不可复现/源码漂移都会在此拦下），
-#                   任何不一致在创建 release 前失败。
+#
+# 模式（发版 15 分钟改造，codex 方案 2026-11-15）：
+#   --build-only    构建两包 + 硬校验 + 归档到 release-dist（默认；= 旧 dry-run）
+#   --stage         上传「暂存」：产物不重建，读 release-dist 固定字节；
+#                   GitHub 建 draft release + 传资产 + digest 核验（不公开）
+#   --finalize      draft → 公开（可补 notes）；幂等：已 published 则仅核验
+#   --upload        旧全流程 = build-only + stage + finalize 一条龙（含重建，
+#                   保留给不走快速流程的场景）
+#
+# 选项：
+#   --notes-file F  release 说明文件（stage 建 draft / finalize 时用）
+#   --verify-sha F  冒烟验收记录的 sha256sum 清单（相对 release-dist 的文件
+#                   名）。--stage/--upload 强制：清单必须与上传字节逐一一致，
+#                   构建不可复现/源码漂移都会在此拦下。
+#
+# 快速发版序列（build 与 stage 分离，冒烟在中间）：
+#   build-only → ace 冒烟（记录 sha 清单）→ stage → finalize
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAG="${1:-}"
-UPLOAD=0
+MODE="build"
 NOTES_FILE=""
 SHA_FILE=""
 shift || true
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --upload) UPLOAD=1 ;;
+        --build-only) MODE="build" ;;
+        --stage) MODE="stage" ;;
+        --finalize) MODE="finalize" ;;
+        --upload) MODE="upload" ;;
         --notes-file) NOTES_FILE="${2:-}"; shift ;;
         --verify-sha) SHA_FILE="${2:-}"; shift ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -43,7 +55,7 @@ if [[ -n "$SHA_FILE" && "$SHA_FILE" != /* ]]; then
     SHA_FILE="$(pwd)/$SHA_FILE"
 fi
 if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "usage: $0 v<version> [--upload]   (e.g. $0 v1.2.1)" >&2
+    echo "usage: $0 v<version> [--build-only|--stage|--finalize|--upload] [--notes-file F] [--verify-sha F]" >&2
     exit 2
 fi
 VER="${TAG#v}"
@@ -64,6 +76,8 @@ fi
 
 APK_SRC="$PROJECT_DIR/app/build/outputs/apk/direct/release/app-direct-release.apk"
 DIST="$PROJECT_DIR/app/build/outputs/release-dist"
+THIN="$DIST/feelime-v${VER}-thin.apk"
+FULL="$DIST/feelime-v${VER}-full.apk"
 mkdir -p "$DIST"
 
 # ---- 单个产物的三重校验；任何一项失败即退出（不发任何文件）----
@@ -92,28 +106,35 @@ verify_apk() {
     echo "OK $(basename "$apk")  id=$name ver=$ver  ${sig#*: }"
 }
 
-cd "$PROJECT_DIR"
+do_build() {
+    cd "$PROJECT_DIR"
+    # ---- 构建：thin → cp → full → cp（顺序坑：同路径输出互相覆盖）----
+    # 耗时采集（发版 15 分钟改造）：三产物暖构建预算 ≤5.75min（codex 预算
+    # 表的硬条件），每步打印墙钟供对账；连续不达标先查这里再动 Gradle。
+    local t0 t1
+    t0=$(date +%s)
+    echo "== thin build =="
+    ./gradlew -q "${GRADLE_ARGS[@]}" -PfeelimeModels=thin
+    cp "$APK_SRC" "$THIN"
+    verify_apk "$THIN" "$VER"
+    t1=$(date +%s); echo "-- thin build+verify: $((t1 - t0))s"
 
-# ---- 构建：thin → cp → full → cp（顺序坑：同路径输出互相覆盖）----
-echo "== thin build =="
-./gradlew -q "${GRADLE_ARGS[@]}" -PfeelimeModels=thin
-cp "$APK_SRC" "$DIST/feelime-v${VER}-thin.apk"
-verify_apk "$DIST/feelime-v${VER}-thin.apk" "$VER"
+    echo "== full build =="
+    ./gradlew -q "${GRADLE_ARGS[@]}" -PfeelimeModels=full
+    cp "$APK_SRC" "$FULL"
+    verify_apk "$FULL" "$VER"
+    echo "-- full build+verify: $(( $(date +%s) - t1 ))s (thin+full total: $(( $(date +%s) - t0 ))s)"
 
-echo "== full build =="
-./gradlew -q "${GRADLE_ARGS[@]}" -PfeelimeModels=full
-cp "$APK_SRC" "$DIST/feelime-v${VER}-full.apk"
-verify_apk "$DIST/feelime-v${VER}-full.apk" "$VER"
+    echo "== sha256 =="
+    ( cd "$DIST" && sha256sum "$(basename "$THIN")" "$(basename "$FULL")" )
+}
 
-echo "== sha256 =="
-( cd "$DIST" && sha256sum "feelime-v${VER}-thin.apk" "feelime-v${VER}-full.apk" )
-
-if [[ "$UPLOAD" == 1 ]]; then
-    # ---- 上传门闸（必须发布验收过的包，任何不一致在创建 release 前失败）----
-    # 1) HEAD 必须正是传入 tag：从 tag worktree 构建，防止「验收了 A、上传了 B」
-    # 2) 工作区必须干净：脏构建的字节没有对应验收记录
-    # 3) --verify-sha 必填：重建字节与冒烟验收清单逐一比对（构建不可复现/
-    #    源码漂移在此拦下，绝不带未验收字节上 release）
+# ---- 上传门闸（必须发布验收过的包，任何不一致在创建 release 前失败）----
+# 1) HEAD 必须正是传入 tag：从 tag worktree 构建，防止「验收了 A、上传了 B」
+# 2) 工作区必须干净：脏构建的字节没有对应验收记录
+# 3) --verify-sha 必填：上传字节与冒烟验收清单逐一比对（产物漂移在此拦下，
+#    绝不带未验收字节上 release）
+gate_release() {
     TAG_COMMIT="$(git -C "$PROJECT_DIR" rev-parse -q --verify "refs/tags/${TAG}^{commit}")" \
         || { echo "REJECT: local tag $TAG not found — create (and push) the tag first" >&2; exit 1; }
     HEAD_COMMIT="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
@@ -122,7 +143,7 @@ if [[ "$UPLOAD" == 1 ]]; then
     [[ -z "$(git -C "$PROJECT_DIR" status --porcelain)" ]] \
         || { echo "REJECT: dirty worktree — commit or stash before publishing" >&2; exit 1; }
     [[ -n "$SHA_FILE" ]] \
-        || { echo "REJECT: --upload requires --verify-sha <accepted sha256 list> (release-smoke acceptance record)" >&2; exit 1; }
+        || { echo "REJECT: staging/uploading requires --verify-sha <accepted sha256 list> (release-smoke acceptance record)" >&2; exit 1; }
     [[ -f "$SHA_FILE" ]] \
         || { echo "REJECT: --verify-sha file not found: $SHA_FILE" >&2; exit 1; }
     # 清单必须恰好列出本版本 thin/full 两个文件各一次。sha256sum -c 只验
@@ -131,7 +152,7 @@ if [[ "$UPLOAD" == 1 ]]; then
     # 其余全部」当文件名（可含空格）：`<hash>␣␣other feelime-…-thin.apk`
     # 会被首/末字段解析放过而实际校验的是另一个文件——所以必须整行精确
     # 等于 "<64hex>␣␣<本版本文件名>"（sha256sum 默认双空格格式）。
-    thin_entry="feelime-v${VER}-thin.apk"; full_entry="feelime-v${VER}-full.apk"
+    thin_entry="$(basename "$THIN")"; full_entry="$(basename "$FULL")"
     n_thin=0; n_full=0
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -n "$line" ]] || continue
@@ -152,26 +173,39 @@ if [[ "$UPLOAD" == 1 ]]; then
         echo "REJECT: NUL byte in $SHA_FILE" >&2; exit 1
     fi
     ( cd "$DIST" && sha256sum --strict -c "$SHA_FILE" ) \
-        || { echo "REJECT: rebuilt artifacts differ from the accepted SHAs — rerun smoke acceptance on these bytes before uploading" >&2; exit 1; }
-    # gh release upload 只能往已存在的 release 里传——release 还没建就
-    # 先 create（tag 已 push 时 create 不会重复打 tag）。--notes-file
-    # 可选，缺省 --generate-notes（发布说明可事后 gh release edit 补）。
-    if ! gh release view "$TAG" >/dev/null 2>&1; then
-        echo "== create release $TAG =="
+        || { echo "REJECT: staged artifacts differ from the accepted SHAs — these bytes were never smoke-accepted; rerun build+smoke" >&2; exit 1; }
+    # stage 模式不重建：上传前对固定产物再做一次身份校验（防 dist 被
+    # 别的流程覆盖成未验收字节而 sha 清单本身又过期吻合的边角）。
+    verify_apk "$THIN" "$VER"
+    verify_apk "$FULL" "$VER"
+}
+
+# ---- stage：draft release + 资产 + digest 核验（不公开）----
+do_stage() {
+    gate_release
+    # gh release upload 只能往已存在的 release 里传——还没有就先建 draft
+    # （--draft：对外不可见，finalize 才公开；tag 已 push 时 create 不会
+    # 重复打 tag）。已 published 的 release 不允许再 stage。
+    if gh release view "$TAG" >/dev/null 2>&1; then
+        IS_DRAFT="$(gh release view "$TAG" --json isDraft -q .isDraft)"
+        if [[ "$IS_DRAFT" != "true" ]]; then
+            echo "REJECT: release $TAG already published — nothing to stage (use --finalize to re-verify)" >&2
+            exit 1
+        fi
+        echo "== reuse existing draft $TAG =="
+    else
+        echo "== create draft release $TAG =="
         if [[ -n "$NOTES_FILE" ]]; then
-            gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
+            gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES_FILE"
         else
-            gh release create "$TAG" --title "$TAG" --generate-notes
+            gh release create "$TAG" --draft --title "$TAG" --generate-notes
         fi
     fi
-    echo "== upload $TAG =="
-    gh release upload "$TAG" \
-        "$DIST/feelime-v${VER}-thin.apk" \
-        "$DIST/feelime-v${VER}-full.apk" \
-        --clobber
-    # ---- 发布后核验（不依赖人记得）：资产 state + 远端 digest 与本地
+    echo "== upload assets to draft $TAG =="
+    gh release upload "$TAG" "$THIN" "$FULL" --clobber
+    # ---- 暂存后核验（不依赖人记得）：资产 state + 远端 digest 与本地
     # sha256 逐一比对 + 下载 thin 包复核包名（.dev 泄漏的最后防线）。
-    echo "== post-upload verify =="
+    echo "== post-stage verify =="
     RID="$(gh api "repos/{owner}/{repo}/releases/tags/$TAG" -q .id)"
     for i in $(seq 1 40); do
         STATES="$(gh api "repos/{owner}/{repo}/releases/$RID/assets" \
@@ -192,7 +226,41 @@ if [[ "$UPLOAD" == 1 ]]; then
     gh release download "$TAG" --pattern "feelime-v${VER}-thin.apk" --clobber -D "$TMPD" >/dev/null
     verify_apk "$TMPD/feelime-v${VER}-thin.apk" "$VER"
     rm -rf "$TMPD"
-    echo "VERIFIED: $TAG assets are correct (package, version, digest, signature)"
-else
-    echo "dry-run only (pass --upload to publish): $DIST/feelime-v${VER}-{thin,full}.apk"
-fi
+    echo "STAGED: $TAG draft verified (package, version, digest, signature) — finalize to publish"
+}
+
+# ---- finalize：draft → 公开（幂等）----
+do_finalize() {
+    gh release view "$TAG" >/dev/null 2>&1 \
+        || { echo "REJECT: release $TAG not found — stage first" >&2; exit 1; }
+    IS_DRAFT="$(gh release view "$TAG" --json isDraft -q .isDraft)"
+    if [[ "$IS_DRAFT" == "true" ]]; then
+        if [[ -n "$NOTES_FILE" ]]; then
+            gh release edit "$TAG" --draft=false --notes-file "$NOTES_FILE" >/dev/null
+        else
+            gh release edit "$TAG" --draft=false >/dev/null
+        fi
+        echo "PUBLISHED: $TAG"
+    else
+        echo "already published: $TAG"
+    fi
+    gh release view "$TAG" --json url -q .url
+}
+
+case "$MODE" in
+    build)
+        do_build
+        echo "built only (next: smoke-accept, then --stage): $THIN $FULL"
+        ;;
+    stage)
+        do_stage
+        ;;
+    finalize)
+        do_finalize
+        ;;
+    upload)
+        do_build
+        do_stage
+        do_finalize
+        ;;
+esac

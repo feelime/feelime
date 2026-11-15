@@ -457,6 +457,31 @@ ASCII fixture 上复现 `b uy sv`；新路径（只读迭代器 + hint 取材 fa
 「none 模式」不是零读取 burst 对照。
 
 
+## 发版证据账本（--release-evidence，2026-11-15）
+
+发版不再从零重跑全量门禁（v1.4.10 实测白烧 63min）。段级证据持久化在
+`~/.config/feelime/gate-evidence.jsonl`（repo 外，跨 commit 有效；run-all.sh
+每段跑绿自动 `gate-evidence.py record`），发版入口一键判定：
+
+```bash
+bash scripts/verify/run-all.sh --release-evidence   # 不碰设备
+# FRESH=有效证据；STALE=diff 触发须补跑；WEEKLY_DUE=设备段 7 天未跑
+# 退出 0=READY；退出 4=NOT-READY（列出须补跑段）
+```
+
+有效性规则（`gate-trigger-map.json`，保守优先）：取该段最近一次 PASS 的
+commit（须为 HEAD 祖先），其到 HEAD 的 diff 命中该段触发面即 STALE。
+全局触发（任何段失效）：`app/src/main/java/**`、`scripts/verify/**`、
+gradle 配置、`test-fixtures/**`；段级触发按资产域（keyboard assets 触发
+键盘行为段、settings assets 触发设置页段）；白名单（docs/md/发布脚本）
+不触发；`app/build.gradle.kts` 仅动 versionCode/versionName 行的 bump
+commit 不触发。**代码与证据相同才复用**：日期相同不构成证据，branch 上
+绿过不等于 main 上绿过（记账记的是跑绿时的 git_sha，非祖先记录作废）。
+
+与 /tmp 中断续跑 state 的区别：state 绑 apk/git/tree 指纹、跨 commit 即
+作废，只服务断点续跑；证据账本才是发版决策依据。9l 在 AVD 是
+KNOWN-ENV-SKIP（不记绿），归属真机验证。
+
 ## 发布产物门闸（--verify-sha）
 
 `scripts/publish-release.sh v<ver> --upload --verify-sha <清单>` 把「必须发布
