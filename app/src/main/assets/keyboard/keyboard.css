@@ -889,9 +889,10 @@ body[data-cap-single="on"] .kb-key.kb-letter .kb-main {
 /* Margin 9 -> 5 - the taller candidate bar consumed the slack and
  * the four symbol rows must stay inside the same 272px budget. */
 #symCatBar { display: flex; gap: 5px; margin-top: 5px; }
-#symCatBar [data-action="letters"] { flex: 1.35; font-size: 13px; }
-/* #113 二轮：123 与 ABC 同权重（分类条 flex 4.8 吸收差额）。 */
-#symCatBar [data-action="numpad"] { flex: 1.35; font-size: 13px; }
+/* #113 三轮（用户定宽）：ABC 与键盘底行【符号】同宽（2.1）、123 与
+ * 键盘底行【123】同宽（1.15）——两处数值手动同源，改动须同步。 */
+#symCatBar [data-action="letters"] { flex: 2.1; font-size: 13px; }
+#symCatBar [data-action="numpad"] { flex: 1.15; font-size: 13px; }
 /* ⌫ 顶替换行键位（setup 注入）：与 ABC 同权重，长按连删（bar 在
  * 滚动容器外，bindTouch 合法——numpad back 同判定）。 */
 #symCatBar [data-role="backspace"] { flex: 1.35; }

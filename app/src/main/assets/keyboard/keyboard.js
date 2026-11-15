@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.120';
+    const KEYBOARD_VERSION = '3.73.121';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -2738,11 +2738,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // toggle for the system IME picker (the old globe slot).
             const bottom = this.row();
             // #113（默认关）：开=左下拆【符号】+【123】两键，123 直达数字
-            // 键盘；符号键 1.4/123 1.15 合计 2.55（2026-11-15 用户验收
-            // 加宽符号键），空格 flex 自动吸收差额变窄。关=存量单键：
-            // 点=符号面板、长按=数字键盘。
+            // 键盘；符号键 2.1/123 1.15（2026-11-15 用户两轮验收定宽，
+            // 符号键顶到原单键 123 的宽度），空格 flex 自动吸收差额变窄。
+            // 关=存量单键：点=符号面板、长按=数字键盘。
             if (this.bottomSymSplit) {
-                bottom.append(this.specialKey('symbols', t("符号"), () => this.showSymbols(), 'kb-wide-1_4 kb-special'));
+                bottom.append(this.specialKey('symbols', t("符号"), () => this.showSymbols(), 'kb-wide-2_1 kb-special'));
                 bottom.append(this.specialKey('numpad', '123', () => this.showNumpad(), 'kb-wide-1_15 kb-special'));
             } else {
                 bottom.append(this.specialKey('symbols', '123', () => this.showSymbols(), 'kb-wide-2_1 kb-special', 'numpad'));
