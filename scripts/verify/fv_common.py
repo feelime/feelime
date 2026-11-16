@@ -612,7 +612,11 @@ def pick_select_option(selector, option_text, wait=1.0, expect_value=None):
                         candidates.append(((x1 + x2) / 2, (y1 + y2) / 2))
         for point in candidates:
             d.tap(*point, wait=0.8)
-            if expect_value is None or value_now() != start:
+            # 2026-11-16 9n 定罪：「值必须变化」在目标=当前值时误判
+            # （pad 用例已归 350，再选 350 是 350→350 不变，被当 ghost
+            # hit 重试到失败）。已等于期望值同样是成功。
+            if (expect_value is None or value_now() != start
+                    or value_now() == expect_value):
                 return True
             # Ghost hit (value unchanged): its tap may have toggled the
             # dialog - reopen before trying the next candidate.

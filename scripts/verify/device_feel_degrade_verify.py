@@ -255,10 +255,30 @@ def set_feel_defaults():
     if not pick_select_option("#scrubSpeed", "3x"):
         print("feel-defaults: scrubSpeed 3x pick failed", flush=True)
         return False
-    return bool(shared.wait_until(
-        lambda: re.search(r'name="feel_hold_ms" value="350"', prefs_body())
-        and not re.search(r'name="feel_hold_ms" value="600"', prefs_body()),
+    def hold_pref_ok():
+        # 2026-11-16 9n 定罪：pm clear 后首启 DOM select 即默认 350，
+        # pick 350 是 350→350 不触发 change，pref 键永远不写——「必须有
+        # value=350 键」过强。无键=用默认=350 同样达标；有 600 残留才是
+        # 真失败（防污染其他套件的长按窗口）。
+        body = prefs_body()
+        if re.search(r'name="feel_hold_ms" value="600"', body):
+            return False
+        return (re.search(r'name="feel_hold_ms"', body) is None
+                or bool(re.search(r'name="feel_hold_ms" value="350"', body)))
+    ok = bool(shared.wait_until(
+        hold_pref_ok,
         lambda value: value is True, timeout=8.0))
+    if not ok:
+        # 2026-11-16 取证：wait_until 是本函数唯一无 print 的失败路径，
+        # 三轮 gate 挂这里却看不到现场。补 prefs 现值 + DOM select 值。
+        hold = re.search(r'feel_hold_ms" value="(\d+)"', prefs_body())
+        scr = re.search(r'feel_scrub_speed" value="(\d+)"', prefs_body())
+        dom = shared.sev("document.getElementById('holdMs')?.value + '/'"
+                         " + document.getElementById('scrubSpeed')?.value")
+        print(f"feel-defaults: prefs wait failed: pref_hold="
+              f"{hold.group(1) if hold else None} pref_scrub="
+              f"{scr.group(1) if scr else None} dom={dom}", flush=True)
+    return ok
 
 
 def case_feel_values():
