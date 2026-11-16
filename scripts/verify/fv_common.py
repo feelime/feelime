@@ -461,6 +461,23 @@ def settings_point(selector):
     return geometry[0] if geometry else None
 
 
+def _hit_test_ok(selector):
+    # 2026-11-16 9j 定罪：CK 家族 main（overflow-y:auto 嵌套滚动容器）把
+    # 元素裁在「WebView 视觉框内、main 可视框外」——settings_tap 的坐标
+    # 相交判定只认 WebView 外框，tap 中心落在 main 之外的 body 空白带，
+    # click 静默丢失（c626128 新增三入口把 #ckSymbolEntry 推过 main 底界
+    # 才暴露）。tap 前用 elementFromPoint 自证中心真在目标子树上。
+    expression = (
+        "(() => { const el = document.querySelector(" + _quoted(selector) + ");"
+        " if (!el) return false; const r = el.getBoundingClientRect();"
+        " if (r.width <= 0 || r.height <= 0) return false;"
+        " const hit = document.elementFromPoint(r.left + r.width / 2,"
+        " r.top + r.height / 2);"
+        " return !!(hit && (hit === el || el.contains(hit))); })()"
+    )
+    return sev(expression) is True
+
+
 def settings_tap(selector, wait=0.7, scroll=True):
     # An open IME plus the native test editor can leave only 200 CSS pixels
     # for the page, so reaching controls below the model rows takes >4 swipes.
@@ -501,8 +518,11 @@ def settings_tap(selector, wait=0.7, scroll=True):
         point, (left, top, right, bottom) = geometry
         width, height = right - left, bottom - top
         if left <= point[0] < right and top <= point[1] < bottom:
-            d.tap(*point, wait=wait)
-            return True
+            if _hit_test_ok(selector):
+                d.tap(*point, wait=wait)
+                return True
+            # WebView 框相交但 hit-test 穿透（嵌套滚动容器裁剪/浮层遮挡）：
+            # 落到下面的滚动路径，scrollIntoView 会滚最近可滚祖先露出元素。
         if not scroll:
             break
         # 先走 devtools 精确落位（同一条观测通道）：scrollTop 直赋一步
