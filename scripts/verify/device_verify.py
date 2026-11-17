@@ -1636,8 +1636,14 @@ def input_shown():
 
 
 def current_ime():
-    """Package/class of the IME currently bound to the focused editor."""
-    return shell("dumpsys input_method | grep -m1 mCurMethodId=").strip()
+    """Package/class of the IME currently bound to the focused editor.
+    API 34 起 dumpsys 字段 mCurMethodId 消失、改叫 mSelectedMethodId
+    （2026-11-17 新 felime-gate AVD 实录：grep 落空→current_ime 返回空串
+    →P4 误判 binding unknown 稳定挂段）。优先当前绑定字段，回落选择字段。"""
+    out = shell("dumpsys input_method | grep -m1 mCurMethodId=").strip()
+    if out:
+        return out
+    return shell("dumpsys input_method | grep -m1 mSelectedMethodId=").strip()
 
 
 def wait_password_binding(timeout_steps=10):

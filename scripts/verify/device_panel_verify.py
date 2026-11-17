@@ -184,6 +184,12 @@ def main():
     # panel from P3 is still open, so BACK must be verified to actually hide
     # the IME - otherwise the tap lands on the keyboard WebView .
     d.ensure_keyboard_down()
+    # 2026-11-17（新 felime-gate AVD 实录）：P3 后的 WebView 布局/焦点
+    # 残留会让密码框 tap 落偏（IME 短暂起又收，绑定 type=1，P4 判
+    # unknown 稳定挂段）。重开 fixture activity 重置布局——手动验证
+    # prepare() 后全链一次通过（tap→type=129 receipt→binding=hosted）。
+    d.prepare()
+    d.ensure_keyboard_down()
     # Preserve the onStartInput receipt produced by the upcoming focus.
     d.shell("logcat -c")
     kb = None
@@ -216,8 +222,12 @@ def main():
         print(f"SKIP P4: vendor security keyboard owns the password editor ({ime})", flush=True)
         d.ensure_keyboard_down()
     elif binding != "hosted":
+        # 取证（2026-11-17）：unknown 有两条出口（129 缺席 / IME 或可见性
+        # 不满足），失败轮当场分清，不再盲修。
+        n129 = d.shell("logcat -d -s FeelimePanel:* | grep -c 'onStartInput type=129'").strip()
         record("P4 sensitive editor hides clipboard and disables voice", False,
-               f"password editor binding not established: {binding}; {ime}")
+               f"password editor binding not established: {binding}; {ime}; "
+               f"shown={d.input_shown()} n129={n129}")
         d.ensure_keyboard_down()
     else:
         time.sleep(1.5)  # WebView + DevTools socket rebuild after hide/show
