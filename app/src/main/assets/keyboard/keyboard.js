@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.123';
+    const KEYBOARD_VERSION = '3.73.124';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -5545,7 +5545,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 cell.cx = r.left + r.width / 2;
                 cell.cy = r.top + r.height / 2;
             });
-            const selected = cells.find(cell => cell.char === upper) || cells[0];
+            // #114（2026-11-17）：英文键盘点/逗号键长按松手默认提交逗号——
+            // 主字符 . 单击就有，长按松手再落 . 等于白按；中文态同键松手
+            // 本就提交句号，体验对齐。仅此一键特判：字母键的
+            // 「松手=取消回主字符」语义（看了备选不想要，松手原样）保持。
+            let anchor = upper;
+            if (key === '.' && !this.chineseSymMode()) {
+                anchor = this.altCandidates(key)[0] || upper;
+            }
+            const selected = cells.find(cell => cell.char === anchor) || cells[0];
             selected.item.classList.add('sel');
             this.popup = { key, cells, selected, cancelled: false,
                 openedAt: Date.now() }; // 长按浮层取证：见另一赋值点注释

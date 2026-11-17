@@ -1777,6 +1777,37 @@ test('popup cancel commits nothing', () => {
     equal(world.native.of('key').length, 0, 'no commit on cancel');
 });
 
+// #114（2026-11-17）：英文键盘点/逗号键长按松手提交逗号（主字符 .
+// 单击就有，长按松手再落 . 等于白按）；其他键「松手=取消回主字符」
+// 的语义不变（对照用例钉住）。
+test('english dot key long-press release commits comma (#114)', {since: '3.73.124'}, () => {
+    const world = fresh();
+    const dotKey = world.key('.');
+    world.touchDown(dotKey);
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    const anchor = [...world.document.querySelectorAll('.kp-item')]
+        .find(el => el.classList.contains('sel'));
+    equal(anchor.textContent, ',', 'pre-selected cell is the comma');
+    world.touchUp(dotKey);
+    const keys = world.native.of('key');
+    assert(keys.length === 1, 'one commit from popup');
+    equal(keys[0].args[0], ',', 'release with no drag commits comma');
+});
+
+test('letter popup release-without-drag still commits the key char', {since: '3.73.124'}, () => {
+    const world = fresh();
+    const eKey = world.key('e');
+    world.touchDown(eKey);
+    world.clock.advance(360);
+    world.touchUp(eKey);
+    const keys = world.native.of('key');
+    assert(keys.length === 1, 'one commit');
+    // 字母弹层的预选格是大写形式（reference parity）：松手提交大写——
+    // #114 的点键特判与它是同一「松手=预选格」语义，不改变字母行为。
+    equal(keys[0].args[0], 'E', 'letter release keeps uppercase pre-selection');
+});
+
 // ---- 重叠双指（快速双手打字的常见时序：B 落键时 A 还没抬）----
 // 全局 touchOrigin 是首指所有权；B 落键不抢占。复现两组现网症状：
 // 上滑被当点按落小写、长按弹层一动就「松手撤销」。

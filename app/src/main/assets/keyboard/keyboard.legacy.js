@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.123";
+  const KEYBOARD_VERSION = "3.73.124";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -4794,7 +4794,11 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         cell.cx = r.left + r.width / 2;
         cell.cy = r.top + r.height / 2;
       });
-      const selected = cells.find((cell) => cell.char === upper) || cells[0];
+      let anchor = upper;
+      if (key === "." && !this.chineseSymMode()) {
+        anchor = this.altCandidates(key)[0] || upper;
+      }
+      const selected = cells.find((cell) => cell.char === anchor) || cells[0];
       selected.item.classList.add("sel");
       this.popup = {
         key,
