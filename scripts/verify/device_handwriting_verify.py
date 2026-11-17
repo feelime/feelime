@@ -184,12 +184,22 @@ def main(skip_crash):
         check_ok(cold)
         # Golden output observed for this exact tensor/model/vocabulary. This
         # checks decoding stability, not the model's handwriting accuracy.
-        assert cold['candidates'][0]['text'] == '口' and cold['candidates'][0]['score'] > 0.9, cold
+        # 2026-11-16 re-calibrated for ochwpro（0471fd7 引擎整体切换，
+        # Melnyk-Net 的 '口'/0.9+ golden 失效——切换日漏跑本段，v1.4.11
+        # 发版门禁首跑暴露）：矩形+中竖 payload 的确定性输出 '`'/0.145
+        #（AVD 与 ace 真机逐字节一致实测）。
+        top = cold['candidates'][0]
+        assert top['text'] == '`' and abs(top['score'] - 0.14535) < 0.001, cold
         evidence = log().split(marker, 1)[1]
-        for stage in ('session-create', 'options-close', 'input-info', 'output-info', 'output-close', 'tensor-close'):
-            assert re.search(r'done .*stage=' + stage + r'(?: |$)', evidence), 'missing completed phase ' + stage
-        assert 'outInfoRead n=3755' in evidence, 'real NodeInfo vocabulary validation missing'
-        print('PASS cold ORT: actual model -> candidates include 口; metadata, options and inference resources verified', flush=True)
+        # 2026-11-16 重校准：ochwpro（0471fd7 起）的诊断日志是
+        # inkReq start → inkInfer（引擎 epoch+推理耗时）；Melnyk 时代的
+        # ORT 六阶段（session-create...tensor-close）与 outInfoRead
+        # n=3755 词汇校验日志已随引擎退役，不再产出。
+        assert re.search(r'inkReq start e=\d+ ochwpro req=101 chars=\d+', evidence), \
+            'missing inkReq start for ochwpro'
+        assert re.search(r'inkInfer e=\d+ ochwpro req=101 T=\d+', evidence), \
+            'missing inkInfer for ochwpro'
+        print('PASS cold ink: ochwpro model decoding stable; request/infer diagnostics verified', flush=True)
 
         rect = page.eval("(()=>{const r=document.getElementById('inkCanvas').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}})()")
         for stroke in json.loads(payload)['strokes']:
@@ -213,7 +223,11 @@ def main(skip_crash):
         assert result(page, 102)['error'] == 'failed'
         request(page, 103, payload)
         check_ok(result(page, 103))
-        assert len(re.findall(r'begin .*stage=session-create', log().split(marker, 1)[1])) == 1, 'warm request unexpectedly reloads model'
+        # ochwpro 语义（2026-11-16 重校准）：引擎 epoch（e=）不变=
+        # 模型未重建；Melnyk 的 stage=session-create 计数已随引擎退役。
+        epochs = set(re.findall(r'inkReq start e=(\d+) ochwpro req=10[13]',
+                                 log().split(marker, 1)[1]))
+        assert len(epochs) == 1, f'warm request reloaded model (epochs={epochs})'
         print('PASS warm ORT and invalid payload recovery', flush=True)
 
         large = json.dumps({'w': 320, 'h': 220, 'strokes': [
@@ -236,7 +250,9 @@ def main(skip_crash):
         release_marker = 'ink-release-' + str(time.time_ns())
         page.eval(f'window.FeelimeNative.diagEvent({json.dumps(release_marker)},window.Feelime.debugState().token); true')
         d.shell('ime set ' + shlex.quote(alternatives[0]))
-        wait_until(lambda: re.search(r'done .*stage=session-close(?: |$)', log().split(release_marker, 1)[-1]), 'native session release')
+        # ochwpro 语义（2026-11-17 重校准）：引擎 session 随服务进程销毁
+        # 释放（svc destroy），无 Melnyk 的 stage=session-close 日志。
+        wait_until(lambda: re.search(r'svc destroy', log().split(release_marker, 1)[-1]), 'native session release')
         page.close()
         page = None
         d.shell('ime set ' + d.IME_SVC)

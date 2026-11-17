@@ -60,8 +60,12 @@ object HandwritingInk {
     /** §4.1：内容 bbox → 画布等比映射（长边撑满、短边居中）。 */
     data class InkTransform(val scale: Float, val offsetX: Float, val offsetY: Float)
 
-    /** recognizeInk 桥载荷预算（原 HandwritingEngine.MAX_PAYLOAD_CHARS）。 */
-    const val MAX_PAYLOAD_CHARS = 4096
+    /** recognizeInk 桥载荷预算（原 HandwritingEngine.MAX_PAYLOAD_CHARS）。
+     * 2026-11-17 修正：0471fd7 切 ochwpro 时误从 512Ki 砍到 4096——与
+     * MAX_POINTS_PER_STROKE=512 自相矛盾（4096 字符 ≈ 420 点，一笔快速
+     * 长滑就超预算 inkReject，用户没候选）。推理成本由 DENSITY_CAP 抽稀
+     * 钳制，预算只需防滥用，恢复 512Ki（覆盖 64 笔×512 点上限）。 */
+    const val MAX_PAYLOAD_CHARS = 512 * 1024
     private const val MAX_STROKES = 64
     private const val MAX_POINTS_PER_STROKE = 512
 }
