@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.124';
+    const KEYBOARD_VERSION = '3.73.125';
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -3619,7 +3619,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             button.dataset.lp = 'popup';
             const hint = document.createElement('span');
             hint.className = 't9-hint';
-            hint.textContent = (LAYOUTS.t9.keySymbols[digit] || []).join('');
+            hint.textContent = this.t9KeySymbols(digit).join('');
             const sup = document.createElement('span');
             sup.className = 't9-sup';
             sup.textContent = digit;
@@ -3750,8 +3750,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 strip.append(cell);
             });
             pre.forEach(initial => {
-                // 前缀格只做提示（「还没打完」），点按无动作。
-                const cell = this.t9SideCell(initial, () => {});
+                // #117（2026-11-19）：前缀声母格此前是 no-op（「只做
+                // 提示」），用户点 b/c 切声母无响应即报「灰色不可点」。
+                // 实测引擎对纯声母组合返回该声母候选（b→被吧把比…），
+                // 点击=把待完成段开头重写为该声母（不推进确认边界）。
+                const cell = this.t9SideCell(initial,
+                    () => this.t9PickInitial(initial, seg));
                 cell.classList.add('t9-syl-pre');
                 strip.append(cell);
             });
@@ -3771,6 +3775,23 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * 引擎音节图原生切分（BridgeContract 对 T9 放行 2-9），复用双拼
          * 变体的原子 setComposition 通道。段前的已确认部分（含回显空格）
          * 原样保留。 */
+        /** #117：点声母前缀格=限定声母，重写待完成段开头为该字母。
+         * 与 t9PickSyllable 的区别：不推进音节确认边界
+         * （_t9ConfirmedText/t9ConfirmedLen 原样保留）——声母只是
+         * 「限定」，后续点 full 音节才确认；退格判定
+         * （!raw.startsWith(_t9ConfirmedText)）与既有边界语义兼容
+         * （codex review 2026-11-19：直接复用 t9PickSyllable 会把声母
+         * 当已确认音节，后续 b26 的音节枚举错位）。 */
+        t9PickInitial(initial, seg) {
+            if (this.variantReplaying) return;
+            const raw = (this.lastRawInput || '').replace(/ /g, '');
+            const head = raw.slice(0, raw.length - seg.length);
+            // 声母按长度吃掉段首数字（T9 每字母一键：ch/zh/sh 吃两键，
+            // codex review P1 2026-11-19：slice(1) 会给两字母声母多留
+            // 一位数字，重复点击还会继续增长）。
+            this.switchToVariant(head + initial + seg.slice(initial.length));
+        }
+
         t9PickSyllable(syllable, seg) {
             // 重放期间的点选直接丢弃：switchToVariant 会早退，先挪边界
             // 会把确认段和实际组合错开（codex round-4 P2-5）。
@@ -5328,7 +5349,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             this.hideKeyBubble();
             const key = button.dataset.key;
             const letters = (LAYOUTS.t9.alts[key] || '').split('');
-            const syms = LAYOUTS.t9.keySymbols[key] || [];
+            const syms = this.t9KeySymbols(key);
             const cells = [
                 ...letters.map(ch => ({ char: ch, literal: true })),
                 { char: syms[0], literal: true },
@@ -5649,7 +5670,18 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (Math.hypot(dx, dy) <= DEAD) return;
                 this.popup.tracking = true;
             }
-            const vx = anchor.cx + dx;
+            // #115-3（2026-11-19）：边缘键的弹层里，靠边格相对锚点的
+            // 位移会超出卡片（手指再滑就出屏幕，物理上够不着）。手指已
+            // 贴到屏幕物理边缘时把虚拟光标水平钳进卡片继续选最近格
+            // （滑到物理极限=想选边上的格）；普通出界维持「淡出+松手
+            // 撤销」（issue #9 定稿，mock 2505 钉着），垂直出界恒撤销
+            // （下滑收起手势不受影响）。
+            const EDGE = 8;
+            const atScreenEdge = touch.clientX <= EDGE ||
+                touch.clientX >= window.innerWidth - EDGE;
+            const rawVx = anchor.cx + dx;
+            const vx = atScreenEdge
+                ? Math.max(r.left, Math.min(r.right, rawVx)) : rawVx;
             const vy = anchor.cy + dy;
             const inside = vx >= r.left - SLOP && vx <= r.right + SLOP &&
                 vy >= r.top - SLOP && vy <= r.bottom + SLOP;
@@ -6043,10 +6075,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
             // Left column rows 1-3: the symbol strip. Plain clicks, NO
             // bindTouch - its preventDefault would kill the vertical
-            // scroll (same lesson as the sym-cat strip).
+            // scroll (same lesson as the sym-cat strip). #116: the list is
+            // user-customizable via the settings strip page (same channel
+            // as the t9/stroke/ink strips).
             const syms = document.createElement('div');
             syms.className = 'num-syms';
-            NUM_PAD_SYMBOLS.forEach(value => {
+            this.sideCharsList('numpad').forEach(value => {
                 const button = document.createElement('button');
                 button.className = 'num-sym-key';
                 button.textContent = value;
@@ -6308,15 +6342,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
 
         /** #112 符号栏定制（T9/笔画/手写三栏，用户 2026-11-15 扩展）：
          *  定制清单存 CUSTOM_KEYS_STORE 的 t9Strip/strokeStrip/inkStrip
-         *  字段（设置页「定制按键 → 符号栏」一页三段编辑）。三栏默认
-         *  清单各自独立（T9/笔画共用 T9_SIDE_CHARS，手写是
-         *  INK_SIDE_SYMBOLS）。缺失/畸形/空表一律回各自内置默认——
+         *  字段（设置页「定制按键 → 符号栏」一页四段编辑，#116 起
+         *  含数字九宫格 numpadStrip）。四栏默认清单各自独立（T9/笔画
+         *  共用 T9_SIDE_CHARS，手写是 INK_SIDE_SYMBOLS，数字九宫格是
+         *  NUM_PAD_SYMBOLS）。缺失/畸形/空表一律回各自内置默认——
          *  空数组与未定制同义（设置页「全部恢复」写的就是默认内容）。
          *  防呆上限 32 与每项长度 ≤3（设置页 maxlength=3 + 上限 24，
          *  键盘端再兜一层）。 */
+        /** 四路符号栏的内置默认表（sideCharsList 的兜底源；镜像清空
+         *  时 stripChanged 也用它判断「生效值是否还是定制」）。 */
+        stripStock(kind) {
+            return { t9: T9_SIDE_CHARS, stroke: T9_SIDE_CHARS,
+                ink: INK_SIDE_SYMBOLS, numpad: NUM_PAD_SYMBOLS }[kind] || T9_SIDE_CHARS;
+        }
+
         sideCharsList(kind) {
-            const DEFAULTS = { t9: T9_SIDE_CHARS, stroke: T9_SIDE_CHARS, ink: INK_SIDE_SYMBOLS };
-            const field = { t9: 't9Strip', stroke: 'strokeStrip', ink: 'inkStrip' }[kind];
+            const DEFAULTS = { t9: this.stripStock('t9'), stroke: this.stripStock('stroke'),
+                ink: this.stripStock('ink'), numpad: this.stripStock('numpad') };
+            const field = { t9: 't9Strip', stroke: 'strokeStrip',
+                ink: 'inkStrip', numpad: 'numpadStrip' }[kind];
             try {
                 const parsed = JSON.parse(localStorage.getItem(CUSTOM_KEYS_STORE) || 'null');
                 const list = parsed && parsed[field];
@@ -6334,8 +6378,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
         }
 
         /** 语言键盘定制变化后的字母层重画：只在当前显示的就是字母层
-         *  时立即重渲染（符号/T9 层的角标不来自 langKeys，切回时
-         *  renderLetters 自然读新值）。 */
+         *  时立即重渲染（符号层角标不来自 langKeys；T9 自 #118 起
+         *  键面符号也读 langKeys.t9，renderLetters 分派 renderT9 同样
+         *  即时生效，切回时自然读新值）。 */
         rerenderLangKeys() {
             const qwerty = document.getElementById('qwertyLayer');
             if (qwerty && !qwerty.hidden) {
@@ -6378,8 +6423,25 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 case 'direct': return 'english';
                 case 'french': return 'french';
                 case 'russian': return 'russian';
+                // #118：T9 九宫格开放「长按符号」定制（syms 字段）。
+                case 't9': return 't9';
                 default: return null;
             }
+        }
+
+        /** #118：T9 键的左右长按符号（默认表 keySymbols，定制
+         *  langKeys.t9[key].syms 优先——恰二元非空组才有效）。两处
+         *  消费：键面左上小字（t9LetterKey）与长按弹层中行。 */
+        t9KeySymbols(key) {
+            const table = this.langKeysTable();
+            const syms = table && table[key] && table[key].syms;
+            // 长度按码点计（与设置页 ckApply 同口径；UTF-16 计数会把
+            // 补充平面字符算 2——codex review P2）。
+            if (Array.isArray(syms) && syms.length === 2 &&
+                syms.every(s => typeof s === 'string' && [...s].length > 0 && [...s].length <= 3)) {
+                return syms;
+            }
+            return LAYOUTS.t9.keySymbols[key] || [];
         }
 
         /** [open:URI] 的表单校验（与 native openLink 桥同口径，桥侧
@@ -6578,11 +6640,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             const langParsed = this.parseLangKeys(data.langKeys || null);
             if (langParsed.error) return { error: langParsed.error };
-            // #112 符号栏段（T9/笔画/手写三栏）宽松解析：畸形=忽略
-            // （undefined），不让符号栏定制毁掉整包定制键的解析。
+            // #112 符号栏段（T9/笔画/手写/数字九宫格四栏）宽松解析：
+            // 畸形=忽略（undefined），不让符号栏定制毁掉整包定制键的
+            // 解析。
             const strips = {};
             let anyStrip = false;
-            for (const field of ['t9Strip', 'strokeStrip', 'inkStrip']) {
+            for (const field of ['t9Strip', 'strokeStrip', 'inkStrip', 'numpadStrip']) {
                 const list = data[field];
                 if (list == null) continue;
                 if (Array.isArray(list) && list.length <= 32 &&
@@ -6591,9 +6654,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     anyStrip = true;
                 }
             }
-            if (!rows.some(row => row.length) && !langParsed.value && !anyStrip) {
-                return { error: t("至少要定义一个键") };
-            }
+            // 全空包 = 显式恢复一切默认（#118 起合法：只定制一个家族
+            // 再「恢复默认」得到的空包必须能清掉旧镜像，否则键盘残留
+            // 已删定制。旧「至少要定义一个键」的防御反而堵死恢复路径）。
+            const allEmpty = !rows.some(row => row.length) && !langParsed.value && !anyStrip;
+            if (allEmpty) return { rows: [], cleared: true };
             const out = { rows };
             if (langParsed.value) out.langKeys = langParsed.value;
             for (const field of Object.keys(strips)) out[field] = strips[field];
@@ -6610,7 +6675,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof data !== 'object' || Array.isArray(data)) {
                 return { ok: false, error: t("langKeys 必须是对象") };
             }
-            const LAYOUTS_OK = ['pinyin', 'dp', 'english', 'french', 'russian'];
+            const LAYOUTS_OK = ['pinyin', 'dp', 'english', 'french', 'russian', 't9'];
             const out = {};
             let any = false;
             for (const lay of Object.keys(data)) {
@@ -6625,6 +6690,30 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 for (const key of Object.keys(table)) {
                     if ([...key].length !== 1) {
                         return { ok: false, error: t("langKeys.{0} 的键名必须是单字符：{1}", lay, key) };
+                    }
+                    // #118：T9 布局只接受 2-9 键与 syms（恰二元非空组，
+                    // 每元 ≤3 字）——alt/up/down 对 T9 键无语义，出现
+                    // 即报错（防设置页写错字段静默失效）。
+                    if (lay === 't9') {
+                        if (key < '2' || key > '9') {
+                            return { ok: false, error: t("langKeys.t9 的键名必须是 2-9：{0}", key) };
+                        }
+                        const cell = table[key];
+                        if (!cell || typeof cell !== 'object' || Array.isArray(cell)) {
+                            return { ok: false, error: t("langKeys.t9.{0} 必须是对象", key) };
+                        }
+                        if (cell.alt != null || cell.up != null || cell.down != null) {
+                            return { ok: false, error: t("langKeys.t9.{0} 只支持 syms 字段", key) };
+                        }
+                        const syms = cell.syms;
+                        if (!Array.isArray(syms) || syms.length !== 2 ||
+                            !syms.every(s => typeof s === 'string'
+                                && [...s].length > 0 && [...s].length <= 3)) {
+                            return { ok: false, error: t("langKeys.t9.{0} 的 syms 需为两个 1-3 字符的符号", key) };
+                        }
+                        cleanTable[key] = { syms: syms.slice() };
+                        any = true;
+                        continue;
                     }
                     const cell = table[key];
                     if (!cell || typeof cell !== 'object' || Array.isArray(cell)) {
@@ -10818,17 +10907,19 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 const seg = this.t9PendingSegment();
                 if (!seg) { column.hidden = true; return; }
                 column.hidden = false;
-                const makeSyllable = (syllable, disabled) => {
+                const makeSyllable = (syllable, isInitial) => {
                     const button = document.createElement('button');
                     button.className = 'expand-variant';
                     button.textContent = syllable;
-                    if (disabled) button.disabled = true;
-                    else button.addEventListener('click', () =>
-                        this.t9PickSyllable(syllable, seg));
+                    if (isInitial) button.classList.add('is-initial');
+                    button.addEventListener('click', () =>
+                        isInitial ? this.t9PickInitial(syllable, seg)
+                                  : this.t9PickSyllable(syllable, seg));
                     column.append(button);
                 };
                 const { full, pre } = this.t9SegmentSyllables(seg);
                 full.forEach(s => makeSyllable(s, false));
+                // #117：声母前缀格同左栏——可点限定声母（原 disabled）。
                 pre.forEach(p => makeSyllable(p, true));
                 return;
             }
@@ -12651,21 +12742,36 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                             // 手写层（scroller 只在 renderHandwriting 建）。
                             const stripChanged = kind => {
                                 const field = { t9: 't9Strip', stroke: 'strokeStrip',
-                                    ink: 'inkStrip' }[kind];
+                                    ink: 'inkStrip', numpad: 'numpadStrip' }[kind];
                                 const next = parsed[field];
-                                if (!next) return false;
+                                if (!next) {
+                                    // 字段消失（全空包清空定制，#118 起
+                                    // 合法）：当前生效若还是定制值，需要
+                                    // 重画回内置默认（codex review P2——
+                                    // 直接 return false 会让可见栏残留
+                                    // 旧定制，探针复现过）。
+                                    return this.sideCharsList(kind).join('')
+                                        !== this.stripStock(kind).join('');
+                                }
                                 return next.join('') !== this.sideCharsList(kind).join('');
                             };
                             const t9LikeChanged = stripChanged('t9') || stripChanged('stroke');
                             const inkChanged = stripChanged('ink');
+                            // #116：数字九宫格层可见时立即重画；不可见则
+                            // 等下次长按 123 进层时 renderNumpad 读新值。
+                            const numpadChanged = stripChanged('numpad');
                             localStorage.setItem(CUSTOM_KEYS_STORE,
                                 JSON.stringify({ version: 1, rows: parsed.rows,
                                     langKeys: parsed.langKeys || undefined,
                                     t9Strip: parsed.t9Strip || undefined,
                                     strokeStrip: parsed.strokeStrip || undefined,
-                                    inkStrip: parsed.inkStrip || undefined }));
+                                    inkStrip: parsed.inkStrip || undefined,
+                                    numpadStrip: parsed.numpadStrip || undefined }));
                             if (langChanged) this.rerenderLangKeys();
                             if (t9LikeChanged) this.renderT9Side();
+                            if (numpadChanged && !document.getElementById('numPadLayer').hidden) {
+                                this.renderNumpad();
+                            }
                             // ink 只换 scroller 格子，不整层重画——
                             // renderHandwriting 会清 canvas 打断书写会话。
                             if (inkChanged) {

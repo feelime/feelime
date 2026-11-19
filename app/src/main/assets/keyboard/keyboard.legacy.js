@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.124";
+  const KEYBOARD_VERSION = "3.73.125";
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -3259,7 +3259,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       button.dataset.lp = "popup";
       const hint = document.createElement("span");
       hint.className = "t9-hint";
-      hint.textContent = (LAYOUTS.t9.keySymbols[digit] || []).join("");
+      hint.textContent = this.t9KeySymbols(digit).join("");
       const sup = document.createElement("span");
       sup.className = "t9-sup";
       sup.textContent = digit;
@@ -3380,8 +3380,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         strip.append(cell);
       });
       pre.forEach((initial) => {
-        const cell = this.t9SideCell(initial, () => {
-        });
+        const cell = this.t9SideCell(
+          initial,
+          () => this.t9PickInitial(initial, seg)
+        );
         cell.classList.add("t9-syl-pre");
         strip.append(cell);
       });
@@ -3397,6 +3399,19 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * 引擎音节图原生切分（BridgeContract 对 T9 放行 2-9），复用双拼
      * 变体的原子 setComposition 通道。段前的已确认部分（含回显空格）
      * 原样保留。 */
+    /** #117：点声母前缀格=限定声母，重写待完成段开头为该字母。
+     * 与 t9PickSyllable 的区别：不推进音节确认边界
+     * （_t9ConfirmedText/t9ConfirmedLen 原样保留）——声母只是
+     * 「限定」，后续点 full 音节才确认；退格判定
+     * （!raw.startsWith(_t9ConfirmedText)）与既有边界语义兼容
+     * （codex review 2026-11-19：直接复用 t9PickSyllable 会把声母
+     * 当已确认音节，后续 b26 的音节枚举错位）。 */
+    t9PickInitial(initial, seg) {
+      if (this.variantReplaying) return;
+      const raw = (this.lastRawInput || "").replace(/ /g, "");
+      const head = raw.slice(0, raw.length - seg.length);
+      this.switchToVariant(head + initial + seg.slice(initial.length));
+    }
     t9PickSyllable(syllable, seg) {
       if (this.variantReplaying) return;
       const raw = (this.lastRawInput || "").replace(/ /g, "");
@@ -4590,7 +4605,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.hideKeyBubble();
       const key = button.dataset.key;
       const letters = (LAYOUTS.t9.alts[key] || "").split("");
-      const syms = LAYOUTS.t9.keySymbols[key] || [];
+      const syms = this.t9KeySymbols(key);
       const cells = [
         ...letters.map((ch) => ({ char: ch, literal: true })),
         { char: syms[0], literal: true },
@@ -4873,7 +4888,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (Math.hypot(dx, dy) <= DEAD) return;
         this.popup.tracking = true;
       }
-      const vx = anchor.cx + dx;
+      const EDGE = 8;
+      const atScreenEdge = touch.clientX <= EDGE || touch.clientX >= window.innerWidth - EDGE;
+      const rawVx = anchor.cx + dx;
+      const vx = atScreenEdge ? Math.max(r.left, Math.min(r.right, rawVx)) : rawVx;
       const vy = anchor.cy + dy;
       const inside = vx >= r.left - SLOP && vx <= r.right + SLOP && vy >= r.top - SLOP && vy <= r.bottom + SLOP;
       if (!inside) {
@@ -5164,7 +5182,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       grid.className = "num-grid";
       const syms = document.createElement("div");
       syms.className = "num-syms";
-      NUM_PAD_SYMBOLS.forEach((value) => {
+      this.sideCharsList("numpad").forEach((value) => {
         const button = document.createElement("button");
         button.className = "num-sym-key";
         button.textContent = value;
@@ -5401,15 +5419,36 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     }
     /** #112 符号栏定制（T9/笔画/手写三栏，用户 2026-11-15 扩展）：
      *  定制清单存 CUSTOM_KEYS_STORE 的 t9Strip/strokeStrip/inkStrip
-     *  字段（设置页「定制按键 → 符号栏」一页三段编辑）。三栏默认
-     *  清单各自独立（T9/笔画共用 T9_SIDE_CHARS，手写是
-     *  INK_SIDE_SYMBOLS）。缺失/畸形/空表一律回各自内置默认——
+     *  字段（设置页「定制按键 → 符号栏」一页四段编辑，#116 起
+     *  含数字九宫格 numpadStrip）。四栏默认清单各自独立（T9/笔画
+     *  共用 T9_SIDE_CHARS，手写是 INK_SIDE_SYMBOLS，数字九宫格是
+     *  NUM_PAD_SYMBOLS）。缺失/畸形/空表一律回各自内置默认——
      *  空数组与未定制同义（设置页「全部恢复」写的就是默认内容）。
      *  防呆上限 32 与每项长度 ≤3（设置页 maxlength=3 + 上限 24，
      *  键盘端再兜一层）。 */
+    /** 四路符号栏的内置默认表（sideCharsList 的兜底源；镜像清空
+     *  时 stripChanged 也用它判断「生效值是否还是定制」）。 */
+    stripStock(kind) {
+      return {
+        t9: T9_SIDE_CHARS,
+        stroke: T9_SIDE_CHARS,
+        ink: INK_SIDE_SYMBOLS,
+        numpad: NUM_PAD_SYMBOLS
+      }[kind] || T9_SIDE_CHARS;
+    }
     sideCharsList(kind) {
-      const DEFAULTS = { t9: T9_SIDE_CHARS, stroke: T9_SIDE_CHARS, ink: INK_SIDE_SYMBOLS };
-      const field = { t9: "t9Strip", stroke: "strokeStrip", ink: "inkStrip" }[kind];
+      const DEFAULTS = {
+        t9: this.stripStock("t9"),
+        stroke: this.stripStock("stroke"),
+        ink: this.stripStock("ink"),
+        numpad: this.stripStock("numpad")
+      };
+      const field = {
+        t9: "t9Strip",
+        stroke: "strokeStrip",
+        ink: "inkStrip",
+        numpad: "numpadStrip"
+      }[kind];
       try {
         const parsed = JSON.parse(localStorage.getItem(CUSTOM_KEYS_STORE) || "null");
         const list = parsed && parsed[field];
@@ -5424,8 +5463,9 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       return this.sideCharsList("t9");
     }
     /** 语言键盘定制变化后的字母层重画：只在当前显示的就是字母层
-     *  时立即重渲染（符号/T9 层的角标不来自 langKeys，切回时
-     *  renderLetters 自然读新值）。 */
+     *  时立即重渲染（符号层角标不来自 langKeys；T9 自 #118 起
+     *  键面符号也读 langKeys.t9，renderLetters 分派 renderT9 同样
+     *  即时生效，切回时自然读新值）。 */
     rerenderLangKeys() {
       const qwerty = document.getElementById("qwertyLayer");
       if (qwerty && !qwerty.hidden) {
@@ -5472,9 +5512,23 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           return "french";
         case "russian":
           return "russian";
+        // #118：T9 九宫格开放「长按符号」定制（syms 字段）。
+        case "t9":
+          return "t9";
         default:
           return null;
       }
+    }
+    /** #118：T9 键的左右长按符号（默认表 keySymbols，定制
+     *  langKeys.t9[key].syms 优先——恰二元非空组才有效）。两处
+     *  消费：键面左上小字（t9LetterKey）与长按弹层中行。 */
+    t9KeySymbols(key) {
+      const table = this.langKeysTable();
+      const syms = table && table[key] && table[key].syms;
+      if (Array.isArray(syms) && syms.length === 2 && syms.every((s) => typeof s === "string" && [...s].length > 0 && [...s].length <= 3)) {
+        return syms;
+      }
+      return LAYOUTS.t9.keySymbols[key] || [];
     }
     /** [open:URI] 的表单校验（与 native openLink 桥同口径，桥侧
      *  再校验一次兜底）：http(s) 网页地址或应用自定义 scheme；
@@ -5659,7 +5713,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (langParsed.error) return { error: langParsed.error };
       const strips = {};
       let anyStrip = false;
-      for (const field of ["t9Strip", "strokeStrip", "inkStrip"]) {
+      for (const field of ["t9Strip", "strokeStrip", "inkStrip", "numpadStrip"]) {
         const list = data[field];
         if (list == null) continue;
         if (Array.isArray(list) && list.length <= 32 && list.every((s) => typeof s === "string" && s.length > 0 && s.length <= 3)) {
@@ -5667,9 +5721,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           anyStrip = true;
         }
       }
-      if (!rows.some((row) => row.length) && !langParsed.value && !anyStrip) {
-        return { error: t("\u81F3\u5C11\u8981\u5B9A\u4E49\u4E00\u4E2A\u952E") };
-      }
+      const allEmpty = !rows.some((row) => row.length) && !langParsed.value && !anyStrip;
+      if (allEmpty) return { rows: [], cleared: true };
       const out = { rows };
       if (langParsed.value) out.langKeys = langParsed.value;
       for (const field of Object.keys(strips)) out[field] = strips[field];
@@ -5685,7 +5738,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (typeof data !== "object" || Array.isArray(data)) {
         return { ok: false, error: t("langKeys \u5FC5\u987B\u662F\u5BF9\u8C61") };
       }
-      const LAYOUTS_OK = ["pinyin", "dp", "english", "french", "russian"];
+      const LAYOUTS_OK = ["pinyin", "dp", "english", "french", "russian", "t9"];
       const out = {};
       let any = false;
       for (const lay of Object.keys(data)) {
@@ -5700,6 +5753,25 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         for (const key of Object.keys(table)) {
           if ([...key].length !== 1) {
             return { ok: false, error: t("langKeys.{0} \u7684\u952E\u540D\u5FC5\u987B\u662F\u5355\u5B57\u7B26\uFF1A{1}", lay, key) };
+          }
+          if (lay === "t9") {
+            if (key < "2" || key > "9") {
+              return { ok: false, error: t("langKeys.t9 \u7684\u952E\u540D\u5FC5\u987B\u662F 2-9\uFF1A{0}", key) };
+            }
+            const cell2 = table[key];
+            if (!cell2 || typeof cell2 !== "object" || Array.isArray(cell2)) {
+              return { ok: false, error: t("langKeys.t9.{0} \u5FC5\u987B\u662F\u5BF9\u8C61", key) };
+            }
+            if (cell2.alt != null || cell2.up != null || cell2.down != null) {
+              return { ok: false, error: t("langKeys.t9.{0} \u53EA\u652F\u6301 syms \u5B57\u6BB5", key) };
+            }
+            const syms = cell2.syms;
+            if (!Array.isArray(syms) || syms.length !== 2 || !syms.every((s) => typeof s === "string" && [...s].length > 0 && [...s].length <= 3)) {
+              return { ok: false, error: t("langKeys.t9.{0} \u7684 syms \u9700\u4E3A\u4E24\u4E2A 1-3 \u5B57\u7B26\u7684\u7B26\u53F7", key) };
+            }
+            cleanTable[key] = { syms: syms.slice() };
+            any = true;
+            continue;
           }
           const cell = table[key];
           if (!cell || typeof cell !== "object" || Array.isArray(cell)) {
@@ -9174,12 +9246,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           return;
         }
         column.hidden = false;
-        const makeSyllable = /* @__PURE__ */ __name((syllable, disabled) => {
+        const makeSyllable = /* @__PURE__ */ __name((syllable, isInitial) => {
           const button = document.createElement("button");
           button.className = "expand-variant";
           button.textContent = syllable;
-          if (disabled) button.disabled = true;
-          else button.addEventListener("click", () => this.t9PickSyllable(syllable, seg));
+          if (isInitial) button.classList.add("is-initial");
+          button.addEventListener("click", () => isInitial ? this.t9PickInitial(syllable, seg) : this.t9PickSyllable(syllable, seg));
           column.append(button);
         }, "makeSyllable");
         const { full, pre } = this.t9SegmentSyllables(seg);
@@ -10555,14 +10627,18 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
                 const field = {
                   t9: "t9Strip",
                   stroke: "strokeStrip",
-                  ink: "inkStrip"
+                  ink: "inkStrip",
+                  numpad: "numpadStrip"
                 }[kind];
                 const next = parsed[field];
-                if (!next) return false;
+                if (!next) {
+                  return this.sideCharsList(kind).join("") !== this.stripStock(kind).join("");
+                }
                 return next.join("") !== this.sideCharsList(kind).join("");
               }, "stripChanged");
               const t9LikeChanged = stripChanged("t9") || stripChanged("stroke");
               const inkChanged = stripChanged("ink");
+              const numpadChanged = stripChanged("numpad");
               localStorage.setItem(
                 CUSTOM_KEYS_STORE,
                 JSON.stringify({
@@ -10571,11 +10647,15 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
                   langKeys: parsed.langKeys || void 0,
                   t9Strip: parsed.t9Strip || void 0,
                   strokeStrip: parsed.strokeStrip || void 0,
-                  inkStrip: parsed.inkStrip || void 0
+                  inkStrip: parsed.inkStrip || void 0,
+                  numpadStrip: parsed.numpadStrip || void 0
                 })
               );
               if (langChanged) this.rerenderLangKeys();
               if (t9LikeChanged) this.renderT9Side();
+              if (numpadChanged && !document.getElementById("numPadLayer").hidden) {
+                this.renderNumpad();
+              }
               if (inkChanged) {
                 const scroller = document.querySelector(".ink-scroll");
                 if (scroller) {

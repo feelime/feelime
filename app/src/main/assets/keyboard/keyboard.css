@@ -2626,6 +2626,8 @@ body.expanded #preeditLine { display: none; }
     color: var(--text);
     font-weight: 600;
 }
+/* #117：声母前缀格可点（限定声母），弱视觉与左栏 t9-syl-pre 同口径 */
+.expand-variant.is-initial { color: var(--key-subtext); }
 /* Candidates flow as width-to-content chips in a wrapping
  * row - a 12-character word must be READABLE (the fixed 5-column grid
  * ellipsised everything past two glyphs). Denser type and padding show
