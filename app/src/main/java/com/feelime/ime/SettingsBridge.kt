@@ -1989,6 +1989,10 @@ class SettingsBridge(
         pushState()
     }
 
+    /** #115-1（2026-11-19 定罪）：此方法曾漏 @JavascriptInterface——
+     *  桥上不可见，设置页拨开关 call() 静默失败，「打开又自己关掉」
+     *  实为从未写盘。同类坑 mock 测不出（录制桥假的，方法恒存在）。 */
+    @JavascriptInterface
     fun setKeyBubble(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_KEY_BUBBLE, on).commit()
