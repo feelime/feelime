@@ -1274,14 +1274,14 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     equal(hiddenMap(), {
         home: false, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
-        ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, licenses: true, test: true,
+        ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, cknumpadstrip: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
         home: true, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
-        ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, licenses: true, test: true,
+        ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, cknumpadstrip: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
     equal(world.lastCall('reportPage').args, ['voice', 'home', world.token], 'reportPage(page, parent) on sub-page');
 
@@ -2972,7 +2972,7 @@ test('lang keys: entry page lists keyboards and counts customized keys', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     try {
-    equal(world.doc.querySelectorAll('[data-cklang]').length, 5, 'five language keyboard entries');
+    equal(world.doc.querySelectorAll('[data-cklang]').length, 6, 'six language keyboard entries (#118 t9)');
     world.FeelimeSettings().showPage('cklang');
     const kb = world.doc.getElementById('cklangKb');
     const allKeys = kb.querySelectorAll('.ck-lang-key');
@@ -3019,6 +3019,80 @@ test('lang keys: editor saves alt + flick slots into langKeys and the pack', () 
     const parsed = JSON.parse(saved);
     equal(parsed.langKeys.pinyin.q.alt, '@', 'alt saved');
     equal(parsed.langKeys.pinyin.q.down, '[edit:copy]', 'down slot saved as [edit:x]');
+});
+
+// #118 T9 九宫格定制：入口第六行 → 3×3 预览（2-9 可点、1 固定）→
+// 轻量编辑器（左右符号两输入框）→ ckLangKeys.t9 打包 syms。
+test('t9 keys: preview renders 3x3, light editor packs syms (#118)', () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const FS = world.FeelimeSettings();
+    FS.showPage('cklang');
+    world.doc.querySelector('[data-cklang="t9"]').click();
+    const kb = world.doc.getElementById('cklangKb');
+    // 3×3：九个键格，其中 1 键锁定（@#.），2-9 可点编辑。
+    const keys = kb.querySelectorAll('.ck-lang-key');
+    equal(keys.length, 9, '3x3 grid renders nine cells');
+    const locked = kb.querySelectorAll('.ck-lang-key-sp');
+    equal(locked.length, 1, 'only the 1 key is locked');
+    equal(locked[0].textContent, '@#.', '1 key shows its punctuation face');
+    // 默认符号上键面（2 → —&，与 keyboard.js keySymbols 同源）。
+    const key2 = [...keys].find(el => el.querySelector('.ck-t9-sup')?.textContent === '2');
+    equal(key2.querySelector('.ck-lang-sub').textContent, '—&',
+        'stock syms on the preview');
+    equal(key2.querySelector('.ck-lang-main').textContent, 'ABC', 'letter group face');
+    // 全表锁定（双份默认表防漂移，codex 清单 9）：3-9 逐键比对。
+    const stockT9 = { '3': '（）', '4': '「」', '5': '、：', '6': '；～',
+        '7': '《》', '8': '…·', '9': '%/' };
+    for (const digit of Object.keys(stockT9)) {
+        equal([...keys].find(el => el.querySelector('.ck-t9-sup')?.textContent === digit)
+            .querySelector('.ck-lang-sub').textContent, stockT9[digit],
+            `settings key ${digit} matches the stock table`);
+    }
+    // 点 2 → 轻量编辑器（两输入框，预填默认）。
+    key2.click();
+    const body = world.doc.getElementById('ckEditBody');
+    const inputs = body.querySelectorAll('.ck-t9-field input');
+    equal(inputs.length, 2, 'light editor has two symbol inputs');
+    equal(inputs[0].value, '—', 'left input prefills the stock symbol');
+    inputs[0].value = '¥'; inputs[1].value = '€';
+    world.$('ckApply').click();
+    equal(world.doc.getElementById('cklangCount-t9').textContent.includes('1'), true,
+        'entry count updates');
+    // 键面即时刷新 + 打包 langKeys.t9.syms（apply 触发 renderLangKb
+    // 重建，旧元素引用失效——重新查询）。
+    equal([...world.doc.getElementById('cklangKb').querySelectorAll('.ck-lang-key')]
+        .find(el => el.querySelector('.ck-t9-sup')?.textContent === '2')
+        .querySelector('.ck-lang-sub').textContent, '¥€',
+        'preview refreshes after apply');
+    world.$('ckSave').click();
+    const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.t9['2'].syms.join(''), '¥€', 'syms packed into langKeys.t9');
+    // 空槽拒绝（必填语义——首期不做「空=隐藏」）。apply 不触发
+    // saveCustom，断言走错误文案+弹窗仍开+预览未变（codex review P2：
+    // 读 lastCall 是上一次保存的假阳性——变异校验条件后旧断言仍过）。
+    world.doc.querySelector('[data-cklang="t9"]').click();
+    [...world.doc.getElementById('cklangKb').querySelectorAll('.ck-lang-key')]
+        .find(el => el.querySelector('.ck-t9-sup')?.textContent === '3').click();
+    const badInputs = world.doc.getElementById('ckEditBody')
+        .querySelectorAll('.ck-t9-field input');
+    badInputs[0].value = ''; badInputs[1].value = 'x';
+    world.$('ckApply').click();
+    equal(world.doc.getElementById('ckEditNote').textContent,
+        '左右符号都必填（1-3 个字符）', 'empty slot shows the required error');
+    equal(world.doc.getElementById('ckModal').hidden, false, 'editor stays open on error');
+    equal([...world.doc.getElementById('cklangKb').querySelectorAll('.ck-lang-key')]
+        .find(el => el.querySelector('.ck-t9-sup')?.textContent === '3')
+        .querySelector('.ck-lang-sub').textContent, '（）',
+        'key 3 preview untouched by the rejected apply');
+    world.$('ckModalCancel').click();
+    // 恢复默认：整页 reset 删 langKeys.t9 后保存 → 包里 t9 段消失。
+    world.confirm = () => true;
+    world.doc.getElementById('cklangReset').click();
+    world.$('ckSave').click();
+    const resetPack = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(resetPack.langKeys && resetPack.langKeys.t9, undefined,
+        'page reset drops the t9 table from the pack');
 });
 
 test('lang keys: corner-mark checkbox links flick-up to the mark (altAsUp)', () => {
@@ -3266,6 +3340,12 @@ test('custom keys: save bar lives on the two editor pages only (分页保存裁�
     equal(pageOf(bar), 'cklang', 'back on home the bar stays with the last editor page');
     equal(world.doc.querySelector('[data-i18n="ck.save"]').textContent, '保存',
         'button label is just 保存 now');
+    // #116：数字九宫格符号栏页也属于编辑页家族（CK_FAMILY 曾漏登——
+    // 页面能进但保存条不跟随、脏态离开确认失效，codex review P1）。
+    S.showPage('cknumpadstrip');
+    equal(pageOf(bar), 'cknumpadstrip', 'numpad strip page hosts the save bar');
+    S.showPage('home');
+    equal(pageOf(bar), 'cknumpadstrip', 'leaving the family keeps the bar on the last editor page');
 });
 
 test('custom keys: dirty survives a family round-trip; home no longer resets it (验收反馈)', () => {
@@ -3612,11 +3692,26 @@ test('#112 strip pages: three entries route to independent pages, drag reorder, 
     equal([...world.doc.querySelectorAll('#ckstrokeList .ck-strip-row')].length, 16, 'stroke page lists 16 defaults');
     FS.showPage('ckinkstrip');
     equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 12, 'ink page lists 12 defaults');
+    // #116 第四页：数字九宫格符号栏（16 个默认，与其他三页独立）。
+    FS.showPage('cknumpadstrip');
+    equal([...world.doc.querySelectorAll('#cknumpadList .ck-strip-row')].length, 17, 'numpad page lists 17 defaults');
+    equal([...world.doc.querySelectorAll('#cknumpadList .ck-strip-row')][0].dataset.stripValue, '@', 'numpad defaults lead with @');
+    // 双份默认表防漂移：与 keyboard.js NUM_PAD_SYMBOLS 逐项同值
+    //（bridge 套件锁键盘端那份）。
+    equal([...world.doc.querySelectorAll('#cknumpadList .ck-strip-row')]
+        .map(r => r.dataset.stripValue).join(''), '@%-+/*()#$&_=~^:;',
+        'numpad defaults match NUM_PAD_SYMBOLS in full');
     // ink 添加 ％ → 13 项；t9 页不受影响。
     const inkInput = world.$('ckinkAddInput');
     inkInput.value = '％';
     world.$('ckinkAddBtn').listeners.find(l => l.type === 'click').handler();
     equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 13, 'ink add appends ％');
+    // #116：numpad 页同样可添加，且与其他草稿互不影响。
+    FS.showPage('cknumpadstrip');
+    const npInput = world.$('cknumpadAddInput');
+    npInput.value = '¥';
+    world.$('cknumpadAddBtn').listeners.find(l => l.type === 'click').handler();
+    equal([...world.doc.querySelectorAll('#cknumpadList .ck-strip-row')].length, 18, 'numpad add appends ¥');
     // 回 t9 页：仍 16（页面独立，草稿互不影响）。
     FS.showPage('ckt9strip');
     equal([...world.doc.querySelectorAll('#ckt9List .ck-strip-row')].length, 16, 't9 untouched by ink edits');
@@ -3652,6 +3747,7 @@ test('#112 strip pages: three entries route to independent pages, drag reorder, 
     const saved = JSON.parse(world.lastCall('saveCustom').args[0]);
     equal(saved.t9Strip[0], '、', 'packed t9Strip reflects drag order');
     equal(saved.inkStrip[saved.inkStrip.length - 1], '％', 'packed inkStrip keeps ％');
+    equal(saved.numpadStrip[saved.numpadStrip.length - 1], '¥', 'packed numpadStrip keeps ¥ (#116)');
     equal(saved.strokeStrip, undefined, 'stroke untouched = field omitted');
     // 删除：重排后删的是当前行（row0 现在是 '、'）。
     FS.showPage('ckt9strip');

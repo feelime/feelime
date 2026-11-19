@@ -195,6 +195,34 @@ const LANG_KB = {
       \u044E: ".",
       ".": ","
     }
+  },
+  /* #118 T9 九宫格：预览渲染 3×3（renderLangKb 分支），编辑面只有
+   * 2-9 八键的左右长按符号（syms），与 keyboard.js
+   * LAYOUTS.t9.keySymbols 逐项同值（mock 双侧锁内容防漂移）。 */
+  t9: {
+    title: "ck.lang.t9",
+    rows: ["123", "456", "789"],
+    t9: true,
+    keySymbols: {
+      "2": ["\u2014", "&"],
+      "3": ["\uFF08", "\uFF09"],
+      "4": ["\u300C", "\u300D"],
+      "5": ["\u3001", "\uFF1A"],
+      "6": ["\uFF1B", "\uFF5E"],
+      "7": ["\u300A", "\u300B"],
+      "8": ["\u2026", "\xB7"],
+      "9": ["%", "/"]
+    },
+    alts: {
+      "2": "abc",
+      "3": "def",
+      "4": "ghi",
+      "5": "jkl",
+      "6": "mno",
+      "7": "pqrs",
+      "8": "tuv",
+      "9": "wxyz"
+    }
   }
 };
 const THEME_PRESET_LIST = ["classic", "ocean", "violet", "amber", "sakura", "teal"];
@@ -443,12 +471,15 @@ const I18N = {
     "ck.t9.entryT9": "T9 \u4E5D\u5BAB\u683C\u7B26\u53F7\u680F",
     "ck.t9.entryStroke": "\u7B14\u753B\u952E\u76D8\u7B26\u53F7\u680F",
     "ck.t9.entryInk": "\u624B\u5199\u952E\u76D8\u7B26\u53F7\u680F",
+    "ck.t9.entryNumpad": "\u6570\u5B57\u4E5D\u5BAB\u683C\u7B26\u53F7\u680F",
     "ck.t9.pageTitleT9": "T9 \u7B26\u53F7\u680F",
     "ck.t9.pageTitleStroke": "\u7B14\u753B\u7B26\u53F7\u680F",
     "ck.t9.pageTitleInk": "\u624B\u5199\u7B26\u53F7\u680F",
+    "ck.t9.pageTitleNumpad": "\u6570\u5B57\u4E5D\u5BAB\u683C\u7B26\u53F7\u680F",
     "ck.t9.hintT9": "\u4E5D\u5BAB\u683C\u952E\u76D8\u7A7A\u95F2\u65F6\u5DE6\u5217\u7684\u5E38\u7528\u7B26\u53F7\uFF0C\u62D6\u52A8 \u2261 \u8C03\u6574\u987A\u5E8F\uFF0C\u70B9 \u2715 \u5220\u9664\uFF1B\u6253\u5B57\u4E2D\u8BE5\u5217\u4E34\u65F6\u663E\u793A\u62FC\u97F3\u97F3\u8282\uFF0C\u4E0E\u7B26\u53F7\u680F\u4E92\u4E0D\u5F71\u54CD\u3002",
     "ck.t9.hintStroke": "\u7B14\u753B\u952E\u76D8\u5DE6\u5217\u7684\u5E38\u7528\u7B26\u53F7\uFF0C\u62D6\u52A8 \u2261 \u8C03\u6574\u987A\u5E8F\uFF0C\u70B9 \u2715 \u5220\u9664\u3002",
     "ck.t9.hintInk": "\u624B\u5199\u952E\u76D8\u53F3\u4FA7\u6EDA\u52A8\u7B26\u53F7\u5217\uFF0C\u62D6\u52A8 \u2261 \u8C03\u6574\u987A\u5E8F\uFF0C\u70B9 \u2715 \u5220\u9664\u3002",
+    "ck.t9.hintNumpad": "\u6570\u5B57\u4E5D\u5BAB\u683C\uFF08\u957F\u6309 123 \u8FDB\u5165\uFF09\u5DE6\u4FA7\u7B26\u53F7\u5217\uFF0C\u62D6\u52A8 \u2261 \u8C03\u6574\u987A\u5E8F\uFF0C\u70B9 \u2715 \u5220\u9664\u3002",
     "ck.t9.drag": "\u62D6\u52A8\u6392\u5E8F",
     "ck.t9.resetConfirm": "\u6062\u590D\u6B64\u7B26\u53F7\u680F\u7684\u9ED8\u8BA4\u5185\u5BB9\u548C\u987A\u5E8F\uFF1F",
     "ck.t9.lastOne": "\u81F3\u5C11\u4FDD\u7559\u4E00\u4E2A\u7B26\u53F7",
@@ -467,6 +498,12 @@ const I18N = {
     "ck.lang.english": "\u82F1\u6587\u952E\u76D8",
     "ck.lang.french": "\u6CD5\u8BED\u952E\u76D8",
     "ck.lang.russian": "\u4FC4\u8BED\u952E\u76D8",
+    "ck.lang.t9": "\u4E5D\u5BAB\u683C\u952E\u76D8",
+    "ck.lang.t9SymL": "\u5DE6\u7B26\u53F7",
+    "ck.lang.t9SymR": "\u53F3\u7B26\u53F7",
+    "ck.lang.hintT9": "\u70B9 2-9 \u952E\u5B9A\u5236\u957F\u6309\u5F39\u5C42\u7684\u5DE6\u53F3\u7B26\u53F7\uFF1B\u5B57\u6BCD\u7EC4\u3001\u6570\u5B57\u4E0E\u6ED1\u52A8\u4E0D\u53D8\u3002",
+    "ck.lang.hint2T9": "1 \u952E\uFF08\u6807\u70B9\uFF09\u30010/\u7A7A\u683C\u4E0E\u9000\u683C\u4E0D\u53EF\u5B9A\u5236\u3002",
+    "ck.err.t9Syms": "\u5DE6\u53F3\u7B26\u53F7\u90FD\u5FC5\u586B\uFF081-3 \u4E2A\u5B57\u7B26\uFF09",
     "ck.lang.count": "\u5DF2\u5B9A\u5236 {count} \u952E",
     "ck.lang.default": "\u9ED8\u8BA4",
     "ck.lang.hint1": "\u70B9\u5B57\u6BCD\u952E / \u9017\u53F7\u53E5\u53F7\u952E\u5B9A\u5236\u89D2\u6807\u4E0E\u4E0A\u6ED1\u3001\u4E0B\u6ED1\uFF1B\u5E03\u5C40\u3001\u5355\u51FB\u4E0E\u957F\u6309\u4E0D\u53D8\u3002",
@@ -1308,12 +1345,15 @@ const I18N = {
     "ck.t9.entryT9": "T9 nine-key strip",
     "ck.t9.entryStroke": "Stroke keyboard strip",
     "ck.t9.entryInk": "Handwriting strip",
+    "ck.t9.entryNumpad": "Number pad strip",
     "ck.t9.pageTitleT9": "T9 strip",
     "ck.t9.pageTitleStroke": "Stroke strip",
     "ck.t9.pageTitleInk": "Handwriting strip",
+    "ck.t9.pageTitleNumpad": "Number pad strip",
     "ck.t9.hintT9": "Symbols in the left column of the nine-key keyboard when idle. Drag \u2261 to reorder, tap \u2715 to remove; while typing the column shows pinyin syllables instead.",
     "ck.t9.hintStroke": "Symbols in the stroke keyboard's left column. Drag \u2261 to reorder, tap \u2715 to remove.",
     "ck.t9.hintInk": "Symbols in the handwriting keyboard's scrolling column. Drag \u2261 to reorder, tap \u2715 to remove.",
+    "ck.t9.hintNumpad": "Symbols in the number pad's left column (long-press 123). Drag \u2261 to reorder, tap \u2715 to remove.",
     "ck.t9.drag": "Drag to reorder",
     "ck.t9.resetConfirm": "Restore the default symbols and order for this strip?",
     "ck.t9.lastOne": "Keep at least one symbol",
@@ -1332,6 +1372,12 @@ const I18N = {
     "ck.lang.english": "English",
     "ck.lang.french": "French",
     "ck.lang.russian": "Russian",
+    "ck.lang.t9": "Nine-key pad",
+    "ck.lang.t9SymL": "Left symbol",
+    "ck.lang.t9SymR": "Right symbol",
+    "ck.lang.hintT9": "Tap 2-9 to customize the two long-press symbols; letter groups, digits and flicks stay unchanged.",
+    "ck.lang.hint2T9": "The 1 key (punctuation), 0/space and backspace are fixed.",
+    "ck.err.t9Syms": "Both symbols are required (1-3 characters each)",
     "ck.lang.count": "{count} keys customized",
     "ck.lang.default": "Default",
     "ck.lang.hint1": "Tap a letter or the comma key to customize its hint and flick actions; layout, tap and long-press stay unchanged.",
@@ -1927,7 +1973,7 @@ const I18N = {
     "error.INVALID_MODEL_SOURCE": "A custom source needs an HTTPS repository URL and its matching tar.bz2 archive URL."
   }
 };
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter((key) => key.startsWith("error.")));
 const progressPercent = {};
 function browserLocale() {
@@ -2245,7 +2291,7 @@ function showPage(name) {
   var _a;
   if (typeof cancelStripDrag === "function") cancelStripDrag();
   if (!PAGES.includes(name)) return;
-  const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"];
+  const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip"];
   if (typeof ckDirty !== "undefined" && CK_FAMILY.includes(currentPage) && !CK_FAMILY.includes(name) && ckDirty) {
     ckLeaveTarget = name;
     document.getElementById("ckLeaveModal").hidden = false;
@@ -2269,7 +2315,7 @@ function showPage(name) {
     if (typeof memo === "number" && memo > 0) window.scrollTo(0, memo);
     else window.scrollTo(0, 0);
   }
-  if (["cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"].includes(name)) {
+  if (["cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip"].includes(name)) {
     if (!ckRows) ckLoad();
     const bar = document.getElementById("ckSaveBar");
     const pageEl = document.querySelector('[data-page="' + name + '"]');
@@ -4746,7 +4792,7 @@ let ckSel = null;
 let ckDraft = null;
 let ckDirty = false;
 let ckLangKeys = {};
-let ckStrips = { t9: null, stroke: null, ink: null };
+let ckStrips = { t9: null, stroke: null, ink: null, numpad: null };
 let ckLeaveTarget = null;
 function ckReportState() {
   call("reportCkState", !!ckEditMode, !!ckDirty);
@@ -4850,7 +4896,8 @@ function ckLoad() {
     ckStrips = {
       t9: parsed && Array.isArray(parsed.t9Strip) ? parsed.t9Strip.slice() : null,
       stroke: parsed && Array.isArray(parsed.strokeStrip) ? parsed.strokeStrip.slice() : null,
-      ink: parsed && Array.isArray(parsed.inkStrip) ? parsed.inkStrip.slice() : null
+      ink: parsed && Array.isArray(parsed.inkStrip) ? parsed.inkStrip.slice() : null,
+      numpad: parsed && Array.isArray(parsed.numpadStrip) ? parsed.numpadStrip.slice() : null
     };
   } catch (_) {
   }
@@ -5435,6 +5482,36 @@ function openLangKeyEditor(lay, key) {
   document.getElementById("ckModalTitle").textContent = t("ck.lang.editTitle").replace("{0}", key === "." ? "\uFF0C" : key.toUpperCase());
 }
 __name(openLangKeyEditor, "openLangKeyEditor");
+function openT9KeyEditor(key) {
+  ckEditorTarget = "t9key";
+  ckSel = null;
+  const cell = (ckLangKeys.t9 || {})[key] || {};
+  const def = LANG_KB.t9.keySymbols[key] || ["", ""];
+  const cur = Array.isArray(cell.syms) && cell.syms.length === 2 ? cell.syms : def;
+  ckDraft = { langLay: "t9", langKey: key };
+  const body = $("ckEditBody");
+  body.textContent = "";
+  const wrap = document.createElement("div");
+  wrap.className = "ck-t9-form";
+  for (const [idx, labelKey] of [[0, "ck.lang.t9SymL"], [1, "ck.lang.t9SymR"]]) {
+    const field = document.createElement("label");
+    field.className = "ck-t9-field";
+    const cap = document.createElement("span");
+    cap.textContent = t(labelKey);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.id = idx === 0 ? "ckT9SymL" : "ckT9SymR";
+    input.maxLength = 3;
+    input.value = cur[idx] || "";
+    input.placeholder = def[idx] || "";
+    field.append(cap, input);
+    wrap.append(field);
+  }
+  body.append(wrap);
+  ckOpenModal(false);
+  document.getElementById("ckModalTitle").textContent = t("ck.lang.editTitle").replace("{0}", key);
+}
+__name(openT9KeyEditor, "openT9KeyEditor");
 function openSpaceHoldEditor() {
   ckEditorTarget = "space";
   ckSel = null;
@@ -5889,6 +5966,20 @@ function ckBuildAction(holder, target) {
 __name(ckBuildAction, "ckBuildAction");
 $("ckApply").addEventListener("click", () => {
   const d = ckDraft;
+  if (ckEditorTarget === "t9key") {
+    const l = document.getElementById("ckT9SymL").value.trim();
+    const r = document.getElementById("ckT9SymR").value.trim();
+    if (!l || !r || [...l].length > 3 || [...r].length > 3) {
+      return setNote("ckEditNote", t("ck.err.t9Syms"));
+    }
+    const table = ckLangKeys.t9 = ckLangKeys.t9 || {};
+    table[d.langKey] = { syms: [l, r] };
+    ckMarkDirty(true);
+    refreshLangCounts();
+    renderLangKb("t9");
+    ckCloseModal();
+    return;
+  }
   if (ckEditorTarget === "cell" && !d.t.trim()) return setNote("ckEditNote", t("ck.err.t"));
   if (d.mode === "open") {
     const uri = (d.open || "").trim();
@@ -6017,6 +6108,21 @@ function renderLangKb(lay) {
   if (title) title.textContent = t(conf.title);
   const table = ckLangKeys[lay] || {};
   host.textContent = "";
+  const hintEl = document.querySelector('#cklangKb ~ p.hint, [data-page="cklang"] p.hint:nth-of-type(1)');
+  const hint2El = document.querySelector('[data-page="cklang"] p.hint:nth-of-type(2)');
+  if (conf.t9) {
+    if (hintEl) hintEl.textContent = t("ck.lang.hintT9");
+    if (hint2El) hint2El.textContent = t("ck.lang.hint2T9");
+    for (const rowKeys of conf.rows.map(String)) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "ck-lang-row ck-t9-row";
+      [...rowKeys].forEach((key) => rowEl.append(t9LangKeyEl(key, table[key])));
+      host.append(rowEl);
+    }
+    return;
+  }
+  if (hintEl) hintEl.textContent = t("ck.lang.hint1");
+  if (hint2El) hint2El.textContent = t("ck.lang.hint2");
   const rows = conf.rows.map(String);
   rows.forEach((rowKeys, idx) => {
     const rowEl = document.createElement("div");
@@ -6067,6 +6173,28 @@ function ckLangKeyEl(lay, key, cell) {
   return el;
 }
 __name(ckLangKeyEl, "ckLangKeyEl");
+function t9LangKeyEl(key, cell) {
+  const conf = LANG_KB.t9;
+  if (key === "1") {
+    const el2 = document.createElement("span");
+    el2.className = "ck-lang-key ck-lang-key-sp ck-t9-key ck-t9-fixed";
+    el2.textContent = "@#.";
+    return el2;
+  }
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = "ck-lang-key ck-t9-key";
+  const syms = cell && Array.isArray(cell.syms) && cell.syms.length === 2 ? cell.syms : conf.keySymbols[key] || [];
+  el.innerHTML = '<span class="ck-lang-sub"></span><span class="ck-t9-sup"></span><span class="ck-lang-main"></span>';
+  el.querySelector(".ck-lang-sub").textContent = syms.join("");
+  el.querySelector(".ck-t9-sup").textContent = key;
+  el.querySelector(".ck-lang-main").textContent = (conf.alts[key] || "").toUpperCase();
+  if (cell && Object.keys(cell).length) el.classList.add("ck-lang-custom");
+  el.setAttribute("aria-label", t("ck.lang.editKey").replace("{0}", key));
+  el.addEventListener("click", () => openT9KeyEditor(key));
+  return el;
+}
+__name(t9LangKeyEl, "t9LangKeyEl");
 function refreshLangCounts() {
   for (const lay of Object.keys(LANG_KB)) {
     const el = document.getElementById("cklangCount-" + lay);
@@ -6087,6 +6215,7 @@ document.getElementById("ckSymbolEntry").addEventListener("click", () => showPag
 document.getElementById("ckT9StripEntry").addEventListener("click", () => showPage("ckt9strip"));
 document.getElementById("ckStrokeStripEntry").addEventListener("click", () => showPage("ckstrokestrip"));
 document.getElementById("ckInkStripEntry").addEventListener("click", () => showPage("ckinkstrip"));
+document.getElementById("ckNumpadStripEntry").addEventListener("click", () => showPage("cknumpadstrip"));
 const T9_STRIP_DEFAULT = [
   "\uFF0C",
   "\u3002",
@@ -6106,6 +6235,25 @@ const T9_STRIP_DEFAULT = [
   "\u2014"
 ];
 const INK_STRIP_DEFAULT = ["\uFF0C", "\u3002", "\uFF1F", "\uFF01", "\uFF1A", "\uFF1B", "\u3001", "\uFF5E", "\u2026\u2026", "\xB7", "\uFF03", "\uFF20"];
+const NUM_PAD_STRIP_DEFAULT = [
+  "@",
+  "%",
+  "-",
+  "+",
+  "/",
+  "*",
+  "(",
+  ")",
+  "#",
+  "$",
+  "&",
+  "_",
+  "=",
+  "~",
+  "^",
+  ":",
+  ";"
+];
 const T9_STRIP_MAX = 24;
 const STRIP_KINDS = [
   {
@@ -6131,6 +6279,14 @@ const STRIP_KINDS = [
     titleKey: "ck.t9.pageTitleInk",
     hintKey: "ck.t9.hintInk",
     def: INK_STRIP_DEFAULT
+  },
+  {
+    kind: "numpad",
+    page: "cknumpadstrip",
+    field: "numpadStrip",
+    titleKey: "ck.t9.pageTitleNumpad",
+    hintKey: "ck.t9.hintNumpad",
+    def: NUM_PAD_STRIP_DEFAULT
   }
 ];
 const CK_STRIP_PAGES = {};
@@ -6154,7 +6310,7 @@ function stripSummaryText(kind) {
 __name(stripSummaryText, "stripSummaryText");
 function refreshStripSummary() {
   for (const cfg of STRIP_KINDS) {
-    const el = document.getElementById(`ck${cfg.kind === "t9" ? "T9" : cfg.kind === "stroke" ? "Stroke" : "Ink"}StripSummary`);
+    const el = document.getElementById(`ck${{ t9: "T9", stroke: "Stroke", ink: "Ink", numpad: "Numpad" }[cfg.kind]}StripSummary`);
     if (el) el.textContent = stripSummaryText(cfg.kind);
   }
 }
@@ -6417,6 +6573,7 @@ function ckPackJson() {
   if (ckStrips.t9) pack.t9Strip = ckStrips.t9.slice();
   if (ckStrips.stroke) pack.strokeStrip = ckStrips.stroke.slice();
   if (ckStrips.ink) pack.inkStrip = ckStrips.ink.slice();
+  if (ckStrips.numpad) pack.numpadStrip = ckStrips.numpad.slice();
   return pack;
 }
 __name(ckPackJson, "ckPackJson");

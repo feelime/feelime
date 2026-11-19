@@ -1134,6 +1134,21 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
 .ck-lang-custom { border-color: var(--accent); }
 .ck-lang-custom::after { content: ""; position: absolute; left: 4px; top: 4px;
     width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+/* #118 T9 九宫格预览：行宽收窄成 3×3（不与 qwerty 全宽混淆）、键
+ * 加高（三层：左上符号 + 右上数字 + 主字字母组，复刻 t9LetterKey）。 */
+.ck-t9-row { max-width: 330px; margin: 0 auto; }
+.ck-t9-row .ck-lang-key { height: 62px; }
+.ck-t9-key .ck-lang-sub { left: 7px; right: auto; font-size: 11px; }
+.ck-t9-sup { position: absolute; right: 7px; top: 4px;
+    font-size: 11px; color: var(--card-sub); }
+.ck-t9-fixed { display: grid; place-items: center; font-size: 12px; }
+/* T9 编辑器轻量表单（左右符号两输入框）。 */
+.ck-t9-form { display: flex; gap: 12px; }
+.ck-t9-field { flex: 1; display: flex; flex-direction: column; gap: 6px;
+    font-size: 13px; color: var(--card-sub); }
+.ck-t9-field input { font: 500 18px/1 system-ui, sans-serif;
+    padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line, #8884);
+    background: var(--pill, #8882); color: inherit; text-align: center; }
 /* 编辑弹层：语言键固定行 + 上滑/下滑小节 */
 .ck-lang-lock { display: flex; align-items: center; gap: 10px;
     background: var(--panel); border-radius: 10px; padding: 9px 12px;

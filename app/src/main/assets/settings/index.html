@@ -1356,6 +1356,10 @@
           <span class="row-label"><span data-i18n="ck.lang.russian">俄语键盘</span><small id="cklangCount-russian">默认</small></span>
           <span class="chev">›</span>
         </div>
+        <div class="row" data-cklang="t9" data-keywords="九宫格 T9 键盘 定制 长按 符号">
+          <span class="row-label"><span data-i18n="ck.lang.t9">九宫格键盘</span><small id="cklangCount-t9">默认</small></span>
+          <span class="chev">›</span>
+        </div>
       </div>
     </section>
     <!-- #112 键盘符号栏定制（2026-11-15 二轮：三键盘独立入口独立页面，
@@ -1375,6 +1379,10 @@
         </div>
         <div class="row" id="ckInkStripEntry" data-keywords="手写 符号栏 滚动列 定制 排序 拖动">
           <span class="row-label"><span data-i18n="ck.t9.entryInk">手写键盘符号栏</span><small id="ckInkStripSummary">默认</small></span>
+          <span class="chev">›</span>
+        </div>
+        <div class="row" id="ckNumpadStripEntry" data-keywords="数字 九宫格 符号栏 左侧 定制 排序 拖动 123">
+          <span class="row-label"><span data-i18n="ck.t9.entryNumpad">数字九宫格符号栏</span><small id="ckNumpadStripSummary">默认</small></span>
           <span class="chev">›</span>
         </div>
       </div>
@@ -1518,6 +1526,27 @@
         <span class="ck-row2-ctl" style="display:flex;gap:8px;">
           <input type="text" id="ckinkAddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
           <button class="btn" id="ckinkAddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
+        </span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="page ck-strip-page" data-page="cknumpadstrip" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="customkeys" data-i18n-aria="nav.back" aria-label="返回">‹</button>
+    <h2 class="page-title" data-i18n="ck.t9.pageTitleNumpad">数字九宫格符号栏</h2>
+    <button class="btn" id="cknumpadReset" type="button" data-i18n="ck.t9.resetOne">恢复默认</button>
+  </header>
+  <main>
+    <section class="card">
+      <p class="hint" data-i18n="ck.t9.hintNumpad">数字九宫格（长按 123 进入）左侧符号列，拖动 ≡ 调整顺序，点 ✕ 删除。</p>
+      <div class="strip-list" id="cknumpadList"></div>
+      <div class="row">
+        <span class="row-label"><span data-i18n="ck.t9.addLabel">添加符号</span><small id="cknumpadCount"></small></span>
+        <span class="ck-row2-ctl" style="display:flex;gap:8px;">
+          <input type="text" id="cknumpadAddInput" maxlength="3" data-i18n-placeholder="ck.t9.addPlaceholder" placeholder="符号" style="flex:1;min-width:0;">
+          <button class="btn" id="cknumpadAddBtn" type="button" data-i18n="ck.t9.addBtn">添加</button>
         </span>
       </div>
     </section>

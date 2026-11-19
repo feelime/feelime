@@ -110,6 +110,16 @@ const LANG_KB = {
         alts: { й: '1', ц: '2', у: '3', к: '4', е: '5', н: '6', г: '7', ш: '8', щ: '9', з: '0', х: '-', ъ: '=',
             ф: '\\', ы: '/', в: ':', а: ';', п: '(', р: ')', о: '~', л: '"', д: "'", ж: '«', э: '»',
             я: '@', ч: '_', с: '#', м: '&', и: '?', т: '!', ь: '…', б: ',', ю: '.', '.': ',' } },
+    /* #118 T9 九宫格：预览渲染 3×3（renderLangKb 分支），编辑面只有
+     * 2-9 八键的左右长按符号（syms），与 keyboard.js
+     * LAYOUTS.t9.keySymbols 逐项同值（mock 双侧锁内容防漂移）。 */
+    t9: { title: 'ck.lang.t9', rows: ['123', '456', '789'], t9: true,
+        keySymbols: {
+            '2': ['—', '&'], '3': ['（', '）'], '4': ['「', '」'], '5': ['、', '：'],
+            '6': ['；', '～'], '7': ['《', '》'], '8': ['…', '·'], '9': ['%', '/'],
+        },
+        alts: { '2': 'abc', '3': 'def', '4': 'ghi', '5': 'jkl', '6': 'mno',
+            '7': 'pqrs', '8': 'tuv', '9': 'wxyz' } },
 };
 
 // #31 键盘色调：与 native THEME_PRESETS / keyboard.css html[data-preset] 同源。
@@ -356,12 +366,15 @@ const I18N = {
         "ck.t9.entryT9": "T9 九宫格符号栏",
         "ck.t9.entryStroke": "笔画键盘符号栏",
         "ck.t9.entryInk": "手写键盘符号栏",
+        "ck.t9.entryNumpad": "数字九宫格符号栏",
         "ck.t9.pageTitleT9": "T9 符号栏",
         "ck.t9.pageTitleStroke": "笔画符号栏",
         "ck.t9.pageTitleInk": "手写符号栏",
+        "ck.t9.pageTitleNumpad": "数字九宫格符号栏",
         "ck.t9.hintT9": "九宫格键盘空闲时左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除；打字中该列临时显示拼音音节，与符号栏互不影响。",
         "ck.t9.hintStroke": "笔画键盘左列的常用符号，拖动 ≡ 调整顺序，点 ✕ 删除。",
         "ck.t9.hintInk": "手写键盘右侧滚动符号列，拖动 ≡ 调整顺序，点 ✕ 删除。",
+        "ck.t9.hintNumpad": "数字九宫格（长按 123 进入）左侧符号列，拖动 ≡ 调整顺序，点 ✕ 删除。",
         "ck.t9.drag": "拖动排序",
         "ck.t9.resetConfirm": "恢复此符号栏的默认内容和顺序？",
         "ck.t9.lastOne": "至少保留一个符号",
@@ -380,6 +393,12 @@ const I18N = {
         "ck.lang.english": "英文键盘",
         "ck.lang.french": "法语键盘",
         "ck.lang.russian": "俄语键盘",
+        "ck.lang.t9": "九宫格键盘",
+        "ck.lang.t9SymL": "左符号",
+        "ck.lang.t9SymR": "右符号",
+        "ck.lang.hintT9": "点 2-9 键定制长按弹层的左右符号；字母组、数字与滑动不变。",
+        "ck.lang.hint2T9": "1 键（标点）、0/空格与退格不可定制。",
+        "ck.err.t9Syms": "左右符号都必填（1-3 个字符）",
         "ck.lang.count": "已定制 {count} 键",
         "ck.lang.default": "默认",
         "ck.lang.hint1": "点字母键 / 逗号句号键定制角标与上滑、下滑；布局、单击与长按不变。",
@@ -1220,12 +1239,15 @@ const I18N = {
         "ck.t9.entryT9": "T9 nine-key strip",
         "ck.t9.entryStroke": "Stroke keyboard strip",
         "ck.t9.entryInk": "Handwriting strip",
+        "ck.t9.entryNumpad": "Number pad strip",
         "ck.t9.pageTitleT9": "T9 strip",
         "ck.t9.pageTitleStroke": "Stroke strip",
         "ck.t9.pageTitleInk": "Handwriting strip",
+        "ck.t9.pageTitleNumpad": "Number pad strip",
         "ck.t9.hintT9": "Symbols in the left column of the nine-key keyboard when idle. Drag ≡ to reorder, tap ✕ to remove; while typing the column shows pinyin syllables instead.",
         "ck.t9.hintStroke": "Symbols in the stroke keyboard's left column. Drag ≡ to reorder, tap ✕ to remove.",
         "ck.t9.hintInk": "Symbols in the handwriting keyboard's scrolling column. Drag ≡ to reorder, tap ✕ to remove.",
+        "ck.t9.hintNumpad": "Symbols in the number pad's left column (long-press 123). Drag ≡ to reorder, tap ✕ to remove.",
         "ck.t9.drag": "Drag to reorder",
         "ck.t9.resetConfirm": "Restore the default symbols and order for this strip?",
         "ck.t9.lastOne": "Keep at least one symbol",
@@ -1244,6 +1266,12 @@ const I18N = {
         "ck.lang.english": "English",
         "ck.lang.french": "French",
         "ck.lang.russian": "Russian",
+        "ck.lang.t9": "Nine-key pad",
+        "ck.lang.t9SymL": "Left symbol",
+        "ck.lang.t9SymR": "Right symbol",
+        "ck.lang.hintT9": "Tap 2-9 to customize the two long-press symbols; letter groups, digits and flicks stay unchanged.",
+        "ck.lang.hint2T9": "The 1 key (punctuation), 0/space and backspace are fixed.",
+        "ck.err.t9Syms": "Both symbols are required (1-3 characters each)",
         "ck.lang.count": "{count} keys customized",
         "ck.lang.default": "Default",
         "ck.lang.hint1": "Tap a letter or the comma key to customize its hint and flick actions; layout, tap and long-press stay unchanged.",
@@ -1839,7 +1867,7 @@ const I18N = {
 };
 
 // #39-12：customkeys（二级）与 customkeys-editor（三级）。
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -2196,7 +2224,7 @@ function showPage(name) {
     // 知道——用户验收实录；不用 confirm：WebChromeClient 不处理时恒
     // false 会把用户锁死）。收口在本函数里——包装外层函数会漏掉已
     // 导出的旧引用。ckEnter 同理在进页时统一触发。
-    const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"];
+    const CK_FAMILY = ["customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip"];
     if (typeof ckDirty !== "undefined" && CK_FAMILY.includes(currentPage)
         && !CK_FAMILY.includes(name) && ckDirty) {
         ckLeaveTarget = name;
@@ -2239,7 +2267,7 @@ function showPage(name) {
     // 动作）：DOM 随当前页移动（page = header + 滚动 main + 保存条的
     // flex 布局见 css）。离开家族（含回首页）时条随上一次所在子页
     // 隐藏，脏态由离开确认兜底。
-    if (["cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip"].includes(name)) {
+    if (["cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip"].includes(name)) {
         // 深链直达（focusSetting/URL）没经过 ckEnter→ckLoad，rows=null：
         // 此时「保存全部」的整包会把已有定制覆盖掉（codex review P1——
         // rows 保底 [] 的前提是「草稿已加载」，未加载≠空表）。
@@ -5032,7 +5060,7 @@ let ckDirty = false;
 let ckLangKeys = {};
 // #112 符号栏草稿（T9/笔画/手写三栏）：null=未定制（用键盘内置默认）；
 // 数组=已定制。字段名与键盘端 sideCharsList 的映射一一对应。
-let ckStrips = { t9: null, stroke: null, ink: null };
+let ckStrips = { t9: null, stroke: null, ink: null, numpad: null };
 let ckLeaveTarget = null;   // 脏态离开确认的目标页
 
 /** 脏态驱动的保存条：变更必须让用户看得见（用户验收实录）。
@@ -5158,6 +5186,7 @@ function ckLoad() {
             t9: parsed && Array.isArray(parsed.t9Strip) ? parsed.t9Strip.slice() : null,
             stroke: parsed && Array.isArray(parsed.strokeStrip) ? parsed.strokeStrip.slice() : null,
             ink: parsed && Array.isArray(parsed.inkStrip) ? parsed.inkStrip.slice() : null,
+            numpad: parsed && Array.isArray(parsed.numpadStrip) ? parsed.numpadStrip.slice() : null,
         };
     } catch (_) { /* textarea 空/坏 JSON → 模板 */ }
     if (!rows || !rows.some(row => row && row.length)) rows = JSON.parse(CK_TEMPLATE).rows;
@@ -5855,6 +5884,40 @@ function openLangKeyEditor(lay, key) {
         t("ck.lang.editTitle").replace("{0}", key === "." ? "，" : key.toUpperCase());
 }
 
+/** #118 T9 键编辑器：轻量表单（左/右长按符号两个输入框），不走
+ *  ckBuildForm 大编辑器（类型/动作/DSL 对 T9 键无语义——codex 方案
+ *  2026-11-19）。输入框预填当前值（定制或默认），保存必填 ≤3 字。 */
+function openT9KeyEditor(key) {
+    ckEditorTarget = "t9key";
+    ckSel = null;
+    const cell = (ckLangKeys.t9 || {})[key] || {};
+    const def = LANG_KB.t9.keySymbols[key] || ["", ""];
+    const cur = Array.isArray(cell.syms) && cell.syms.length === 2 ? cell.syms : def;
+    ckDraft = { langLay: "t9", langKey: key };
+    const body = $("ckEditBody");
+    body.textContent = "";
+    const wrap = document.createElement("div");
+    wrap.className = "ck-t9-form";
+    for (const [idx, labelKey] of [[0, "ck.lang.t9SymL"], [1, "ck.lang.t9SymR"]]) {
+        const field = document.createElement("label");
+        field.className = "ck-t9-field";
+        const cap = document.createElement("span");
+        cap.textContent = t(labelKey);
+        const input = document.createElement("input");
+        input.type = "text";
+        input.id = idx === 0 ? "ckT9SymL" : "ckT9SymR";
+        input.maxLength = 3;
+        input.value = cur[idx] || "";
+        input.placeholder = def[idx] || "";
+        field.append(cap, input);
+        wrap.append(field);
+    }
+    body.append(wrap);
+    ckOpenModal(false);
+    document.getElementById("ckModalTitle").textContent =
+        t("ck.lang.editTitle").replace("{0}", key);
+}
+
 /** #50 长按空格=虚拟定制键：与定制键同一编辑器（类型+动作，无键面
  *  /颜色/备注），保存走 setSpaceHoldTap 桥。 */
 function openSpaceHoldEditor() {
@@ -6305,6 +6368,22 @@ function ckBuildAction(holder, target) {
 
 $("ckApply").addEventListener("click", () => {
     const d = ckDraft;
+    // #118 T9 键：左右符号必填 ≤3 字（与键盘端 parseLangKeys 同口径；
+    // 首期不做「空=隐藏」——弹层拆行假设中行恒三格，空符号会挤行）。
+    if (ckEditorTarget === "t9key") {
+        const l = document.getElementById("ckT9SymL").value.trim();
+        const r = document.getElementById("ckT9SymR").value.trim();
+        if (!l || !r || [...l].length > 3 || [...r].length > 3) {
+            return setNote("ckEditNote", t("ck.err.t9Syms"));
+        }
+        const table = (ckLangKeys.t9 = ckLangKeys.t9 || {});
+        table[d.langKey] = { syms: [l, r] };
+        ckMarkDirty(true);
+        refreshLangCounts();
+        renderLangKb("t9");
+        ckCloseModal();
+        return;
+    }
     // 长按空格是虚拟键：无键面文案，标签必填只约束真实定制键。
     if (ckEditorTarget === "cell" && !d.t.trim()) return setNote("ckEditNote", t("ck.err.t"));
     // open 型先过本地校验（键盘侧 parseCustomKeys 是整表拒收，坏键
@@ -6463,6 +6542,24 @@ function renderLangKb(lay) {
     if (title) title.textContent = t(conf.title);
     const table = ckLangKeys[lay] || {};
     host.textContent = "";
+    // #118 T9 九宫格：三行各三键（2-9 可定制，1 键固定标点行为），
+    // 无第三行功能键与底行——可定制面只有长按符号。页内 hint 换 T9
+    // 版（applyI18n 重置后重进页会再次覆盖）。
+    const hintEl = document.querySelector('#cklangKb ~ p.hint, [data-page="cklang"] p.hint:nth-of-type(1)');
+    const hint2El = document.querySelector('[data-page="cklang"] p.hint:nth-of-type(2)');
+    if (conf.t9) {
+        if (hintEl) hintEl.textContent = t("ck.lang.hintT9");
+        if (hint2El) hint2El.textContent = t("ck.lang.hint2T9");
+        for (const rowKeys of conf.rows.map(String)) {
+            const rowEl = document.createElement("div");
+            rowEl.className = "ck-lang-row ck-t9-row";
+            [...rowKeys].forEach(key => rowEl.append(t9LangKeyEl(key, table[key])));
+            host.append(rowEl);
+        }
+        return;
+    }
+    if (hintEl) hintEl.textContent = t("ck.lang.hint1");
+    if (hint2El) hint2El.textContent = t("ck.lang.hint2");
     const rows = conf.rows.map(String);
     rows.forEach((rowKeys, idx) => {
         const rowEl = document.createElement("div");
@@ -6520,6 +6617,32 @@ function ckLangKeyEl(lay, key, cell) {
     return el;
 }
 
+/** #118 T9 键的预览格：复刻 t9LetterKey 三层——左上长按符号、右上
+ *  数字、主字字母组。1 键固定（@#. 标点行为），不可定制。 */
+function t9LangKeyEl(key, cell) {
+    const conf = LANG_KB.t9;
+    if (key === "1") {
+        const el = document.createElement("span");
+        el.className = "ck-lang-key ck-lang-key-sp ck-t9-key ck-t9-fixed";
+        el.textContent = "@#.";
+        return el;
+    }
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "ck-lang-key ck-t9-key";
+    const syms = cell && Array.isArray(cell.syms) && cell.syms.length === 2
+        ? cell.syms : (conf.keySymbols[key] || []);
+    el.innerHTML = '<span class="ck-lang-sub"></span>'
+        + '<span class="ck-t9-sup"></span><span class="ck-lang-main"></span>';
+    el.querySelector(".ck-lang-sub").textContent = syms.join("");
+    el.querySelector(".ck-t9-sup").textContent = key;
+    el.querySelector(".ck-lang-main").textContent = (conf.alts[key] || "").toUpperCase();
+    if (cell && Object.keys(cell).length) el.classList.add("ck-lang-custom");
+    el.setAttribute("aria-label", t("ck.lang.editKey").replace("{0}", key));
+    el.addEventListener("click", () => openT9KeyEditor(key));
+    return el;
+}
+
 /** 三级页入口行的已定制计数。 */
 function refreshLangCounts() {
     for (const lay of Object.keys(LANG_KB)) {
@@ -6542,6 +6665,7 @@ document.getElementById("ckSymbolEntry").addEventListener("click", () => showPag
 document.getElementById("ckT9StripEntry").addEventListener("click", () => showPage("ckt9strip"));
 document.getElementById("ckStrokeStripEntry").addEventListener("click", () => showPage("ckstrokestrip"));
 document.getElementById("ckInkStripEntry").addEventListener("click", () => showPage("ckinkstrip"));
+document.getElementById("ckNumpadStripEntry").addEventListener("click", () => showPage("cknumpadstrip"));
 
 /* ===== #112 键盘符号栏（2026-11-15 二轮：三键盘独立页面+拖动排序） =====
  * 信息架构（codex 方案）：customkeys 三行入口 → 三个独立编辑页
@@ -6555,6 +6679,9 @@ document.getElementById("ckInkStripEntry").addEventListener("click", () => showP
 const T9_STRIP_DEFAULT = ['，', '。', '？', '！', '；', '：', '、',
     '“', '”', '（', '）', '《', '》', '…', '·', '—'];
 const INK_STRIP_DEFAULT = ['，', '。', '？', '！', '：', '；', '、', '～', '……', '·', '＃', '＠'];
+// #116：数字九宫格（长按 123 进入）左列符号栏，与键盘端 NUM_PAD_SYMBOLS 同值。
+const NUM_PAD_STRIP_DEFAULT = ['@', '%', '-', '+', '/', '*', '(', ')',
+    '#', '$', '&', '_', '=', '~', '^', ':', ';'];
 const T9_STRIP_MAX = 24;
 const STRIP_KINDS = [
     { kind: "t9", page: "ckt9strip", field: "t9Strip",
@@ -6563,6 +6690,8 @@ const STRIP_KINDS = [
       titleKey: "ck.t9.pageTitleStroke", hintKey: "ck.t9.hintStroke", def: T9_STRIP_DEFAULT },
     { kind: "ink", page: "ckinkstrip", field: "inkStrip",
       titleKey: "ck.t9.pageTitleInk", hintKey: "ck.t9.hintInk", def: INK_STRIP_DEFAULT },
+    { kind: "numpad", page: "cknumpadstrip", field: "numpadStrip",
+      titleKey: "ck.t9.pageTitleNumpad", hintKey: "ck.t9.hintNumpad", def: NUM_PAD_STRIP_DEFAULT },
 ];
 const CK_STRIP_PAGES = {};
 STRIP_KINDS.forEach(cfg => { CK_STRIP_PAGES[cfg.page] = cfg.kind; });
@@ -6581,7 +6710,7 @@ function stripSummaryText(kind) {
 }
 function refreshStripSummary() {
     for (const cfg of STRIP_KINDS) {
-        const el = document.getElementById(`ck${cfg.kind === "t9" ? "T9" : cfg.kind === "stroke" ? "Stroke" : "Ink"}StripSummary`);
+        const el = document.getElementById(`ck${{ t9: "T9", stroke: "Stroke", ink: "Ink", numpad: "Numpad" }[cfg.kind]}StripSummary`);
         if (el) el.textContent = stripSummaryText(cfg.kind);
     }
 }
@@ -6846,6 +6975,7 @@ function ckPackJson() {
     if (ckStrips.t9) pack.t9Strip = ckStrips.t9.slice();
     if (ckStrips.stroke) pack.strokeStrip = ckStrips.stroke.slice();
     if (ckStrips.ink) pack.inkStrip = ckStrips.ink.slice();
+    if (ckStrips.numpad) pack.numpadStrip = ckStrips.numpad.slice();
     return pack;
 }
 /** 最近一次投影/保存写进 textarea 的串：区分「textarea 手上有更新」

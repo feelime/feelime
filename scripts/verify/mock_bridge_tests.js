@@ -1808,6 +1808,122 @@ test('letter popup release-without-drag still commits the key char', {since: '3.
     equal(keys[0].args[0], 'E', 'letter release keeps uppercase pre-selection');
 });
 
+// #117（2026-11-18 用户报告）：T9 左栏声母前缀格（b/c）此前 no-op，
+// 点了没反应（「灰色不可点」），b/c 声母候选只能靠按两次键凑。实测
+// 引擎对纯声母组合返回该声母候选——点击=重写待完成段开头为声母，
+// 不推进确认边界（codex review：直接复用 t9PickSyllable 会把声母当
+// 已确认音节，后续 b26 枚举错位）。
+test('t9 initial cell click rewrites the pending segment to that initial (#117)', {since: '3.73.124'}, () => {
+    const world = fresh();
+    world.engineState({ mode: 't9', revision: 1, candidates: [], composing: '' });
+    const geo = world.key('2');
+    world.touchDown(geo, 20, 20);
+    world.touchUp(geo, 20, 20);
+    world.clock.advance(2);
+    assert(world.native.of('key').length >= 1, 'digit 2 keyed');
+    // 引擎回推组合态（数字 2 的组合）：左栏切到音节枚举（a/b/c）。
+    world.engineState({ mode: 't9', revision: 2, composing: '2', rawInput: '2',
+        candidates: ['啊'] });
+    const bCell = [...world.document.querySelectorAll('.t9-side-cell')]
+        .find(e => (e.textContent || '').trim() === 'b');
+    assert(bCell, 'initial cell b rendered');
+    world.native.calls.length = 0;
+    bCell.click();
+    world.clock.advance(2);
+    const comps = world.native.of('setComposition');
+    assert(comps.length === 1, 'one setComposition');
+    equal(comps[0].args[0], 'b', 'pending segment rewritten to the initial');
+});
+
+test('t9 initial click keeps the confirmed boundary (#117)', {since: '3.73.124'}, () => {
+    const world = fresh();
+    world.engineState({ mode: 't9', revision: 1, candidates: [], composing: '' });
+    // 回声链路（codex review P2 2026-11-19：守卫式断言在 harness 无
+    // 回声时整条空跑仍 PASS，必须逐节点无条件断言）：
+    // 22 → 点 ba 确认首段 → 回声 ba → 按键 2 → 点 c → 必须发 bac
+    //（前缀 ba 保留、c 未吞进边界）→ 回声 bac2 后 c 仍在待完成段。
+    const k2 = world.key('2');
+    for (const _ of [1, 2]) {
+        world.touchDown(k2, 20, 20); world.touchUp(k2, 20, 20);
+        world.clock.advance(2);
+    }
+    world.engineState({ mode: 't9', revision: 2, composing: '22', rawInput: '22',
+        candidates: ['吧'] });
+    const baCell = [...world.document.querySelectorAll('.t9-side-cell')]
+        .find(e => (e.textContent || '').trim() === 'ba');
+    assert(baCell, 'full syllable ba rendered');
+    baCell.click();
+    world.clock.advance(2);
+    equal(world.native.of('setComposition').slice(-1)[0].args[0], 'ba',
+        'picking ba rewrites the segment');
+
+    world.engineState({ mode: 't9', revision: 3, composing: 'ba', rawInput: 'ba',
+        candidates: ['吧'] });
+    world.touchDown(k2, 20, 20); world.touchUp(k2, 20, 20);
+    world.clock.advance(2);
+    world.engineState({ mode: 't9', revision: 4, composing: 'ba 2', rawInput: 'ba2',
+        candidates: ['吧啊'] });
+    const cCell = [...world.document.querySelectorAll('.t9-side-cell')]
+        .find(e => (e.textContent || '').trim() === 'c');
+    assert(cCell, 'initial cell c rendered for the pending 2');
+    world.native.calls.length = 0;
+    cCell.click();
+    world.clock.advance(2);
+    const comps = world.native.of('setComposition');
+    equal(comps.length, 1, 'exactly one setComposition on initial click');
+    equal(comps[0].args[0], 'bac',
+        'c rewrites only the pending segment: ba survives, c not confirmed');
+
+    // 边界未推进的铁证：c 若被误当确认段，此处尾巴段是 "2"（枚举只有
+    // a/b/c）；c 留在待完成段里，"c2" 才枚举得出 ca。（点选后先注入
+    // 回声完成重放，再按键——跳步会让重放态吞掉这轮回显。）
+    world.engineState({ mode: 't9', revision: 5, composing: 'bac', rawInput: 'bac',
+        candidates: ['吧擦'] });
+    world.touchDown(k2, 20, 20); world.touchUp(k2, 20, 20);
+    world.clock.advance(2);
+    world.engineState({ mode: 't9', revision: 6, composing: 'bac 2', rawInput: 'bac2',
+        candidates: ['吧擦啊'] });
+    const labels = [...world.document.querySelectorAll('.t9-side-cell')]
+        .map(e => (e.textContent || '').trim());
+    assert(labels.includes('ca'),
+        'c stays in the pending segment (ca enumerable after +2): ' + labels);
+});
+
+test('t9 initial click eats digits by initial length: ch/zh/sh and repeats (#117)', {since: '3.73.125'}, () => {
+    const world = fresh();
+    world.engineState({ mode: 't9', revision: 1, candidates: [], composing: '' });
+    // P1 回归（codex review 2026-11-19）：slice(1) 给双字母声母多留
+    // 一位数字（24→ch4），重复点击还会继续增长（ch→chh）。
+    const k2 = world.key('2');
+    const k4 = world.key('4');
+    world.touchDown(k2, 20, 20); world.touchUp(k2, 20, 20);
+    world.touchDown(k4, 20, 20); world.touchUp(k4, 20, 20);
+    world.clock.advance(2);
+    world.engineState({ mode: 't9', revision: 2, composing: '24', rawInput: '24',
+        candidates: ['吃'] });
+    const chCell = [...world.document.querySelectorAll('.t9-side-cell')]
+        .find(e => (e.textContent || '').trim() === 'ch');
+    assert(chCell, 'two-letter initial ch rendered for 24');
+    world.native.calls.length = 0;
+    chCell.click();
+    world.clock.advance(2);
+    const comps = world.native.of('setComposition');
+    equal(comps.length, 1, 'one setComposition');
+    equal(comps[0].args[0], 'ch', 'ch consumes both digits 24 (not ch4)');
+
+    // 回声 ch 后再点 ch：幂等（不得变 chh）。
+    world.engineState({ mode: 't9', revision: 3, composing: 'ch', rawInput: 'ch',
+        candidates: ['吃'] });
+    const chAgain = [...world.document.querySelectorAll('.t9-side-cell')]
+        .find(e => (e.textContent || '').trim() === 'ch');
+    assert(chAgain, 'ch still offered after its own echo');
+    world.native.calls.length = 0;
+    chAgain.click();
+    world.clock.advance(2);
+    equal(world.native.of('setComposition')[0].args[0], 'ch',
+        're-clicking the same initial is idempotent');
+});
+
 // ---- 重叠双指（快速双手打字的常见时序：B 落键时 A 还没抬）----
 // 全局 touchOrigin 是首指所有权；B 落键不抢占。复现两组现网症状：
 // 上滑被当点按落小写、长按弹层一动就「松手撤销」。
@@ -2500,6 +2616,65 @@ test('long-press popup drags to a different cell with real displacement', {since
     const keys = world.native.of('key');
     equal(keys.length, 1, 'one commit from popup (A still holds)');
     equal(keys[0].args[0], 'e', 'nonzero drag lands the last cell, origin at the pressing finger');
+});
+
+// #115-3（2026-11-17 用户报告）：最左/最右按键的弹层里，靠边格相对
+// 锚点的位移超出卡片——手指滑到屏幕物理边缘仍够不着。贴边时把虚拟
+// 光标水平钳进卡片选最近格；普通出界撤销（上条 3.73.21 用例）不变。
+test('edge-key popup: finger at the physical screen edge clamps to card and selects the edge cell (#115-3)', {since: '3.73.124'}, () => {
+    const world = fresh();
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.clock.advance(360);
+    assert(world.$('keyPopup').classList.contains('open'), 'popup open');
+    const items = world.document.querySelectorAll('.kp-item');
+    // 手指贴屏幕左缘（clientX=-40）且 y 与长按基准同高（fake 环境的
+    // origin 是键中心 82,90——y 对齐它，dy=0 不触发垂直撤销）：虚拟
+    // 光标出卡片左界也钳边选格。
+    world.move(q, -40, 90);
+    const selEl = [...items].find(i => i.classList.contains('sel'));
+    assert(selEl, 'a cell is selected at the screen edge');
+    assert(!world.$('keyPopupCancelTip').classList.contains('show'),
+        'no cancel tip at the screen edge');
+    world.touchUp(q, -40, 90);
+    const keys = world.native.of('key');
+    assert(keys.length === 1, 'one commit');
+    equal(keys[0].args[0], selEl.textContent, 'the selected cell committed');
+});
+
+test('edge-key popup: threshold values, right edge, vertical cancel (#115-3)', {since: '3.73.125'}, () => {
+    const world = fresh();
+    const q = world.key('q');
+    world.touchDown(q, 20, 20);
+    world.clock.advance(360);
+    // 探针实录（fake rect 几何）：q 弹层卡片 x∈[108,152]、origin=按点
+    // (20,20)、innerWidth=393、SLOP=6——x=9 的位移(-11)早已出卡片左界，
+    // 是普通出界；x≤8 才算贴屏缘。
+    const sel = () => [...world.document.querySelectorAll('.kp-item')]
+        .find(i => i.classList.contains('sel'));
+    const tip = () => world.$('keyPopupCancelTip').classList.contains('show');
+
+    // 恰好 x=8（阈值含边界）：钳进卡片选格，不撤销。
+    world.move(q, 8, 90);
+    assert(sel(), 'x=8 counts as at-edge: clamped, cell selected');
+    assert(!tip(), 'no cancel tip at x=8');
+
+    // x=9 不贴边：普通水平出界仍淡出+松手撤销（issue #9 语义保持）。
+    world.move(q, 9, 90);
+    assert(tip(), 'x=9 is a normal out-of-card drag: cancel tip shows');
+    assert(!sel(), 'no selection while cancelled');
+
+    // 拖回贴边恢复选中；右缘（innerWidth-8）同样钳边。
+    world.move(q, 0, 90);
+    assert(sel() && !tip(), 'back at the left edge restores selection');
+    world.move(q, 385, 90);
+    assert(sel() && !tip(), 'right screen edge also clamps');
+
+    // 贴边只救水平：垂直出卡片照样撤销、零提交。
+    world.move(q, 0, 250);
+    assert(tip(), 'vertical out-of-card still cancels at the screen edge');
+    world.touchUp(q, 0, 250);
+    equal(world.native.of('key').length, 0, 'cancelled popup commits nothing');
 });
 
 test('long-press popup dragged out of the card cancels with zero commit', {since: '3.73.21'}, () => {
@@ -11269,12 +11444,14 @@ test('lang keys: table adopts on hello and covers alt hint + flick gestures', {s
 
 test('lang keys: bad tables rejected without touching the working copy', {since: '3.73.41'}, () => {
     const world = fresh();
+    // #118 起 t9 是合法布局，但只认 syms——alt 字段在此被拒（防设置
+    // 页写错字段静默失效；旧断言「不支持布局」同为此拒绝形态）。
     world.native.customKeysPayload = JSON.stringify({
         version: 1, rows: [[], [], []],
         langKeys: { t9: { '2': { alt: 'x' } } },
     });
     world.hello();
-    equal(!!world.storage.get('feelime_custom_keys_v2'), false, 'unsupported layout rejected wholesale');
+    equal(!!world.storage.get('feelime_custom_keys_v2'), false, 't9 cell with alt rejected wholesale');
     world.native.customKeysPayload = JSON.stringify({
         version: 1, rows: [[], [], []],
         langKeys: { pinyin: { q: { up: '[edit:nope]' } } },
@@ -11292,8 +11469,9 @@ test('lang keys: bad tables rejected without touching the working copy', {since:
 });
 
 test('lang keys: layouts map modes (dp/direct) and t9 stays default', {since: '3.73.41'}, () => {
-    // 行为驱动：direct 模式读 english 段（定制生效），t9 模式不开放
-    //（数字键 '2' 的上滑仍走 T9 字母仲裁而非定制 DSL）。
+    // 行为驱动：direct 模式读 english 段（定制生效）。#118 起 t9 开放
+    // 的是 syms（键面/弹层符号），数字键手势仍走 T9 字母仲裁而非
+    // 定制 DSL（up/down 对 t9 键不生效）。
     const world = fresh();
     world.native.customKeysPayload = JSON.stringify({
         version: 1, rows: [[], [], []],
@@ -11307,6 +11485,68 @@ test('lang keys: layouts map modes (dp/direct) and t9 stays default', {since: '3
     equal(world.native.of('editorAction').slice(-1)[0] !== undefined
         && world.native.of('editorAction').slice(-1)[0].args[0] === 'copy',
         true, 'direct mode reads the english table');
+});
+
+// #118（2026-11-18 用户报告）：九宫格用户要求按键定制。开放面 = 2-9
+// 八键的长按符号（langKeys.t9[key].syms，恰二元非空组；键面左上小字
+// 与长按弹层中行两处消费同源）。字母组/数字/手势仍走引擎与 T9 仲裁。
+test('t9 key symbols: syms override the key hint and hold popup (#118)', {since: '3.73.125'}, () => {
+    const world = fresh({ mode: 't9' });
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [], langKeys: { t9: { '2': { syms: ['¥', '€'] } } },
+    });
+    world.hello();
+    // hello 默认画字母层，切回 T9 后 renderT9 才按镜像画键面。
+    world.engineState({ phase: 'READY', mode: 't9', revision: 2, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    equal(world.key('2').querySelector('.t9-hint').textContent, '¥€',
+        'key face hint uses the custom syms');
+    equal(world.key('3').querySelector('.t9-hint').textContent, '（）',
+        'other keys stay stock');
+    // 全表锁定（双份默认表防漂移）：3-9 七键逐一与内置表比对。
+    const stockT9 = { '3': '（）', '4': '「」', '5': '、：', '6': '；～',
+        '7': '《》', '8': '…·', '9': '%/' };
+    for (const digit of Object.keys(stockT9)) {
+        equal(world.key(digit).querySelector('.t9-hint').textContent,
+            stockT9[digit], `key ${digit} face matches the stock table`);
+    }
+    // 长按弹层中行：a b c / ¥ 2 € / A B C（syms 恰在数字两侧）。
+    const key2 = world.key('2');
+    world.touchDown(key2, 20, 20);
+    world.clock.advance(360);
+    const texts = [...world.document.querySelectorAll('#keyPopup .kp-item')]
+        .map(i => i.textContent).join('');
+    equal(texts, 'abc¥2€ABC', 'hold popup middle row uses the custom syms');
+    world.touchUp(key2, 20, 20);
+    world.clock.advance(2);
+
+    // 畸形 syms（一元组）整包拒收（parseLangKeys 白名单校验）。
+    const bad = fresh({ mode: 't9' });
+    bad.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [], langKeys: { t9: { '2': { syms: ['¥'] } } },
+    });
+    bad.hello();
+    bad.engineState({ phase: 'READY', mode: 't9', revision: 2, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    equal(!!bad.storage.get('feelime_custom_keys_v2'), false,
+        'malformed syms rejected wholesale');
+
+    // 恢复默认链路：全空包=清空（旧「至少要定义一个键」会拒空包，
+    // 只定制 t9 再恢复时键盘残留已删定制——codex 方案 2026-11-19）。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [], langKeys: { t9: { '2': { syms: ['¥', '€'] } } },
+    });
+    world.hello();
+    world.engineState({ phase: 'READY', mode: 't9', revision: 3, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    equal(world.key('2').querySelector('.t9-hint').textContent, '¥€',
+        'customized before restore');
+    world.native.customKeysPayload = JSON.stringify({ version: 1, rows: [] });
+    world.hello();
+    world.engineState({ phase: 'READY', mode: 't9', revision: 4, composing: '',
+        rawInput: '', candidates: [], hasNextPage: false });
+    equal(world.key('2').querySelector('.t9-hint').textContent, '—&',
+        'all-empty package clears the mirror back to stock');
 });
 
 // 版本双处一致性（发版纪律，1.2.2 曾漂移 5 个版本）：keyboard.js 的
@@ -11689,13 +11929,8 @@ test('common-en: | and \\ take the &/# slots; & # lead row 4; nothing dropped (u
     }
 });
 
-console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
-    (skipped ? `, ${skipped} skipped (era-gated)` : '') +
-    ` [keyboard ${KEYBOARD_VERSION}] ==`);
-if (failed) {
-    console.log('failures:', failures.join(' | '));
-    process.exit(1);
-}
+// （汇总块原在此处——新增用例接在其后导致失败不退非零（codex review
+// P2 2026-11-19），移到文件尾。）
 
 test('bottom sym split: off keeps single 123 key, on splits symbols/123 (#113)', {since: '3.73.117'}, () => {
     // 默认关：底行左下一个 123 键（点=符号面板、长按=数字键盘）。
@@ -11840,3 +12075,80 @@ test('stroke and handwriting strips honor their own custom lists (#112 extension
     equal([...badInk.document.querySelectorAll('.ink-scroll .ink-sym')][0].textContent,
         '，', 'malformed inkStrip falls back to the stock list');
 });
+
+// #116（2026-11-18 用户报告）：数字九宫格（长按 123 进入）左列符号栏
+// 此前是写死的 NUM_PAD_SYMBOLS，无定制通道。接入 sideCharsList 第四路
+// （numpadStrip），与 t9/stroke/ink 同一存储、同一防呆。
+test('number pad strip honors numpadStrip customization (#116)', {since: '3.73.125'}, () => {
+    const openPad = world => {
+        const key123 = [...world.document.querySelectorAll('.kb-special')].find(
+            el => el.textContent === '123',
+        );
+        world.touchDown(key123);
+        world.clock.advance(360);
+        world.touchUp(key123);
+        return [...world.document.querySelectorAll('#numPadLayer .num-sym-key')]
+            .map(c => c.textContent);
+    };
+    // 默认：内置 16 个（首个 '@'）。
+    equal(openPad(fresh({ mode: 'pinyin' })).join('')[0], '@',
+        'stock number pad strip leads with @');
+
+    // 定制：numpadStrip 播种后按定制序渲染。
+    const custom = fresh({ mode: 'pinyin' });
+    custom.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], numpadStrip: ['¥', '€', '＊'] }));
+    equal(openPad(custom).join(''), '¥€＊', 'custom order replaces the stock pad strip');
+
+    // 畸形回默认；T9 定制不影响数字九宫格。
+    const bad = fresh({ mode: 'pinyin' });
+    bad.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], numpadStrip: ['ok', ''] }));
+    equal(openPad(bad)[0], '@', 'malformed numpadStrip falls back to stock');
+    const t9Only = fresh({ mode: 'pinyin' });
+    t9Only.storage.set('feelime_custom_keys_v2',
+        JSON.stringify({ version: 1, rows: [], t9Strip: ['¥'] }));
+    equal(openPad(t9Only)[0], '@', 't9Strip customization leaves the pad strip stock');
+
+    // 双份默认表防漂移：keyboard 端 NUM_PAD_SYMBOLS 全串（settings 页
+    // NUM_PAD_STRIP_DEFAULT 与之逐项同值——两侧 mock 各自锁内容）。
+    equal(openPad(fresh({ mode: 'pinyin' })).join(''),
+        '@%-+/*()#$&_=~^:;', 'stock pad strip matches NUM_PAD_SYMBOLS');
+
+    // 原生同步链路（codex review P1 2026-11-19：镜像解析白名单曾漏
+    // numpadStrip，设置页保存后键盘仍显示默认）：native customKeys
+    // → hello 落镜像 → 数字九宫格消费定制序；仅含 numpad 的包不被
+    // 「至少要定义一个键」拒绝。
+    const viaNative = fresh({ mode: 'pinyin' });
+    viaNative.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [], numpadStrip: ['¥', '€', '＊'],
+    });
+    viaNative.hello();
+    const mirrored = JSON.parse(viaNative.storage.get('feelime_custom_keys_v2'));
+    equal(mirrored.numpadStrip.join(''), '¥€＊', 'numpadStrip survives the hello mirror');
+    equal(openPad(viaNative).join(''), '¥€＊', 'pad consumes the mirrored customization');
+    // 九宫格层可见时镜像更新即时重画（无需退出重进）。
+    viaNative.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [], numpadStrip: ['￥'],
+    });
+    viaNative.hello();
+    equal([...viaNative.document.querySelectorAll('#numPadLayer .num-sym-key')]
+        .map(c => c.textContent).join(''), '￥',
+        'visible pad re-renders on hello mirror update');
+    // 全空包清空（#118 恢复链路）：层仍可见时立即恢复内置默认
+    // （codex review P2-1：stripChanged 字段消失分支曾恒 false，
+    // 可见栏残留旧定制——探针复现）。
+    viaNative.native.customKeysPayload = JSON.stringify({ version: 1, rows: [] });
+    viaNative.hello();
+    equal([...viaNative.document.querySelectorAll('#numPadLayer .num-sym-key')]
+        .map(c => c.textContent).join(''), '@%-+/*()#$&_=~^:;',
+        'all-empty package restores the visible pad to stock');
+});
+
+console.log(`\n== mock-bridge suite: ${passed} passed, ${failed} failed` +
+    (skipped ? `, ${skipped} skipped (era-gated)` : '') +
+    ` [keyboard ${KEYBOARD_VERSION}] ==`);
+if (failed) {
+    console.log('failures:', failures.join(' | '));
+    process.exit(1);
+}
