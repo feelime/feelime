@@ -351,7 +351,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.125";
+  const KEYBOARD_VERSION = "3.73.126";
+  const PAIR_OPEN_SYMBOLS = /* @__PURE__ */ new Set(["(", "\uFF08", "[", "\u3010", "{", "\u300A", "\u300C", "\u300E"]);
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
     stats: { el: "statsLayer", openClass: null, close: "closeStatsPanel", returnField: "statsReturnLayer" },
@@ -1783,6 +1784,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.safeSideR = 0;
       this.landscapeOpacity = 100;
       this.keyBubble = false;
+      this.pairedSymbols = false;
       this.cnEnGuard = false;
       this.preeditScrub = false;
       this.scrubGestureId = null;
@@ -2336,7 +2338,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
      * as candidate selectors and nothing lands (user-reported bug).
      * commitText bypasses composition, like panel paste.
      */
-    sendSymbol(text) {
+    sendSymbol(text, allowPair = true) {
       if (!text) return;
       if (text === "/" && this.wxSlashOn && (this.mode === "pinyin" || this.mode === "double-pinyin")) {
         this.call(() => Native.key("/", this.token));
@@ -2346,7 +2348,11 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         }
         return;
       }
-      this.call(() => Native.commitText(text, this.token));
+      if (allowPair && this.pairedSymbols && !this.composing && PAIR_OPEN_SYMBOLS.has(text) && typeof Native.inputSymbol === "function") {
+        this.call(() => Native.inputSymbol(text, this.token));
+      } else {
+        this.call(() => Native.commitText(text, this.token));
+      }
       if (this.shift) {
         this.shift = false;
         this.updateLabels();
@@ -3225,7 +3231,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (typeof Native.commitAssoc === "function") {
         this.call(() => Native.commitAssoc(candidate.text, this.token));
       } else {
-        this.sendSymbol(candidate.text);
+        this.sendSymbol(candidate.text, false);
       }
       this.inkReset();
     }
@@ -6041,7 +6047,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           }
           this.runEditStep(step.edit);
         } else if (step.text) {
-          this.sendSymbol(step.text);
+          this.sendSymbol(step.text, false);
           this.customChainLastTextAt = Date.now();
         } else {
           const sinceText = Date.now() - this.customChainLastTextAt;
@@ -10451,6 +10457,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       const landOpacity = Number(payload.landscapeOpacity);
       if (landOpacity >= 10 && landOpacity <= 100) this.landscapeOpacity = landOpacity;
       if (typeof payload.keyBubble === "boolean") this.keyBubble = payload.keyBubble;
+      if (typeof payload.pairedSymbols === "boolean") this.pairedSymbols = payload.pairedSymbols;
       if (typeof payload.cnEnComposingGuard === "boolean") this.cnEnGuard = payload.cnEnComposingGuard;
       if (typeof payload.preeditScrub === "boolean") this.preeditScrub = payload.preeditScrub;
       if (typeof payload.bottomSymSplit === "boolean" && payload.bottomSymSplit !== this.bottomSymSplit) {

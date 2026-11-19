@@ -879,6 +879,9 @@ const I18N = {
         "input.feel.kbHeightHint": "竖屏键盘的高度；键盘上拖拽调节与此处等效。",
         "input.feel.kbHeightReset": "恢复默认",
         "input.feel.keyOpacityHint": "键帽在背景图上的透明程度，文字始终实色。",
+        "input.symbols.title": "符号输入",
+        "input.symbols.paired": "成对符号自动补全",
+        "input.symbols.pairedHint": "输入左括号时补上右括号，光标停在中间。紧接着按退格可删掉整对。",
         "input.feel.keyBubble": "按键气泡",
         "input.feel.cnEnComposingGuard": "拼音组词中禁止切换语言",
         "input.feel.cnEnComposingGuardHint": "防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。",
@@ -1738,6 +1741,9 @@ const I18N = {
         "input.feel.kbHeightHint": "Portrait keyboard height; dragging on the keyboard stays equivalent.",
         "input.feel.kbHeightReset": "Reset",
         "input.feel.keyOpacityHint": "How transparent the keycaps sit over the background image; labels stay solid.",
+        "input.symbols.title": "Symbols",
+        "input.symbols.paired": "Auto-pair brackets",
+        "input.symbols.pairedHint": "Insert the closing bracket and place the cursor between the pair. Press Backspace immediately to remove both.",
         "input.feel.keyBubble": "Key bubble",
         "input.feel.cnEnComposingGuard": "Block language switch while composing",
         "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
@@ -2801,6 +2807,7 @@ function renderFeel(state) {
     updateThemePreview();
     const bubble = $("keyBubble");
     if (bubble) bubble.checked = state.keyBubble === true;
+    $("pairedSymbols").checked = state.pairedSymbols === true;
     const guard = $("cnEnComposingGuard");
     if (guard) guard.checked = state.cnEnComposingGuard === true;
     const scrub = $("preeditScrub");
@@ -4438,6 +4445,7 @@ $("keyOpacity").addEventListener("change", event => {
 // 按键气泡（issue #30-1）：外观页开关，默认关；广播→hello 实时作用到
 // 底下弹出的预览键盘。
 $("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
+$("pairedSymbols").addEventListener("change", event => call("setPairedSymbols", event.target.checked));
 $("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", event => call("setPreeditScrub", event.target.checked));
 $("bottomSymSplit").addEventListener("change", event => call("setBottomSymSplit", event.target.checked));

@@ -473,7 +473,7 @@ JS→Native（全部 token 门控 + 输入校验；面板 id `[0-9a-f]{1,16}`、
 
 | 组 | 方法 |
 | --- | --- |
-| 文本 | `key`、`commitText`、`backspace`、`enter`、`space`、`moveCursor`、`clearComposing`、`setComposition`、`keyFeedback`（按键声/振动，§6.1） |
+| 文本 | `key`、`commitText`、`inputSymbol`、`backspace`、`enter`、`space`、`moveCursor`、`clearComposing`、`setComposition`、`keyFeedback`（按键声/振动，§6.1） |
 | 候选 | `chooseCandidate`、`pageNext`、`pagePrevious`、`deleteCandidate`、`deleteHighlightedCandidate` |
 | 面板 | `getClipboard`、`removeClipboard`、`clearClipboard`、`getFavorites`、`favoritesAdd/Update/Remove/Move`、`panelInput`、`panelFlush`、`panelSelection`、`commitAssoc`（联想词点击，§3a） |
 | 编辑器（单手侧条，§2.8） | `editorCursor`（方向键）、`editorAction`（全选/剪切/复制/粘贴） |
@@ -511,6 +511,21 @@ Native→JS 事件：`hello`（§5.3）、引擎状态 `onEngineState`（候选/
   设置「输入·手感·双击 Shift 锁定大写」可关）：第一击立即单次大写，300ms
   内第二击升级为锁定（等效长按），无单击延迟；解锁击断双击链，连点四下
   不会解锁后又立刻锁回。
+
+#### 5.2.1 成对符号自动补全
+
+「键盘与输入」中可开启，默认关闭。普通编辑器的选区折叠且没有组合时，
+从符号面板、数字键盘、T9 字面符号或中文键盘的滑动/长按入口输入
+`( （ [ 【 { 《 「 『`，补上对应右符号并把光标放在中间。右符号照常插入。
+选中内容时沿用字面替换，密码框、终端和键盘内嵌编辑框也沿用字面提交。
+宏文本、候选、粘贴、颜文字、手写回退和英文键盘走引擎的滑动/长按照旧。
+
+补全后可立即按普通退格删掉整对。后续输入、移动光标或切换编辑目标后，
+旧补全记录失效。退格仍由引擎优先处理。联删前在后台核对光标两侧的文字，
+以免宿主裁掉右符号后误删已有文字；核对通过后先把光标移到右符号之后，
+等宿主回报落位再连发两次删除（远程 IC 的移位调用返回成功只代表请求已
+发出），有一步不确认就降级为单次退格。读取失败时按普通退格，滑删仍按
+单字计数。
 
 ### 5.3 握手（hello）与 token
 

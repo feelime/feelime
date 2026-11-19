@@ -115,6 +115,46 @@ class RecordingEditor : EditorPort {
         operations.add("commitText:$text")
     }
 
+    var pairedCommitSupported = true
+    var pairedCaretSupported = true
+    var keepClosingSymbol = true
+    var deferPairedSymbolCheck: (((Boolean?) -> Unit) -> Unit)? = null
+
+    override fun verifyPairedSymbol(open: String, close: String, center: Int, onResult: (Boolean?) -> Unit) {
+        val deferred = deferPairedSymbolCheck
+        if (deferred != null) {
+            deferred(onResult)
+        } else {
+            onResult(selectedRange == null && caret == center && center >= open.length &&
+                text.startsWith(open + close, center - open.length))
+        }
+    }
+
+    override fun commitPaired(open: String, close: String, start: Int): EditorPort.PairedCommit {
+        if (!pairedCommitSupported) return EditorPort.PairedCommit.NOT_COMMITTED
+        operations.add("commitPaired:$open$close")
+        replace(if (keepClosingSymbol) open + close else open, false)
+        if (!pairedCaretSupported) return EditorPort.PairedCommit.AT_END
+        caret = start + open.length
+        return EditorPort.PairedCommit.CENTERED
+    }
+
+    /** 模拟远程 IC 契约：setSelection 返回 true 只代表请求发出，宿主
+     *  可能根本没执行（评审 P1 的触发条件）。 */
+    var ignoreMoveCaret = false
+
+    override fun moveCaret(position: Int): Boolean {
+        if (!pairedCaretSupported || position !in 0..text.length) return false
+        if (ignoreMoveCaret) {
+            operations.add("moveCaretIgnored:$position")
+            return true
+        }
+        operations.add("moveCaret:$position")
+        caret = position
+        selectedRange = null
+        return true
+    }
+
     /** 与生产端口同形：untracked 通道不进统计口径，记录单列。 */
     override fun commitTextUntracked(text: String) {
         replace(text, false)
@@ -262,6 +302,10 @@ class TextInputCoordinatorTest {
     private lateinit var fake: FakeEngine
     private var asrGuardCalls = 0
 
+    /** 联删的 150ms 超时块：显式收集，用例靠宿主回报驱动完成；
+     *  不推进就只验证回报路径（联删状态随测试结束丢弃）。 */
+    private val delayedBlocks = mutableListOf<() -> Unit>()
+
     private fun coordinator(): TextInputCoordinator {
         editor = RecordingEditor()
         events = mutableListOf()
@@ -271,10 +315,339 @@ class TextInputCoordinatorTest {
             listener = { events.add(it) },
             engineFactory = { fake },
             asrGuard = { asrGuardCalls += 1 },
+            delayPoster = { _, block ->
+                delayedBlocks.add(block)
+                val cancel: () -> Unit = { delayedBlocks.remove(block); Unit }
+                cancel
+            },
         )
     }
 
     private fun revisions() = events.map { it.revision }
+
+    @Test
+    fun pairedSymbolsCenterAndDeleteBothWithoutTouchingNeighboringText() {
+        for ((open, close) in TextInputCoordinator.PAIRED_SYMBOLS) {
+            val c = coordinator()
+            // 表情占两个 UTF-16 单位，绝对选区不能误按码点计数。
+            editor.text = "😀尾"
+            editor.caret = 2
+            c.onEditorStarted(false, initialSelectionStart = 2)
+            editor.operations.clear()
+            c.inputSymbol(open, isCurrent = { true }, canPair = { true })
+            assertEquals("😀$open${close}尾", editor.text)
+            assertEquals(3, editor.caret)
+            c.onEditorSelectionChanged(2, 2, 3, 3)
+            c.backspace()
+            // 远程 IC 的 setSelection 返回 true 只代表请求发出：宿主确认
+            // 光标落到右符号之后才允许连发两次 DEL（评审 P1）。
+            c.onEditorSelectionChanged(3, 3, 4, 4)
+            assertEquals("😀尾 [dbg text=${editor.text} caret=${editor.caret} ops=${editor.operations}]",
+                "😀尾", editor.text)
+            assertEquals(2, editor.caret)
+            assertEquals(listOf("commitPaired:$open$close", "moveCaret:4", "sendDeleteKey", "sendDeleteKey"),
+                editor.operations)
+        }
+    }
+
+    @Test
+    fun pairedSymbolIsForgottenAfterLiteralAndEngineInput() {
+        for (literal in listOf(true, false)) {
+            editor = RecordingEditor()
+            val c = TextInputCoordinator(editor, {}, { DirectTextEngine() })
+            c.onEditorStarted(false)
+            c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+            if (literal) c.pasteExternal("a") else c.key('a'.code)
+            assertEquals("(a)", editor.text)
+            assertEquals(2, editor.caret)
+            c.backspace()
+            assertEquals("()", editor.text)
+            assertEquals(1, editor.caret)
+            assertEquals(1, editor.operations.count { it == "sendDeleteKey" })
+            c.backspace()
+            assertEquals(")", editor.text)
+        }
+    }
+
+    @Test
+    fun movingCaretAwayAndBackDiscardsPairOwnership() {
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        editor.caret = 1
+        c.onEditorSelectionChanged(2, 2, 1, 1)
+        c.backspace()
+        assertEquals(")", editor.text)
+        assertEquals(1, editor.operations.count { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun swipeDeleteUsesSingleDeleteAndClearsPairOwnership() {
+        val c = coordinator()
+        editor.text = "a"
+        editor.caret = 1
+        c.onEditorStarted(false, initialSelectionStart = 1)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.gestureBackspace(1)
+        assertEquals("a)", editor.text)
+        c.backspace()
+        assertEquals(")", editor.text)
+        assertEquals(2, editor.operations.count { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun pairedSymbolFallsBackWithSelectionSensitiveEditorOrDisabledRoute() {
+        val selection = coordinator()
+        editor.text = "abc"
+        editor.selectedRange = 1..1
+        selection.onEditorStarted(false, initialSelectionStart = 1, initialSelectionEnd = 2)
+        selection.inputSymbol("[", isCurrent = { true }, canPair = { true })
+        assertEquals("a[c", editor.text)
+
+        val unknown = coordinator()
+        unknown.onEditorStarted(false, initialSelectionStart = -1)
+        unknown.inputSymbol("[", isCurrent = { true }, canPair = { true })
+        assertEquals("[", editor.text)
+
+        val sensitive = coordinator()
+        sensitive.onEditorStarted(true)
+        sensitive.inputSymbol("[", isCurrent = { true }, canPair = { true })
+        assertEquals("[", editor.text)
+
+        // 开关关闭或服务排除了当前输入目标时，走相同的字面路径。
+        val disabled = coordinator()
+        disabled.onEditorStarted(false)
+        disabled.inputSymbol("[", isCurrent = { true }, canPair = { false })
+        assertEquals("[", editor.text)
+    }
+
+    @Test
+    fun pairedSymbolFallsBackDuringCompositionAndConsumedBackspaceDoesNotDeleteEditorText() {
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.selectMode(InputMode.PINYIN)
+        c.key('n'.code)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        assertEquals("n(", editor.text)
+        c.inputSymbol("[", isCurrent = { true }, canPair = { true })
+        c.key('n'.code)
+        c.backspace()
+        assertEquals("n([]", editor.text)
+        assertFalse(editor.operations.contains("sendDeleteKey"))
+    }
+
+    @Test
+    fun pairedSymbolHandlesRejectedCommitAndPositioningWithoutDuplicateText() {
+        val unsupported = coordinator()
+        unsupported.onEditorStarted(false)
+        editor.pairedCommitSupported = false
+        unsupported.inputSymbol("[", isCurrent = { true }, canPair = { true })
+        assertEquals("[", editor.text)
+
+        val misplaced = coordinator()
+        misplaced.onEditorStarted(false)
+        editor.pairedCaretSupported = false
+        misplaced.inputSymbol("[", isCurrent = { true }, canPair = { true })
+        assertEquals("[]", editor.text)
+        assertEquals(2, editor.caret)
+        misplaced.backspace()
+        assertEquals("[", editor.text)
+
+        val failedMove = coordinator()
+        failedMove.onEditorStarted(false)
+        failedMove.inputSymbol("[", isCurrent = { true }, canPair = { true })
+        editor.pairedCaretSupported = false
+        failedMove.backspace()
+        assertEquals("]", editor.text)
+        assertEquals(1, editor.operations.count { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun pairsReplayInOrderAndBackspaceCanRunBeforeHostReportsSelection() {
+        for (erase in listOf(false, true)) {
+            val host = RecordingEditor()
+            val posted = ArrayDeque<() -> Unit>()
+            val worker = ManualExecutor()
+            val delays = mutableListOf<() -> Unit>()
+            val c = TextInputCoordinator(host, {}, { DirectTextEngine() },
+                mainPoster = { posted.addLast(it) }, background = worker,
+                delayPoster = { _, block ->
+                    delays.add(block)
+                    val cancel: () -> Unit = { delays.remove(block); Unit }
+                    cancel
+                })
+            c.onEditorStarted(false)
+            drain(posted)
+            c.selectMode(InputMode.PINYIN)
+            c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+            if (erase) c.backspace() else c.key('a'.code)
+            assertEquals("", host.text)
+            worker.runAll()
+            drain(posted)   // verify 回调落到主线程：moveCaret + 进入等回报
+            if (erase) {
+                // 宿主确认移位后再连发两次 DEL（两阶段联删）。
+                c.onEditorSelectionChanged(1, 1, 2, 2)
+            }
+            drain(posted)
+            assertEquals(if (erase) "" else "(a)", host.text)
+            assertEquals(if (erase) 0 else 2, host.caret)
+        }
+    }
+
+    @Test
+    fun pairedSymbolRechecksRouteAfterQueueAndDropsStaleTarget() {
+        val host = RecordingEditor()
+        val posted = ArrayDeque<() -> Unit>()
+        val c = TextInputCoordinator(host, {}, { DirectTextEngine() }, mainPoster = { posted.addLast(it) })
+        c.onEditorStarted(false)
+        drain(posted)
+        c.key('x'.code)
+        var current = true
+        var enabled = true
+        c.inputSymbol("(", isCurrent = { current }, canPair = { true })
+        c.inputSymbol("[", isCurrent = { true }, canPair = { enabled })
+        c.key('y'.code)
+        current = false
+        enabled = false
+        drain(posted)
+        assertEquals("x[y", host.text)
+    }
+
+    @Test
+    fun filteredClosingSymbolDoesNotDeleteNeighboringText() {
+        val c = coordinator()
+        editor.text = "ab"
+        editor.caret = 1
+        editor.keepClosingSymbol = false
+        c.onEditorStarted(false, initialSelectionStart = 1)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        assertEquals("a(b", editor.text)
+        c.backspace()
+        assertEquals("ab", editor.text)
+        assertEquals(1, editor.operations.count { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun pairCheckOrdersLaterInputAndIgnoresAnExternalCaretChange() {
+        for (moveCaret in listOf(false, true)) {
+            val host = RecordingEditor()
+            var finish: ((Boolean?) -> Unit)? = null
+            host.deferPairedSymbolCheck = { finish = it }
+            val delays = mutableListOf<() -> Unit>()
+            val c = TextInputCoordinator(host, {}, { DirectTextEngine() },
+                delayPoster = { _, block ->
+                    delays.add(block)
+                    val cancel: () -> Unit = { delays.remove(block); Unit }
+                    cancel
+                })
+            c.onEditorStarted(false)
+            c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+            c.onEditorSelectionChanged(0, 0, 1, 1)
+            c.backspace()
+            c.key('x'.code)
+            assertEquals("()", host.text)
+            if (moveCaret) {
+                host.caret = 0
+                c.onEditorSelectionChanged(1, 1, 0, 0)
+            }
+            requireNotNull(finish)(true)
+            if (!moveCaret) {
+                c.onEditorSelectionChanged(1, 1, 2, 2)  // 宿主确认移位
+                c.onEditorSelectionChanged(2, 2, 0, 0)  // 删完的位置回报
+            }
+            assertEquals(if (moveCaret) "x()" else "x", host.text)
+        }
+    }
+
+    @Test
+    fun pairDeleteWaitsForHostCaretBeforeReplayingQueuedInput() {
+        val host = RecordingEditor()
+        val delays = mutableListOf<() -> Unit>()
+        val c = TextInputCoordinator(host, {}, { DirectTextEngine() },
+            delayPoster = { _, block -> delays.add(block); { delays.remove(block); Unit } })
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.backspace()
+        c.key('x'.code)
+        // 两阶段联删：宿主确认移位前只移了光标，括号还在。
+        assertEquals("()", host.text)
+        assertEquals(1, delays.size)
+        c.onEditorSelectionChanged(1, 1, 2, 2)   // 宿主确认移位
+        assertEquals("", host.text)
+        c.onEditorSelectionChanged(2, 2, 0, 0)   // 删完的位置回报
+        assertEquals("x", host.text)
+        assertTrue(delays.isEmpty())
+    }
+
+    @Test
+    fun pairDeleteAbortsWhenHostIgnoresTheCaretMove() {
+        val host = RecordingEditor()
+        val delays = mutableListOf<() -> Unit>()
+        host.text = "ab"
+        host.caret = 1
+        host.ignoreMoveCaret = true
+        val c = TextInputCoordinator(host, {}, { DirectTextEngine() },
+            delayPoster = { _, block ->
+                delays.add(block)
+                val cancel: () -> Unit = { delays.remove(block); Unit }
+                cancel
+            })
+        c.onEditorStarted(false, initialSelectionStart = 1)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        assertEquals("a()b", host.text)
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        c.backspace()
+        // 宿主没执行移位、也没回报：超时只能降级为单次退格。
+        delays.toList().forEach { it() }
+        delays.clear()
+        assertEquals("a)b", host.text)
+        assertEquals(1, host.operations.count { it == "sendDeleteKey" })
+    }
+
+    @Test
+    fun pairDeleteTimeoutLeavesNoStaleSelectionExpectations() {
+        val host = RecordingEditor()
+        val delays = mutableListOf<() -> Unit>()
+        val c = TextInputCoordinator(host, {}, { DirectTextEngine() },
+            delayPoster = { _, block ->
+                delays.add(block)
+                val cancel: () -> Unit = { delays.remove(block); Unit }
+                cancel
+            })
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.backspace()
+        // 全部超时（宿主一位置回报都没给）。
+        delays.toList().forEach { it() }
+        delays.clear()
+        // 预期队列必须结清：宿主随后报告的外部移位按外部处理（不失信、
+        // 不被 own 分支吞掉），随后补全用新位置。
+        host.caret = 0
+        c.onEditorSelectionChanged(1, 1, 0, 0)
+        c.inputSymbol("[", isCurrent = { true }, canPair = { true })
+        // 超时降级删掉了一个括号，剩 "("；新补全插在外部移到的位置 0。
+        assertEquals("[](", host.text)
+        assertEquals(1, host.caret)
+    }
+
+    @Test
+    fun untrackedDeleteWaitsForCaretFeedbackBeforePairingAgain() {
+        val c = coordinator()
+        editor.text = "ab"
+        editor.caret = 2
+        c.onEditorStarted(false, initialSelectionStart = 2)
+        c.backspace()
+        c.inputSymbol("[", isCurrent = { true }, canPair = { true })
+        assertEquals("a[", editor.text)
+        c.onEditorSelectionChanged(2, 2, 2, 2)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        assertEquals("a[()", editor.text)
+        assertEquals(3, editor.caret)
+    }
 
     @Test
     fun startEmitsLoadingThenReadyWithStrictRevisions() {

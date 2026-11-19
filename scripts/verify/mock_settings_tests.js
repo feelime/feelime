@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const { loadDocument } = require('./mock_bridge_harness.js');
+const { loadDocument, KEYBOARD_VERSION } = require('./mock_bridge_harness.js');
 require('./check_legacy_web'); // #90 legacy WebView 产物一致性 gate
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -22,9 +22,14 @@ const HTML_PATH = path.join(ROOT, 'app/src/main/assets/settings/index.html');
 const JS_PATH = path.join(ROOT, 'app/src/main/assets/settings/settings.js');
 
 const RESULTS = [];
-function test(name, fn) {
+function test(name, bodyOrOpts, body) {
+    const opts = typeof bodyOrOpts === 'object' ? bodyOrOpts : null;
+    if (opts?.since && KEYBOARD_VERSION.localeCompare(opts.since, 'en', { numeric: true }) < 0) {
+        console.log(`SKIP ${name} (needs keyboard >= ${opts.since})`);
+        return;
+    }
     try {
-        fn();
+        (opts ? body : bodyOrOpts)();
         RESULTS.push([name, true, '']);
         console.log(`PASS ${name}`);
     } catch (error) {
@@ -141,6 +146,7 @@ class MockSettingsNative {
     setCustomEnabled(...a) { this._rec('setCustomEnabled', a); }
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
+    setPairedSymbols(...a) { this._rec('setPairedSymbols', a); }
     setCnEnComposingGuard(...a) { this._rec('setCnEnComposingGuard', a); }
     setVoiceReadyHaptic(...a) { this._rec('setVoiceReadyHaptic', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
@@ -252,6 +258,7 @@ const BASE_STATE = {
     uiLanguage: 'auto',
     uiLocale: 'zh',
     doubleShiftLock: true,
+    pairedSymbols: false,
 };
 
 // ------------------------------------------------------------------- tests
@@ -3775,6 +3782,21 @@ test('#112 strip pages: three entries route to independent pages, drag reorder, 
     equal([...world.doc.querySelectorAll('#ckinkList .ck-strip-row')].length, 12, 'reset restores 12 defaults');
 });
 
+
+test('paired symbols switch writes both values and follows settings state', {since: '3.73.126'}, () => {
+    const world = new SettingsWorld();
+    const toggle = world.doc.querySelector('[data-page="input"] #pairedSymbols');
+    assert(toggle, 'switch belongs on the input page');
+    world.push({ ...BASE_STATE });
+    equal(toggle.checked, false, 'off by default');
+    const change = toggle.listeners.find(l => l.type === 'change').handler;
+    for (const checked of [true, false]) {
+        change({ target: { checked } });
+        equal(world.lastCall('setPairedSymbols').args, [checked, world.token], 'setting and token reach the bridge');
+        world.push({ ...BASE_STATE, pairedSymbols: checked });
+        equal(toggle.checked, checked, 'state echoes the saved value');
+    }
+});
 
 // 统计必须在全部测试注册之后求值（曾因提前求值吞掉尾部用例的失败，
 // 119/119 假绿实为 118/119——codex 复审 P1；2026-11-15 再犯：strip 用例

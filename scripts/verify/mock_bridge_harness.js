@@ -961,6 +961,9 @@ class MockNative {
     commitText(text, token) {
         this._record('commitText', [text, token]);
     }
+    inputSymbol(text, token) {
+        this._record('inputSymbol', [text, token]);
+    }
     pasteText(text, token) {
         this._record('pasteText', [text, token]);
     }
@@ -1198,6 +1201,7 @@ class KeyboardWorld {
                 // #113 底行符号/数字分键（默认关，与 readBottomSymSplit
                 // 的 false 对齐）；开态用例显式传 true。
                 bottomSymSplit: false,
+                pairedSymbols: false,
                 // toast 停留时长（与 SettingsBridge.readToastMs 的 1600 默认对齐）。
                 toastMs: 1600,
                 orientation: 'portrait',

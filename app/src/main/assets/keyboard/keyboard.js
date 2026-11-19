@@ -360,7 +360,8 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.125';
+    const KEYBOARD_VERSION = '3.73.126';
+    const PAIR_OPEN_SYMBOLS = new Set(['(', '（', '[', '【', '{', '《', '「', '『']);
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
     // 新视图忘了关所有人就叠加。现在：新视图在此登记一次（怎么判开、
@@ -1747,6 +1748,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // key_bubble，外观页开关经 hello 下发；开着才在按下时放大
             // 预览所按字符。
             this.keyBubble = false;
+            this.pairedSymbols = false;
             this.cnEnGuard = false; // #89 组词中防误触切换（默认关）
             // #103 空格横滑组合内拼音光标（2026-11-13 起默认开，可手动关）：
             // 组合中横滑空格=移动 preedit 光标（gestureId 会话锁定），
@@ -2524,7 +2526,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
          * as candidate selectors and nothing lands (user-reported bug).
          * commitText bypasses composition, like panel paste.
          */
-        sendSymbol(text) {
+        sendSymbol(text, allowPair = true) {
             if (!text) return;
             // #45 万象功能引导（/sj 时间 /ri 日期）：默认 '/' 直发上屏，
             // 绕过引擎——万象方案的 recognizer 收不到键，功能引导永远
@@ -2538,7 +2540,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             }
             // Literal insertion - no case shifting: the 拼音/希腊 categories
             // contain letters, and leftover Shift must not turn ā into Ā.
-            this.call(() => Native.commitText(text, this.token));
+            if (allowPair && this.pairedSymbols && !this.composing &&
+                PAIR_OPEN_SYMBOLS.has(text) && typeof Native.inputSymbol === 'function') {
+                this.call(() => Native.inputSymbol(text, this.token));
+            } else {
+                this.call(() => Native.commitText(text, this.token));
+            }
             if (this.shift) { this.shift = false; this.updateLabels(); }
         }
 
@@ -3577,7 +3584,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (typeof Native.commitAssoc === 'function') {
                 this.call(() => Native.commitAssoc(candidate.text, this.token));
             } else {
-                this.sendSymbol(candidate.text);
+                this.sendSymbol(candidate.text, false);
             }
             this.inkReset();
         }
@@ -7023,7 +7030,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     this.runEditStep(step.edit);
                 }
                 else if (step.text) {
-                    this.sendSymbol(step.text);
+                    this.sendSymbol(step.text, false);
                     this.customChainLastTextAt = Date.now();
                 }
                 else {
@@ -12499,6 +12506,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             const landOpacity = Number(payload.landscapeOpacity);
             if (landOpacity >= 10 && landOpacity <= 100) this.landscapeOpacity = landOpacity;
             if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
+            if (typeof payload.pairedSymbols === 'boolean') this.pairedSymbols = payload.pairedSymbols;
             if (typeof payload.cnEnComposingGuard === 'boolean') this.cnEnGuard = payload.cnEnComposingGuard;
             if (typeof payload.preeditScrub === 'boolean') this.preeditScrub = payload.preeditScrub;
             // #113 二轮（AVD 定罪）：值变化要重画底行——只赋值时已渲染

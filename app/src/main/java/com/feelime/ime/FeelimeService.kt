@@ -113,7 +113,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     /** 输入会话身份（onStartInput/onFinishInput 递增——独立于
      *  inputConnectionGeneration，后者在 onFinishInputView 也递增且被
      *  退格手势/语音等既有使用方依赖，不能改语义）。hw 桥终检用。 */
-    private var hwInputGeneration = 0L
+    @Volatile private var hwInputGeneration = 0L
     /** 按压归属表：deviceId:keyCode:downTime → 首次 DOWN 的决策类别
      *  （null=放行；'char'/'space'/'enter'/'backspace'=认领转发；
      *  'toggle'=快捷键；'consumed'=纯消费（快捷键 repeat/缓存））。
@@ -527,6 +527,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             }
             if (intent?.action != ACTION_KEYBOARD_PREFS_CHANGED) return
             onMain {
+                if (!readPairedSymbols(this@FeelimeService)) coordinator.clearPairedSymbol()
                 // 键盘高度也走这份 pref 文件（设置页滑块直接写 pref）：
                 // override 是内存态，广播时统一重读，否则写完不生效——
                 // 内存 override 只有旋转/启动才重读。
@@ -896,6 +897,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 override fun commitText(text: String) {
                     if (panelInputActive) panelCommit(text) else editorPort.commitText(text)
                 }
+
+                override fun verifyPairedSymbol(
+                    open: String,
+                    close: String,
+                    center: Int,
+                    onResult: (Boolean?) -> Unit,
+                ) = verifyHostPairedSymbol(open, close, center, onResult)
 
                 override fun reopenComposing(start: Int, end: Int, word: String): Boolean {
                     if (!panelInputActive) return editorPort.reopenComposing(start, end, word)
@@ -1452,6 +1460,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
     override fun onFinishInput() {
         super.onFinishInput()
+        coordinator.onUntrackedEditorMutation()
         // #H（design §5.1，codex 评审 P1-1）：输入会话结束即作废在途 hw
         // 请求——无新 onStartInput 也拦住迟到桥调用（gen 终检对照当前值）。
         hwInputGeneration += 1
@@ -1459,6 +1468,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
     override fun onUnbindInput() {
         super.onUnbindInput()
+        coordinator.onUntrackedEditorMutation()
         hwInputGeneration += 1
     }
 
@@ -1621,6 +1631,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // 次 evaluate 没到达（WebView detach 竞态），这里是可靠兜底——
         // onStartInputView 对同编辑器再弹出必然触发。
         clearAssociation()
+        // 成对符号补全：同编辑器重显示恢复「光标位置可信」（收起时
+        // onFinishInputView 会清，宿主不会为重显示补发选区回调）。
+        if (::coordinator.isInitialized) coordinator.onEditorViewShown()
         onBottomInsetChanged()
         // A pref change while the keyboard was hidden cannot re-measure
         // (its requestLayout landed on a non-visible view) — re-measure once
@@ -2010,8 +2023,62 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         pushState(partial = "")
     }
 
+    private fun verifyHostPairedSymbol(
+        open: String,
+        close: String,
+        center: Int,
+        onResult: (Boolean?) -> Unit,
+    ) {
+        val connection = currentInputConnection ?: return onResult(null)
+        val input = inputConnectionGeneration
+        val session = hwInputGeneration
+        val route = panelRouteGeneration
+        var finished = false
+        fun finish(matches: Boolean) {
+            if (finished) return
+            finished = true
+            val current = connection === currentInputConnection && input == inputConnectionGeneration &&
+                session == hwInputGeneration && route == panelRouteGeneration && !panelInputActive
+            onResult(if (current) matches else null)
+        }
+        // 宿主可能因 maxlength 或格式过滤丢掉右符号，单靠坐标会连旁边的字一起删。
+        // 只在可能联删时查，慢宿主超时走普通退格，避免挡住后续输入。
+        val timeout = Runnable { finish(false) }
+        main.postDelayed(timeout, 150)
+        cursorQueryExecutor.execute {
+            val around = if (Build.VERSION.SDK_INT >= 31) runCatching {
+                connection.getSurroundingText(open.length, close.length, 0)
+            }.getOrNull() else null
+            val snapshot = if (around != null && around.offset >= 0) {
+                CursorSnapshot(around.text.toString(), around.selectionStart, around.selectionEnd, around.offset)
+            } else {
+                runCatching {
+                    connection.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
+                }.getOrNull()?.let { extracted ->
+                    val text = extracted.text?.toString()
+                    // Android 契约：partialStartOffset == -1 即完整文本；
+                    // Chromium 完整快照会显式给 partialEndOffset = 长度，
+                    // 拿它判增量会把合法快照拒掉（评审 P1）。
+                    if (text == null || extracted.partialStartOffset >= 0) null
+                    else CursorSnapshot(text, extracted.selectionStart, extracted.selectionEnd, extracted.startOffset)
+                }
+            }
+            val matches = snapshot?.let {
+                val caret = it.selectionStart
+                val start = caret - open.length
+                it.startOffset >= 0 && caret == it.selectionEnd && it.startOffset + caret == center &&
+                    start >= 0 && it.text.startsWith(open + close, start)
+            } ?: false
+            main.post {
+                main.removeCallbacks(timeout)
+                finish(matches)
+            }
+        }
+    }
+
     private fun sendKey(code: Int) = onMain {
         val connection = currentInputConnection ?: return@onMain
+        coordinator.onUntrackedEditorMutation()
         connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
         connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
     }
@@ -2541,7 +2608,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
      *  把放行按压中途改判成认领）。 */
     private fun hwDispatchOwned(kind: String?, keyCode: Int, event: KeyEvent): Boolean {
         when (kind) {
-            null -> return super.onKeyDown(keyCode, event)
+            null -> return passHardwareKeyDown(keyCode, event)
             "consumed", "toggle" -> return true // 快捷键 repeat 只消费
             "char" -> {
                 hwEvaluateChar(event.unicodeChar)
@@ -2596,7 +2663,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         // 时 Ctrl+Backspace/Ctrl+Enter 等宿主快捷键不被吞）。
         if (hwKeyCombo(event)) {
             hwKeyOwnership[ownershipKey] = null
-            return super.onKeyDown(keyCode, event)
+            return passHardwareKeyDown(keyCode, event)
         }
         // 行 3：切换在途——仅文本/控制键缓存（方向键/F/TAB/系统键落原表）。
         val textOrCtrl = keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_SPACE ||
@@ -2635,6 +2702,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         }
         // 行 6：其余（放行记录 null，repeat 同放行）。
         hwKeyOwnership[ownershipKey] = null
+        return passHardwareKeyDown(keyCode, event)
+    }
+
+    private fun passHardwareKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (!KeyEvent.isModifierKey(keyCode)) coordinator.onUntrackedEditorMutation()
         return super.onKeyDown(keyCode, event)
     }
 
@@ -2812,6 +2884,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("bgImageDarkSource", readBgImageSource(this, "dark"))
             .put("keyOpacity", readKeyOpacity(this))
             .put("keyBubble", readKeyBubble(this))
+            .put("pairedSymbols", readPairedSymbols(this))
             .put("cnEnComposingGuard", readCnEnComposingGuard(this))
             .put("preeditScrub", com.feelime.ime.readPreeditScrub(this))
             .put("bottomSymSplit", com.feelime.ime.readBottomSymSplit(this))
@@ -3074,10 +3147,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 composing = false
                 return
             }
+            coordinator.onUntrackedEditorMutation()
             connection.setComposingText("", 1)
             composing = false
             return
         }
+        coordinator.onUntrackedEditorMutation()
         connection.setComposingText(session.text, 1)
         if (session.text.isNotEmpty()) session.composingApplied = true
         composing = session.text.isNotEmpty()
@@ -3099,6 +3174,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         } else {
             // Buffered sessions retain the original selection until normal
             // stop, so this single commit replaces it atomically.
+            coordinator.onUntrackedEditorMutation()
             connection.commitText(session.text, 1)
         }
         // #41 字数统计：语音正常落定（流式 finish 或缓冲 commit）计
@@ -3109,6 +3185,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
     private fun rollbackVoiceSession(session: VoiceSession) {
         if (!session.streamToEditor || !session.composingApplied) return
         val connection = currentInputConnection ?: return
+        coordinator.onUntrackedEditorMutation()
         connection.setComposingText("", 1)
         connection.finishComposingText()
         // setComposingText replaced the selection. Put the exact selected
@@ -3435,7 +3512,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                     return@guarded
                 }
             }
-            onMain { currentInputConnection?.performContextMenuAction(id) }
+            onMain {
+                val connection = currentInputConnection ?: return@onMain
+                if (id != android.R.id.copy) coordinator.onUntrackedEditorMutation()
+                connection.performContextMenuAction(id)
+            }
         }
 
         /** #34 上滑全选删（独立通道）：先作废词撤销再全选再发一个 DEL。
@@ -3605,8 +3686,35 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 if (routeImeGesture("Restore")) {
                     coordinator.onImeGestureRouted()
                 } else if (!coordinator.undoDeleteBeforeCursor(hostSelectionStart, hostSelectionEnd)) {
+                    coordinator.onUntrackedEditorMutation()
                     editorPort.sendCtrlZ()
                 }
+            }
+        }
+
+        @JavascriptInterface
+        fun inputSymbol(text: String, token: String) {
+            val generation = hwInputGeneration
+            guarded(token, limited = false) {
+                if (generation != hwInputGeneration) return@guarded
+                if (text !in TextInputCoordinator.PAIRED_SYMBOLS) {
+                    rejectedCalls += 1
+                    return@guarded
+                }
+                val connection = currentInputConnection
+                val route = panelRouteGeneration
+                coordinator.inputSymbol(
+                    text,
+                    isCurrent = {
+                        generation == hwInputGeneration && connection === currentInputConnection &&
+                            route == panelRouteGeneration && token == pageToken
+                    },
+                    canPair = {
+                        connection != null && readPairedSymbols(this@FeelimeService) && !panelInputActive &&
+                            !isSensitiveEditor() && !isKeyEventCursorEditor(currentInputEditorInfo) &&
+                            !cursorQueryActive && voiceSession == null
+                    },
+                )
             }
         }
 
@@ -4093,6 +4201,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         @JavascriptInterface
         fun keyEvent(keyCode: Int, metaState: Int, token: String) = guarded(token, limited = true) {
             val connection = validKeyEvent(keyCode, metaState) ?: return@guarded
+            coordinator.onUntrackedEditorMutation()
  // Name the physical LEFT key beside the generic bit
             // (a real left-ctrl press reports both) - RDP hosts resolve a
             // generic-only bit to no side key and drop the combo.
@@ -4116,6 +4225,7 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         fun keyEventPhysical(keyCode: Int, metaState: Int, token: String) =
             guarded(token, limited = true) {
                 val connection = validKeyEvent(keyCode, metaState) ?: return@guarded
+                coordinator.onUntrackedEditorMutation()
                 val wire = withLeftMetaBits(metaState)
                 val stamp = android.os.SystemClock.uptimeMillis()
  // (RDP round 4): four events sharing ONE timestamp

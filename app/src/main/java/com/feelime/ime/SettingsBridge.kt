@@ -235,6 +235,13 @@ fun readKbLayout(context: Context): String {
 const val PREF_KEY_OPACITY = "key_opacity"
 /** 按键气泡（issue #30-1，默认关）：按下时放大预览所按字符。 */
 const val PREF_KEY_BUBBLE = "key_bubble"
+
+const val PREF_PAIRED_SYMBOLS = "paired_symbols"
+
+fun readPairedSymbols(context: Context): Boolean =
+    context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getBoolean(PREF_PAIRED_SYMBOLS, false)
+
 /** #89 拼音组词中防误触切换（默认关：组词中仍可切换，不改存量行为）。 */
 const val PREF_CN_EN_COMPOSING_GUARD = "cn_en_composing_guard"
 /** #103 空格横滑=组合内拼音光标（默认开，可手动关）：有组合时移 preedit
@@ -970,6 +977,7 @@ class SettingsBridge(
             .put("quickReturnMode", readQuickReturnMode(context))
             .put("landscapeOpacity", readLandscapeOpacity(context))
             .put("keyBubble", readKeyBubble(context))
+            .put("pairedSymbols", readPairedSymbols(context))
             .put("cnEnComposingGuard", readCnEnComposingGuard(context))
             .put("preeditScrub", readPreeditScrub(context))
             .put("bottomSymSplit", readBottomSymSplit(context))
@@ -1996,6 +2004,16 @@ class SettingsBridge(
     fun setKeyBubble(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_KEY_BUBBLE, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    @JavascriptInterface
+    fun setPairedSymbols(on: Boolean, token: String) = guarded(token) {
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREF_PAIRED_SYMBOLS, on).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

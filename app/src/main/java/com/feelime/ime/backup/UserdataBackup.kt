@@ -13,6 +13,7 @@ import com.feelime.ime.PREF_FEEL_POPUP_SNAP
 import com.feelime.ime.PREF_FEEL_SCRUB_SPEED
 import com.feelime.ime.PREF_KEY_HAPTIC
 import com.feelime.ime.PREF_KEY_SOUND
+import com.feelime.ime.PREF_PAIRED_SYMBOLS
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -442,6 +443,7 @@ class UserdataBackup(
                 PREF_ASSOCIATION,
                 PREF_KEY_SOUND,
                 PREF_KEY_HAPTIC,
+                PREF_PAIRED_SYMBOLS,
             ),
             UPDATE_PREFS to setOf("update_auto_check_enabled"),
         )

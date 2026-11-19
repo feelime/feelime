@@ -20,6 +20,23 @@ class InputConnectionEditorPort(private val service: InputMethodService) : Edito
         com.feelime.ime.InputStats.record(service, text)
     }
 
+    override fun commitPaired(open: String, close: String, start: Int): EditorPort.PairedCommit {
+        val connection = service.currentInputConnection ?: return EditorPort.PairedCommit.NOT_COMMITTED
+        if (!connection.beginBatchEdit()) return EditorPort.PairedCommit.NOT_COMMITTED
+        return try {
+            if (!connection.commitText(open + close, 1)) return EditorPort.PairedCommit.NOT_COMMITTED
+            val center = start + open.length
+            val positioned = connection.setSelection(center, center)
+            com.feelime.ime.InputStats.record(service, open)
+            if (positioned) EditorPort.PairedCommit.CENTERED else EditorPort.PairedCommit.AT_END
+        } finally {
+            connection.endBatchEdit()
+        }
+    }
+
+    override fun moveCaret(position: Int): Boolean =
+        service.currentInputConnection?.setSelection(position, position) == true
+
     override fun commitTextUntracked(text: String) {
         // 面板粘贴等外部长文本（issue #44）：粘贴不是「输入」。
         service.currentInputConnection?.commitText(text, 1)

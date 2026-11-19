@@ -983,6 +983,9 @@ const I18N = {
     "input.feel.kbHeightHint": "\u7AD6\u5C4F\u952E\u76D8\u7684\u9AD8\u5EA6\uFF1B\u952E\u76D8\u4E0A\u62D6\u62FD\u8C03\u8282\u4E0E\u6B64\u5904\u7B49\u6548\u3002",
     "input.feel.kbHeightReset": "\u6062\u590D\u9ED8\u8BA4",
     "input.feel.keyOpacityHint": "\u952E\u5E3D\u5728\u80CC\u666F\u56FE\u4E0A\u7684\u900F\u660E\u7A0B\u5EA6\uFF0C\u6587\u5B57\u59CB\u7EC8\u5B9E\u8272\u3002",
+    "input.symbols.title": "\u7B26\u53F7\u8F93\u5165",
+    "input.symbols.paired": "\u6210\u5BF9\u7B26\u53F7\u81EA\u52A8\u8865\u5168",
+    "input.symbols.pairedHint": "\u8F93\u5165\u5DE6\u62EC\u53F7\u65F6\u8865\u4E0A\u53F3\u62EC\u53F7\uFF0C\u5149\u6807\u505C\u5728\u4E2D\u95F4\u3002\u7D27\u63A5\u7740\u6309\u9000\u683C\u53EF\u5220\u6389\u6574\u5BF9\u3002",
     "input.feel.keyBubble": "\u6309\u952E\u6C14\u6CE1",
     "input.feel.cnEnComposingGuard": "\u62FC\u97F3\u7EC4\u8BCD\u4E2D\u7981\u6B62\u5207\u6362\u8BED\u8A00",
     "input.feel.cnEnComposingGuardHint": "\u9632\u6B62\u5FEB\u901F\u6253\u5B57\u8BEF\u89E6\u4E2D\u82F1\u5207\u6362\u952E\u628A\u7EC4\u8BCD\u6253\u65AD\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF0C\u5F00\u542F\u540E\u7EC4\u8BCD\u4E2D\u5355\u51FB\u5207\u6362\u952E\u4E0D\u751F\u6548\uFF09\u3002",
@@ -1844,6 +1847,9 @@ const I18N = {
     "input.feel.kbHeightHint": "Portrait keyboard height; dragging on the keyboard stays equivalent.",
     "input.feel.kbHeightReset": "Reset",
     "input.feel.keyOpacityHint": "How transparent the keycaps sit over the background image; labels stay solid.",
+    "input.symbols.title": "Symbols",
+    "input.symbols.paired": "Auto-pair brackets",
+    "input.symbols.pairedHint": "Insert the closing bracket and place the cursor between the pair. Press Backspace immediately to remove both.",
     "input.feel.keyBubble": "Key bubble",
     "input.feel.cnEnComposingGuard": "Block language switch while composing",
     "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
@@ -2755,6 +2761,7 @@ function renderFeel(state) {
   updateThemePreview();
   const bubble = $("keyBubble");
   if (bubble) bubble.checked = state.keyBubble === true;
+  $("pairedSymbols").checked = state.pairedSymbols === true;
   const guard = $("cnEnComposingGuard");
   if (guard) guard.checked = state.cnEnComposingGuard === true;
   const scrub = $("preeditScrub");
@@ -4229,6 +4236,7 @@ $("keyOpacity").addEventListener("change", (event) => {
   call("setKeyOpacity", parseInt(event.target.value, 10));
 });
 $("keyBubble").addEventListener("change", (event) => call("setKeyBubble", event.target.checked));
+$("pairedSymbols").addEventListener("change", (event) => call("setPairedSymbols", event.target.checked));
 $("cnEnComposingGuard").addEventListener("change", (event) => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", (event) => call("setPreeditScrub", event.target.checked));
 $("bottomSymSplit").addEventListener("change", (event) => call("setBottomSymSplit", event.target.checked));

@@ -6,6 +6,20 @@ interface EditorPort {
     fun finishComposing()
     fun setComposing(text: String)
     fun commitText(text: String)
+
+    // 已提交但定位失败时保留文字，调用方不能再补交一次。
+    enum class PairedCommit { NOT_COMMITTED, AT_END, CENTERED }
+
+    fun commitPaired(open: String, close: String, start: Int): PairedCommit =
+        PairedCommit.NOT_COMMITTED
+
+    fun moveCaret(position: Int): Boolean = false
+
+    /** 回主线程交付。null 表示查询期间换了输入目标。 */
+    fun verifyPairedSymbol(open: String, close: String, center: Int, onResult: (Boolean?) -> Unit) {
+        onResult(false)
+    }
+
     /** Commit without feeding #41 stats - external text the user did not
      * type (panel paste, issue #44). Default tracks like commitText. */
     fun commitTextUntracked(text: String) = commitText(text)

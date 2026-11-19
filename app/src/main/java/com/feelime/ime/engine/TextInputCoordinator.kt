@@ -116,6 +116,7 @@ class TextInputCoordinator(
         data class Mode(val value: InputMode) : QueuedInput
         data class Accept(val after: () -> Unit) : QueuedInput
         data class Literal(val text: String, val countStats: Boolean, val after: () -> Unit) : QueuedInput
+        data class Symbol(val open: String, val isCurrent: () -> Boolean, val canPair: () -> Boolean) : QueuedInput
     }
     private val warmupQueue = ArrayDeque<QueuedInput>()
     private var warmupReplayGeneration = 0L
@@ -184,6 +185,27 @@ class TextInputCoordinator(
     private var predictedSelectionEnd = -1
     private val expectedSelections = ArrayDeque<Pair<Int, Int>>()
 
+    private data class PairedSymbol(val open: String, val close: String, val center: Int, val editorGeneration: Long)
+    private var pendingPairedSymbol: PairedSymbol? = null
+    // DEL 键、宿主快捷键等操作的位置变化无法预测，等待宿主回报后再补全。
+    private var pairedSelectionKnown = false
+    /** 联删状态机：phase1 = 等宿主确认光标已移到右符号之后（远程 IC 的
+     *  setSelection 返回 true 只代表请求发出，不代表已执行——评审 P1：
+     *  不确认就连发两次 DEL 会删到括号外的邻字）；phase2 = DEL 已发出，
+     *  等删完的位置回报。marker = 本操作压入预期队列前的长度，超时或
+     *  外部变更时把残留预期清回它（合并回调会让排水多等、旧位置残留
+     *  误吞后续外部移位——评审 P2）。 */
+    private data class PairedDelete(
+        val phase: Int,
+        val shiftTo: Int,
+        val center: Int,
+        val target: Int,
+        val marker: Int,
+        val cancel: () -> Unit,
+        val after: () -> Unit,
+    )
+    private var pairedDelete: PairedDelete? = null
+
     val currentMode: InputMode get() = mode
     /** #103 组合是否活跃（scrub 首批判定用）：private 字段非 volatile，
      *  读取线程与引擎线程的误差最多让首批锁定到另一目标——锁定后
@@ -212,18 +234,49 @@ class TextInputCoordinator(
         val own = expectedSelections.indexOf(actual)
         if (own >= 0) {
             repeat(own + 1) { expectedSelections.removeFirst() }
+            val pd = pairedDelete
+            if (pd != null && pd.phase == 1 && newSelStart == newSelEnd && newSelStart == pd.shiftTo) {
+                // 宿主确认已移到右符号之后：现在连发两次 DEL 才是安全的。
+                expectCaret(pd.center)
+                expectCaret(pd.target)
+                pairedDelete = pd.copy(phase = 2)
+                repeat(2) { editor.sendDeleteKey() }
+                return
+            }
+            if (expectedSelections.isEmpty() && newSelStart == newSelEnd && pd?.target == newSelStart) {
+                finishPairedDelete()
+            }
             return
         }
         predictedSelectionStart = newSelStart
         predictedSelectionEnd = newSelEnd
         onExternalEditorMutation()
+        pairedSelectionKnown = true
         // 宿主侧移位/编辑：删后现场已不存在，快照作废（删除自身的
         // 回声经 expectDeletion 登记按 own 排水，不会走到这里）。
         invalidateDeleteSnapshot()
     }
 
+    fun clearPairedSymbol() {
+        pendingPairedSymbol = null
+    }
+
+    /** 键盘视图重新显示（同编辑器再弹出）：收起期间的「位置不可信」
+     *  恢复——文本与光标都还是收起前那个，宿主不会为重显示重发
+     *  onStartInput/选区回调（实测：APP 侧硬件 DEL 清空后再唤起，
+     *  若不在这里恢复，补全要等下一次光标移动才复活）。 */
+    fun onEditorViewShown() {
+        pairedSelectionKnown = true
+    }
+
+    fun onUntrackedEditorMutation() {
+        clearPairedSymbol()
+        pairedSelectionKnown = false
+    }
+
     /** A host mutation invalidates both word ownership and pending predictions. */
     fun onExternalEditorMutation() {
+        onUntrackedEditorMutation()
         userInputGeneration++
         expectedSelections.clear()
         invalidateWordUndo()
@@ -233,6 +286,7 @@ class TextInputCoordinator(
      *  协调器，词撤销、选区预期、删除快照与尾部留档全部按已变更
      *  处理——与宿主路径入口的作废集对齐。 */
     fun onImeGestureRouted() {
+        onUntrackedEditorMutation()
         userInputGeneration++
         expectedSelections.clear()
         deletedBeforeCursor = null
@@ -258,6 +312,7 @@ class TextInputCoordinator(
         // 光标被刻意移动：快照的「恢复到删前位置」语义已不成立。
         invalidateDeleteSnapshot()
         // setSelection 已成功，后续写入立即使用新坐标；回调只确认自身操作，不算新输入。
+        pairedSelectionKnown = true
         predictedSelectionStart = start
         predictedSelectionEnd = end
         expectedSelections.addLast(start to end)
@@ -274,6 +329,7 @@ class TextInputCoordinator(
         onExternalEditorMutation()
         // 输入目标切换（宿主↔面板编辑器）：旧目标上的删除不得写进新目标。
         invalidateDeleteSnapshot()
+        pairedSelectionKnown = true
         predictedSelectionStart = start
         predictedSelectionEnd = end
         // The DOM accepted any old span before reporting an explicit caret
@@ -295,6 +351,7 @@ class TextInputCoordinator(
     private fun mirrorsComposing(): Boolean = !isPinyinFamily(mode) || ownAppEditor()
 
     private fun expectReplacement(length: Int) {
+        clearPairedSymbol()
         if (predictedSelectionStart < 0 || predictedSelectionEnd < 0) return
         // 空串只有删除镜像 span 或非折叠选区时才需要预测；空操作会留下假回调，误吞后续外部移位。
         if (length == 0 && !(composingActive && mirrorsComposing()) &&
@@ -302,6 +359,10 @@ class TextInputCoordinator(
         val start = if (composingActive && mirrorsComposing()) predictedSelectionEnd - composingRaw.length
             else minOf(predictedSelectionStart, predictedSelectionEnd)
         val target = (start + length).coerceAtLeast(0)
+        expectCaret(target)
+    }
+
+    private fun expectCaret(target: Int) {
         predictedSelectionStart = target
         predictedSelectionEnd = target
         expectedSelections.addLast(target to target)
@@ -316,6 +377,8 @@ class TextInputCoordinator(
         // 上滑→下滑之间不受影响。
         invalidateDeleteSnapshot()
         expectedSelections.clear()
+        clearPairedSymbol()
+        pairedSelectionKnown = true
         predictedSelectionStart = initialSelectionStart
         predictedSelectionEnd = initialSelectionEnd
         warmupQueue.clear()
@@ -580,6 +643,7 @@ class TextInputCoordinator(
     }
 
     private fun acceptCurrentCompositionNow(): DispatchAck {
+        clearPairedSymbol()
         if (!composingActive) return DispatchAck.Accepted
 
         val raw = composingRaw.replace(" ", "")
@@ -712,6 +776,7 @@ class TextInputCoordinator(
      *  键事件）。顺手作废词撤销：法/俄的「退格重开上一词」不该被滑删
      *  误触。面板编辑器经 editor 端口的改道规则自然路由到 panelDelete。 */
     fun gestureBackspace(count: Int) {
+        onUntrackedEditorMutation()
         userInputGeneration++
         invalidateDeleteSnapshot()
         invalidateWordUndo()
@@ -732,6 +797,7 @@ class TextInputCoordinator(
  *  不保证删净。组合态由键盘侧门闸排除（方向锁定后到达的组合回声
  *  仍有既有时序缺口，见松手入口）。 */
     fun deleteAllBeforeCursor(selectionStart: Int = 0, selectionEnd: Int = selectionStart) {
+        clearPairedSymbol()
         userInputGeneration++
         invalidateWordUndo()
         // 未知选区（-1）不得默认获得快照资格：非折叠选区下恢复的
@@ -868,6 +934,7 @@ class TextInputCoordinator(
      *  （终端宿主删到提示符自然停）。emoji 等增补平面字符一次 DEL 删
      *  整个字素，键数按码点计可能多补一发，位置 0 停住即无害。 */
     private fun keyBurst(count: Int) {
+        onUntrackedEditorMutation()
         repeat(count) { editor.sendDeleteKey() }
     }
 
@@ -952,6 +1019,43 @@ class TextInputCoordinator(
             return enqueueQueued(QueuedInput.Literal(text, countStats, after))
         }
         return pasteExternalNow(text, countStats, after)
+    }
+
+    /** 同字面提交共用输入队列，执行时再检查组合、目标和开关。见 design §5.2.1。 */
+    fun inputSymbol(open: String, isCurrent: () -> Boolean, canPair: () -> Boolean): DispatchAck {
+        userInputGeneration++
+        invalidateDeleteSnapshot()
+        asrGuard()
+        val item = QueuedInput.Symbol(open, isCurrent, canPair)
+        if (pendingEngine != null || replaying) return enqueueQueued(item)
+        return inputSymbolNow(item)
+    }
+
+    private fun inputSymbolNow(item: QueuedInput.Symbol, onComplete: () -> Unit = {}): DispatchAck {
+        if (!item.isCurrent()) {
+            onComplete()
+            return DispatchAck.Rejected(EngineCode.STALE_STAMP)
+        }
+        val open = item.open
+        val close = PAIRED_SYMBOLS[open]
+        val start = predictedSelectionStart
+        if (close == null || composingActive || inPasswordField || !item.canPair() ||
+            !pairedSelectionKnown || start < 0 || start != predictedSelectionEnd
+        ) return pasteExternalNow(open, onComplete = onComplete)
+
+        clearPairedSymbol()
+        invalidateWordUndo()
+        when (editor.commitPaired(open, close, start)) {
+            EditorPort.PairedCommit.NOT_COMMITTED -> return pasteExternalNow(open, onComplete = onComplete)
+            EditorPort.PairedCommit.AT_END -> expectCaret(start + open.length + close.length)
+            EditorPort.PairedCommit.CENTERED -> {
+                val center = start + open.length
+                expectCaret(center)
+                pendingPairedSymbol = PairedSymbol(open, close, center, editorGeneration)
+            }
+        }
+        onComplete()
+        return DispatchAck.Accepted
     }
 
     private fun pasteExternalNow(text: String, countStats: Boolean = true, onComplete: () -> Unit = {}): DispatchAck {
@@ -1101,6 +1205,12 @@ class TextInputCoordinator(
         command: EngineCommand,
         onComplete: (() -> Unit)? = null,
     ): DispatchAck {
+        // 排队期间还没写入，必须在实际执行处作废上一对。
+        when (command) {
+            is EngineCommand.Key, EngineCommand.Space, is EngineCommand.Choose,
+            EngineCommand.Reset, is EngineCommand.MovePreeditCursor -> clearPairedSymbol()
+            else -> Unit
+        }
         if (command == EngineCommand.Backspace) {
             val undo = lastWordCommit
             if (undo != null && canReopen(undo)) return reopenLastWord(undo, onComplete)
@@ -1134,8 +1244,27 @@ class TextInputCoordinator(
             mainPoster {
                 val lag = (System.nanoTime() - sentAt) / 1_000_000
                 if (lag > 120) diag("dispatchLag cmd=${command::class.simpleName} ms=$lag")
-                onEngineEvent(event, command, seq, hwTag)
-                complete()
+                val pair = pendingPairedSymbol
+                if (command == EngineCommand.Backspace && !event.consumed &&
+                    event.code == EngineCode.EMPTY_COMPOSING && event.stamp == stamp &&
+                    event.revision > lastAppliedRevision && !composingActive && pair != null
+                ) {
+                    editor.verifyPairedSymbol(pair.open, pair.close, pair.center) { matches ->
+                        if (requestStamp != stamp) return@verifyPairedSymbol
+                        // 查询期间移位或走了直达宿主的编辑入口，旧退格不再作用于新现场。
+                        val result = if (pendingPairedSymbol === pair && matches != null) event
+                            else event.copy(consumed = true)
+                        val pairedDeleteStarted: ((Int, Int, Int, Int) -> Unit)? =
+                            if (result === event && matches == true) { shiftTo, center, target, marker ->
+                                awaitPairedDelete(shiftTo, center, target, marker, ::complete)
+                            } else null
+                        onEngineEvent(result, command, seq, hwTag, pairedDeleteStarted)
+                        if (pairedDelete == null) complete()
+                    }
+                } else {
+                    onEngineEvent(event, command, seq, hwTag)
+                    complete()
+                }
             }
         }
         if (ack != DispatchAck.Accepted) complete()
@@ -1149,6 +1278,7 @@ class TextInputCoordinator(
      * in production.
      */
     private fun dispatchLiveEnter(onComplete: (() -> Unit)? = null): DispatchAck {
+        clearPairedSymbol()
         val hadComposing = composingActive
         lastEnterConsumedComposing = false
         val requestStamp = stamp
@@ -1159,6 +1289,7 @@ class TextInputCoordinator(
             if (hadComposing) {
                 lastEnterConsumedComposing = true
             } else {
+                onUntrackedEditorMutation()
                 editor.performEditorAction()
             }
             onComplete?.invoke()
@@ -1215,6 +1346,11 @@ class TextInputCoordinator(
                 is QueuedInput.Literal -> {
                     pasteExternalNow(item.text, item.countStats) {
                         item.after()
+                        if (generation == warmupReplayGeneration) next()
+                    }
+                }
+                is QueuedInput.Symbol -> {
+                    inputSymbolNow(item) {
                         if (generation == warmupReplayGeneration) next()
                     }
                 }
@@ -1341,6 +1477,9 @@ class TextInputCoordinator(
     }
 
     private fun newSession() {
+        clearPairedSymbol()
+        pairedDelete?.cancel?.invoke()
+        pairedDelete = null
         warmupReplayGeneration += 1
         replaying = false
         overflowPending = false
@@ -1480,7 +1619,13 @@ class TextInputCoordinator(
         beginClose(engine, pending, background)
     }
 
-    fun onEngineEvent(event: EngineEvent, command: EngineCommand? = null, seq: Long = 0L, hwTag: Long = 0L) {
+    fun onEngineEvent(
+        event: EngineEvent,
+        command: EngineCommand? = null,
+        seq: Long = 0L,
+        hwTag: Long = 0L,
+        pairedDeleteStarted: ((Int, Int, Int, Int) -> Unit)? = null,
+    ) {
         // The stamp check is what makes late async callbacks harmless: after
         // any generation or mode change their stamp no longer matches.
         if (pendingStamp != null && event.stamp == pendingStamp) {
@@ -1575,6 +1720,7 @@ class TextInputCoordinator(
                     armWordUndo(committed, automaticSpace = command is EngineCommand.Choose)
                 }
                 if (event.state.commit == null && event.state.composing.isNotEmpty()) {
+                    clearPairedSymbol()
                     lastWordCommit = null
                     // Pinyin preedit lives on the keyboard UI
                     // (candidate bar / preedit line), NOT in the editor - the
@@ -1604,7 +1750,7 @@ class TextInputCoordinator(
                     }
                 }
                 if (!event.consumed && event.code == EngineCode.EMPTY_COMPOSING) {
-                    deleteOneEditorUnit()
+                    deleteOneEditorUnit(pairedDeleteStarted)
                 }
                 // #H 硬键原子补交（design §5.3 五审 B3 终案）：rime 未接的
                 // 硬字符（空组合数字等被 express_editor DirectCommit 后
@@ -1711,8 +1857,60 @@ class TextInputCoordinator(
      * burned the framework's 2000ms watchdog before the key went out.
      * KEYCODE_DEL deletes a selection natively (device-verified: 5 chars
      * removed, caret converged), so the branch was pure cost. */
-    private fun deleteOneEditorUnit() {
+    private fun deleteOneEditorUnit(pairedDeleteStarted: ((Int, Int, Int, Int) -> Unit)?) {
+        val pair = pendingPairedSymbol
+        clearPairedSymbol()
+        if (pairedDeleteStarted != null && pair != null && pair.editorGeneration == editorGeneration &&
+            predictedSelectionStart == pair.center && predictedSelectionEnd == pair.center
+        ) {
+            // DEL 只删左边：先把光标移到右符号之后，等宿主确认真到了
+            // 再连发两次（见 PairedDelete 注释），避免删到括号外的字。
+            val end = pair.center + pair.close.length
+            if (editor.moveCaret(end)) {
+                expectCaret(end)
+                pairedDeleteStarted(end, pair.center, pair.center - pair.open.length,
+                    expectedSelections.size - 1)
+                return
+            }
+        }
+        onUntrackedEditorMutation()
         editor.sendDeleteKey()
+    }
+
+    private fun awaitPairedDelete(shiftTo: Int, center: Int, target: Int, marker: Int, after: () -> Unit) {
+        // 宿主异步执行移位与 DEL 键。等位置回报再回放排队的字符；
+        // 超时降级为单次退格（不会误删邻字），并结清本操作的预期。
+        // 没有延时通道（生产恒有；测试/极简壳兜底）时同样降级单删。
+        if (delayPoster == null) {
+            truncateExpected(marker)
+            onUntrackedEditorMutation()
+            editor.sendDeleteKey()
+            after()
+            return
+        }
+        val cancel = delayPoster.invoke(150) {
+            val wasWaitingShift = pairedDelete?.phase == 1
+            if (wasWaitingShift) onUntrackedEditorMutation()
+            truncateExpected(pairedDelete?.marker ?: marker)
+            finishPairedDelete()
+            // 移位没被确认：光标可能仍在中间，单次 DEL 只会删掉其中一个
+            // 括号字符（两个位置都安全），不连发。
+            if (wasWaitingShift) editor.sendDeleteKey()
+        }
+        pairedDelete = PairedDelete(1, shiftTo, center, target, marker, cancel, after)
+    }
+
+    /** 把预期队列截回 marker：本操作没被宿主逐个确认的位置不再参与
+     *  FIFO 排水（否则后续外部移位会被旧预期误吞）。 */
+    private fun truncateExpected(marker: Int) {
+        while (expectedSelections.size > marker) expectedSelections.removeLast()
+    }
+
+    private fun finishPairedDelete() {
+        val deletion = pairedDelete ?: return
+        pairedDelete = null
+        deletion.cancel()
+        deletion.after()
     }
 
     private fun canReopen(record: LastWordCommit): Boolean =
@@ -1727,6 +1925,7 @@ class TextInputCoordinator(
     private fun reopenLastWord(record: LastWordCommit, onFailed: (() -> Unit)? = null): DispatchAck {
         invalidateWordUndo()
         if (!editor.reopenComposing(record.start, record.end, record.word)) {
+            onUntrackedEditorMutation()
             editor.sendDeleteKey()
             onFailed?.invoke()
             return DispatchAck.Accepted
@@ -1795,6 +1994,11 @@ class TextInputCoordinator(
     }
 
     companion object {
+        val PAIRED_SYMBOLS = mapOf(
+            "(" to ")", "（" to "）", "[" to "]", "【" to "】",
+            "{" to "}", "《" to "》", "「" to "」", "『" to "』",
+        )
+
         private const val MAX_WARMUP_QUEUE = 256
 
         /** #85 IC 文本查询窗口的 UTF-16 单位上限（同步 binder，比旧版

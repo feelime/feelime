@@ -429,6 +429,14 @@
       <p class="hint" data-i18n="input.hwkb.hint">硬键盘打字：字母直接进拼音组合、空格选词、Ctrl+空格 或 单按 Shift 切换中英。</p>
     </section>
 
+    <section class="card" id="sec-paired-symbols" aria-labelledby="pairedSymbolsTitle">
+      <div class="section-heading"><h2 id="pairedSymbolsTitle" data-i18n="input.symbols.title">符号输入</h2></div>
+      <label class="row switch-row no-rule" for="pairedSymbols">
+        <span class="row-label"><span data-i18n="input.symbols.paired">成对符号自动补全</span><small data-i18n="input.symbols.pairedHint">输入左括号时补上右括号，光标停在中间。紧接着按退格可删掉整对。</small></span>
+        <input type="checkbox" id="pairedSymbols" data-keywords="括号 配对 补全 退格 brackets pairing" class="toggle">
+      </label>
+    </section>
+
     <section class="card" id="sec-assoc" aria-labelledby="assocTitle">
       <div class="section-heading"><h2 id="assocTitle" data-i18n="input.assoc.title">中文联想</h2><span class="eyebrow" data-i18n="input.assoc.badge">输入</span></div>
       <label class="row switch-row" for="associationOn">

@@ -173,6 +173,7 @@ window.PreviewBridge = {
   addImeWidget(...args) { log('addImeWidget', args); },
   addImeTile(...args) { log('addImeTile', args); },
   requestMic(...args) { log('requestMic', args); },
+  setPairedSymbols(value, ...args) { log('setPairedSymbols', [value, ...args]); state.pairedSymbols = value; pushState(); },
   setModelBackend(value, ...args) { log('setModelBackend', [value, ...args]); state.modelBackend = value; pushState(); },
   setModelDownloadSource(mode, customBase, customArchiveUrl, ...args) {
     log('setModelDownloadSource', [mode, customBase, customArchiveUrl, ...args]);
@@ -214,9 +215,9 @@ async function load() {
     try {
       const [html, css, js] = await Promise.all([fetchText(htmlPath), fetchText(cssPath), fetchText(jsPath)]);
       const source = html
-        .replace(/<link rel="stylesheet" href="settings\.css">/, '<style>' + css + '</style>')
+        .replace(/<link rel="stylesheet" href="settings\.css">/, () => '<style>' + css + '</style>')
         .replace(/<script src="settings\.js"><\/script>/,
-          '<script>window.Native=parent.PreviewBridge;<\/script><script>' + js + '<\/script>');
+          () => '<script>window.Native=parent.PreviewBridge;<\/script><script>' + js + '<\/script>');
       frame.srcdoc = source;
       frame.addEventListener('load', () => {
         sourceStatus.textContent = '已加载真实 settings 源';
