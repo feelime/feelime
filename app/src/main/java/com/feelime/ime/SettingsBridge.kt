@@ -237,10 +237,40 @@ const val PREF_KEY_OPACITY = "key_opacity"
 const val PREF_KEY_BUBBLE = "key_bubble"
 
 const val PREF_PAIRED_SYMBOLS = "paired_symbols"
+/** 成对符号勾选集（用户定稿 2026-11-20）：按中/英两组分开存 CSV
+ *  （左符号字符直拼），缺省=全组勾选。读取侧按目录过滤归一，坏值
+ *  不会漏进键盘。 */
+const val PREF_PAIRED_SYMBOLS_CN = "paired_symbols_cn"
+const val PREF_PAIRED_SYMBOLS_EN = "paired_symbols_en"
 
 fun readPairedSymbols(context: Context): Boolean =
     context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
         .getBoolean(PREF_PAIRED_SYMBOLS, false)
+
+/** 勾选集归一：只保留目录字符（顺序随目录，去重）；缺键时用该组的
+ *  默认勾选（全组或目录子集），已存空串=用户全不选。 */
+private fun readPairedGroup(
+    context: Context,
+    key: String,
+    catalog: List<String>,
+    defaults: List<String>,
+): String {
+    val stored = context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+        .getString(key, null) ?: return defaults.joinToString("")
+    return catalog.filter { stored.contains(it) }.joinToString("")
+}
+
+fun readPairedSymbolsCn(context: Context): String = readPairedGroup(
+    context, PREF_PAIRED_SYMBOLS_CN,
+    com.feelime.ime.engine.TextInputCoordinator.PAIRED_CN_OPEN,
+    com.feelime.ime.engine.TextInputCoordinator.PAIRED_CN_OPEN,
+)
+
+fun readPairedSymbolsEn(context: Context): String = readPairedGroup(
+    context, PREF_PAIRED_SYMBOLS_EN,
+    com.feelime.ime.engine.TextInputCoordinator.PAIRED_EN_OPEN,
+    com.feelime.ime.engine.TextInputCoordinator.PAIRED_EN_OPEN_DEFAULT,
+)
 
 /** #89 拼音组词中防误触切换（默认关：组词中仍可切换，不改存量行为）。 */
 const val PREF_CN_EN_COMPOSING_GUARD = "cn_en_composing_guard"
@@ -978,6 +1008,8 @@ class SettingsBridge(
             .put("landscapeOpacity", readLandscapeOpacity(context))
             .put("keyBubble", readKeyBubble(context))
             .put("pairedSymbols", readPairedSymbols(context))
+            .put("pairedCn", readPairedSymbolsCn(context))
+            .put("pairedEn", readPairedSymbolsEn(context))
             .put("cnEnComposingGuard", readCnEnComposingGuard(context))
             .put("preeditScrub", readPreeditScrub(context))
             .put("bottomSymSplit", readBottomSymSplit(context))
@@ -2014,6 +2046,25 @@ class SettingsBridge(
     fun setPairedSymbols(on: Boolean, token: String) = guarded(token) {
         context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(PREF_PAIRED_SYMBOLS, on).commit()
+        context.sendBroadcast(
+            Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
+        )
+        pushState()
+    }
+
+    /** 成对符号分组勾选：group=cn|en，symbols=勾选的左符号字符拼接。
+     *  按目录过滤后落盘（顺序随目录，非法字符丢弃）。 */
+    @JavascriptInterface
+    fun setPairedSymbolGroup(group: String, symbols: String, token: String) = guarded(token) {
+        val catalog = when (group) {
+            "cn" -> com.feelime.ime.engine.TextInputCoordinator.PAIRED_CN_OPEN
+            "en" -> com.feelime.ime.engine.TextInputCoordinator.PAIRED_EN_OPEN
+            else -> return@guarded
+        }
+        val key = if (group == "cn") PREF_PAIRED_SYMBOLS_CN else PREF_PAIRED_SYMBOLS_EN
+        val normalized = catalog.filter { symbols.contains(it) }.joinToString("")
+        context.getSharedPreferences(KEYBOARD_PREFS_FILE, Context.MODE_PRIVATE)
+            .edit().putString(key, normalized).commit()
         context.sendBroadcast(
             Intent(ACTION_KEYBOARD_PREFS_CHANGED).setPackage(context.packageName),
         )

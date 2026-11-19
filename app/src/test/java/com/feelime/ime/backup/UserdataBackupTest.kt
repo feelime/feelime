@@ -37,6 +37,9 @@ class UserdataBackupTest {
         prefs.put("feelime_keyboard", "key_sound_on", true)
         prefs.put("feelime_keyboard", "key_haptic_on", false)
         prefs.put("feelime_keyboard", "paired_symbols", true)
+        // 成对符号分组勾选（2026-11-20）：CSV 字符串保真往返。
+        prefs.put("feelime_keyboard", "paired_symbols_cn", "（【")
+        prefs.put("feelime_keyboard", "paired_symbols_en", "(\"")
         prefs.put("feelime_custom_keys", "enabled", true)
         prefs.put("feelime_custom_keys", "json", """{"rows":[]}""")
         prefs.put("feelime_favorites", "items", "f1\t1730000000000\tcode1\t常用语\\t细\t3")
@@ -77,6 +80,8 @@ class UserdataBackupTest {
         assertEquals(true, target.all("feelime_keyboard")["key_sound_on"])
         assertEquals(false, target.all("feelime_keyboard")["key_haptic_on"])
         assertEquals(true, target.all("feelime_keyboard")["paired_symbols"])
+        assertEquals("（【", target.all("feelime_keyboard")["paired_symbols_cn"])
+        assertEquals("(\"", target.all("feelime_keyboard")["paired_symbols_en"])
         assertEquals(true, target.all("feelime_custom_keys")["enabled"])
         assertEquals(true, target.all("keyboard_update")["update_auto_check_enabled"])
         assertEquals(130, target.all("feelime_keyboard")["keycap_font"])
@@ -316,6 +321,11 @@ class UserdataBackupTest {
         // getBoolean 键写字符串 "true" → 拒绝（读侧 getBoolean 会崩）。
         assertTrue(target.restore(
             settings("feelime_custom_keys" to JSONObject().put("enabled", "true"))
+                .toString().toByteArray(),
+        ) is UserdataBackup.RestoreResult.Fail)
+        // getString 键写 Boolean → 拒绝（读侧 getString 会 ClassCastException）。
+        assertTrue(target.restore(
+            settings("feelime_keyboard" to JSONObject().put("paired_symbols_en", false))
                 .toString().toByteArray(),
         ) is UserdataBackup.RestoreResult.Fail)
         // 白名单外的 prefs 段落忽略（前向兼容），其余照常恢复。

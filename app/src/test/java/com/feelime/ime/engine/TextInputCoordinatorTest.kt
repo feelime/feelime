@@ -439,6 +439,91 @@ class TextInputCoordinatorTest {
     }
 
     @Test
+    fun pairedSymbolCatalogCoversBothGroupsAndQuotes() {
+        val opens = TextInputCoordinator.PAIRED_CN_OPEN + TextInputCoordinator.PAIRED_EN_OPEN
+        assertEquals(opens.size, opens.toSet().size)
+        assertEquals(opens.toSet(), TextInputCoordinator.PAIRED_SYMBOLS.keys)
+        assertEquals("”", TextInputCoordinator.PAIRED_SYMBOLS["“"])
+        assertEquals("’", TextInputCoordinator.PAIRED_SYMBOLS["‘"])
+        assertEquals("\"", TextInputCoordinator.PAIRED_SYMBOLS["\""])
+        assertEquals("'", TextInputCoordinator.PAIRED_SYMBOLS["'"])
+        assertEquals("］", TextInputCoordinator.PAIRED_SYMBOLS["［"])
+        assertEquals("｝", TextInputCoordinator.PAIRED_SYMBOLS["｛"])
+    }
+
+    @Test
+    fun quotesPairWithTheirClosingHalf() {
+        editor = RecordingEditor()
+        val c = TextInputCoordinator(editor, {}, { DirectTextEngine() })
+        c.onEditorStarted(false)
+        c.inputSymbol("“", isCurrent = { true }, canPair = { true })
+        assertEquals("“”", editor.text)
+        c.inputSymbol("\"", isCurrent = { true }, canPair = { true })
+        assertEquals("“\"\"”", editor.text)
+    }
+
+    @Test
+    fun ownSelectionEchoRestoresTrustAfterUntrackedMutation() {
+        editor = RecordingEditor()
+        val c = TextInputCoordinator(editor, {}, { DirectTextEngine() })
+        c.onEditorStarted(false)
+        // 硬件键/滑删等不可预测编辑：位置不可信。
+        c.onUntrackedEditorMutation()
+        c.inputSymbol("（", isCurrent = { true }, canPair = { true })
+        assertEquals("（", editor.text)
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        // 自身提交回声与预测一致：位置证据恢复，下一对正常补全。
+        editor.operations.clear()
+        c.key('a'.code)
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        c.inputSymbol("（", isCurrent = { true }, canPair = { true })
+        assertEquals("（a（）", editor.text)
+        assertTrue(editor.operations.contains("commitPaired:（）"))
+    }
+
+    @Test
+    fun lateEchoFromBeforeAnUntrackedEditDoesNotRestoreTrust() {
+        editor = RecordingEditor()
+        val c = TextInputCoordinator(editor, {}, { DirectTextEngine() })
+        c.onEditorStarted(false)
+        c.key('a'.code)
+        // 滑删把 a 删掉、光标回 0：位置不再可信。
+        c.gestureBackspace(1)
+        assertEquals("", editor.text)
+        // 'a' 提交的迟到回声到了：坐标命中旧预期，但它是不可预测编辑
+        // 之前登记的证据——不能拿来恢复可信（codex 评审 P1 反例）。
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        assertFalse("stale echo must not unlock pairing: ${editor.operations}",
+            editor.operations.contains("commitPaired:()"))
+        assertEquals("(", editor.text)
+    }
+
+    @Test
+    fun chinesePairingSurvivesEnglishRoundTrip() {
+        editor = RecordingEditor()
+        val c = TextInputCoordinator(editor, {}, { DirectTextEngine() })
+        c.onEditorStarted(false)
+        c.selectMode(InputMode.PINYIN)
+        c.inputSymbol("（", isCurrent = { true }, canPair = { true })
+        assertEquals("（）", editor.text)
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        // 切英文：Direct 引擎即时提交半角 (
+        c.selectMode(InputMode.DIRECT)
+        c.key('('.code)
+        assertTrue(
+            "afterEnglish text=${editor.text} caret=${editor.caret} ops=${editor.operations}",
+            editor.text == "（(）",
+        )
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        // 切回中文再输全角括号：仍应成对
+        c.selectMode(InputMode.PINYIN)
+        editor.operations.clear()
+        c.inputSymbol("（", isCurrent = { true }, canPair = { true })
+        assertTrue("operations=${editor.operations}", editor.operations.contains("commitPaired:（）"))
+    }
+
+    @Test
     fun pairedSymbolHandlesRejectedCommitAndPositioningWithoutDuplicateText() {
         val unsupported = coordinator()
         unsupported.onEditorStarted(false)

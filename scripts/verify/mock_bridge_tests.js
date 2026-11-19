@@ -12155,7 +12155,9 @@ test('paired symbols: hello gates literal openers and preserves shift reset', {s
     equal(world.native.of('inputSymbol').length, 0, 'off never enters the pair bridge');
 
     world.hello({ pairedSymbols: true });
-    const opens = ['(', '（', '[', '【', '{', '《', '「', '『'];
+    // 2026-11-20 用户定稿：全角 ［｛ 与中/英引号入目录。缺省勾选英文组
+    // 不含撇号（don't 会被补成 don''t），撇号用例单独放开。
+    const opens = ['(', '（', '[', '【', '［', '{', '｛', '《', '「', '『', '“', '‘', '"'];
     for (const open of opens) {
         kb.shift = true;
         kb.sendSymbol(open);
@@ -12167,9 +12169,9 @@ test('paired symbols: hello gates literal openers and preserves shift reset', {s
     kb.composing = true;
     kb.sendSymbol('(');
     kb.composing = false;
-    for (const text of [')', '】', '()', '<', '"']) kb.sendSymbol(text);
+    for (const text of [')', '】', '()', '<', "'"]) kb.sendSymbol(text);
     equal(JSON.stringify(world.native.of('commitText').map(c => c.args[0])),
-        JSON.stringify(['(', '(', ')', '】', '()', '<', '"']), 'composition and other symbols stay literal');
+        JSON.stringify(['(', '(', ')', '】', '()', '<', "'"]), 'composition, other symbols and the default-off apostrophe stay literal');
     equal(world.native.of('inputSymbol').length, opens.length, 'only the exact opening symbols enter the pair bridge');
 
     world.hello({ pairedSymbols: false });
@@ -12177,6 +12179,34 @@ test('paired symbols: hello gates literal openers and preserves shift reset', {s
     kb.sendSymbol('[');
     equal(world.native.of('commitText').slice(-1)[0].args[0], '[', 'turning off restores literal insertion');
     equal(kb.shift, false, 'literal path still resets one-shot shift');
+});
+
+test('paired symbols: per-group CSV narrows the gate and english sendText pairs', {since: '3.73.126'}, () => {
+    const world = touchWorld({ pairedSymbols: true });
+    const kb = world.context.testKeyboard;
+    const token = world.tokenValue;
+    world.hello({ pairedSymbols: true, pairedCn: '（', pairedEn: '(' });
+
+    kb.sendSymbol('（');
+    equal(world.native.of('inputSymbol').slice(-1)[0].args[0], '（', 'selected chinese opener pairs');
+    kb.sendSymbol('【');
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '【', 'unchecked chinese opener stays literal');
+    kb.sendSymbol('(');
+    equal(world.native.of('inputSymbol').slice(-1)[0].args[0], '(', 'selected english opener pairs');
+    kb.sendSymbol('"');
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '"', 'unchecked english quote stays literal');
+
+    // 非中文模式的长按弹层/角标入口走 sendText -> Native.key；勾选的左
+    // 符号改走补全桥（此前英文 g↑ 出的 ( 永远是单个字符）。
+    const before = world.native.of('inputSymbol').length;
+    kb.sendText('(');
+    equal(world.native.of('inputSymbol').length, before + 1, 'english sendText opener uses the pair bridge');
+    equal(world.native.of('inputSymbol').slice(-1)[0].args[0], '(', 'sendText passes the opener through');
+    const keys = world.native.of('key').length;
+    kb.sendText('g');
+    equal(world.native.of('key').length, keys + 1, 'plain letters keep the native key path');
+    equal(world.native.of('key').slice(-1)[0].args[0], 'g', 'letter text reaches Native.key');
+    equal(token.length > 0, true, 'token present');
 });
 
 test('paired symbols: macros, handwriting fallback and legacy shells stay literal', {since: '3.73.126'}, () => {

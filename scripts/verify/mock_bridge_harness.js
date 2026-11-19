@@ -1202,6 +1202,10 @@ class KeyboardWorld {
                 // 的 false 对齐）；开态用例显式传 true。
                 bottomSymSplit: false,
                 pairedSymbols: false,
+                // 成对符号勾选集（与 SettingsBridge 缺省对齐：中文组全选、
+                // 英文组不含撇号——don't 会被补成 don''t）。
+                pairedCn: '（【［｛《「『“‘',
+                pairedEn: '([{"',
                 // toast 停留时长（与 SettingsBridge.readToastMs 的 1600 默认对齐）。
                 toastMs: 1600,
                 orientation: 'portrait',

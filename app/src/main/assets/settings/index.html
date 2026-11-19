@@ -431,10 +431,16 @@
 
     <section class="card" id="sec-paired-symbols" aria-labelledby="pairedSymbolsTitle">
       <div class="section-heading"><h2 id="pairedSymbolsTitle" data-i18n="input.symbols.title">符号输入</h2></div>
-      <label class="row switch-row no-rule" for="pairedSymbols">
-        <span class="row-label"><span data-i18n="input.symbols.paired">成对符号自动补全</span><small data-i18n="input.symbols.pairedHint">输入左括号时补上右括号，光标停在中间。紧接着按退格可删掉整对。</small></span>
+      <label class="row switch-row" for="pairedSymbols">
+        <span class="row-label"><span data-i18n="input.symbols.paired">成对符号自动补全</span><small data-i18n="input.symbols.pairedHint">输入左括号或引号时补上右半，光标停在中间。紧接着按退格可删掉整对。</small></span>
         <input type="checkbox" id="pairedSymbols" data-keywords="括号 配对 补全 退格 brackets pairing" class="toggle">
       </label>
+      <div class="rows">
+        <button class="row nav-row" id="btnOpenPairs" type="button" data-keywords="成对符号 括号 引号 补全 选择 中英文 pair symbols">
+          <span class="row-label"><span data-i18n="input.symbols.choose">选择补全的符号</span><small data-i18n="input.symbols.chooseHint">分中文/英文两组勾选需要成对补全的括号和引号。</small></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button>
+      </div>
     </section>
 
     <section class="card" id="sec-assoc" aria-labelledby="assocTitle">
@@ -759,6 +765,27 @@
         </button>
       </div>
     </section>
+  </main>
+</div>
+
+<!-- 成对符号选择（2026-11-20 用户定稿）：键盘与输入的三级页，按中文/
+     英文两组勾选需要成对补全的左符号；勾选集由 settings.js 渲染并
+     经 setPairedSymbolGroup 落盘（CSV），键盘 hello 收合并集。 -->
+<div class="page" data-page="pairs" hidden>
+  <header class="page-head">
+    <button class="page-back" type="button" data-back="input" data-i18n-aria="nav.backInput" aria-label="返回键盘与输入">‹</button>
+    <h2 class="page-title" data-i18n="page.pairs">成对符号</h2>
+  </header>
+  <main>
+    <section class="card" id="sec-pairs-cn" aria-labelledby="pairsCnTitle">
+      <div class="section-heading"><h2 id="pairsCnTitle" data-i18n="input.pairs.cn">中文符号（全角）</h2></div>
+      <div class="pairs-grid" id="pairsCnGrid" data-pair-group="cn"></div>
+    </section>
+    <section class="card" id="sec-pairs-en" aria-labelledby="pairsEnTitle">
+      <div class="section-heading"><h2 id="pairsEnTitle" data-i18n="input.pairs.en">英文符号（半角）</h2></div>
+      <div class="pairs-grid" id="pairsEnGrid" data-pair-group="en"></div>
+    </section>
+    <p class="hint block" data-i18n="input.pairs.hint">勾选的符号输入时会自动补上右半，光标停在中间；紧接着按退格可删掉整对。总开关在上一层「符号输入」。</p>
   </main>
 </div>
 

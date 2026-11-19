@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.126';
+    const KEYBOARD_VERSION = '3.73.127';
     const PAIR_OPEN_SYMBOLS = new Set(['(', '（', '[', '【', '{', '《', '「', '『']);
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
@@ -1749,6 +1749,9 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 预览所按字符。
             this.keyBubble = false;
             this.pairedSymbols = false;
+            // 用户勾选的左符号集合（hello 的 pairedCn+pairedEn）。旧 APK
+            // / 旧壳不带字段时回落内置目录（=功能上线时的全量勾选）。
+            this.pairedSet = new Set(PAIR_OPEN_SYMBOLS);
             this.cnEnGuard = false; // #89 组词中防误触切换（默认关）
             // #103 空格横滑组合内拼音光标（2026-11-13 起默认开，可手动关）：
             // 组合中横滑空格=移动 preedit 光标（gestureId 会话锁定），
@@ -2516,6 +2519,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // 做，残留 shift 不会反弹。
             if (this.mode === 't9') text = this.applyCase(text).toLowerCase();
             else text = this.applyCase(text);
+            // 英文（及法语/俄语等非中文模式）的角标/长按弹层符号也走
+            // 成对补全：g↑=( 这类入口以前只发 Native.key。命中的都是
+            // 勾选目录里的左符号，普通字母/数字不受影响。
+            if (this.pairedSymbols && !this.composing && this.pairedSet.has(text) &&
+                typeof Native.inputSymbol === 'function') {
+                this.call(() => Native.inputSymbol(text, this.token));
+                if (this.shift) { this.shift = false; this.updateLabels(); }
+                return;
+            }
             this.call(() => Native.key(text, this.token));
             if (this.shift) { this.shift = false; this.updateLabels(); }
         }
@@ -2541,7 +2553,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             // Literal insertion - no case shifting: the 拼音/希腊 categories
             // contain letters, and leftover Shift must not turn ā into Ā.
             if (allowPair && this.pairedSymbols && !this.composing &&
-                PAIR_OPEN_SYMBOLS.has(text) && typeof Native.inputSymbol === 'function') {
+                this.pairedSet.has(text) && typeof Native.inputSymbol === 'function') {
                 this.call(() => Native.inputSymbol(text, this.token));
             } else {
                 this.call(() => Native.commitText(text, this.token));
@@ -12507,6 +12519,12 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (landOpacity >= 10 && landOpacity <= 100) this.landscapeOpacity = landOpacity;
             if (typeof payload.keyBubble === 'boolean') this.keyBubble = payload.keyBubble;
             if (typeof payload.pairedSymbols === 'boolean') this.pairedSymbols = payload.pairedSymbols;
+            // 分组勾选集（中/英两组合并成一张字符集合）：旧 APK 不带
+            // 字段时保留内置目录，不清空。
+            if (typeof payload.pairedCn === 'string' || typeof payload.pairedEn === 'string') {
+                const picked = (payload.pairedCn || '') + (payload.pairedEn || '');
+                this.pairedSet = new Set(Array.from(picked));
+            }
             if (typeof payload.cnEnComposingGuard === 'boolean') this.cnEnGuard = payload.cnEnComposingGuard;
             if (typeof payload.preeditScrub === 'boolean') this.preeditScrub = payload.preeditScrub;
             // #113 二轮（AVD 定罪）：值变化要重画底行——只赋值时已渲染

@@ -2885,6 +2885,8 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             .put("keyOpacity", readKeyOpacity(this))
             .put("keyBubble", readKeyBubble(this))
             .put("pairedSymbols", readPairedSymbols(this))
+            .put("pairedCn", readPairedSymbolsCn(this))
+            .put("pairedEn", readPairedSymbolsEn(this))
             .put("cnEnComposingGuard", readCnEnComposingGuard(this))
             .put("preeditScrub", com.feelime.ime.readPreeditScrub(this))
             .put("bottomSymSplit", com.feelime.ime.readBottomSymSplit(this))
@@ -3710,7 +3712,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                             route == panelRouteGeneration && token == pageToken
                     },
                     canPair = {
-                        connection != null && readPairedSymbols(this@FeelimeService) && !panelInputActive &&
+                        // 执行时复核分组勾选（评审 P2）：符号可能是入队后
+                        // 才被取消勾选的，或不认识 pairedSet 的旧 JS 调进来
+                        // 的——一律按当前中/英两组的并集裁决。
+                        connection != null && readPairedSymbols(this@FeelimeService) &&
+                            text in (readPairedSymbolsCn(this@FeelimeService) +
+                                readPairedSymbolsEn(this@FeelimeService)) &&
+                            !panelInputActive &&
                             !isSensitiveEditor() && !isKeyEventCursorEditor(currentInputEditorInfo) &&
                             !cursorQueryActive && voiceSession == null
                     },

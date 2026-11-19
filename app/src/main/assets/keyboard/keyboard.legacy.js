@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.126";
+  const KEYBOARD_VERSION = "3.73.127";
   const PAIR_OPEN_SYMBOLS = /* @__PURE__ */ new Set(["(", "\uFF08", "[", "\u3010", "{", "\u300A", "\u300C", "\u300E"]);
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
@@ -1785,6 +1785,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       this.landscapeOpacity = 100;
       this.keyBubble = false;
       this.pairedSymbols = false;
+      this.pairedSet = new Set(PAIR_OPEN_SYMBOLS);
       this.cnEnGuard = false;
       this.preeditScrub = false;
       this.scrubGestureId = null;
@@ -2326,6 +2327,14 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (!text) return;
       if (this.mode === "t9") text = this.applyCase(text).toLowerCase();
       else text = this.applyCase(text);
+      if (this.pairedSymbols && !this.composing && this.pairedSet.has(text) && typeof Native.inputSymbol === "function") {
+        this.call(() => Native.inputSymbol(text, this.token));
+        if (this.shift) {
+          this.shift = false;
+          this.updateLabels();
+        }
+        return;
+      }
       this.call(() => Native.key(text, this.token));
       if (this.shift) {
         this.shift = false;
@@ -2348,7 +2357,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         }
         return;
       }
-      if (allowPair && this.pairedSymbols && !this.composing && PAIR_OPEN_SYMBOLS.has(text) && typeof Native.inputSymbol === "function") {
+      if (allowPair && this.pairedSymbols && !this.composing && this.pairedSet.has(text) && typeof Native.inputSymbol === "function") {
         this.call(() => Native.inputSymbol(text, this.token));
       } else {
         this.call(() => Native.commitText(text, this.token));
@@ -10458,6 +10467,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (landOpacity >= 10 && landOpacity <= 100) this.landscapeOpacity = landOpacity;
       if (typeof payload.keyBubble === "boolean") this.keyBubble = payload.keyBubble;
       if (typeof payload.pairedSymbols === "boolean") this.pairedSymbols = payload.pairedSymbols;
+      if (typeof payload.pairedCn === "string" || typeof payload.pairedEn === "string") {
+        const picked = (payload.pairedCn || "") + (payload.pairedEn || "");
+        this.pairedSet = new Set(Array.from(picked));
+      }
       if (typeof payload.cnEnComposingGuard === "boolean") this.cnEnGuard = payload.cnEnComposingGuard;
       if (typeof payload.preeditScrub === "boolean") this.preeditScrub = payload.preeditScrub;
       if (typeof payload.bottomSymSplit === "boolean" && payload.bottomSymSplit !== this.bottomSymSplit) {

@@ -178,6 +178,7 @@ const I18N = {
         "dict.userwords.hint": "逐条添加「词 + 全拼输入码」，输入码命中即出这个词；适合名字、缩写、行话。改动即时生效，重启保留。",
         "dict.userwords.manage": "管理词条",
         "page.userwords": "自造词",
+        "page.pairs": "成对符号",
         "page.fuzzy": "模糊音",
         "page.keyboards": "键盘选择",
         "userwords.list.title": "词条",
@@ -881,7 +882,12 @@ const I18N = {
         "input.feel.keyOpacityHint": "键帽在背景图上的透明程度，文字始终实色。",
         "input.symbols.title": "符号输入",
         "input.symbols.paired": "成对符号自动补全",
-        "input.symbols.pairedHint": "输入左括号时补上右括号，光标停在中间。紧接着按退格可删掉整对。",
+        "input.symbols.pairedHint": "输入左括号或引号时补上右半，光标停在中间。紧接着按退格可删掉整对。",
+        "input.symbols.choose": "选择补全的符号",
+        "input.symbols.chooseHint": "分中文/英文两组勾选需要成对补全的括号和引号。",
+        "input.pairs.cn": "中文符号（全角）",
+        "input.pairs.en": "英文符号（半角）",
+        "input.pairs.hint": "勾选的符号输入时会自动补上右半，光标停在中间；紧接着按退格可删掉整对。总开关在上一层「符号输入」。",
         "input.feel.keyBubble": "按键气泡",
         "input.feel.cnEnComposingGuard": "拼音组词中禁止切换语言",
         "input.feel.cnEnComposingGuardHint": "防止快速打字误触中英切换键把组词打断（默认关闭，开启后组词中单击切换键不生效）。",
@@ -1050,6 +1056,7 @@ const I18N = {
         "dict.userwords.hint": "Add word + full-pinyin code pairs one by one; typing the code surfaces the word. Great for names, abbreviations, jargon. Applies immediately, survives restart.",
         "dict.userwords.manage": "Manage words",
         "page.userwords": "User words",
+        "page.pairs": "Paired symbols",
         "page.fuzzy": "Fuzzy input",
         "page.keyboards": "Keyboard selection",
         "userwords.list.title": "Words",
@@ -1743,7 +1750,12 @@ const I18N = {
         "input.feel.keyOpacityHint": "How transparent the keycaps sit over the background image; labels stay solid.",
         "input.symbols.title": "Symbols",
         "input.symbols.paired": "Auto-pair brackets",
-        "input.symbols.pairedHint": "Insert the closing bracket and place the cursor between the pair. Press Backspace immediately to remove both.",
+        "input.symbols.pairedHint": "Insert the closing bracket or quote and place the cursor between the pair. Press Backspace immediately to remove both.",
+        "input.symbols.choose": "Choose symbols to pair",
+        "input.symbols.chooseHint": "Pick the brackets and quotes to auto-pair, grouped by Chinese / English.",
+        "input.pairs.cn": "Chinese (full-width)",
+        "input.pairs.en": "English (half-width)",
+        "input.pairs.hint": "Checked symbols get their closing half automatically, with the cursor between. Backspace right away removes the pair. The master switch is on the previous page.",
         "input.feel.keyBubble": "Key bubble",
         "input.feel.cnEnComposingGuard": "Block language switch while composing",
         "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
@@ -1873,7 +1885,7 @@ const I18N = {
 };
 
 // #39-12：customkeys（二级）与 customkeys-editor（三级）。
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "pairs", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter(key => key.startsWith("error.")));
 const progressPercent = {};
 
@@ -2522,6 +2534,7 @@ function updateThemePreview() {
 function render(state) {
     state = state || {};
     renderIme(state);
+    renderPairs(state);
     renderDoublePinyin(state);
     renderFeel(state);
     renderLandscape(state);
@@ -2880,6 +2893,64 @@ function renderFeel(state) {
     setToggle("keyHaptic", state.keyHaptic);
     setToggle("preeditBold", state.preeditBold);
 }
+
+/* --- 成对符号选择页（2026-11-20）------------------------------------
+ * 左符号即勾选键；目录与 native TextInputCoordinator.PAIRED_SYMBOLS/
+ * PAIRED_CN_OPEN/PAIRED_EN_OPEN 同源（mock 测试对比桥默认值兜底）。
+ * 存储是 CSV（左符号直拼），state.pairedCn/pairedEn 回显。 */
+const PAIR_GROUPS = {
+    cn: [
+        ["（", "）"], ["【", "】"], ["［", "］"], ["｛", "｝"], ["《", "》"],
+        ["「", "」"], ["『", "』"], ["“", "”"], ["‘", "’"],
+    ],
+    en: [["(", ")"], ["[", "]"], ["{", "}"], ['"', '"'], ["'", "'"]],
+};
+
+function pairBoxes(group) {
+    return Array.from(document.querySelectorAll(
+        `input[data-pair-group="${group}"]`));
+}
+
+function pairsSelectedCsv(group) {
+    return pairBoxes(group).filter(box => box.checked).map(box => box.value).join("");
+}
+
+function renderPairPickers() {
+    for (const [group, items] of Object.entries(PAIR_GROUPS)) {
+        const grid = document.getElementById(group === "cn" ? "pairsCnGrid" : "pairsEnGrid");
+        if (!grid) continue;
+        grid.replaceChildren(...items.map(([open, close]) => {
+            const label = document.createElement("label");
+            label.className = "pair-cell";
+            const box = document.createElement("input");
+            box.type = "checkbox";
+            box.value = open;
+            box.dataset.pairGroup = group;
+            box.addEventListener("change", () => {
+                call("setPairedSymbolGroup", group, pairsSelectedCsv(group));
+            });
+            const glyph = document.createElement("span");
+            glyph.textContent = open + close;
+            label.append(box, glyph);
+            return label;
+        }));
+    }
+}
+
+function renderPairs(state) {
+    for (const group of Object.keys(PAIR_GROUPS)) {
+        // 未配置（首装/旧备份）= native 读取缺省（中文组全选，英文组
+        // 不含撇号）；注意导入旧备份不删除本机已有的这两个键，目标机
+        // 已选过则保持本机值。
+        const csv = state[group === "cn" ? "pairedCn" : "pairedEn"];
+        const picked = typeof csv === "string" ? new Set(Array.from(csv)) : null;
+        for (const box of pairBoxes(group)) {
+            box.checked = picked ? picked.has(box.value) : true;
+        }
+    }
+}
+
+renderPairPickers();
 
 /** 双拼方案 + 键位图（dp-data.js 的 window.FeelimeDp 提供各方案键位）。 */
 function renderDoublePinyin(state) {
@@ -4446,6 +4517,7 @@ $("keyOpacity").addEventListener("change", event => {
 // 底下弹出的预览键盘。
 $("keyBubble").addEventListener("change", event => call("setKeyBubble", event.target.checked));
 $("pairedSymbols").addEventListener("change", event => call("setPairedSymbols", event.target.checked));
+$("btnOpenPairs").addEventListener("click", () => showPage("pairs"));
 $("cnEnComposingGuard").addEventListener("change", event => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", event => call("setPreeditScrub", event.target.checked));
 $("bottomSymSplit").addEventListener("change", event => call("setBottomSymSplit", event.target.checked));

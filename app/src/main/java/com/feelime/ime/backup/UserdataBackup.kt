@@ -14,6 +14,8 @@ import com.feelime.ime.PREF_FEEL_SCRUB_SPEED
 import com.feelime.ime.PREF_KEY_HAPTIC
 import com.feelime.ime.PREF_KEY_SOUND
 import com.feelime.ime.PREF_PAIRED_SYMBOLS
+import com.feelime.ime.PREF_PAIRED_SYMBOLS_CN
+import com.feelime.ime.PREF_PAIRED_SYMBOLS_EN
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -267,6 +269,10 @@ class UserdataBackup(
             if (value !is Boolean) throw RestoreException("SCHEMA", "$prefsName/$key")
             return value
         }
+        if (prefsName in STRING_KEYS && key in STRING_KEYS.getValue(prefsName)) {
+            if (value !is String) throw RestoreException("SCHEMA", "$prefsName/$key")
+            return value
+        }
         if (value is String || value is Boolean || value is Int) return value
         throw RestoreException("SCHEMA", "$prefsName/$key")
     }
@@ -432,6 +438,16 @@ class UserdataBackup(
                 PREF_FEEL_SCRUB_SPEED to intArrayOf(1, 2, 3, 4, 5),
                 PREF_FEEL_HOLD_MS to FEEL_HOLD_STEPS,
                 PREF_FEEL_POPUP_SNAP to intArrayOf(0, 1, 2),
+            ),
+        )
+
+        /** 读侧 getString 的键：备份里类型不符会串型（Boolean/Int 落进
+         *  getString 直接 ClassCastException），导入阶段就拒绝。成对符号
+         *  分组勾选集（2026-11-20）在此登记。 */
+        private val STRING_KEYS = mapOf(
+            "feelime_keyboard" to setOf(
+                PREF_PAIRED_SYMBOLS_CN,
+                PREF_PAIRED_SYMBOLS_EN,
             ),
         )
 

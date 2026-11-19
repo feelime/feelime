@@ -147,6 +147,7 @@ class MockSettingsNative {
     setKeyOpacity(...a) { this._rec('setKeyOpacity', a); }
     setKeyBubble(...a) { this._rec('setKeyBubble', a); }
     setPairedSymbols(...a) { this._rec('setPairedSymbols', a); }
+    setPairedSymbolGroup(...a) { this._rec('setPairedSymbolGroup', a); }
     setCnEnComposingGuard(...a) { this._rec('setCnEnComposingGuard', a); }
     setVoiceReadyHaptic(...a) { this._rec('setVoiceReadyHaptic', a); }
     setBubbleLinger(...a) { this._rec('setBubbleLinger', a); }
@@ -1279,14 +1280,14 @@ test('navigation: home starts as the only visible page; showPage swaps and repor
     const hiddenMap = () => Object.fromEntries(
         [...world.doc.querySelectorAll('[data-page]')].map(p => [p.dataset.page, p.hidden]));
     equal(hiddenMap(), {
-        home: false, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
+        home: false, appearance: true, skin: true, input: true, pairs: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: true, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
         ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, cknumpadstrip: true, licenses: true, test: true,
     }, 'initial: home visible, sub-pages hidden');
 
     world.FeelimeSettings().showPage('voice');
     equal(hiddenMap(), {
-        home: true, appearance: true, skin: true, input: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
+        home: true, appearance: true, skin: true, input: true, pairs: true, fuzzy: true, landscape: true, keyboards: true, dict: true, userwords: true, phrases: true, voice: false, update: true,
         backup: true, about: true, customkeys: true, cksymbol: true, cklang: true,
         ckt9strip: true, ckstrokestrip: true, ckinkstrip: true, cknumpadstrip: true, licenses: true, test: true,
     }, 'voice page visible, everything else hidden');
@@ -3796,6 +3797,40 @@ test('paired symbols switch writes both values and follows settings state', {sin
         world.push({ ...BASE_STATE, pairedSymbols: checked });
         equal(toggle.checked, checked, 'state echoes the saved value');
     }
+});
+
+test('paired symbols page: grouped pickers toggle per-symbol and echo state', {since: '3.73.126'}, () => {
+    const world = new SettingsWorld();
+    world.push({ ...BASE_STATE });
+    const entry = world.$('btnOpenPairs');
+    assert(entry, 'entry row lives on the input page');
+    entry.listeners.find(l => l.type === 'click').handler();
+    equal(world.doc.querySelector('[data-page="pairs"]').hidden, false, 'sub-page opens');
+
+    const boxes = group => [...world.doc.querySelectorAll(
+        `[data-page="pairs"] input[data-pair-group="${group}"]`)];
+    const cn = boxes('cn');
+    const en = boxes('en');
+    equal(cn.length, 9, 'chinese group renders every catalog entry');
+    equal(en.length, 5, 'english group renders every catalog entry');
+    equal(cn.every(b => b.checked), true, 'unset state = whole group checked');
+    equal(en.every(b => b.checked), true, 'unset state = whole group checked (en)');
+    equal(cn[0].value, '（', 'cells carry the opener as their value');
+
+    // 取消一个中文项：落盘 CSV 不含它，其余按目录顺序保留。
+    cn[0].checked = false;
+    fire(cn[0], 'change');
+    equal(world.lastCall('setPairedSymbolGroup').args, ['cn', '【［｛《「『“‘', world.token],
+        'unchecking one opener saves the rest of the chinese group');
+
+    // 再取消一个英文项（半角单引号）后回显。
+    en[4].checked = false;
+    fire(en[4], 'change');
+    equal(world.lastCall('setPairedSymbolGroup').args, ['en', '([{"', world.token],
+        'english group saves its own csv');
+    world.push({ ...BASE_STATE, pairedCn: '【［', pairedEn: '([' });
+    equal(cn.filter(b => b.checked).map(b => b.value).join(''), '【［', 'state narrows the chinese checks');
+    equal(en.filter(b => b.checked).map(b => b.value).join(''), '([', 'state narrows the english checks');
 });
 
 // 统计必须在全部测试注册之后求值（曾因提前求值吞掉尾部用例的失败，

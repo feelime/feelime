@@ -282,6 +282,7 @@ const I18N = {
     "dict.userwords.hint": "\u9010\u6761\u6DFB\u52A0\u300C\u8BCD + \u5168\u62FC\u8F93\u5165\u7801\u300D\uFF0C\u8F93\u5165\u7801\u547D\u4E2D\u5373\u51FA\u8FD9\u4E2A\u8BCD\uFF1B\u9002\u5408\u540D\u5B57\u3001\u7F29\u5199\u3001\u884C\u8BDD\u3002\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF0C\u91CD\u542F\u4FDD\u7559\u3002",
     "dict.userwords.manage": "\u7BA1\u7406\u8BCD\u6761",
     "page.userwords": "\u81EA\u9020\u8BCD",
+    "page.pairs": "\u6210\u5BF9\u7B26\u53F7",
     "page.fuzzy": "\u6A21\u7CCA\u97F3",
     "page.keyboards": "\u952E\u76D8\u9009\u62E9",
     "userwords.list.title": "\u8BCD\u6761",
@@ -985,7 +986,12 @@ const I18N = {
     "input.feel.keyOpacityHint": "\u952E\u5E3D\u5728\u80CC\u666F\u56FE\u4E0A\u7684\u900F\u660E\u7A0B\u5EA6\uFF0C\u6587\u5B57\u59CB\u7EC8\u5B9E\u8272\u3002",
     "input.symbols.title": "\u7B26\u53F7\u8F93\u5165",
     "input.symbols.paired": "\u6210\u5BF9\u7B26\u53F7\u81EA\u52A8\u8865\u5168",
-    "input.symbols.pairedHint": "\u8F93\u5165\u5DE6\u62EC\u53F7\u65F6\u8865\u4E0A\u53F3\u62EC\u53F7\uFF0C\u5149\u6807\u505C\u5728\u4E2D\u95F4\u3002\u7D27\u63A5\u7740\u6309\u9000\u683C\u53EF\u5220\u6389\u6574\u5BF9\u3002",
+    "input.symbols.pairedHint": "\u8F93\u5165\u5DE6\u62EC\u53F7\u6216\u5F15\u53F7\u65F6\u8865\u4E0A\u53F3\u534A\uFF0C\u5149\u6807\u505C\u5728\u4E2D\u95F4\u3002\u7D27\u63A5\u7740\u6309\u9000\u683C\u53EF\u5220\u6389\u6574\u5BF9\u3002",
+    "input.symbols.choose": "\u9009\u62E9\u8865\u5168\u7684\u7B26\u53F7",
+    "input.symbols.chooseHint": "\u5206\u4E2D\u6587/\u82F1\u6587\u4E24\u7EC4\u52FE\u9009\u9700\u8981\u6210\u5BF9\u8865\u5168\u7684\u62EC\u53F7\u548C\u5F15\u53F7\u3002",
+    "input.pairs.cn": "\u4E2D\u6587\u7B26\u53F7\uFF08\u5168\u89D2\uFF09",
+    "input.pairs.en": "\u82F1\u6587\u7B26\u53F7\uFF08\u534A\u89D2\uFF09",
+    "input.pairs.hint": "\u52FE\u9009\u7684\u7B26\u53F7\u8F93\u5165\u65F6\u4F1A\u81EA\u52A8\u8865\u4E0A\u53F3\u534A\uFF0C\u5149\u6807\u505C\u5728\u4E2D\u95F4\uFF1B\u7D27\u63A5\u7740\u6309\u9000\u683C\u53EF\u5220\u6389\u6574\u5BF9\u3002\u603B\u5F00\u5173\u5728\u4E0A\u4E00\u5C42\u300C\u7B26\u53F7\u8F93\u5165\u300D\u3002",
     "input.feel.keyBubble": "\u6309\u952E\u6C14\u6CE1",
     "input.feel.cnEnComposingGuard": "\u62FC\u97F3\u7EC4\u8BCD\u4E2D\u7981\u6B62\u5207\u6362\u8BED\u8A00",
     "input.feel.cnEnComposingGuardHint": "\u9632\u6B62\u5FEB\u901F\u6253\u5B57\u8BEF\u89E6\u4E2D\u82F1\u5207\u6362\u952E\u628A\u7EC4\u8BCD\u6253\u65AD\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF0C\u5F00\u542F\u540E\u7EC4\u8BCD\u4E2D\u5355\u51FB\u5207\u6362\u952E\u4E0D\u751F\u6548\uFF09\u3002",
@@ -1156,6 +1162,7 @@ const I18N = {
     "dict.userwords.hint": "Add word + full-pinyin code pairs one by one; typing the code surfaces the word. Great for names, abbreviations, jargon. Applies immediately, survives restart.",
     "dict.userwords.manage": "Manage words",
     "page.userwords": "User words",
+    "page.pairs": "Paired symbols",
     "page.fuzzy": "Fuzzy input",
     "page.keyboards": "Keyboard selection",
     "userwords.list.title": "Words",
@@ -1849,7 +1856,12 @@ const I18N = {
     "input.feel.keyOpacityHint": "How transparent the keycaps sit over the background image; labels stay solid.",
     "input.symbols.title": "Symbols",
     "input.symbols.paired": "Auto-pair brackets",
-    "input.symbols.pairedHint": "Insert the closing bracket and place the cursor between the pair. Press Backspace immediately to remove both.",
+    "input.symbols.pairedHint": "Insert the closing bracket or quote and place the cursor between the pair. Press Backspace immediately to remove both.",
+    "input.symbols.choose": "Choose symbols to pair",
+    "input.symbols.chooseHint": "Pick the brackets and quotes to auto-pair, grouped by Chinese / English.",
+    "input.pairs.cn": "Chinese (full-width)",
+    "input.pairs.en": "English (half-width)",
+    "input.pairs.hint": "Checked symbols get their closing half automatically, with the cursor between. Backspace right away removes the pair. The master switch is on the previous page.",
     "input.feel.keyBubble": "Key bubble",
     "input.feel.cnEnComposingGuard": "Block language switch while composing",
     "input.feel.cnEnComposingGuardHint": "Prevents fast typing from grazing the C/EN key and wrecking the composition (off by default).",
@@ -1979,7 +1991,7 @@ const I18N = {
     "error.INVALID_MODEL_SOURCE": "A custom source needs an HTTPS repository URL and its matching tar.bz2 archive URL."
   }
 };
-const PAGES = ["home", "appearance", "skin", "input", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip", "licenses", "test"];
+const PAGES = ["home", "appearance", "skin", "input", "pairs", "fuzzy", "landscape", "keyboards", "dict", "phrases", "userwords", "voice", "update", "backup", "about", "customkeys", "cksymbol", "cklang", "ckt9strip", "ckstrokestrip", "ckinkstrip", "cknumpadstrip", "licenses", "test"];
 const ERROR_KEYS = new Set(Object.keys(I18N.zh).filter((key) => key.startsWith("error.")));
 const progressPercent = {};
 function browserLocale() {
@@ -2520,6 +2532,7 @@ __name(updateThemePreview, "updateThemePreview");
 function render(state) {
   state = state || {};
   renderIme(state);
+  renderPairs(state);
   renderDoublePinyin(state);
   renderFeel(state);
   renderLandscape(state);
@@ -2830,6 +2843,63 @@ function renderFeel(state) {
   setToggle("preeditBold", state.preeditBold);
 }
 __name(renderFeel, "renderFeel");
+const PAIR_GROUPS = {
+  cn: [
+    ["\uFF08", "\uFF09"],
+    ["\u3010", "\u3011"],
+    ["\uFF3B", "\uFF3D"],
+    ["\uFF5B", "\uFF5D"],
+    ["\u300A", "\u300B"],
+    ["\u300C", "\u300D"],
+    ["\u300E", "\u300F"],
+    ["\u201C", "\u201D"],
+    ["\u2018", "\u2019"]
+  ],
+  en: [["(", ")"], ["[", "]"], ["{", "}"], ['"', '"'], ["'", "'"]]
+};
+function pairBoxes(group) {
+  return Array.from(document.querySelectorAll(
+    `input[data-pair-group="${group}"]`
+  ));
+}
+__name(pairBoxes, "pairBoxes");
+function pairsSelectedCsv(group) {
+  return pairBoxes(group).filter((box) => box.checked).map((box) => box.value).join("");
+}
+__name(pairsSelectedCsv, "pairsSelectedCsv");
+function renderPairPickers() {
+  for (const [group, items] of Object.entries(PAIR_GROUPS)) {
+    const grid = document.getElementById(group === "cn" ? "pairsCnGrid" : "pairsEnGrid");
+    if (!grid) continue;
+    grid.replaceChildren(...items.map(([open, close]) => {
+      const label = document.createElement("label");
+      label.className = "pair-cell";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = open;
+      box.dataset.pairGroup = group;
+      box.addEventListener("change", () => {
+        call("setPairedSymbolGroup", group, pairsSelectedCsv(group));
+      });
+      const glyph = document.createElement("span");
+      glyph.textContent = open + close;
+      label.append(box, glyph);
+      return label;
+    }));
+  }
+}
+__name(renderPairPickers, "renderPairPickers");
+function renderPairs(state) {
+  for (const group of Object.keys(PAIR_GROUPS)) {
+    const csv = state[group === "cn" ? "pairedCn" : "pairedEn"];
+    const picked = typeof csv === "string" ? new Set(Array.from(csv)) : null;
+    for (const box of pairBoxes(group)) {
+      box.checked = picked ? picked.has(box.value) : true;
+    }
+  }
+}
+__name(renderPairs, "renderPairs");
+renderPairPickers();
 function renderDoublePinyin(state) {
   const select = $("dpScheme");
   if (!select) return;
@@ -4237,6 +4307,7 @@ $("keyOpacity").addEventListener("change", (event) => {
 });
 $("keyBubble").addEventListener("change", (event) => call("setKeyBubble", event.target.checked));
 $("pairedSymbols").addEventListener("change", (event) => call("setPairedSymbols", event.target.checked));
+$("btnOpenPairs").addEventListener("click", () => showPage("pairs"));
 $("cnEnComposingGuard").addEventListener("change", (event) => call("setCnEnComposingGuard", event.target.checked));
 $("preeditScrub").addEventListener("change", (event) => call("setPreeditScrub", event.target.checked));
 $("bottomSymSplit").addEventListener("change", (event) => call("setBottomSymSplit", event.target.checked));

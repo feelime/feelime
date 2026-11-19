@@ -189,6 +189,13 @@ class TextInputCoordinator(
     private var pendingPairedSymbol: PairedSymbol? = null
     // DEL 键、宿主快捷键等操作的位置变化无法预测，等待宿主回报后再补全。
     private var pairedSelectionKnown = false
+    /** 不可预测编辑的代际：每次 onUntrackedEditorMutation 递增。自身
+     *  选区回声只有在「预期的登记晚于最近一次不可预测编辑」时才能证明
+     *  光标可信——旧预期在编辑后仍留在队列里，迟到回声会命中它（评审
+     *  P1 反例：commit a → 滑删 → a 的回声到了，队列排空且等于预测，
+     *  但真实光标已被滑删带走）。 */
+    private var trustEpoch = 0L
+    private var lastExpectationEpoch = 0L
     /** 联删状态机：phase1 = 等宿主确认光标已移到右符号之后（远程 IC 的
      *  setSelection 返回 true 只代表请求发出，不代表已执行——评审 P1：
      *  不确认就连发两次 DEL 会删到括号外的邻字）；phase2 = DEL 已发出，
@@ -234,6 +241,16 @@ class TextInputCoordinator(
         val own = expectedSelections.indexOf(actual)
         if (own >= 0) {
             repeat(own + 1) { expectedSelections.removeFirst() }
+            // 用户实测（中→英→中后全角括号不再成对）：硬件键/滑删等
+            // 不可预测的编辑把 known 置 false 后，只要宿主回报的光标
+            // 与本端最新预测一致（队列已排空），位置证据即恢复——此前
+            // 只有编辑器重启或外部回调能复活，宿主不回外部回调的场合
+            // 补全就此失效。
+            if (expectedSelections.isEmpty() && lastExpectationEpoch == trustEpoch &&
+                newSelStart == predictedSelectionStart && newSelEnd == predictedSelectionEnd
+            ) {
+                pairedSelectionKnown = true
+            }
             val pd = pairedDelete
             if (pd != null && pd.phase == 1 && newSelStart == newSelEnd && newSelStart == pd.shiftTo) {
                 // 宿主确认已移到右符号之后：现在连发两次 DEL 才是安全的。
@@ -272,6 +289,7 @@ class TextInputCoordinator(
     fun onUntrackedEditorMutation() {
         clearPairedSymbol()
         pairedSelectionKnown = false
+        trustEpoch += 1
     }
 
     /** A host mutation invalidates both word ownership and pending predictions. */
@@ -366,6 +384,7 @@ class TextInputCoordinator(
         predictedSelectionStart = target
         predictedSelectionEnd = target
         expectedSelections.addLast(target to target)
+        lastExpectationEpoch = trustEpoch
     }
 
     fun onEditorStarted(sensitive: Boolean, terminalLike: Boolean = false, initialSelectionStart: Int = 0, initialSelectionEnd: Int = initialSelectionStart) {
@@ -1994,10 +2013,25 @@ class TextInputCoordinator(
     }
 
     companion object {
+        /** 成对符号目录：右半由左半唯一确定。设置页按中/英两组展示
+         *  （分组见 [PAIRED_CN_OPEN]/[PAIRED_EN_OPEN]），用户勾选集以
+         *  CSV 存 preference，键盘 JS 收到两组并集后按字符门闸。 */
         val PAIRED_SYMBOLS = mapOf(
-            "(" to ")", "（" to "）", "[" to "]", "【" to "】",
-            "{" to "}", "《" to "》", "「" to "」", "『" to "』",
+            "(" to ")", "（" to "）", "[" to "]", "［" to "］",
+            "{" to "}", "｛" to "｝", "《" to "》", "【" to "】",
+            "「" to "」", "『" to "』", "“" to "”", "‘" to "’",
+            "\"" to "\"", "'" to "'",
         )
+
+        /** 设置页「中文符号（全角）」组，顺序即展示顺序。 */
+        val PAIRED_CN_OPEN = listOf("（", "【", "［", "｛", "《", "「", "『", "“", "‘")
+
+        /** 设置页「英文符号（半角）」组。 */
+        val PAIRED_EN_OPEN = listOf("(", "[", "{", "\"", "'")
+
+        /** 英文组缺省勾选：撇号默认不勾——英文单词里的 don't 会被补成
+         *  don''t（评审产品风险），需要时用户自行勾选。 */
+        val PAIRED_EN_OPEN_DEFAULT = listOf("(", "[", "{", "\"")
 
         private const val MAX_WARMUP_QUEUE = 256
 
