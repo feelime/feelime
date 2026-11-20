@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.130";
+  const KEYBOARD_VERSION = "3.73.131";
   const PAIR_OPEN_SYMBOLS = /* @__PURE__ */ new Set(["(", "\uFF08", "[", "\u3010", "{", "\u300A", "\u300C", "\u300E"]);
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },

@@ -1208,16 +1208,21 @@ body.landscape .edit-grid { gap: 4px 5px; }
 }
 .num-sym-key {
     flex: none;
-    height: var(--kb-row-h, 44px);
+    /* 等分左列可视区，4 个符号同屏（用户 2026-11-20「参考 T9 压缩高度」）：
+     * 列高 = 3 行 + 2 个网格行距（竖屏 10px），减去列内 3 个 5px 间距后
+     * 四等分。与 .t9-side-cell 的 0.74 同观感，但按行高精确解，任何
+     * 键盘高度下都刚好露出 4 个。横屏网格行距 3px，单独一条。 */
+    height: calc((var(--kb-row-h, 44px) * 3 - 5px) / 4);
     border: 0;
     border-radius: var(--radius-key);
     background: var(--special);
     color: var(--text);
-    font-size: 15px;
+    font-size: min(15px, calc(var(--kb-row-h, 44px) * 0.4));
     display: flex;
     align-items: center;
     justify-content: center;
 }
+body.landscape .num-sym-key { height: calc((var(--kb-row-h, 44px) * 3 - 9px) / 4); }
 .num-sym-key:active { background: var(--pressed); }
 /* The back key rides the accent (reference: green, left column bottom). */
 .num-back {
