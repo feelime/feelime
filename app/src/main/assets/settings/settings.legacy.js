@@ -2882,7 +2882,7 @@ function renderPairPickers() {
         call("setPairedSymbolGroup", group, pairsSelectedCsv(group));
       });
       const glyph = document.createElement("span");
-      glyph.textContent = open + close;
+      glyph.textContent = open + " " + close;
       label.append(box, glyph);
       return label;
     }));

@@ -196,6 +196,9 @@ class TextInputCoordinator(
      *  但真实光标已被滑删带走）。 */
     private var trustEpoch = 0L
     private var lastExpectationEpoch = 0L
+    /** 对内普通 DEL 发出前的光标预测（-1=无）。DEL 不登记预期，回声
+     *  进外部分支时靠它识别「这是自己删对里内容」而不是宿主移位。 */
+    private var insideDeletePredicted = -1
     /** 联删状态机：phase1 = 等宿主确认光标已移到右符号之后（远程 IC 的
      *  setSelection 返回 true 只代表请求发出，不代表已执行——评审 P1：
      *  不确认就连发两次 DEL 会删到括号外的邻字）；phase2 = DEL 已发出，
@@ -240,6 +243,8 @@ class TextInputCoordinator(
         // 512 回声被判外部编辑、误杀删除快照。
         val own = expectedSelections.indexOf(actual)
         if (own >= 0) {
+            // 不清 insideDeletePredicted：迟到的旧输入回声命中自己的预期
+            // 时不能清掉更新的「对内 DEL 待确认」状态（评审 P2 反例）。
             repeat(own + 1) { expectedSelections.removeFirst() }
             // 用户实测（中→英→中后全角括号不再成对）：硬件键/滑删等
             // 不可预测的编辑把 known 置 false 后，只要宿主回报的光标
@@ -265,10 +270,32 @@ class TextInputCoordinator(
             }
             return
         }
+        val wasPredicted = predictedSelectionStart
         predictedSelectionStart = newSelStart
         predictedSelectionEnd = newSelEnd
+        // 对内的普通 DEL 不登记预期，它的回声会落到这里。新光标落在
+        // [中间, 删除标记) 时，成对关系未破坏，记录跨过作废保留——删回
+        // 中间后再退格仍联删（用户要求 2026-11-20）。标记是「在途删除
+        // 可能落到的位置」的上界：每次确认后收紧到实际位置，删除批次
+        // 结束（标记收到中间）后，光标移出再移回不再算自己人（评审 P2）。
+        val insidePair = pendingPairedSymbol?.takeIf { pair ->
+            insideDeletePredicted >= 0 && pair.editorGeneration == editorGeneration &&
+                newSelStart == newSelEnd &&
+                newSelStart >= pair.center && newSelStart < insideDeletePredicted
+        }
         onExternalEditorMutation()
         pairedSelectionKnown = true
+        if (insidePair != null) {
+            // 作废路径会清掉标记；保留归属时把确认过的位置补回来，并且
+            // 预测只前进不回退：先到的旧 DEL 回声不能把预测推回新删除
+            // 之前的位置（评审 P2 迟到回声反例）。
+            pendingPairedSymbol = insidePair
+            insideDeletePredicted = newSelStart
+            if (wasPredicted < newSelStart) {
+                predictedSelectionStart = wasPredicted
+                predictedSelectionEnd = wasPredicted
+            }
+        }
         // 宿主侧移位/编辑：删后现场已不存在，快照作废（删除自身的
         // 回声经 expectDeletion 登记按 own 排水，不会走到这里）。
         invalidateDeleteSnapshot()
@@ -276,6 +303,33 @@ class TextInputCoordinator(
 
     fun clearPairedSymbol() {
         pendingPairedSymbol = null
+        // 删除标记的生命周期绑在成对记录上：换会话/换代/新一对都清，
+        // 旧标记不能污染新的一对（评审 P2）。
+        insideDeletePredicted = -1
+    }
+
+    /** 光标是否仍停在补出的一对里面（左符号之后、折叠光标）。对内的
+     *  键入/提交不破坏成对关系，成对记录保留到光标离开或编辑器换代。 */
+    private fun caretInsidePairedSymbol(): Boolean {
+        val pair = pendingPairedSymbol ?: return false
+        if (pair.editorGeneration != editorGeneration) return false
+        return predictedSelectionStart == predictedSelectionEnd &&
+            predictedSelectionStart >= pair.center
+    }
+
+    /** 这次写入算不算「还在这对符号里」。插入/替换看光标位置；删空
+     *  组合串（expectReplacement(0)）分两种：镜像到宿主的 span（法语/
+     *  俄语/内嵌编辑框）看被删区间是否从左侧进入对里；拼音等不落宿主的
+     *  组合只是本端记账，宿主文本没变，光标在对里就保留（评审 P2）。 */
+    private fun editKeepsPairedSymbol(length: Int): Boolean {
+        if (length > 0) return caretInsidePairedSymbol()
+        val pair = pendingPairedSymbol ?: return false
+        if (pair.editorGeneration != editorGeneration) return false
+        if (predictedSelectionStart != predictedSelectionEnd) return false
+        if (!(composingActive && mirrorsComposing()) || composingRaw.isEmpty()) {
+            return predictedSelectionStart >= pair.center
+        }
+        return predictedSelectionEnd - composingRaw.length >= pair.center
     }
 
     /** 键盘视图重新显示（同编辑器再弹出）：收起期间的「位置不可信」
@@ -369,7 +423,9 @@ class TextInputCoordinator(
     private fun mirrorsComposing(): Boolean = !isPinyinFamily(mode) || ownAppEditor()
 
     private fun expectReplacement(length: Int) {
-        clearPairedSymbol()
+        // 对内的写入保留成对记录：插入看光标位置，删空组合串看被删
+        // 区间（见 editKeepsPairedSymbol）；其余写入照旧作废。
+        if (!editKeepsPairedSymbol(length)) clearPairedSymbol()
         if (predictedSelectionStart < 0 || predictedSelectionEnd < 0) return
         // 空串只有删除镜像 span 或非折叠选区时才需要预测；空操作会留下假回调，误吞后续外部移位。
         if (length == 0 && !(composingActive && mirrorsComposing()) &&
@@ -1224,10 +1280,13 @@ class TextInputCoordinator(
         command: EngineCommand,
         onComplete: (() -> Unit)? = null,
     ): DispatchAck {
-        // 排队期间还没写入，必须在实际执行处作废上一对。
+        // 排队期间还没写入，必须在实际执行处作废上一对。例外：光标仍在
+        // 补出的一对里面时，键入/提交只是往对里添内容，成对记录保留——
+        // 用户要求「（ → 打 abc → 删掉 abc → 再删（连右括号一起删」。
         when (command) {
             is EngineCommand.Key, EngineCommand.Space, is EngineCommand.Choose,
-            EngineCommand.Reset, is EngineCommand.MovePreeditCursor -> clearPairedSymbol()
+            EngineCommand.Reset, is EngineCommand.MovePreeditCursor ->
+                if (!caretInsidePairedSymbol()) clearPairedSymbol()
             else -> Unit
         }
         if (command == EngineCommand.Backspace) {
@@ -1264,9 +1323,19 @@ class TextInputCoordinator(
                 val lag = (System.nanoTime() - sentAt) / 1_000_000
                 if (lag > 120) diag("dispatchLag cmd=${command::class.simpleName} ms=$lag")
                 val pair = pendingPairedSymbol
+                // 光标正好停在中间（联删裁决），或上一笔对内删除还没收到
+                // 宿主回声（预测只减了一个 UTF-16 单位，宿主按码点/字素
+                // 删除时会偏）：这两种情况都不能只信预测，问宿主当前文本
+                // 和光标定夺。其余对内删除照本地预测走，成对记录由
+                // deleteOneEditorUnit 保留。
+                val atCenter = pair != null && predictedSelectionStart == pair.center &&
+                    predictedSelectionEnd == pair.center
+                val deleteUnconfirmed = insideDeletePredicted >= 0 &&
+                    predictedSelectionStart == predictedSelectionEnd
                 if (command == EngineCommand.Backspace && !event.consumed &&
                     event.code == EngineCode.EMPTY_COMPOSING && event.stamp == stamp &&
-                    event.revision > lastAppliedRevision && !composingActive && pair != null
+                    event.revision > lastAppliedRevision && !composingActive && pair != null &&
+                    (atCenter || deleteUnconfirmed)
                 ) {
                     editor.verifyPairedSymbol(pair.open, pair.close, pair.center) { matches ->
                         if (requestStamp != stamp) return@verifyPairedSymbol
@@ -1274,8 +1343,14 @@ class TextInputCoordinator(
                         val result = if (pendingPairedSymbol === pair && matches != null) event
                             else event.copy(consumed = true)
                         val pairedDeleteStarted: ((Int, Int, Int, Int) -> Unit)? =
-                            if (result === event && matches == true) { shiftTo, center, target, marker ->
-                                awaitPairedDelete(shiftTo, center, target, marker, ::complete)
+                            if (result === event && matches == true) {
+                                // 宿主核对通过 = 真实光标就在中间：预测偏了
+                                // （多单位删除那个方向）也按中间执行联删。
+                                predictedSelectionStart = pair.center
+                                predictedSelectionEnd = pair.center
+                                { shiftTo, center, target, marker ->
+                                    awaitPairedDelete(shiftTo, center, target, marker, ::complete)
+                                }
                             } else null
                         onEngineEvent(result, command, seq, hwTag, pairedDeleteStarted)
                         if (pairedDelete == null) complete()
@@ -1739,7 +1814,9 @@ class TextInputCoordinator(
                     armWordUndo(committed, automaticSpace = command is EngineCommand.Choose)
                 }
                 if (event.state.commit == null && event.state.composing.isNotEmpty()) {
-                    clearPairedSymbol()
+                    // 组合串只在键盘 UI 显示、不落到编辑器：光标仍在成对
+                    // 符号里时保留成对记录（组词提交后删除回原位仍要联删）。
+                    if (!caretInsidePairedSymbol()) clearPairedSymbol()
                     lastWordCommit = null
                     // Pinyin preedit lives on the keyboard UI
                     // (candidate bar / preedit line), NOT in the editor - the
@@ -1877,11 +1954,14 @@ class TextInputCoordinator(
      * KEYCODE_DEL deletes a selection natively (device-verified: 5 chars
      * removed, caret converged), so the branch was pure cost. */
     private fun deleteOneEditorUnit(pairedDeleteStarted: ((Int, Int, Int, Int) -> Unit)?) {
+        // 联删进行中：迟到的退格裁决（宿主核对是异步的）不再单独删字，
+        // 免得落进移光标/连删的窗口多删一个。
+        if (pairedDelete != null) return
         val pair = pendingPairedSymbol
-        clearPairedSymbol()
         if (pairedDeleteStarted != null && pair != null && pair.editorGeneration == editorGeneration &&
             predictedSelectionStart == pair.center && predictedSelectionEnd == pair.center
         ) {
+            clearPairedSymbol()
             // DEL 只删左边：先把光标移到右符号之后，等宿主确认真到了
             // 再连发两次（见 PairedDelete 注释），避免删到括号外的字。
             val end = pair.center + pair.close.length
@@ -1891,7 +1971,32 @@ class TextInputCoordinator(
                     expectedSelections.size - 1)
                 return
             }
+            onUntrackedEditorMutation()
+            editor.sendDeleteKey()
+            return
         }
+        // 光标在一对之内（左符号之后）：删的是对里的内容，位置要靠宿主
+        // 回报重算，但成对记录保留——删回中间后，再退格才连右符号一起删
+        // （用户要求 2026-11-20）。对内的普通 DEL 不登记预期。
+        if (pair != null && pair.editorGeneration == editorGeneration &&
+            predictedSelectionStart == predictedSelectionEnd &&
+            predictedSelectionStart > pair.center
+        ) {
+            pairedSelectionKnown = false
+            trustEpoch += 1
+            // 标记只升不降：连打退格时前几次 DEL 的回声会晚于后面的
+            // 按键到达，范围要覆盖所有在途删除，否则旧回声落在范围外
+            // 把归属清掉（评审 P2）。
+            insideDeletePredicted = maxOf(insideDeletePredicted, predictedSelectionStart)
+            // 连续退格快于宿主回声时，下一次退格仍要按「对内」处理：
+            // 乐观减一（普通字符一个 UTF-16 单位）；真删了代理对时宿主
+            // 回声走外部分支校正，联删前还有宿主文本核对兜底（评审 P2）。
+            predictedSelectionStart = (predictedSelectionStart - 1).coerceAtLeast(pair.center)
+            predictedSelectionEnd = predictedSelectionStart
+            editor.sendDeleteKey()
+            return
+        }
+        clearPairedSymbol()
         onUntrackedEditorMutation()
         editor.sendDeleteKey()
     }

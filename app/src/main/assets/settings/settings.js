@@ -2930,7 +2930,9 @@ function renderPairPickers() {
                 call("setPairedSymbolGroup", group, pairsSelectedCsv(group));
             });
             const glyph = document.createElement("span");
-            glyph.textContent = open + close;
+            // 中间留空格：英文的 " 与 ' 单看难分，空一格后一眼看出是
+            // 两个同形符号（用户要求 2026-11-20）。
+            glyph.textContent = open + " " + close;
             label.append(box, glyph);
             return label;
         }));

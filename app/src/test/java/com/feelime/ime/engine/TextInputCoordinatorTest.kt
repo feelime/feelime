@@ -184,8 +184,19 @@ class RecordingEditor : EditorPort {
         composingStart = null
     }
 
+    /** 宿主 DEL 按码点删（Android 多数编辑器；代理对一次删两个
+     *  单位）——P2「乐观减一」反例的宿主模型。 */
+    var sendDeleteKeyDeletesCodePoint = false
+
     override fun sendDeleteKey() {
-        if (caret > 0) { text = text.removeRange(caret - 1, caret); caret -= 1 }
+        if (sendDeleteKeyDeletesCodePoint && caret > 0) {
+            val cut = text.offsetByCodePoints(caret, -1)
+            text = text.removeRange(cut, caret)
+            caret = cut
+        } else if (caret > 0) {
+            text = text.removeRange(caret - 1, caret)
+            caret -= 1
+        }
         operations.add("sendDeleteKey")
     }
 
@@ -351,22 +362,238 @@ class TextInputCoordinatorTest {
     }
 
     @Test
-    fun pairedSymbolIsForgottenAfterLiteralAndEngineInput() {
+    fun pairOwnershipSurvivesTypingInsideUntilTheCaretLeaves() {
+        // 用户要求（2026-11-20）：（ 补成（），打 abc 变（abc），删掉 abc
+        // 回到（），再退格要连右括号一起删。
         for (literal in listOf(true, false)) {
             editor = RecordingEditor()
-            val c = TextInputCoordinator(editor, {}, { DirectTextEngine() })
+            val delays = mutableListOf<() -> Unit>()
+            val c = TextInputCoordinator(editor, {}, { DirectTextEngine() },
+                delayPoster = { _, block ->
+                    delays.add(block)
+                    val cancel: () -> Unit = { delays.remove(block); Unit }
+                    cancel
+                })
             c.onEditorStarted(false)
-            c.inputSymbol("(", isCurrent = { true }, canPair = { true })
-            if (literal) c.pasteExternal("a") else c.key('a'.code)
-            assertEquals("(a)", editor.text)
-            assertEquals(2, editor.caret)
-            c.backspace()
-            assertEquals("()", editor.text)
+            c.inputSymbol("（", isCurrent = { true }, canPair = { true })
+            c.onEditorSelectionChanged(0, 0, 1, 1)
+            var caret = 1
+            for (ch in listOf('a', 'b', 'c')) {
+                if (literal) c.pasteExternal(ch.toString()) else c.key(ch.code)
+                caret += 1
+                c.onEditorSelectionChanged(caret - 1, caret - 1, caret, caret)
+            }
+            assertEquals("（abc）", editor.text)
+            repeat(3) {
+                c.backspace()
+                caret -= 1
+                c.onEditorSelectionChanged(caret + 1, caret + 1, caret, caret)
+            }
+            assertEquals("（）", editor.text)
             assertEquals(1, editor.caret)
-            assertEquals(1, editor.operations.count { it == "sendDeleteKey" })
+            val delBefore = editor.operations.count { it == "sendDeleteKey" }
             c.backspace()
-            assertEquals(")", editor.text)
+            // 光标回到中间：联删（宿主确认移位后连发两次 DEL）。
+            assertEquals(listOf("moveCaret:2"), editor.operations.filter { it.startsWith("moveCaret") })
+            c.onEditorSelectionChanged(1, 1, 2, 2)
+            assertEquals("", editor.text)
+            assertEquals(0, editor.caret)
+            assertEquals(2, editor.operations.count { it == "sendDeleteKey" } - delBefore)
         }
+    }
+
+    @Test
+    fun rapidBackspacesInsidePairDoNotBypassJointDelete() {
+        // codex 评审 P2：(a b c|) 连删三次时宿主回声还没到，第二次退格
+        // 的预测位置仍是旧的——对内分支必须自行推进，否则退到中间后
+        // 按普通单删绕过联删，留下 "|)"。
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.pasteExternal("abc")
+        assertEquals("(abc)", editor.text)
+        // 三次退格之间完全不投递宿主回声。
+        repeat(3) { c.backspace() }
+        // 回声随后按序补齐：DEL1 的回报晚于 DEL2/3 的按键，落在最近
+        // 一次删除标记之外——范围必须覆盖在途删除，不能清掉归属。
+        c.onEditorSelectionChanged(4, 4, 3, 3)
+        c.onEditorSelectionChanged(3, 3, 2, 2)
+        c.onEditorSelectionChanged(2, 2, 1, 1)
+        assertEquals("()", editor.text)
+        assertEquals(1, editor.caret)
+        val delBefore = editor.operations.count { it == "sendDeleteKey" }
+        c.backspace()
+        assertEquals(listOf("moveCaret:2"), editor.operations.filter { it.startsWith("moveCaret") })
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+        assertEquals(0, editor.caret)
+        assertEquals(2, editor.operations.count { it == "sendDeleteKey" } - delBefore)
+    }
+
+    @Test
+    fun lateTypingEchoDoesNotDropThePendingInsideDelete() {
+        // codex 评审 P2：键入 a、紧跟退格，宿主先回 a 的迟到回声再回
+        // DEL 回声——旧实现会在这里清掉「对内删除」标记，DEL 回声就
+        // 成了外部编辑，成对归属丢失。
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.key('a'.code)
+        c.backspace()
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        c.onEditorSelectionChanged(2, 2, 1, 1)
+        assertEquals("()", editor.text)
+        val delBefore = editor.operations.count { it == "sendDeleteKey" }
+        c.backspace()
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+        assertEquals(0, editor.caret)
+        assertEquals(2, editor.operations.count { it == "sendDeleteKey" } - delBefore)
+    }
+
+    @Test
+    fun emptyingFrenchCompositionInsidePairKeepsOwnership() {
+        // codex 评审 P2：法语/俄语的组合串是编辑器 span，退格删空走
+        // expectReplacement(0)——删的是对里的内容，不算离开这一对。
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.selectMode(InputMode.FRENCH)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.key('q'.code)
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("(q)", editor.text)
+        c.backspace()
+        assertEquals("()", editor.text)
+        assertEquals(1, editor.caret)
+        val delBefore = editor.operations.count { it == "sendDeleteKey" }
+        c.backspace()
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+        assertEquals(0, editor.caret)
+        assertEquals(2, editor.operations.count { it == "sendDeleteKey" } - delBefore)
+    }
+
+    @Test
+    fun insideDeleteMarkerDoesNotLeakIntoTheNextPair() {
+        // codex 评审 P2：对内删除标记的生命周期绑在成对记录上，换会话
+        // 后不能拿旧标记保住新的一对。
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.pasteExternal("abc")
+        c.backspace()
+        assertEquals("(ab)", editor.text)
+        // 新编辑会话（新输入框）：成对记录与标记一起清零。
+        editor.text = ""
+        editor.caret = 0
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        assertEquals("()", editor.text)
+        // 多余的外部回声落在旧标记覆盖范围里：不能凭旧标记保活。
+        c.onEditorSelectionChanged(1, 1, 1, 1)
+        c.backspace()
+        assertEquals(")", editor.text)
+    }
+
+    @Test
+    fun codePointHostDeletesStillReachJointDelete() {
+        // codex 复审 P2：乐观减一只按一个 UTF-16 单位算；宿主按码点删
+        // emoji 时预测偏高，下一次退格会跳过中间判定直接删左括号。有
+        // 未确认删除时改用宿主文本核对裁决。
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        editor.sendDeleteKeyDeletesCodePoint = true
+        c.pasteExternal("😀")
+        assertEquals("(😀)", editor.text)
+        c.backspace()
+        assertEquals("()", editor.text)
+        assertEquals(1, editor.caret)
+        val delBefore = editor.operations.count { it == "sendDeleteKey" }
+        c.backspace()
+        assertEquals(listOf("moveCaret:2"), editor.operations.filter { it.startsWith("moveCaret") })
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+        assertEquals(0, editor.caret)
+        assertEquals(2, editor.operations.count { it == "sendDeleteKey" } - delBefore)
+    }
+
+    @Test
+    fun staleDeleteEchoDoesNotRegressThePrediction() {
+        // codex 复审 P2：三连删后只有第一笔的旧回声先到，不能把预测从
+        // 中间推回 3，否则下一次退格按普通单删删掉左括号。
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.pasteExternal("abc")
+        repeat(3) { c.backspace() }
+        assertEquals("()", editor.text)
+        c.onEditorSelectionChanged(4, 4, 3, 3)
+        val delBefore = editor.operations.count { it == "sendDeleteKey" }
+        c.backspace()
+        assertEquals(listOf("moveCaret:2"), editor.operations.filter { it.startsWith("moveCaret") })
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+        assertEquals(2, editor.operations.count { it == "sendDeleteKey" } - delBefore)
+    }
+
+    @Test
+    fun ownershipEndsWhenTheDeleteBatchIsConfirmed() {
+        // codex 复审 P2：删除批次确认完（标记收到中间）后，光标移到右
+        // 符号之后又移回来，不再是删除回声，归属作废。
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.pasteExternal("abc")
+        for (p in 4 downTo 2) {
+            c.backspace()
+            c.onEditorSelectionChanged(p, p, p - 1, p - 1)
+        }
+        assertEquals("()", editor.text)
+        editor.caret = 2
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        editor.caret = 1
+        c.onEditorSelectionChanged(2, 2, 1, 1)
+        c.backspace()
+        assertEquals(")", editor.text)
+    }
+
+    @Test
+    fun cancellingPinyinCompositionKeepsPairOwnership() {
+        // codex 复审 P2：拼音组合只在键盘 UI，取消/重写组合对宿主是
+        // 空操作，不该把成对归属作废。
+        val cancel = coordinator()
+        cancel.onEditorStarted(false)
+        cancel.selectMode(InputMode.PINYIN)
+        cancel.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        cancel.onEditorSelectionChanged(0, 0, 1, 1)
+        cancel.key('a'.code)
+        cancel.clearComposing(true)
+        assertEquals("()", editor.text)
+        cancel.backspace()
+        cancel.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+
+        val rewrite = coordinator()
+        rewrite.onEditorStarted(false)
+        rewrite.selectMode(InputMode.PINYIN)
+        rewrite.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        rewrite.onEditorSelectionChanged(0, 0, 1, 1)
+        rewrite.key('a'.code)
+        rewrite.setComposition("b")
+        rewrite.backspace()
+        assertEquals("()", editor.text)
+        rewrite.backspace()
+        rewrite.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
     }
 
     @Test
