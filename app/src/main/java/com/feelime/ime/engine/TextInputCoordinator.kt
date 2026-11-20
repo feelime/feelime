@@ -185,7 +185,16 @@ class TextInputCoordinator(
     private var predictedSelectionEnd = -1
     private val expectedSelections = ArrayDeque<Pair<Int, Int>>()
 
-    private data class PairedSymbol(val open: String, val close: String, val center: Int, val editorGeneration: Long)
+    /** parent = 这一对是在哪一对里面补出来的（嵌套补全，2026-11-20：
+     *  "" 里再打 ' 得到 "''"，删掉内层后外层仍然可联删）。链接只沿
+     *  创建时的光标位置天然 LIFO，不需要独立栈。 */
+    data class PairedSymbol(
+        val open: String,
+        val close: String,
+        val center: Int,
+        val editorGeneration: Long,
+        val parent: PairedSymbol? = null,
+    )
     private var pendingPairedSymbol: PairedSymbol? = null
     // DEL 键、宿主快捷键等操作的位置变化无法预测，等待宿主回报后再补全。
     private var pairedSelectionKnown = false
@@ -211,6 +220,8 @@ class TextInputCoordinator(
         val center: Int,
         val target: Int,
         val marker: Int,
+        /** 外层补全记录：内层整对删净后恢复，回到外层归属。 */
+        val parent: PairedSymbol?,
         val cancel: () -> Unit,
         val after: () -> Unit,
     )
@@ -266,7 +277,8 @@ class TextInputCoordinator(
                 return
             }
             if (expectedSelections.isEmpty() && newSelStart == newSelEnd && pd?.target == newSelStart) {
-                finishPairedDelete()
+                // 整对删净且位置确认：内层删除成功，恢复外层归属。
+                finishPairedDelete(restoreParent = true)
             }
             return
         }
@@ -1131,15 +1143,22 @@ class TextInputCoordinator(
             return pasteExternalNow(open, onComplete = onComplete)
         }
 
-        clearPairedSymbol()
+        // 在这一对里面再补一对（用户实测 2026-11-20："" 里再打 ' 得到
+        // "''"）：外层记录挂成 parent，内层删净后恢复，外层仍可联删。
+        val parent = pendingPairedSymbol?.takeIf { caretInsidePairedSymbol() }
         invalidateWordUndo()
         when (editor.commitPaired(open, close, start)) {
+            // 提交失败走字面回退，外层归属保持原样（提交什么都没发生）。
             EditorPort.PairedCommit.NOT_COMMITTED -> return pasteExternalNow(open, onComplete = onComplete)
-            EditorPort.PairedCommit.AT_END -> expectCaret(start + open.length + close.length)
+            EditorPort.PairedCommit.AT_END -> {
+                clearPairedSymbol()
+                expectCaret(start + open.length + close.length)
+            }
             EditorPort.PairedCommit.CENTERED -> {
+                clearPairedSymbol()
                 val center = start + open.length
                 expectCaret(center)
-                pendingPairedSymbol = PairedSymbol(open, close, center, editorGeneration)
+                pendingPairedSymbol = PairedSymbol(open, close, center, editorGeneration, parent)
             }
         }
         onComplete()
@@ -1356,14 +1375,14 @@ class TextInputCoordinator(
                         // 查询期间移位或走了直达宿主的编辑入口，旧退格不再作用于新现场。
                         val result = if (pendingPairedSymbol === pair && matches != null) event
                             else event.copy(consumed = true)
-                        val pairedDeleteStarted: ((Int, Int, Int, Int) -> Unit)? =
+                        val pairedDeleteStarted: ((Int, Int, Int, Int, PairedSymbol?) -> Unit)? =
                             if (result === event && matches == true) {
                                 // 宿主核对通过 = 真实光标就在中间：预测偏了
                                 // （多单位删除那个方向）也按中间执行联删。
                                 predictedSelectionStart = pair.center
                                 predictedSelectionEnd = pair.center
-                                { shiftTo, center, target, marker ->
-                                    awaitPairedDelete(shiftTo, center, target, marker, ::complete)
+                                { shiftTo, center, target, marker, parent ->
+                                    awaitPairedDelete(shiftTo, center, target, marker, parent, ::complete)
                                 }
                             } else null
                         onEngineEvent(result, command, seq, hwTag, pairedDeleteStarted)
@@ -1734,7 +1753,7 @@ class TextInputCoordinator(
         command: EngineCommand? = null,
         seq: Long = 0L,
         hwTag: Long = 0L,
-        pairedDeleteStarted: ((Int, Int, Int, Int) -> Unit)? = null,
+        pairedDeleteStarted: ((Int, Int, Int, Int, PairedSymbol?) -> Unit)? = null,
     ) {
         // The stamp check is what makes late async callbacks harmless: after
         // any generation or mode change their stamp no longer matches.
@@ -1969,7 +1988,7 @@ class TextInputCoordinator(
      * burned the framework's 2000ms watchdog before the key went out.
      * KEYCODE_DEL deletes a selection natively (device-verified: 5 chars
      * removed, caret converged), so the branch was pure cost. */
-    private fun deleteOneEditorUnit(pairedDeleteStarted: ((Int, Int, Int, Int) -> Unit)?) {
+    private fun deleteOneEditorUnit(pairedDeleteStarted: ((Int, Int, Int, Int, PairedSymbol?) -> Unit)?) {
         // 联删进行中：迟到的退格裁决（宿主核对是异步的）不再单独删字，
         // 免得落进移光标/连删的窗口多删一个。
         if (pairedDelete != null) return
@@ -1984,7 +2003,7 @@ class TextInputCoordinator(
             if (editor.moveCaret(end)) {
                 expectCaret(end)
                 pairedDeleteStarted(end, pair.center, pair.center - pair.open.length,
-                    expectedSelections.size - 1)
+                    expectedSelections.size - 1, pair.parent)
                 return
             }
             onUntrackedEditorMutation()
@@ -2017,7 +2036,14 @@ class TextInputCoordinator(
         editor.sendDeleteKey()
     }
 
-    private fun awaitPairedDelete(shiftTo: Int, center: Int, target: Int, marker: Int, after: () -> Unit) {
+    private fun awaitPairedDelete(
+        shiftTo: Int,
+        center: Int,
+        target: Int,
+        marker: Int,
+        parent: PairedSymbol?,
+        after: () -> Unit,
+    ) {
         // 宿主异步执行移位与 DEL 键。等位置回报再回放排队的字符；
         // 超时降级为单次退格（不会误删邻字），并结清本操作的预期。
         // 没有延时通道（生产恒有；测试/极简壳兜底）时同样降级单删。
@@ -2037,7 +2063,7 @@ class TextInputCoordinator(
             // 括号字符（两个位置都安全），不连发。
             if (wasWaitingShift) editor.sendDeleteKey()
         }
-        pairedDelete = PairedDelete(1, shiftTo, center, target, marker, cancel, after)
+        pairedDelete = PairedDelete(1, shiftTo, center, target, marker, parent, cancel, after)
     }
 
     /** 把预期队列截回 marker：本操作没被宿主逐个确认的位置不再参与
@@ -2046,10 +2072,20 @@ class TextInputCoordinator(
         while (expectedSelections.size > marker) expectedSelections.removeLast()
     }
 
-    private fun finishPairedDelete() {
+    private fun finishPairedDelete(restoreParent: Boolean = false) {
         val deletion = pairedDelete ?: return
         pairedDelete = null
         deletion.cancel()
+        if (restoreParent) {
+            // 内层整对删净：回到外层补全的归属（"" → 删内层 ' → 仍可联删）。
+            // 期间若已经产生新的一对，不覆盖。
+            val parent = deletion.parent
+            if (parent != null && parent.editorGeneration == editorGeneration &&
+                pendingPairedSymbol == null
+            ) {
+                pendingPairedSymbol = parent
+            }
+        }
         deletion.after()
     }
 

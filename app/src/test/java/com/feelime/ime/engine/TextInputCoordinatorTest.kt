@@ -624,6 +624,64 @@ class TextInputCoordinatorTest {
     }
 
     @Test
+    fun nestedPairsDeleteInnerThenOuter() {
+        // 用户实测（2026-11-20）："" 里再打 ' 得到 "''"，删掉内层后两个
+        // 引号还在；再退格要连外层一起删。中文 （“”） 同理。
+        val quote = coordinator()
+        quote.onEditorStarted(false)
+        quote.inputSymbol("\"", isCurrent = { true }, canPair = { true })
+        assertEquals("\"\"", editor.text)
+        quote.onEditorSelectionChanged(0, 0, 1, 1)
+        quote.inputSymbol("'", isCurrent = { true }, canPair = { true })
+        assertEquals("\"''\"", editor.text)
+        quote.onEditorSelectionChanged(1, 1, 2, 2)
+        quote.backspace()
+        quote.onEditorSelectionChanged(2, 2, 3, 3)
+        assertEquals("\"\"", editor.text)
+        assertEquals(1, editor.caret)
+        quote.onEditorSelectionChanged(3, 3, 1, 1)
+        // 内层删净后外层归属恢复：再退格整对删除。
+        val delBefore = editor.operations.count { it == "sendDeleteKey" }
+        quote.backspace()
+        quote.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+        assertEquals(0, editor.caret)
+        assertEquals(2, editor.operations.count { it == "sendDeleteKey" } - delBefore)
+
+        // 同形嵌套：连续打两个 " 得到 """"，两次联删删净。
+        val same = coordinator()
+        same.onEditorStarted(false)
+        same.inputSymbol("\"", isCurrent = { true }, canPair = { true })
+        same.onEditorSelectionChanged(0, 0, 1, 1)
+        same.inputSymbol("\"", isCurrent = { true }, canPair = { true })
+        assertEquals("\"\"\"\"", editor.text)
+        same.onEditorSelectionChanged(1, 1, 2, 2)
+        same.backspace()
+        same.onEditorSelectionChanged(2, 2, 3, 3)
+        assertEquals("\"\"", editor.text)
+        same.onEditorSelectionChanged(3, 3, 1, 1)
+        same.backspace()
+        same.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+
+        // 中文全角：（）里再打 “” 。
+        val cn = coordinator()
+        cn.onEditorStarted(false)
+        cn.inputSymbol("（", isCurrent = { true }, canPair = { true })
+        cn.onEditorSelectionChanged(0, 0, 1, 1)
+        cn.inputSymbol("“", isCurrent = { true }, canPair = { true })
+        assertEquals("（“”）", editor.text)
+        cn.onEditorSelectionChanged(1, 1, 2, 2)
+        cn.backspace()
+        cn.onEditorSelectionChanged(2, 2, 3, 3)
+        assertEquals("（）", editor.text)
+        cn.onEditorSelectionChanged(3, 3, 1, 1)
+        cn.backspace()
+        cn.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+    }
+
+    @Test
     fun movingCaretAwayAndBackDiscardsPairOwnership() {
         val c = coordinator()
         c.onEditorStarted(false)
