@@ -110,9 +110,10 @@ const LANG_KB = {
         alts: { й: '1', ц: '2', у: '3', к: '4', е: '5', н: '6', г: '7', ш: '8', щ: '9', з: '0', х: '-', ъ: '=',
             ф: '\\', ы: '/', в: ':', а: ';', п: '(', р: ')', о: '~', л: '"', д: "'", ж: '«', э: '»',
             я: '@', ч: '_', с: '#', м: '&', и: '?', т: '!', ь: '…', б: ',', ю: '.', '.': ',' } },
-    /* #118 T9 九宫格：预览渲染 3×3（renderLangKb 分支），编辑面只有
-     * 2-9 八键的左右长按符号（syms），与 keyboard.js
-     * LAYOUTS.t9.keySymbols 逐项同值（mock 双侧锁内容防漂移）。 */
+    /* #118 T9 九宫格：预览渲染 3×3（renderLangKb 分支）。可定制面：
+     * 2-9 的左右长按符号（syms，与此表逐项同值，mock 双侧锁内容防
+     * 漂移）、1-9 的上滑/下滑（默认语义见键盘端 t9Flick）、1 键的单击
+     * （默认=符号行）。 */
     t9: { title: 'ck.lang.t9', rows: ['123', '456', '789'], t9: true,
         keySymbols: {
             '2': ['—', '&'], '3': ['（', '）'], '4': ['「', '」'], '5': ['、', '：'],
@@ -397,8 +398,15 @@ const I18N = {
         "ck.lang.t9": "九宫格键盘",
         "ck.lang.t9SymL": "左符号",
         "ck.lang.t9SymR": "右符号",
-        "ck.lang.hintT9": "点 2-9 键定制长按弹层的左右符号；字母组、数字与滑动不变。",
-        "ck.lang.hint2T9": "1 键（标点）、0/空格与退格不可定制。",
+        "ck.lang.slotTap": "单击",
+        "ck.lang.t9DefTap": "默认 · 符号行",
+        "ck.lang.t9Def1Up": "默认 · 字面 1",
+        "ck.lang.t9Def1Down": "默认 · 无动作",
+        "ck.lang.t9DefUp": "默认 · 字面 {0}",
+        "ck.lang.t9DefDown": "默认 · 中间字母（7/9 拆选）",
+        "ck.lang.t9OneNote": "1 键默认单击 = 打开西文/技术符号行（@ # . * + - _ / =）。",
+        "ck.lang.hintT9": "点 1-9 键定制：1 键的单击、长按符号与上滑/下滑；字母组与点按数字不变。",
+        "ck.lang.hint2T9": "0/空格与退格不可定制。",
         "ck.err.t9Syms": "左右符号都必填（1-3 个字符）",
         "ck.lang.count": "已定制 {count} 键",
         "ck.lang.default": "默认",
@@ -1279,8 +1287,15 @@ const I18N = {
         "ck.lang.t9": "Nine-key pad",
         "ck.lang.t9SymL": "Left symbol",
         "ck.lang.t9SymR": "Right symbol",
-        "ck.lang.hintT9": "Tap 2-9 to customize the two long-press symbols; letter groups, digits and flicks stay unchanged.",
-        "ck.lang.hint2T9": "The 1 key (punctuation), 0/space and backspace are fixed.",
+        "ck.lang.slotTap": "Tap",
+        "ck.lang.t9DefTap": "Default · symbol row",
+        "ck.lang.t9Def1Up": "Default · literal 1",
+        "ck.lang.t9Def1Down": "Default · none",
+        "ck.lang.t9DefUp": "Default · literal {0}",
+        "ck.lang.t9DefDown": "Default · middle letter (7/9 split)",
+        "ck.lang.t9OneNote": "The 1 key opens the symbol row by default (@ # . * + - _ / =).",
+        "ck.lang.hintT9": "Tap keys 1-9 to customize: key 1's tap, long-press symbols and up/down flicks; letter groups and digit taps stay unchanged.",
+        "ck.lang.hint2T9": "0/space and backspace are fixed.",
         "ck.err.t9Syms": "Both symbols are required (1-3 characters each)",
         "ck.lang.count": "{count} keys customized",
         "ck.lang.default": "Default",
@@ -5872,63 +5887,7 @@ function ckBuildLangKeyForm(body, d) {
     }
 
     for (const [slot, labelKey] of [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]) {
-        const sec = document.createElement("div");
-        sec.className = "ck-lang-sec";
-        const head = document.createElement("div");
-        head.className = "ck-lang-sec-t";
-        const title = document.createElement("span");
-        title.textContent = t(labelKey);
-        const cur = document.createElement("span");
-        cur.className = "ck-lang-sec-cur";
-        const refreshCur = () => {
-            // 三态摘要（codex review P2）：「关闭」序列化为空串，
-            // 只看串空会把显式关闭显示成「键盘默认」。
-            const m = d[slot].mode;
-            cur.textContent = m === "none" ? t("ck.f.mode.none")
-                : m === "def"
-                    ? t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
-                        .replace("{0}", d.langKey.toUpperCase())
-                    : ckTapFromDraft(d[slot]);
-            cur.classList.toggle("set", m !== "def");
-        };
-        head.append(title, cur);
-        sec.append(head);
-
-        const modeList = [["def", "ck.f.mode.def"], ["none", "ck.f.mode.none"],
-            ...CK_MODES];
-        const modeSel = document.createElement("select");
-        modeSel.className = "ck-input";
-        modeList.forEach(([value, labelKey2]) => {
-            const opt = document.createElement("option");
-            opt.value = value;
-            opt.textContent = t(labelKey2);
-            modeSel.append(opt);
-        });
-        modeSel.value = modeList.some(([v]) => v === d[slot].mode) ? d[slot].mode : "def";
-        modeSel.addEventListener("change", () => {
-            const m = modeSel.value;
-            d[slot] = m === "def" ? { mode: "def" }
-                : m === "none" ? { mode: "none" }
-                : { mode: m, ...(m === "op" ? { op: "copy" }
-                    : m === "panel" ? { panel: "clipboard" }
-                    : m === "single" ? { single: "esc" }
-                    : m === "combo" ? { comboKey: "s", mods: new Set(["ctrl"]) }
-                    : m === "text" ? { text: "" }
-                    : m === "open" ? { open: "" }
-                    : m === "setting" ? { setting: "" }
-                    : m === "advanced" ? { dsl: "" }
-                    : {}) };
-            ckBuildForm(); // 整体重建（ckBuildForm 会清空 body 再走 langkey 分支）
-        });
-        sec.append(ckField(t("ck.f.kind"), modeSel));
-
-        if (d[slot].mode !== "def" && d[slot].mode !== "none") {
-            const holder = document.createElement("div");
-            sec.append(holder);
-            // 槽 draft 直通：ckBuildAction 的监听写到 d[slot] 上。
-            ckBuildAction(holder, d[slot]);
-        }
-        refreshCur(); // 存量死码激活：头部「当前值」摘要从未初始化过
+        const { sec, refreshCur } = ckLangSlotSection(d, slot, labelKey);
         body.append(sec);
 
         if (slot === "up" && !isPunct && d.up.mode === "text") {
@@ -5945,6 +5904,104 @@ function ckBuildLangKeyForm(body, d) {
             });
         }
     }
+}
+
+/** 槽内 open/setting 的保存前校验（键盘侧 parseLangKeys 还会整表复查；
+ *  这里先拦是为了错误就地显示、不惊动整份定制表）。返回错误文案或 null。 */
+function ckValidateLangSlots(d, slots) {
+    for (const slot of slots) {
+        const s = d[slot] || {};
+        if (s.mode === "open") {
+            const uri = (s.open || "").trim();
+            const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) &&
+                !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
+            if (!ok) return t("ck.err.open");
+        }
+        if (s.mode === "setting") {
+            const id = (s.setting || "").trim();
+            if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
+                return t("ck.err.setting");
+            }
+        }
+    }
+    return null;
+}
+
+/** 「键盘默认」摘要文案：语言键盘按布局口径（T9 的默认动作与字母键盘
+ *  不同），T9 的 1 键上滑/下滑与其它键又各是一套。 */
+function ckLangSlotDefText(d, slot) {
+    if (d.langLay === "t9") {
+        if (slot === "tap") return t("ck.lang.t9DefTap");
+        if (d.langKey === "1") {
+            return t(slot === "up" ? "ck.lang.t9Def1Up" : "ck.lang.t9Def1Down");
+        }
+        return t(slot === "up" ? "ck.lang.t9DefUp" : "ck.lang.t9DefDown")
+            .replace("{0}", d.langKey);
+    }
+    return t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown")
+        .replace("{0}", d.langKey.toUpperCase());
+}
+
+/** 一个槽的小节（语言键盘键的上滑/下滑、T9 键的单击/上滑/下滑共用）：
+ *  三态类型下拉（键盘默认 / 关闭 / CK_MODES）+ 类型参数区 + 当前值摘要。
+ *  返回 refreshCur 给调用方做原地摘要刷新（如 altAsUp 联动）。 */
+function ckLangSlotSection(d, slot, labelKey) {
+    const sec = document.createElement("div");
+    sec.className = "ck-lang-sec";
+    const head = document.createElement("div");
+    head.className = "ck-lang-sec-t";
+    const title = document.createElement("span");
+    title.textContent = t(labelKey);
+    const cur = document.createElement("span");
+    cur.className = "ck-lang-sec-cur";
+    const defText = ckLangSlotDefText(d, slot);
+    const refreshCur = () => {
+        // 三态摘要（codex review P2）：「关闭」序列化为空串，
+        // 只看串空会把显式关闭显示成「键盘默认」。
+        const m = d[slot].mode;
+        cur.textContent = m === "none" ? t("ck.f.mode.none")
+            : m === "def" ? defText : ckTapFromDraft(d[slot]);
+        cur.classList.toggle("set", m !== "def");
+    };
+    head.append(title, cur);
+    sec.append(head);
+
+    const modeList = [["def", "ck.f.mode.def"], ["none", "ck.f.mode.none"],
+        ...CK_MODES];
+    const modeSel = document.createElement("select");
+    modeSel.className = "ck-input";
+    modeList.forEach(([value, labelKey2]) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = t(labelKey2);
+        modeSel.append(opt);
+    });
+    modeSel.value = modeList.some(([v]) => v === d[slot].mode) ? d[slot].mode : "def";
+    modeSel.addEventListener("change", () => {
+        const m = modeSel.value;
+        d[slot] = m === "def" ? { mode: "def" }
+            : m === "none" ? { mode: "none" }
+            : { mode: m, ...(m === "op" ? { op: "copy" }
+                : m === "panel" ? { panel: "clipboard" }
+                : m === "single" ? { single: "esc" }
+                : m === "combo" ? { comboKey: "s", mods: new Set(["ctrl"]) }
+                : m === "text" ? { text: "" }
+                : m === "open" ? { open: "" }
+                : m === "setting" ? { setting: "" }
+                : m === "advanced" ? { dsl: "" }
+                : {}) };
+        ckBuildForm(); // 整体重建（ckBuildForm 会清空 body 再走当前编辑器分支）
+    });
+    sec.append(ckField(t("ck.f.kind"), modeSel));
+
+    if (d[slot].mode !== "def" && d[slot].mode !== "none") {
+        const holder = document.createElement("div");
+        sec.append(holder);
+        // 槽 draft 直通：ckBuildAction 的监听写到 d[slot] 上。
+        ckBuildAction(holder, d[slot]);
+    }
+    refreshCur(); // 存量死码激活：头部「当前值」摘要从未初始化过
+    return { sec, refreshCur };
 }
 
 /** 打开语言键盘键编辑器（layout id + 键字符）。 */
@@ -5966,38 +6023,70 @@ function openLangKeyEditor(lay, key) {
         t("ck.lang.editTitle").replace("{0}", key === "." ? "，" : key.toUpperCase());
 }
 
-/** #118 T9 键编辑器：轻量表单（左/右长按符号两个输入框），不走
- *  ckBuildForm 大编辑器（类型/动作/DSL 对 T9 键无语义——codex 方案
- *  2026-11-19）。输入框预填当前值（定制或默认），保存必填 ≤3 字。 */
+/** #118/#119 T9 键编辑器：2-9 键左右长按符号两个输入框（预填当前值，
+ *  必填 ≤3 字）+ 全键的上滑/下滑槽；1 键没有字母组/长按弹层，改开放
+ *  单击槽（默认=符号行）。槽复用语言键盘键的小节组件（#119）。 */
 function openT9KeyEditor(key) {
     ckEditorTarget = "t9key";
     ckSel = null;
     const cell = (ckLangKeys.t9 || {})[key] || {};
-    const def = LANG_KB.t9.keySymbols[key] || ["", ""];
-    const cur = Array.isArray(cell.syms) && cell.syms.length === 2 ? cell.syms : def;
-    ckDraft = { langLay: "t9", langKey: key };
-    const body = $("ckEditBody");
-    body.textContent = "";
-    const wrap = document.createElement("div");
-    wrap.className = "ck-t9-form";
-    for (const [idx, labelKey] of [[0, "ck.lang.t9SymL"], [1, "ck.lang.t9SymR"]]) {
-        const field = document.createElement("label");
-        field.className = "ck-t9-field";
-        const cap = document.createElement("span");
-        cap.textContent = t(labelKey);
-        const input = document.createElement("input");
-        input.type = "text";
-        input.id = idx === 0 ? "ckT9SymL" : "ckT9SymR";
-        input.maxLength = 3;
-        input.value = cur[idx] || "";
-        input.placeholder = def[idx] || "";
-        field.append(cap, input);
-        wrap.append(field);
-    }
-    body.append(wrap);
+    ckDraft = {
+        langLay: "t9", langKey: key,
+        syms: Array.isArray(cell.syms) && cell.syms.length === 2 ? cell.syms.slice() : null,
+        tap: ckLangSlotParse(cell.tap),
+        up: ckLangSlotParse(cell.up), down: ckLangSlotParse(cell.down),
+        t: "", text: "", single: "esc", comboKey: "s",
+        mods: new Set(["ctrl"]), open: "", setting: "", panel: "clipboard",
+        dsl: "", color: "", note: "", span: 0,
+    };
+    ckBuildForm();
     ckOpenModal(false);
     document.getElementById("ckModalTitle").textContent =
         t("ck.lang.editTitle").replace("{0}", key);
+}
+
+/** T9 键编辑表单（ckBuildForm 的 t9key 分支）：符号输入区（2-9）+
+ *  单击槽（1）+ 上滑/下滑槽（全部）。 */
+function ckBuildT9KeyForm(body, d) {
+    if (d.langKey === "1") {
+        const note = document.createElement("div");
+        note.className = "ck-row2 ck-row2-bare";
+        note.innerHTML = '<div class="ck-lang-lock"><span class="ck-lang-k">1</span><span>'
+            + t("ck.lang.t9OneNote") + "</span></div>";
+        body.append(note);
+    } else {
+        const def = LANG_KB.t9.keySymbols[d.langKey] || ["", ""];
+        const cur = d.syms && d.syms.length === 2 ? d.syms : def;
+        const wrap = document.createElement("div");
+        wrap.className = "ck-t9-form";
+        for (const [idx, labelKey] of [[0, "ck.lang.t9SymL"], [1, "ck.lang.t9SymR"]]) {
+            const field = document.createElement("label");
+            field.className = "ck-t9-field";
+            const cap = document.createElement("span");
+            cap.textContent = t(labelKey);
+            const input = document.createElement("input");
+            input.type = "text";
+            input.id = idx === 0 ? "ckT9SymL" : "ckT9SymR";
+            input.maxLength = 3;
+            input.value = cur[idx] || "";
+            input.placeholder = def[idx] || "";
+            // 回写 draft：改槽位会整表重建表单，输入不能只活在 DOM 里。
+            input.addEventListener("input", () => {
+                const l = document.getElementById("ckT9SymL");
+                const r = document.getElementById("ckT9SymR");
+                d.syms = [l ? l.value : "", r ? r.value : ""];
+            });
+            field.append(cap, input);
+            wrap.append(field);
+        }
+        body.append(wrap);
+    }
+    const slots = d.langKey === "1"
+        ? [["tap", "ck.lang.slotTap"], ["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]
+        : [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]];
+    for (const [slot, labelKey] of slots) {
+        body.append(ckLangSlotSection(d, slot, labelKey).sec);
+    }
 }
 
 /** #50 长按空格=虚拟定制键：与定制键同一编辑器（类型+动作，无键面
@@ -6123,6 +6212,11 @@ function ckBuildForm() {
     // 小节（每槽一套类型下拉+参数，类型集含「键盘默认」）。
     if (ckEditorTarget === "langkey") {
         ckBuildLangKeyForm(body, d);
+        return;
+    }
+    // T9 键（#119）：符号输入 + 单击/上滑/下滑槽。
+    if (ckEditorTarget === "t9key") {
+        ckBuildT9KeyForm(body, d);
         return;
     }
     if (ckEditorTarget === "cell") {
@@ -6450,16 +6544,36 @@ function ckBuildAction(holder, target) {
 
 $("ckApply").addEventListener("click", () => {
     const d = ckDraft;
-    // #118 T9 键：左右符号必填 ≤3 字（与键盘端 parseLangKeys 同口径；
-    // 首期不做「空=隐藏」——弹层拆行假设中行恒三格，空符号会挤行）。
+    // #118/#119 T9 键：syms（2-9 键，左右符号必填 ≤3 字——弹层拆行
+    // 假设中行恒三格，空符号会挤行）+ 1 键的单击槽 + 全键上滑/下滑槽。
+    // 槽「关闭」落空串（键盘侧吞掉手势），「键盘默认」不落；与 langKeys
+    // 其它布局同一套槽语义（parseLangKeys 权威校验）。
     if (ckEditorTarget === "t9key") {
-        const l = document.getElementById("ckT9SymL").value.trim();
-        const r = document.getElementById("ckT9SymR").value.trim();
-        if (!l || !r || [...l].length > 3 || [...r].length > 3) {
-            return setNote("ckEditNote", t("ck.err.t9Syms"));
+        const cell = {};
+        if (d.langKey !== "1") {
+            const l = ((d.syms && d.syms[0]) || "").trim();
+            const r = ((d.syms && d.syms[1]) || "").trim();
+            if (!l || !r || [...l].length > 3 || [...r].length > 3) {
+                return setNote("ckEditNote", t("ck.err.t9Syms"));
+            }
+            cell.syms = [l, r];
+        }
+        const slots = d.langKey === "1" ? ["tap", "up", "down"] : ["up", "down"];
+        const slotErr = ckValidateLangSlots(d, slots);
+        if (slotErr) return setNote("ckEditNote", slotErr);
+        for (const slot of slots) {
+            const m = d[slot] ? d[slot].mode : "def";
+            if (m === "def") continue;
+            const dsl = m === "none" ? "" : ckTapFromDraft(d[slot]);
+            // 非空模式序列化出空串（text 空文本等）当「未设置」不落，
+            // 别降级成「关闭」语义。
+            if (m !== "none" && !dsl) continue;
+            cell[slot] = dsl;
         }
         const table = (ckLangKeys.t9 = ckLangKeys.t9 || {});
-        table[d.langKey] = { syms: [l, r] };
+        if (Object.keys(cell).length) table[d.langKey] = cell;
+        else delete table[d.langKey];
+        if (!Object.keys(table).length) delete ckLangKeys.t9;
         ckMarkDirty(true);
         refreshLangCounts();
         renderLangKb("t9");
@@ -6513,21 +6627,8 @@ $("ckApply").addEventListener("click", () => {
     // 槽「关闭」落空串（键盘侧 tap==="" 吞掉手势），「键盘默认」不落。
     if (ckEditorTarget === "langkey") {
         const lay = d.langLay, key = d.langKey;
-        for (const slot of ["up", "down"]) {
-            const s = d[slot] || {};
-            if (s.mode === "open") {
-                const uri = (s.open || "").trim();
-                const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) &&
-                    !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
-                if (!ok) return setNote("ckEditNote", t("ck.err.open"));
-            }
-            if (s.mode === "setting") {
-                const id = (s.setting || "").trim();
-                if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
-                    return setNote("ckEditNote", t("ck.err.setting"));
-                }
-            }
-        }
+        const slotErr = ckValidateLangSlots(d, ["up", "down"]);
+        if (slotErr) return setNote("ckEditNote", slotErr);
         const table = (ckLangKeys[lay] = ckLangKeys[lay] || {});
         const cell = {};
         if (d.alt) cell.alt = [...d.alt].slice(0, 3).join("");
@@ -6624,9 +6725,9 @@ function renderLangKb(lay) {
     if (title) title.textContent = t(conf.title);
     const table = ckLangKeys[lay] || {};
     host.textContent = "";
-    // #118 T9 九宫格：三行各三键（2-9 可定制，1 键固定标点行为），
-    // 无第三行功能键与底行——可定制面只有长按符号。页内 hint 换 T9
-    // 版（applyI18n 重置后重进页会再次覆盖）。
+    // #118 T9 九宫格：三行各三键（1-9 均可点：2-9 符号+滑动，1 键单击
+    // +滑动），无第三行功能键与底行。页内 hint 换 T9 版（applyI18n
+    // 重置后重进页会再次覆盖）。
     const hintEl = document.querySelector('#cklangKb ~ p.hint, [data-page="cklang"] p.hint:nth-of-type(1)');
     const hint2El = document.querySelector('[data-page="cklang"] p.hint:nth-of-type(2)');
     if (conf.t9) {
@@ -6700,25 +6801,26 @@ function ckLangKeyEl(lay, key, cell) {
 }
 
 /** #118 T9 键的预览格：复刻 t9LetterKey 三层——左上长按符号、右上
- *  数字、主字字母组。1 键固定（@#. 标点行为），不可定制。 */
+ *  数字、主字字母组。1 键（@#.）没有字母组/长按符号，右上数字 + 主字
+ *  符号组；#119 起也可点（定制单击/上滑/下滑）。 */
 function t9LangKeyEl(key, cell) {
     const conf = LANG_KB.t9;
-    if (key === "1") {
-        const el = document.createElement("span");
-        el.className = "ck-lang-key ck-lang-key-sp ck-t9-key ck-t9-fixed";
-        el.textContent = "@#.";
-        return el;
-    }
     const el = document.createElement("button");
     el.type = "button";
     el.className = "ck-lang-key ck-t9-key";
-    const syms = cell && Array.isArray(cell.syms) && cell.syms.length === 2
-        ? cell.syms : (conf.keySymbols[key] || []);
-    el.innerHTML = '<span class="ck-lang-sub"></span>'
-        + '<span class="ck-t9-sup"></span><span class="ck-lang-main"></span>';
-    el.querySelector(".ck-lang-sub").textContent = syms.join("");
-    el.querySelector(".ck-t9-sup").textContent = key;
-    el.querySelector(".ck-lang-main").textContent = (conf.alts[key] || "").toUpperCase();
+    if (key === "1") {
+        el.innerHTML = '<span class="ck-t9-sup"></span><span class="ck-lang-main"></span>';
+        el.querySelector(".ck-t9-sup").textContent = key;
+        el.querySelector(".ck-lang-main").textContent = "@#.";
+    } else {
+        const syms = cell && Array.isArray(cell.syms) && cell.syms.length === 2
+            ? cell.syms : (conf.keySymbols[key] || []);
+        el.innerHTML = '<span class="ck-lang-sub"></span>'
+            + '<span class="ck-t9-sup"></span><span class="ck-lang-main"></span>';
+        el.querySelector(".ck-lang-sub").textContent = syms.join("");
+        el.querySelector(".ck-t9-sup").textContent = key;
+        el.querySelector(".ck-lang-main").textContent = (conf.alts[key] || "").toUpperCase();
+    }
     if (cell && Object.keys(cell).length) el.classList.add("ck-lang-custom");
     el.setAttribute("aria-label", t("ck.lang.editKey").replace("{0}", key));
     el.addEventListener("click", () => openT9KeyEditor(key));

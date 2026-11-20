@@ -3029,21 +3029,23 @@ test('lang keys: editor saves alt + flick slots into langKeys and the pack', () 
     equal(parsed.langKeys.pinyin.q.down, '[edit:copy]', 'down slot saved as [edit:x]');
 });
 
-// #118 T9 九宫格定制：入口第六行 → 3×3 预览（2-9 可点、1 固定）→
-// 轻量编辑器（左右符号两输入框）→ ckLangKeys.t9 打包 syms。
-test('t9 keys: preview renders 3x3, light editor packs syms (#118)', () => {
+// #118/#119 T9 九宫格定制：入口第六行 → 3×3 预览（1-9 可点）→ 编辑器
+// （2-9 左右长按符号两输入框；全键上滑/下滑槽；1 键单击槽）→
+// ckLangKeys.t9 打包 syms/tap/up/down。
+test('t9 keys: preview renders 3x3, editors pack syms/flicks/tap (#118/#119)', () => {
     const world = new SettingsWorld();
     world.push({ ...BASE_STATE });
     const FS = world.FeelimeSettings();
     FS.showPage('cklang');
     world.doc.querySelector('[data-cklang="t9"]').click();
     const kb = world.doc.getElementById('cklangKb');
-    // 3×3：九个键格，其中 1 键锁定（@#.），2-9 可点编辑。
+    // 3×3：九个键格，全部可点编辑（#119 起 1 键也开放）。
     const keys = kb.querySelectorAll('.ck-lang-key');
     equal(keys.length, 9, '3x3 grid renders nine cells');
-    const locked = kb.querySelectorAll('.ck-lang-key-sp');
-    equal(locked.length, 1, 'only the 1 key is locked');
-    equal(locked[0].textContent, '@#.', '1 key shows its punctuation face');
+    equal(kb.querySelectorAll('.ck-lang-key-sp').length, 0, 'no locked cells left');
+    const key1 = [...keys].find(el => el.querySelector('.ck-t9-sup')?.textContent === '1');
+    equal(key1.tagName, 'BUTTON', '1 key is editable');
+    equal(key1.querySelector('.ck-lang-main').textContent, '@#.', '1 key symbol face');
     // 默认符号上键面（2 → —&，与 keyboard.js keySymbols 同源）。
     const key2 = [...keys].find(el => el.querySelector('.ck-t9-sup')?.textContent === '2');
     equal(key2.querySelector('.ck-lang-sub').textContent, '—&',
@@ -3057,26 +3059,58 @@ test('t9 keys: preview renders 3x3, light editor packs syms (#118)', () => {
             .querySelector('.ck-lang-sub').textContent, stockT9[digit],
             `settings key ${digit} matches the stock table`);
     }
-    // 点 2 → 轻量编辑器（两输入框，预填默认）。
+    const fire = (el, type) => el.listeners.find(l => l.type === type).handler();
+    // 点 2 → 编辑器：两输入框（预填默认）+ 上滑/下滑两槽（#119）。
     key2.click();
-    const body = world.doc.getElementById('ckEditBody');
+    let body = world.doc.getElementById('ckEditBody');
     const inputs = body.querySelectorAll('.ck-t9-field input');
-    equal(inputs.length, 2, 'light editor has two symbol inputs');
+    equal(inputs.length, 2, 'letter keys keep two symbol inputs');
     equal(inputs[0].value, '—', 'left input prefills the stock symbol');
-    inputs[0].value = '¥'; inputs[1].value = '€';
+    inputs[0].value = '¥'; fire(inputs[0], 'input');
+    inputs[1].value = '€'; fire(inputs[1], 'input');
+    let secs = body.querySelectorAll('.ck-lang-sec');
+    equal(secs.length, 2, 'up/down slots render for letter keys');
+    // 上滑槽 → 文本「↑」：切型别会整表重建，syms 草稿要活着。
+    let upSel = secs[0].querySelector('select');
+    upSel.value = 'text'; fire(upSel, 'change');
+    body = world.doc.getElementById('ckEditBody');
+    equal(body.querySelectorAll('.ck-t9-field input')[0].value, '¥',
+        'symbol inputs survive the slot rebuild');
+    const upText = world.$('ckText');
+    upText.value = '↑'; fire(upText, 'input');
     world.$('ckApply').click();
     equal(world.doc.getElementById('cklangCount-t9').textContent.includes('1'), true,
         'entry count updates');
-    // 键面即时刷新 + 打包 langKeys.t9.syms（apply 触发 renderLangKb
+    // 键面即时刷新 + 打包 langKeys.t9.syms/up（apply 触发 renderLangKb
     // 重建，旧元素引用失效——重新查询）。
     equal([...world.doc.getElementById('cklangKb').querySelectorAll('.ck-lang-key')]
         .find(el => el.querySelector('.ck-t9-sup')?.textContent === '2')
         .querySelector('.ck-lang-sub').textContent, '¥€',
         'preview refreshes after apply');
     world.$('ckSave').click();
-    const parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    let parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
     equal(parsed.langKeys.t9['2'].syms.join(''), '¥€', 'syms packed into langKeys.t9');
-    // 空槽拒绝（必填语义——首期不做「空=隐藏」）。apply 不触发
+    equal(parsed.langKeys.t9['2'].up, '↑', 'flick-up packed into langKeys.t9');
+    // 1 键：单击/上滑/下滑三槽，单击默认摘要=符号行。
+    world.doc.querySelector('[data-cklang="t9"]').click();
+    [...world.doc.getElementById('cklangKb').querySelectorAll('.ck-lang-key')]
+        .find(el => el.querySelector('.ck-t9-sup')?.textContent === '1').click();
+    body = world.doc.getElementById('ckEditBody');
+    secs = body.querySelectorAll('.ck-lang-sec');
+    equal(secs.length, 3, 'key 1 edits tap/up/down');
+    equal(secs[0].querySelector('.ck-lang-sec-cur').textContent, '默认 · 符号行',
+        'tap default summary is the symbol row');
+    const tapSel = secs[0].querySelector('select');
+    tapSel.value = 'combo'; fire(tapSel, 'change');
+    world.$('ckApply').click();
+    world.$('ckSave').click();
+    parsed = JSON.parse(world.lastCall('saveCustom').args[0]);
+    equal(parsed.langKeys.t9['1'].tap, '[ctrl+s]', 'key 1 tap packed');
+    equal(parsed.langKeys.t9['1'].syms, undefined, 'key 1 never carries syms');
+    equal([...world.doc.getElementById('cklangKb').querySelectorAll('.ck-lang-key')]
+        .find(el => el.querySelector('.ck-t9-sup')?.textContent === '1')
+        .classList.contains('ck-lang-custom'), true, 'key 1 marked customized');
+    // 空槽拒绝（左右符号必填——弹层拆行假设中行恒三格）。apply 不触发
     // saveCustom，断言走错误文案+弹窗仍开+预览未变（codex review P2：
     // 读 lastCall 是上一次保存的假阳性——变异校验条件后旧断言仍过）。
     world.doc.querySelector('[data-cklang="t9"]').click();
@@ -3084,7 +3118,8 @@ test('t9 keys: preview renders 3x3, light editor packs syms (#118)', () => {
         .find(el => el.querySelector('.ck-t9-sup')?.textContent === '3').click();
     const badInputs = world.doc.getElementById('ckEditBody')
         .querySelectorAll('.ck-t9-field input');
-    badInputs[0].value = ''; badInputs[1].value = 'x';
+    badInputs[0].value = ''; fire(badInputs[0], 'input');
+    badInputs[1].value = 'x'; fire(badInputs[1], 'input');
     world.$('ckApply').click();
     equal(world.doc.getElementById('ckEditNote').textContent,
         '左右符号都必填（1-3 个字符）', 'empty slot shows the required error');

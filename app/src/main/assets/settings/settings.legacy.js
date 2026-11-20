@@ -196,9 +196,10 @@ const LANG_KB = {
       ".": ","
     }
   },
-  /* #118 T9 九宫格：预览渲染 3×3（renderLangKb 分支），编辑面只有
-   * 2-9 八键的左右长按符号（syms），与 keyboard.js
-   * LAYOUTS.t9.keySymbols 逐项同值（mock 双侧锁内容防漂移）。 */
+  /* #118 T9 九宫格：预览渲染 3×3（renderLangKb 分支）。可定制面：
+   * 2-9 的左右长按符号（syms，与此表逐项同值，mock 双侧锁内容防
+   * 漂移）、1-9 的上滑/下滑（默认语义见键盘端 t9Flick）、1 键的单击
+   * （默认=符号行）。 */
   t9: {
     title: "ck.lang.t9",
     rows: ["123", "456", "789"],
@@ -502,8 +503,15 @@ const I18N = {
     "ck.lang.t9": "\u4E5D\u5BAB\u683C\u952E\u76D8",
     "ck.lang.t9SymL": "\u5DE6\u7B26\u53F7",
     "ck.lang.t9SymR": "\u53F3\u7B26\u53F7",
-    "ck.lang.hintT9": "\u70B9 2-9 \u952E\u5B9A\u5236\u957F\u6309\u5F39\u5C42\u7684\u5DE6\u53F3\u7B26\u53F7\uFF1B\u5B57\u6BCD\u7EC4\u3001\u6570\u5B57\u4E0E\u6ED1\u52A8\u4E0D\u53D8\u3002",
-    "ck.lang.hint2T9": "1 \u952E\uFF08\u6807\u70B9\uFF09\u30010/\u7A7A\u683C\u4E0E\u9000\u683C\u4E0D\u53EF\u5B9A\u5236\u3002",
+    "ck.lang.slotTap": "\u5355\u51FB",
+    "ck.lang.t9DefTap": "\u9ED8\u8BA4 \xB7 \u7B26\u53F7\u884C",
+    "ck.lang.t9Def1Up": "\u9ED8\u8BA4 \xB7 \u5B57\u9762 1",
+    "ck.lang.t9Def1Down": "\u9ED8\u8BA4 \xB7 \u65E0\u52A8\u4F5C",
+    "ck.lang.t9DefUp": "\u9ED8\u8BA4 \xB7 \u5B57\u9762 {0}",
+    "ck.lang.t9DefDown": "\u9ED8\u8BA4 \xB7 \u4E2D\u95F4\u5B57\u6BCD\uFF087/9 \u62C6\u9009\uFF09",
+    "ck.lang.t9OneNote": "1 \u952E\u9ED8\u8BA4\u5355\u51FB = \u6253\u5F00\u897F\u6587/\u6280\u672F\u7B26\u53F7\u884C\uFF08@ # . * + - _ / =\uFF09\u3002",
+    "ck.lang.hintT9": "\u70B9 1-9 \u952E\u5B9A\u5236\uFF1A1 \u952E\u7684\u5355\u51FB\u3001\u957F\u6309\u7B26\u53F7\u4E0E\u4E0A\u6ED1/\u4E0B\u6ED1\uFF1B\u5B57\u6BCD\u7EC4\u4E0E\u70B9\u6309\u6570\u5B57\u4E0D\u53D8\u3002",
+    "ck.lang.hint2T9": "0/\u7A7A\u683C\u4E0E\u9000\u683C\u4E0D\u53EF\u5B9A\u5236\u3002",
     "ck.err.t9Syms": "\u5DE6\u53F3\u7B26\u53F7\u90FD\u5FC5\u586B\uFF081-3 \u4E2A\u5B57\u7B26\uFF09",
     "ck.lang.count": "\u5DF2\u5B9A\u5236 {count} \u952E",
     "ck.lang.default": "\u9ED8\u8BA4",
@@ -1385,8 +1393,15 @@ const I18N = {
     "ck.lang.t9": "Nine-key pad",
     "ck.lang.t9SymL": "Left symbol",
     "ck.lang.t9SymR": "Right symbol",
-    "ck.lang.hintT9": "Tap 2-9 to customize the two long-press symbols; letter groups, digits and flicks stay unchanged.",
-    "ck.lang.hint2T9": "The 1 key (punctuation), 0/space and backspace are fixed.",
+    "ck.lang.slotTap": "Tap",
+    "ck.lang.t9DefTap": "Default \xB7 symbol row",
+    "ck.lang.t9Def1Up": "Default \xB7 literal 1",
+    "ck.lang.t9Def1Down": "Default \xB7 none",
+    "ck.lang.t9DefUp": "Default \xB7 literal {0}",
+    "ck.lang.t9DefDown": "Default \xB7 middle letter (7/9 split)",
+    "ck.lang.t9OneNote": "The 1 key opens the symbol row by default (@ # . * + - _ / =).",
+    "ck.lang.hintT9": "Tap keys 1-9 to customize: key 1's tap, long-press symbols and up/down flicks; letter groups and digit taps stay unchanged.",
+    "ck.lang.hint2T9": "0/space and backspace are fixed.",
     "ck.err.t9Syms": "Both symbols are required (1-3 characters each)",
     "ck.lang.count": "{count} keys customized",
     "ck.lang.default": "Default",
@@ -5479,47 +5494,7 @@ function ckBuildLangKeyForm(body, d) {
     body.append(ckField(t("ck.lang.altAsUp"), altUp, "ck-hint-option"));
   }
   for (const [slot, labelKey] of [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]]) {
-    const sec = document.createElement("div");
-    sec.className = "ck-lang-sec";
-    const head = document.createElement("div");
-    head.className = "ck-lang-sec-t";
-    const title = document.createElement("span");
-    title.textContent = t(labelKey);
-    const cur = document.createElement("span");
-    cur.className = "ck-lang-sec-cur";
-    const refreshCur = /* @__PURE__ */ __name(() => {
-      const m = d[slot].mode;
-      cur.textContent = m === "none" ? t("ck.f.mode.none") : m === "def" ? t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown").replace("{0}", d.langKey.toUpperCase()) : ckTapFromDraft(d[slot]);
-      cur.classList.toggle("set", m !== "def");
-    }, "refreshCur");
-    head.append(title, cur);
-    sec.append(head);
-    const modeList = [
-      ["def", "ck.f.mode.def"],
-      ["none", "ck.f.mode.none"],
-      ...CK_MODES
-    ];
-    const modeSel = document.createElement("select");
-    modeSel.className = "ck-input";
-    modeList.forEach(([value, labelKey2]) => {
-      const opt = document.createElement("option");
-      opt.value = value;
-      opt.textContent = t(labelKey2);
-      modeSel.append(opt);
-    });
-    modeSel.value = modeList.some(([v]) => v === d[slot].mode) ? d[slot].mode : "def";
-    modeSel.addEventListener("change", () => {
-      const m = modeSel.value;
-      d[slot] = m === "def" ? { mode: "def" } : m === "none" ? { mode: "none" } : { mode: m, ...m === "op" ? { op: "copy" } : m === "panel" ? { panel: "clipboard" } : m === "single" ? { single: "esc" } : m === "combo" ? { comboKey: "s", mods: /* @__PURE__ */ new Set(["ctrl"]) } : m === "text" ? { text: "" } : m === "open" ? { open: "" } : m === "setting" ? { setting: "" } : m === "advanced" ? { dsl: "" } : {} };
-      ckBuildForm();
-    });
-    sec.append(ckField(t("ck.f.kind"), modeSel));
-    if (d[slot].mode !== "def" && d[slot].mode !== "none") {
-      const holder = document.createElement("div");
-      sec.append(holder);
-      ckBuildAction(holder, d[slot]);
-    }
-    refreshCur();
+    const { sec, refreshCur } = ckLangSlotSection(d, slot, labelKey);
     body.append(sec);
     if (slot === "up" && !isPunct && d.up.mode === "text") {
       const upText = document.getElementById("ckText");
@@ -5532,6 +5507,81 @@ function ckBuildLangKeyForm(body, d) {
   }
 }
 __name(ckBuildLangKeyForm, "ckBuildLangKeyForm");
+function ckValidateLangSlots(d, slots) {
+  for (const slot of slots) {
+    const s = d[slot] || {};
+    if (s.mode === "open") {
+      const uri = (s.open || "").trim();
+      const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) && !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
+      if (!ok) return t("ck.err.open");
+    }
+    if (s.mode === "setting") {
+      const id = (s.setting || "").trim();
+      if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
+        return t("ck.err.setting");
+      }
+    }
+  }
+  return null;
+}
+__name(ckValidateLangSlots, "ckValidateLangSlots");
+function ckLangSlotDefText(d, slot) {
+  if (d.langLay === "t9") {
+    if (slot === "tap") return t("ck.lang.t9DefTap");
+    if (d.langKey === "1") {
+      return t(slot === "up" ? "ck.lang.t9Def1Up" : "ck.lang.t9Def1Down");
+    }
+    return t(slot === "up" ? "ck.lang.t9DefUp" : "ck.lang.t9DefDown").replace("{0}", d.langKey);
+  }
+  return t(slot === "up" ? "ck.lang.defUp" : "ck.lang.defDown").replace("{0}", d.langKey.toUpperCase());
+}
+__name(ckLangSlotDefText, "ckLangSlotDefText");
+function ckLangSlotSection(d, slot, labelKey) {
+  const sec = document.createElement("div");
+  sec.className = "ck-lang-sec";
+  const head = document.createElement("div");
+  head.className = "ck-lang-sec-t";
+  const title = document.createElement("span");
+  title.textContent = t(labelKey);
+  const cur = document.createElement("span");
+  cur.className = "ck-lang-sec-cur";
+  const defText = ckLangSlotDefText(d, slot);
+  const refreshCur = /* @__PURE__ */ __name(() => {
+    const m = d[slot].mode;
+    cur.textContent = m === "none" ? t("ck.f.mode.none") : m === "def" ? defText : ckTapFromDraft(d[slot]);
+    cur.classList.toggle("set", m !== "def");
+  }, "refreshCur");
+  head.append(title, cur);
+  sec.append(head);
+  const modeList = [
+    ["def", "ck.f.mode.def"],
+    ["none", "ck.f.mode.none"],
+    ...CK_MODES
+  ];
+  const modeSel = document.createElement("select");
+  modeSel.className = "ck-input";
+  modeList.forEach(([value, labelKey2]) => {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = t(labelKey2);
+    modeSel.append(opt);
+  });
+  modeSel.value = modeList.some(([v]) => v === d[slot].mode) ? d[slot].mode : "def";
+  modeSel.addEventListener("change", () => {
+    const m = modeSel.value;
+    d[slot] = m === "def" ? { mode: "def" } : m === "none" ? { mode: "none" } : { mode: m, ...m === "op" ? { op: "copy" } : m === "panel" ? { panel: "clipboard" } : m === "single" ? { single: "esc" } : m === "combo" ? { comboKey: "s", mods: /* @__PURE__ */ new Set(["ctrl"]) } : m === "text" ? { text: "" } : m === "open" ? { open: "" } : m === "setting" ? { setting: "" } : m === "advanced" ? { dsl: "" } : {} };
+    ckBuildForm();
+  });
+  sec.append(ckField(t("ck.f.kind"), modeSel));
+  if (d[slot].mode !== "def" && d[slot].mode !== "none") {
+    const holder = document.createElement("div");
+    sec.append(holder);
+    ckBuildAction(holder, d[slot]);
+  }
+  refreshCur();
+  return { sec, refreshCur };
+}
+__name(ckLangSlotSection, "ckLangSlotSection");
 function openLangKeyEditor(lay, key) {
   ckEditorTarget = "langkey";
   ckSel = null;
@@ -5565,32 +5615,69 @@ function openT9KeyEditor(key) {
   ckEditorTarget = "t9key";
   ckSel = null;
   const cell = (ckLangKeys.t9 || {})[key] || {};
-  const def = LANG_KB.t9.keySymbols[key] || ["", ""];
-  const cur = Array.isArray(cell.syms) && cell.syms.length === 2 ? cell.syms : def;
-  ckDraft = { langLay: "t9", langKey: key };
-  const body = $("ckEditBody");
-  body.textContent = "";
-  const wrap = document.createElement("div");
-  wrap.className = "ck-t9-form";
-  for (const [idx, labelKey] of [[0, "ck.lang.t9SymL"], [1, "ck.lang.t9SymR"]]) {
-    const field = document.createElement("label");
-    field.className = "ck-t9-field";
-    const cap = document.createElement("span");
-    cap.textContent = t(labelKey);
-    const input = document.createElement("input");
-    input.type = "text";
-    input.id = idx === 0 ? "ckT9SymL" : "ckT9SymR";
-    input.maxLength = 3;
-    input.value = cur[idx] || "";
-    input.placeholder = def[idx] || "";
-    field.append(cap, input);
-    wrap.append(field);
-  }
-  body.append(wrap);
+  ckDraft = {
+    langLay: "t9",
+    langKey: key,
+    syms: Array.isArray(cell.syms) && cell.syms.length === 2 ? cell.syms.slice() : null,
+    tap: ckLangSlotParse(cell.tap),
+    up: ckLangSlotParse(cell.up),
+    down: ckLangSlotParse(cell.down),
+    t: "",
+    text: "",
+    single: "esc",
+    comboKey: "s",
+    mods: /* @__PURE__ */ new Set(["ctrl"]),
+    open: "",
+    setting: "",
+    panel: "clipboard",
+    dsl: "",
+    color: "",
+    note: "",
+    span: 0
+  };
+  ckBuildForm();
   ckOpenModal(false);
   document.getElementById("ckModalTitle").textContent = t("ck.lang.editTitle").replace("{0}", key);
 }
 __name(openT9KeyEditor, "openT9KeyEditor");
+function ckBuildT9KeyForm(body, d) {
+  if (d.langKey === "1") {
+    const note = document.createElement("div");
+    note.className = "ck-row2 ck-row2-bare";
+    note.innerHTML = '<div class="ck-lang-lock"><span class="ck-lang-k">1</span><span>' + t("ck.lang.t9OneNote") + "</span></div>";
+    body.append(note);
+  } else {
+    const def = LANG_KB.t9.keySymbols[d.langKey] || ["", ""];
+    const cur = d.syms && d.syms.length === 2 ? d.syms : def;
+    const wrap = document.createElement("div");
+    wrap.className = "ck-t9-form";
+    for (const [idx, labelKey] of [[0, "ck.lang.t9SymL"], [1, "ck.lang.t9SymR"]]) {
+      const field = document.createElement("label");
+      field.className = "ck-t9-field";
+      const cap = document.createElement("span");
+      cap.textContent = t(labelKey);
+      const input = document.createElement("input");
+      input.type = "text";
+      input.id = idx === 0 ? "ckT9SymL" : "ckT9SymR";
+      input.maxLength = 3;
+      input.value = cur[idx] || "";
+      input.placeholder = def[idx] || "";
+      input.addEventListener("input", () => {
+        const l = document.getElementById("ckT9SymL");
+        const r = document.getElementById("ckT9SymR");
+        d.syms = [l ? l.value : "", r ? r.value : ""];
+      });
+      field.append(cap, input);
+      wrap.append(field);
+    }
+    body.append(wrap);
+  }
+  const slots = d.langKey === "1" ? [["tap", "ck.lang.slotTap"], ["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]] : [["up", "ck.lang.slotUp"], ["down", "ck.lang.slotDown"]];
+  for (const [slot, labelKey] of slots) {
+    body.append(ckLangSlotSection(d, slot, labelKey).sec);
+  }
+}
+__name(ckBuildT9KeyForm, "ckBuildT9KeyForm");
 function openSpaceHoldEditor() {
   ckEditorTarget = "space";
   ckSel = null;
@@ -5713,6 +5800,10 @@ function ckBuildForm() {
   }
   if (ckEditorTarget === "langkey") {
     ckBuildLangKeyForm(body, d);
+    return;
+  }
+  if (ckEditorTarget === "t9key") {
+    ckBuildT9KeyForm(body, d);
     return;
   }
   if (ckEditorTarget === "cell") {
@@ -6046,13 +6137,29 @@ __name(ckBuildAction, "ckBuildAction");
 $("ckApply").addEventListener("click", () => {
   const d = ckDraft;
   if (ckEditorTarget === "t9key") {
-    const l = document.getElementById("ckT9SymL").value.trim();
-    const r = document.getElementById("ckT9SymR").value.trim();
-    if (!l || !r || [...l].length > 3 || [...r].length > 3) {
-      return setNote("ckEditNote", t("ck.err.t9Syms"));
+    const cell2 = {};
+    if (d.langKey !== "1") {
+      const l = (d.syms && d.syms[0] || "").trim();
+      const r = (d.syms && d.syms[1] || "").trim();
+      if (!l || !r || [...l].length > 3 || [...r].length > 3) {
+        return setNote("ckEditNote", t("ck.err.t9Syms"));
+      }
+      cell2.syms = [l, r];
+    }
+    const slots = d.langKey === "1" ? ["tap", "up", "down"] : ["up", "down"];
+    const slotErr = ckValidateLangSlots(d, slots);
+    if (slotErr) return setNote("ckEditNote", slotErr);
+    for (const slot of slots) {
+      const m = d[slot] ? d[slot].mode : "def";
+      if (m === "def") continue;
+      const dsl = m === "none" ? "" : ckTapFromDraft(d[slot]);
+      if (m !== "none" && !dsl) continue;
+      cell2[slot] = dsl;
     }
     const table = ckLangKeys.t9 = ckLangKeys.t9 || {};
-    table[d.langKey] = { syms: [l, r] };
+    if (Object.keys(cell2).length) table[d.langKey] = cell2;
+    else delete table[d.langKey];
+    if (!Object.keys(table).length) delete ckLangKeys.t9;
     ckMarkDirty(true);
     refreshLangCounts();
     renderLangKb("t9");
@@ -6091,20 +6198,8 @@ $("ckApply").addEventListener("click", () => {
   }
   if (ckEditorTarget === "langkey") {
     const lay = d.langLay, key = d.langKey;
-    for (const slot of ["up", "down"]) {
-      const s = d[slot] || {};
-      if (s.mode === "open") {
-        const uri = (s.open || "").trim();
-        const ok = /^(https?:\/\/|[a-z][a-z0-9+.\-]*:)/i.test(uri) && !/[\s\[\]]/.test(uri) && !/^(intent|javascript|file|content|about|data|android-app|blob):/i.test(uri);
-        if (!ok) return setNote("ckEditNote", t("ck.err.open"));
-      }
-      if (s.mode === "setting") {
-        const id = (s.setting || "").trim();
-        if (!/^[\w-]{1,64}$/.test(id) || !document.getElementById(id)) {
-          return setNote("ckEditNote", t("ck.err.setting"));
-        }
-      }
-    }
+    const slotErr = ckValidateLangSlots(d, ["up", "down"]);
+    if (slotErr) return setNote("ckEditNote", slotErr);
     const table = ckLangKeys[lay] = ckLangKeys[lay] || {};
     const cell2 = {};
     if (d.alt) cell2.alt = [...d.alt].slice(0, 3).join("");
@@ -6254,20 +6349,20 @@ function ckLangKeyEl(lay, key, cell) {
 __name(ckLangKeyEl, "ckLangKeyEl");
 function t9LangKeyEl(key, cell) {
   const conf = LANG_KB.t9;
-  if (key === "1") {
-    const el2 = document.createElement("span");
-    el2.className = "ck-lang-key ck-lang-key-sp ck-t9-key ck-t9-fixed";
-    el2.textContent = "@#.";
-    return el2;
-  }
   const el = document.createElement("button");
   el.type = "button";
   el.className = "ck-lang-key ck-t9-key";
-  const syms = cell && Array.isArray(cell.syms) && cell.syms.length === 2 ? cell.syms : conf.keySymbols[key] || [];
-  el.innerHTML = '<span class="ck-lang-sub"></span><span class="ck-t9-sup"></span><span class="ck-lang-main"></span>';
-  el.querySelector(".ck-lang-sub").textContent = syms.join("");
-  el.querySelector(".ck-t9-sup").textContent = key;
-  el.querySelector(".ck-lang-main").textContent = (conf.alts[key] || "").toUpperCase();
+  if (key === "1") {
+    el.innerHTML = '<span class="ck-t9-sup"></span><span class="ck-lang-main"></span>';
+    el.querySelector(".ck-t9-sup").textContent = key;
+    el.querySelector(".ck-lang-main").textContent = "@#.";
+  } else {
+    const syms = cell && Array.isArray(cell.syms) && cell.syms.length === 2 ? cell.syms : conf.keySymbols[key] || [];
+    el.innerHTML = '<span class="ck-lang-sub"></span><span class="ck-t9-sup"></span><span class="ck-lang-main"></span>';
+    el.querySelector(".ck-lang-sub").textContent = syms.join("");
+    el.querySelector(".ck-t9-sup").textContent = key;
+    el.querySelector(".ck-lang-main").textContent = (conf.alts[key] || "").toUpperCase();
+  }
   if (cell && Object.keys(cell).length) el.classList.add("ck-lang-custom");
   el.setAttribute("aria-label", t("ck.lang.editKey").replace("{0}", key));
   el.addEventListener("click", () => openT9KeyEditor(key));

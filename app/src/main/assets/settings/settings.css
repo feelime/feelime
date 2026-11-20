@@ -1141,8 +1141,7 @@ body.ck-editing #ckRowList, body.ck-editing #ckRowList * { touch-action: none; }
 .ck-t9-key .ck-lang-sub { left: 7px; right: auto; font-size: 11px; }
 .ck-t9-sup { position: absolute; right: 7px; top: 4px;
     font-size: 11px; color: var(--card-sub); }
-.ck-t9-fixed { display: grid; place-items: center; font-size: 12px; }
-/* T9 编辑器轻量表单（左右符号两输入框）。 */
+/* T9 编辑器的左右符号输入区（#119 起与单击/上滑/下滑槽同表单）。 */
 .ck-t9-form { display: flex; gap: 12px; }
 .ck-t9-field { flex: 1; display: flex; flex-direction: column; gap: 6px;
     font-size: 13px; color: var(--card-sub); }

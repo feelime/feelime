@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.129";
+  const KEYBOARD_VERSION = "3.73.130";
   const PAIR_OPEN_SYMBOLS = /* @__PURE__ */ new Set(["(", "\uFF08", "[", "\u3010", "{", "\u300A", "\u300C", "\u300E"]);
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
@@ -2540,7 +2540,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
           one.className = "kb-key t9-key";
           one.dataset.key = "1";
           one.innerHTML = '<span class="t9-sup">1</span><span class="t9-group">@#.</span>';
-          one.addEventListener("click", () => this.t9SymbolBar());
+          one.addEventListener("click", () => this.t9OneTap());
           this.bindTouch(one);
           place(one, coords[digit][0], coords[digit][1]);
         } else {
@@ -3440,15 +3440,26 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     t9PreeditLabel(raw) {
       return (raw || "").replace(/([a-z]+)([2-9])/g, "$1\u202F$2");
     }
-    /** 1 键（点按/长按）：候选条展开西文/技术符号行（sendSymbol 直
-     * 上屏）。长按（chrome=true）额外收起工具栏图标，仅保留最右的
-     * × 供取消本次符号行——取消后工具栏原样恢复。 */
+    /** 1 键点按（2026-11-20 定制开放）：langKeys.t9['1'].tap 未设置
+     *  = 默认符号行；空串 = 显式关闭（点了没动作）；非空 = 执行定制
+     *  DSL（与其它语言键的滑动槽同一语法同一执行体）。 */
+    t9OneTap() {
+      const cell = this.t9LangKeyCell("1");
+      if (cell && cell.tap !== void 0) {
+        if (cell.tap) this.runTapDsl(cell.tap);
+        return;
+      }
+      this.t9SymbolBar();
+    }
     /** 1 键符号行（用户定稿：单击即开）：候选栏展开西文/技术符号行，
      * 工具栏快捷按钮全部让位（含 mic），仅保留最右 × 供取消。点选
      * 符号或 × 都会关闭符号行并复原工具栏。语音进行中不开（mic 是
-     * 停止入口）。 */
+     * 停止入口）。组合中亦可打开（2026-11-20 用户报告「单击没有
+     * 反应」——旧守卫把组合态静默吞掉）：符号行是暂态选择面，占住
+     * 候选条；下一次引擎事件（继续打键）按既有让位规则回到候选，
+     * 点选符号走字面通道，组合随之落地。 */
     t9SymbolBar() {
-      if (this.composing || this.voiceState !== "idle") return;
+      if (this.voiceState !== "idle") return;
       this.t9SymBar = true;
       this.t9BarChrome = true;
       this.setToolbarYield(true);
@@ -4561,6 +4572,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         return false;
       }
       if (this.mode === "t9" && key === "1") {
+        const cell = this.t9LangKeyCell("1");
+        const raw = vertical && cell ? dy < 0 ? cell.up : cell.down : void 0;
+        if (raw !== void 0) {
+          if (raw) this.runTapDsl(raw);
+          this.showFlick(button, dy, dx);
+          return true;
+        }
         if (vertical && dy < 0) {
           this.sendSymbol("1");
           this.showFlick(button, dy, dx);
@@ -4570,6 +4588,13 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (this.mode !== "t9" || !/^[2-9]$/.test(key)) return false;
       const letters = (LAYOUTS.t9.alts[key] || "").split("");
       if (vertical) {
+        const cell = this.t9LangKeyCell(key);
+        const raw = cell ? dy < 0 ? cell.up : cell.down : void 0;
+        if (raw !== void 0) {
+          if (raw) this.runTapDsl(raw);
+          this.showFlick(button, dy, dx);
+          return true;
+        }
         if (dy < 0) {
           this.sendSymbol(key);
         } else if (T9_SPLIT[key]) {
@@ -5545,6 +5570,12 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       }
       return LAYOUTS.t9.keySymbols[key] || [];
     }
+    /** 当前 T9 定制 cell（非 t9 模式/无定制表 = null）：t9Flick 的
+     *  上滑/下滑覆盖与 1 键点按查同一份表。 */
+    t9LangKeyCell(key) {
+      const table = this.langKeysTable();
+      return table && table[key] && typeof table[key] === "object" ? table[key] : null;
+    }
     /** [open:URI] 的表单校验（与 native openLink 桥同口径，桥侧
      *  再校验一次兜底）：http(s) 网页地址或应用自定义 scheme；
      *  intent://（点名组件）、data:（塞标记给浏览器）、android-app:
@@ -5770,21 +5801,65 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
             return { ok: false, error: t("langKeys.{0} \u7684\u952E\u540D\u5FC5\u987B\u662F\u5355\u5B57\u7B26\uFF1A{1}", lay, key) };
           }
           if (lay === "t9") {
-            if (key < "2" || key > "9") {
-              return { ok: false, error: t("langKeys.t9 \u7684\u952E\u540D\u5FC5\u987B\u662F 2-9\uFF1A{0}", key) };
+            if (!/^[1-9]$/.test(key)) {
+              return { ok: false, error: t("langKeys.t9 \u7684\u952E\u540D\u5FC5\u987B\u662F 1-9\uFF1A{0}", key) };
             }
             const cell2 = table[key];
             if (!cell2 || typeof cell2 !== "object" || Array.isArray(cell2)) {
               return { ok: false, error: t("langKeys.t9.{0} \u5FC5\u987B\u662F\u5BF9\u8C61", key) };
             }
-            if (cell2.alt != null || cell2.up != null || cell2.down != null) {
-              return { ok: false, error: t("langKeys.t9.{0} \u53EA\u652F\u6301 syms \u5B57\u6BB5", key) };
+            if (cell2.alt != null) {
+              return { ok: false, error: t("langKeys.t9.{0} \u4E0D\u652F\u6301 alt \u5B57\u6BB5", key) };
             }
-            const syms = cell2.syms;
-            if (!Array.isArray(syms) || syms.length !== 2 || !syms.every((s) => typeof s === "string" && [...s].length > 0 && [...s].length <= 3)) {
-              return { ok: false, error: t("langKeys.t9.{0} \u7684 syms \u9700\u4E3A\u4E24\u4E2A 1-3 \u5B57\u7B26\u7684\u7B26\u53F7", key) };
+            const clean2 = {};
+            if (cell2.syms != null) {
+              if (key === "1") {
+                return { ok: false, error: t("langKeys.t9.1 \u4E0D\u652F\u6301 syms\uFF081 \u952E\u6CA1\u6709\u957F\u6309\u5F39\u5C42\uFF09") };
+              }
+              const syms = cell2.syms;
+              if (!Array.isArray(syms) || syms.length !== 2 || !syms.every((s) => typeof s === "string" && [...s].length > 0 && [...s].length <= 3)) {
+                return { ok: false, error: t("langKeys.t9.{0} \u7684 syms \u9700\u4E3A\u4E24\u4E2A 1-3 \u5B57\u7B26\u7684\u7B26\u53F7", key) };
+              }
+              clean2.syms = syms.slice();
             }
-            cleanTable[key] = { syms: syms.slice() };
+            if (cell2.tap != null) {
+              if (key !== "1") {
+                return { ok: false, error: t("langKeys.t9.{0} \u4E0D\u652F\u6301 tap\uFF08\u5355\u51FB=\u901A\u914D\u6570\u5B57\uFF09", key) };
+              }
+              if (typeof cell2.tap !== "string" || [...cell2.tap].length > CUSTOM_LIMITS.tapChars) {
+                return { ok: false, error: t(
+                  "langKeys.t9.{0} \u7684 tap \u8D85\u8FC7 {1} \u5B57\u7B26",
+                  key,
+                  CUSTOM_LIMITS.tapChars
+                ) };
+              }
+              const parsed = this.parseTapDsl(cell2.tap);
+              if (parsed.error) {
+                return { ok: false, error: t("langKeys.t9.{0} \u7684 tap {1}", key, parsed.error) };
+              }
+              clean2.tap = cell2.tap;
+            }
+            for (const slot of ["up", "down"]) {
+              const tap = cell2[slot];
+              if (tap == null) continue;
+              if (typeof tap !== "string" || [...tap].length > CUSTOM_LIMITS.tapChars) {
+                return { ok: false, error: t(
+                  "langKeys.t9.{0} \u7684 {1} \u9700\u4E3A 1-{2} \u5B57\u7B26",
+                  key,
+                  slot,
+                  CUSTOM_LIMITS.tapChars
+                ) };
+              }
+              const parsed = this.parseTapDsl(tap);
+              if (parsed.error) {
+                return { ok: false, error: t("langKeys.t9.{0} \u7684 {1} {2}", key, slot, parsed.error) };
+              }
+              clean2[slot] = tap;
+            }
+            if (!Object.keys(clean2).length) {
+              return { ok: false, error: t("langKeys.t9.{0} \u81F3\u5C11\u8981\u5B9A\u4E49 syms/tap/up/down \u4E4B\u4E00", key) };
+            }
+            cleanTable[key] = clean2;
             any = true;
             continue;
           }

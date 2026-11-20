@@ -9920,6 +9920,124 @@ test('t9 1-key chrome: tap yields toolbar, pick/× restores, up-flick commits 1'
         'up-flick commits literal 1');
 });
 
+// 用户 2026-11-20 三条要求：(a) 组合中点 1 键「单击后没有任何反应」——
+// 旧守卫把组合态静默吞掉；(b) 1 键单击要可定制；(c) 九宫格键的上滑/
+// 下滑可定制并覆盖原语义（1 键上滑默认=字面 1，2-9 默认=字面数字/
+// 中间字母/7·9 拆分）。
+test('t9 keys: mid-composition 1-tap, custom tap and flick overrides (#119)', {since: '3.73.130'}, () => {
+    const world = fresh({ mode: 't9' });
+    world.engineState({ phase: 'READY', mode: 't9', revision: 1, composing: 'ni', rawInput: 'ni',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    world.tap(world.key('1'));
+    equal([...world.document.querySelectorAll('#candidates .candidate')]
+        .map(b => b.textContent).join(''), '@#.*+-_/=',
+        '1 tap opens the symbol row while composing');
+    assert(world.$('setupButton').hidden, 'toolbar still yields');
+    // 符号行是暂态选择面：继续打键的引擎事件按既有让位规则把候选条还回去。
+    world.engineState({ phase: 'READY', mode: 't9', revision: 2, composing: 'ni4', rawInput: 'ni4',
+        candidates: [{ id: 'c1', text: '你' }], hasNextPage: false });
+    equal([...world.document.querySelectorAll('#candidates .candidate')]
+        .map(b => b.textContent).join(''), '你',
+        'the next engine event restores the candidate row');
+
+    // 定制 1 键单击 = 执行 DSL，不再开符号行。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [], langKeys: { t9: { '1': { tap: '[edit:copy]' } } },
+    });
+    world.hello();
+    world.engineState({ phase: 'READY', mode: 't9', revision: 3, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    world.tap(world.key('1'));
+    equal(world.native.of('editorAction').slice(-1)[0].args[0], 'copy',
+        'custom tap runs the DSL');
+    equal(world.document.querySelectorAll('#candidates .candidate').length, 0,
+        'custom tap does not open the symbol row');
+
+    // 空串 = 显式关闭：点 1 无任何动作（与其它语言键的槽同语义）。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [], langKeys: { t9: { '1': { tap: '' } } },
+    });
+    world.hello();
+    world.engineState({ phase: 'READY', mode: 't9', revision: 4, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    const noopBefore = world.native.calls.length;
+    world.tap(world.key('1'));
+    // 只对"输入类"调用断言（touchstart 自带的按键气泡等辅助桥不算动作）。
+    const actionNames = world.native.calls.slice(noopBefore)
+        .map(c => c.name).filter(n => /^(key|text|commitText|inputSymbol|editorAction)$/.test(n));
+    equal(actionNames.join(','), '', 'empty tap is an explicit no-op');
+
+    // 2-9 上滑=DSL 文本（替换字面数字）、下滑空串=吞掉（不再确认中间字母）。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [], langKeys: { t9: { '2': { up: '↑', down: '' } } },
+    });
+    world.hello();
+    world.engineState({ phase: 'READY', mode: 't9', revision: 5, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    const key2 = world.key('2');
+    world.touchDown(key2, 20, 20);
+    world.move(key2, 20, -30); world.touchUp(key2);
+    world.clock.advance(2);
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '↑',
+        'custom up-flick replaces the literal digit');
+    const keyBefore = world.native.of('key').length;
+    world.touchDown(key2, 20, 20);
+    world.move(key2, 20, 70); world.touchUp(key2);
+    world.clock.advance(2);
+    equal(world.native.of('key').slice(keyBefore).map(c => c.args[0]).join(','), '',
+        'disabled down-flick no longer confirms the middle letter');
+
+    // 1 键上滑/下滑同样可覆盖（默认上滑=字面 1）。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [], langKeys: { t9: { '1': { up: '上', down: '[edit:copy]' } } },
+    });
+    world.hello();
+    world.engineState({ phase: 'READY', mode: 't9', revision: 6, composing: '', rawInput: '',
+        candidates: [], hasNextPage: false });
+    const one = world.key('1');
+    world.touchDown(one, 20, 20);
+    world.move(one, 20, -30); world.touchUp(one);
+    world.clock.advance(2);
+    equal(world.native.of('commitText').slice(-1)[0].args[0], '上',
+        'key 1 custom up-flick overrides the literal 1');
+    world.touchDown(one, 20, 20);
+    world.move(one, 20, 50); world.touchUp(one);
+    world.clock.advance(2);
+    equal(world.native.of('editorAction').slice(-1)[0].args[0], 'copy',
+        'key 1 custom down-flick runs the DSL');
+});
+
+test('t9 langKeys schema: 1-9 keys, tap only on 1, syms only on 2-9 (#119)', {since: '3.73.130'}, () => {
+    const world = fresh({ mode: 't9' });
+    // 合法面：1 键 tap + 2 键只定制滑动（syms 缺省走内置表）。
+    world.native.customKeysPayload = JSON.stringify({
+        version: 1, rows: [],
+        langKeys: { t9: { '1': { tap: '[edit:copy]' }, '2': { up: '[edit:paste]' } } },
+    });
+    world.hello();
+    const adopted = JSON.parse(world.storage.get('feelime_custom_keys_v2'));
+    equal(adopted.langKeys.t9['1'].tap, '[edit:copy]', 'key 1 tap adopts');
+    equal(adopted.langKeys.t9['2'].up, '[edit:paste]', 'flick override adopts without syms');
+
+    // 越界字段整包拒收（本地镜像保持哨兵值 = 没有采纳）。
+    for (const bad of [
+        { '2': { tap: '[edit:copy]' } },
+        { '1': { syms: ['¥', '€'] } },
+        { '1': { alt: 'x' } },
+        { '0': { up: 'x' } },
+        { '1': {} },
+        { '2': { up: '[edit:nope]' } },
+    ]) {
+        world.storage.set('feelime_custom_keys_v2', 'sentinel');
+        world.native.customKeysPayload = JSON.stringify({
+            version: 1, rows: [], langKeys: { t9: bad },
+        });
+        world.hello();
+        equal(world.storage.get('feelime_custom_keys_v2'), 'sentinel',
+            `rejected wholesale: ${JSON.stringify(bad)}`);
+    }
+});
+
 // 用户 2026-11-13 报「候选词夹在工具栏按钮中间」：语音结束后 mic 被通用
 // 可见性行插回联想候选行（updateComposing 的 mic 行只懂 composing/
 // recording，盖掉先前让位对账）。让位必须在 mic 行之后最后复核；

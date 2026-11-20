@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.129';
+    const KEYBOARD_VERSION = '3.73.130';
     const PAIR_OPEN_SYMBOLS = new Set(['(', '（', '[', '【', '{', '《', '「', '『']);
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
@@ -2809,7 +2809,7 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     one.className = 'kb-key t9-key';
                     one.dataset.key = '1';
                     one.innerHTML = '<span class="t9-sup">1</span><span class="t9-group">@#.</span>';
-                    one.addEventListener('click', () => this.t9SymbolBar());
+                    one.addEventListener('click', () => this.t9OneTap());
                     this.bindTouch(one);
                     place(one, coords[digit][0], coords[digit][1]);
                 } else {
@@ -3831,15 +3831,27 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return (raw || '').replace(/([a-z]+)([2-9])/g, '$1 $2');
         }
 
-        /** 1 键（点按/长按）：候选条展开西文/技术符号行（sendSymbol 直
-         * 上屏）。长按（chrome=true）额外收起工具栏图标，仅保留最右的
-         * × 供取消本次符号行——取消后工具栏原样恢复。 */
+        /** 1 键点按（2026-11-20 定制开放）：langKeys.t9['1'].tap 未设置
+         *  = 默认符号行；空串 = 显式关闭（点了没动作）；非空 = 执行定制
+         *  DSL（与其它语言键的滑动槽同一语法同一执行体）。 */
+        t9OneTap() {
+            const cell = this.t9LangKeyCell('1');
+            if (cell && cell.tap !== undefined) {
+                if (cell.tap) this.runTapDsl(cell.tap);
+                return;
+            }
+            this.t9SymbolBar();
+        }
+
         /** 1 键符号行（用户定稿：单击即开）：候选栏展开西文/技术符号行，
          * 工具栏快捷按钮全部让位（含 mic），仅保留最右 × 供取消。点选
          * 符号或 × 都会关闭符号行并复原工具栏。语音进行中不开（mic 是
-         * 停止入口）。 */
+         * 停止入口）。组合中亦可打开（2026-11-20 用户报告「单击没有
+         * 反应」——旧守卫把组合态静默吞掉）：符号行是暂态选择面，占住
+         * 候选条；下一次引擎事件（继续打键）按既有让位规则回到候选，
+         * 点选符号走字面通道，组合随之落地。 */
         t9SymbolBar() {
-            if (this.composing || this.voiceState !== 'idle') return;
+            if (this.voiceState !== 'idle') return;
             this.t9SymBar = true;
             this.t9BarChrome = true;
             this.setToolbarYield(true);
@@ -5291,8 +5303,16 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 }
                 return false;
             }
-            // 1 键（@#.）：上滑=字面 1；下滑/横滑无语义（符号行走点按/长按）。
+            // 1 键（@#.）：定制上滑/下滑优先（2026-11-20 用户要求可覆盖
+            // 原功能），默认上滑=字面 1、下滑/横滑无语义（符号行走点按）。
             if (this.mode === 't9' && key === '1') {
+                const cell = this.t9LangKeyCell('1');
+                const raw = vertical && cell ? (dy < 0 ? cell.up : cell.down) : undefined;
+                if (raw !== undefined) {
+                    if (raw) this.runTapDsl(raw);
+                    this.showFlick(button, dy, dx);
+                    return true;
+                }
                 if (vertical && dy < 0) {
                     this.sendSymbol('1');
                     this.showFlick(button, dy, dx);
@@ -5302,6 +5322,15 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (this.mode !== 't9' || !/^[2-9]$/.test(key)) return false;
             const letters = (LAYOUTS.t9.alts[key] || '').split('');
             if (vertical) {
+                // 定制上滑/下滑优先于 T9 默认语义（字号同许可面：空串=
+                // 显式关闭=吞掉手势，非空=执行定制 DSL）。横滑保持默认。
+                const cell = this.t9LangKeyCell(key);
+                const raw = cell ? (dy < 0 ? cell.up : cell.down) : undefined;
+                if (raw !== undefined) {
+                    if (raw) this.runTapDsl(raw);
+                    this.showFlick(button, dy, dx);
+                    return true;
+                }
                 if (dy < 0) {
                     // 上滑=字面数字，commitText 旁路（进引擎会成为
                     // 候选选择器，字面数字永远上不了屏）。
@@ -6463,6 +6492,14 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             return LAYOUTS.t9.keySymbols[key] || [];
         }
 
+        /** 当前 T9 定制 cell（非 t9 模式/无定制表 = null）：t9Flick 的
+         *  上滑/下滑覆盖与 1 键点按查同一份表。 */
+        t9LangKeyCell(key) {
+            const table = this.langKeysTable();
+            return table && table[key] && typeof table[key] === 'object'
+                ? table[key] : null;
+        }
+
         /** [open:URI] 的表单校验（与 native openLink 桥同口径，桥侧
          *  再校验一次兜底）：http(s) 网页地址或应用自定义 scheme；
          *  intent://（点名组件）、data:（塞标记给浏览器）、android-app:
@@ -6710,27 +6747,71 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                     if ([...key].length !== 1) {
                         return { ok: false, error: t("langKeys.{0} 的键名必须是单字符：{1}", lay, key) };
                     }
-                    // #118：T9 布局只接受 2-9 键与 syms（恰二元非空组，
-                    // 每元 ≤3 字）——alt/up/down 对 T9 键无语义，出现
-                    // 即报错（防设置页写错字段静默失效）。
+                    // #118/#119：T9 布局接受 1-9 键。可定制面：
+                    //   syms  仅 2-9（1 键没有字母组/长按弹层，无左右符号）
+                    //   tap   仅 1（其余键单击=通配数字，是打字主通道）
+                    //   up/down 1-9（覆盖 T9 默认：上滑字面数字、下滑中间
+                    //         字母/7·9 拆分；空串=关闭手势）
+                    // alt 对 T9 键无语义，出现即报错（防设置页写错字段
+                    // 静默失效）。
                     if (lay === 't9') {
-                        if (key < '2' || key > '9') {
-                            return { ok: false, error: t("langKeys.t9 的键名必须是 2-9：{0}", key) };
+                        if (!/^[1-9]$/.test(key)) {
+                            return { ok: false, error: t("langKeys.t9 的键名必须是 1-9：{0}", key) };
                         }
                         const cell = table[key];
                         if (!cell || typeof cell !== 'object' || Array.isArray(cell)) {
                             return { ok: false, error: t("langKeys.t9.{0} 必须是对象", key) };
                         }
-                        if (cell.alt != null || cell.up != null || cell.down != null) {
-                            return { ok: false, error: t("langKeys.t9.{0} 只支持 syms 字段", key) };
+                        if (cell.alt != null) {
+                            return { ok: false, error: t("langKeys.t9.{0} 不支持 alt 字段", key) };
                         }
-                        const syms = cell.syms;
-                        if (!Array.isArray(syms) || syms.length !== 2 ||
-                            !syms.every(s => typeof s === 'string'
-                                && [...s].length > 0 && [...s].length <= 3)) {
-                            return { ok: false, error: t("langKeys.t9.{0} 的 syms 需为两个 1-3 字符的符号", key) };
+                        const clean = {};
+                        if (cell.syms != null) {
+                            if (key === '1') {
+                                return { ok: false, error: t("langKeys.t9.1 不支持 syms（1 键没有长按弹层）") };
+                            }
+                            const syms = cell.syms;
+                            if (!Array.isArray(syms) || syms.length !== 2 ||
+                                !syms.every(s => typeof s === 'string'
+                                    && [...s].length > 0 && [...s].length <= 3)) {
+                                return { ok: false, error: t("langKeys.t9.{0} 的 syms 需为两个 1-3 字符的符号", key) };
+                            }
+                            clean.syms = syms.slice();
                         }
-                        cleanTable[key] = { syms: syms.slice() };
+                        if (cell.tap != null) {
+                            if (key !== '1') {
+                                return { ok: false, error: t("langKeys.t9.{0} 不支持 tap（单击=通配数字）", key) };
+                            }
+                            if (typeof cell.tap !== 'string'
+                                || [...cell.tap].length > CUSTOM_LIMITS.tapChars) {
+                                return { ok: false, error: t("langKeys.t9.{0} 的 tap 超过 {1} 字符",
+                                    key, CUSTOM_LIMITS.tapChars) };
+                            }
+                            const parsed = this.parseTapDsl(cell.tap);
+                            if (parsed.error) {
+                                return { ok: false, error: t("langKeys.t9.{0} 的 tap {1}", key, parsed.error) };
+                            }
+                            clean.tap = cell.tap;
+                        }
+                        for (const slot of ['up', 'down']) {
+                            const tap = cell[slot];
+                            if (tap == null) continue;
+                            // 空串 = 显式「关闭」（命中吞掉手势，不走默认）。
+                            if (typeof tap !== 'string'
+                                || [...tap].length > CUSTOM_LIMITS.tapChars) {
+                                return { ok: false, error: t("langKeys.t9.{0} 的 {1} 需为 1-{2} 字符",
+                                    key, slot, CUSTOM_LIMITS.tapChars) };
+                            }
+                            const parsed = this.parseTapDsl(tap);
+                            if (parsed.error) {
+                                return { ok: false, error: t("langKeys.t9.{0} 的 {1} {2}", key, slot, parsed.error) };
+                            }
+                            clean[slot] = tap;
+                        }
+                        if (!Object.keys(clean).length) {
+                            return { ok: false, error: t("langKeys.t9.{0} 至少要定义 syms/tap/up/down 之一", key) };
+                        }
+                        cleanTable[key] = clean;
                         any = true;
                         continue;
                     }
