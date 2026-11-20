@@ -1073,7 +1073,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 val cancel: () -> Unit = { main.removeCallbacks(task) }
                 cancel
             },
-            diagnosticSink = { Diagnostics.log("engine", it) },
+            diagnosticSink = { line ->
+                Diagnostics.log("engine", line)
+                // 成对补全「偶尔不成对」现场：不要求开诊断录制，logcat
+                // 里按 FeelimePair 标签直接看（2026-11-20 用户反馈）。
+                if (line.startsWith("pairSkip")) android.util.Log.i("FeelimePair", line)
+            },
             // 自家 app 的可编辑框（设置页 textarea）：拼音系组合镜像进
             // 编辑器（#39 反馈「JSON 框打字像卡死」的根因——组合只画在
             // 键盘 UI，编辑器零回显）。终端型（TYPE_NULL）不镜像。
@@ -3377,6 +3382,12 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 rejectedCalls += 1
                 return@guarded
             }
+            // 目录内的左符号走 key 通道=键盘侧成对门闸没放行（组合中或
+            // 开关状态不同步）。留痕，方便对现场（2026-11-20）。
+            if (char in TextInputCoordinator.PAIRED_SYMBOLS && readPairedSymbols(this@FeelimeService)) {
+                Diagnostics.log("pair", "symbolViaKey char=$char")
+                android.util.Log.i("FeelimePair", "symbolViaKey char=$char")
+            }
             InputStats.recordKeystroke(applicationContext)
             coordinator.key(char.codePointAt(0))
         }
@@ -3715,12 +3726,22 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                         // 执行时复核分组勾选（评审 P2）：符号可能是入队后
                         // 才被取消勾选的，或不认识 pairedSet 的旧 JS 调进来
                         // 的——一律按当前中/英两组的并集裁决。
-                        connection != null && readPairedSymbols(this@FeelimeService) &&
-                            text in (readPairedSymbolsCn(this@FeelimeService) +
-                                readPairedSymbolsEn(this@FeelimeService)) &&
-                            !panelInputActive &&
-                            !isSensitiveEditor() && !isKeyEventCursorEditor(currentInputEditorInfo) &&
-                            !cursorQueryActive && voiceSession == null
+                        val master = readPairedSymbols(this@FeelimeService)
+                        val inGroup = text in (readPairedSymbolsCn(this@FeelimeService) +
+                            readPairedSymbolsEn(this@FeelimeService))
+                        val keyCursor = isKeyEventCursorEditor(currentInputEditorInfo)
+                        val sensitive = isSensitiveEditor()
+                        val ok = connection != null && master && inGroup && !panelInputActive &&
+                            !sensitive && !keyCursor && !cursorQueryActive && voiceSession == null
+                        if (!ok) {
+                            val reason = "canPair=false text=$text conn=${connection != null} " +
+                                "master=$master group=$inGroup panel=$panelInputActive " +
+                                "sensitive=$sensitive keyCursor=$keyCursor " +
+                                "query=$cursorQueryActive voice=${voiceSession != null}"
+                            Diagnostics.log("pair", reason)
+                            android.util.Log.i("FeelimePair", reason)
+                        }
+                        ok
                     },
                 )
             }
@@ -4882,6 +4903,14 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             if (!isValidCommitPayload(text)) {
                 rejectedCalls += 1
                 return@guarded
+            }
+            // 目录内左符号经字面通道进来=键盘侧成对门闸没放行（组合中、
+            // 开关/分组状态不同步）。与 key 通道同理留痕（2026-11-20）。
+            if (text.length == 1 && text in TextInputCoordinator.PAIRED_SYMBOLS &&
+                readPairedSymbols(this@FeelimeService)
+            ) {
+                Diagnostics.log("pair", "symbolViaCommitText char=$text")
+                android.util.Log.i("FeelimePair", "symbolViaCommitText char=$text")
             }
             // #41 字数统计：JS 直发文本走 pasteExternal→editor.commitText，
             // 计数点在 InputConnectionEditorPort（此处再加会双计）。

@@ -79,6 +79,7 @@ python3 scripts/generate-phrase-initials.py --check  # 常用语默认输入码�
 node scripts/verify/mock_bridge_tests.js     # 键盘桥接功能套件
 node scripts/verify/mock_settings_tests.js   # 设置页调用面
 bash scripts/verify/mock_baseline_tests.sh   # 旧代键盘基线钉数（漂移即红）
+node scripts/verify/bridge_surface_check.js  # 桥面契约：JS 点名的方法原生必须暴露
 ANDROID_HOME=… ./gradlew testDebugUnitTest   # 应用 JVM 套件（direct/play 两 flavor）
 ./gradlew --settings-file spikes/native-engine-smoke/settings.gradle.kts \
     --project-dir spikes/native-engine-smoke testDebugUnitTest   # 引擎冒烟 JVM
@@ -88,6 +89,11 @@ ANDROID_HOME=… ./gradlew testDebugUnitTest   # 应用 JVM 套件（direct/play
   滚动容器子元素必须 pan-x；R2 初始/动态 hidden 的 id 若有无条件
   display 声明必须有 `#id[hidden]{display:none}` 抵消；R3 mock 套件的
   滚动容器必须在 CSS 有对应 `overflow-x:auto`（防改名后 mock 假绿）。
+- **桥面契约**（#115 教训）：键盘页/设置页 JS 点名的每个桥方法，原生侧
+  必须有 `@JavascriptInterface`。WebView 只暴露带注解的方法，漏注解
+  （`setKeyBubble` 漏过一次）调用静默失败、任何运行期测试都测不出；
+  mock 夹具还会自带假实现把问题盖住（`setQuickSwitchPolicy` 在键盘桥
+  从未存在，mock 却一直"绿"）。2026-11-20 起静态对表进 mock 段。
 - **mock 基线**：`test-fixtures/keyboard-<旧版本>/` 内是与发布 APK 内嵌
   逐字节一致的键盘源码，套件按 `{since, until}` 键盘版本门控双代
   同跑，钉精确的 passed/failed/skipped 计数——harness 变更导致旧形态
@@ -389,6 +395,7 @@ table 实测词频错位到 51.7% 命中）。重编链路（host，无需 NDK�
 | `SetupActivity onCreate/onNewIntent target=…` | Activity 到达（冷启/热启两条） |
 | `target hit=… attempt=N` | 锚命中（attempt>0 = 页面慢于首次注入） |
 | `target MISS=…` | 重试耗尽未命中 |
+| `pairSkip …` / `pair` | 成对符号字面回退现场：组合中/位置不可信/开关或分组拒绝/宿主条件（2026-11-20 起；查「偶尔不成对」先看这里） |
 
 配合已有 tag：`ui`（insets/焦点/触摸到达，issue #13 v3）、`engine`
 （降级链路）。ace 上应用级 logcat 被 ColorOS 过滤（GC/framework 在、

@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.128';
+    const KEYBOARD_VERSION = '3.73.129';
     const PAIR_OPEN_SYMBOLS = new Set(['(', '（', '[', '【', '{', '《', '「', '『']);
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
@@ -12880,11 +12880,11 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 // 已下发的策略重置回迁移默认。
                 this.quickPolicyMigrated = true;
             } else if (!this.quickPolicyMigrated) {
-                // 只判定快照；上报在 ready 之后（call 门闸会吞掉
-                // keyboardReady 之前的桥调用——#27 同款时序坑）。
+                // 只判定快照：native 侧 readQuickSwitchPolicy 缺省也是
+                // fixed，无需回写（原先的上报调用在键盘桥并不存在，
+                // typeof 门让它在所有版本上都是空操作，2026-11-20 清掉）。
                 this.quickPolicyMigrated = true;
                 this.quickSwitchPolicy = 'fixed';
-                this.quickPolicyReportPending = true;
             }
             // #H 会话代数（codex 评审 P1-1）：重载/换页后以 native 当前
             // gen 为基准——旧 gen 的队列/续步全部作废。
@@ -12970,15 +12970,6 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
                 if (document.getElementById('heightCard').classList.contains('open')) this.renderHeightCard();
             }
             Native.keyboardReady(KEYBOARD_VERSION, MIN_NATIVE_API, JSON.stringify(REQUIRED_CAPABILITIES), this.token);
-            // #H 快捷切换策略首载迁移上报（codex 二轮 §2.5）：hello 不带
-            // policy（旧壳/未迁移）时按存量配对判定一次并上报 native——
-            // 必须排在 keyboardReady 之后（pageReady 门闸）。
-            if (this.quickPolicyReportPending) {
-                this.quickPolicyReportPending = false;
-                if (typeof Native.setQuickSwitchPolicy === 'function') {
-                    this.call(() => Native.setQuickSwitchPolicy(this.quickSwitchPolicy, this.token));
-                }
-            }
             // #H：硬键能力上报（design §6）——必须排在 keyboardReady 之后
             //（#27 同款时序坑：native pageReady 在 keyboardReady 处理器里
             // 才置位，早于此的桥调用必被门闸吞掉）。codex 评审 P1-8：只在

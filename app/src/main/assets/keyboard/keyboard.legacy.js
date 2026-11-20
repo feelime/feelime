@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.128";
+  const KEYBOARD_VERSION = "3.73.129";
   const PAIR_OPEN_SYMBOLS = /* @__PURE__ */ new Set(["(", "\uFF08", "[", "\u3010", "{", "\u300A", "\u300C", "\u300E"]);
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
@@ -10730,7 +10730,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       } else if (!this.quickPolicyMigrated) {
         this.quickPolicyMigrated = true;
         this.quickSwitchPolicy = "fixed";
-        this.quickPolicyReportPending = true;
       }
       if (payload.hwGen !== void 0) this.hwGen = Number(payload.hwGen) || 0;
       const seqBase = Number(payload.hwSeqBase) || 0;
@@ -10776,12 +10775,6 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
         if (document.getElementById("heightCard").classList.contains("open")) this.renderHeightCard();
       }
       Native.keyboardReady(KEYBOARD_VERSION, MIN_NATIVE_API, JSON.stringify(REQUIRED_CAPABILITIES), this.token);
-      if (this.quickPolicyReportPending) {
-        this.quickPolicyReportPending = false;
-        if (typeof Native.setQuickSwitchPolicy === "function") {
-          this.call(() => Native.setQuickSwitchPolicy(this.quickSwitchPolicy, this.token));
-        }
-      }
       if (typeof Native.reportHwKeys === "function" && this.hwStateSeen) {
         this.hwReported = true;
         this.call(() => Native.reportHwKeys(1, this.token));

@@ -1119,9 +1119,17 @@ class TextInputCoordinator(
         val open = item.open
         val close = PAIRED_SYMBOLS[open]
         val start = predictedSelectionStart
-        if (close == null || composingActive || inPasswordField || !item.canPair() ||
+        val canPairNow = item.canPair()
+        if (close == null || composingActive || inPasswordField || !canPairNow ||
             !pairedSelectionKnown || start < 0 || start != predictedSelectionEnd
-        ) return pasteExternalNow(open, onComplete = onComplete)
+        ) {
+            // 用户报「偶尔不成对」而不可稳定复现：字面回退必须留一条
+            // 可读原因（logcat 标签 FeelimePair，见 service 的 sink）。
+            diag("pairSkip literal=$open close=${close != null} composing=$composingActive " +
+                "pwd=$inPasswordField canPair=$canPairNow known=$pairedSelectionKnown " +
+                "start=$start predEnd=$predictedSelectionEnd")
+            return pasteExternalNow(open, onComplete = onComplete)
+        }
 
         clearPairedSymbol()
         invalidateWordUndo()

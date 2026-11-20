@@ -592,6 +592,10 @@ run_local_mock() {
     node "$HERE/mock_bridge_tests.js"
     node "$HERE/mock_settings_tests.js"
     bash "$HERE/mock_baseline_tests.sh"
+    # 桥面契约（#115 教训）：JS 点名的每个桥方法，原生必须有
+    # @JavascriptInterface。WebView 漏注解是静默失败，mock 夹具还会
+    # 自带假实现把问题盖住——只有静态对表能兜住。
+    node "$HERE/bridge_surface_check.js"
 }
 
 run_local_jvm() {

@@ -1586,21 +1586,6 @@ test('quick switch: fixed keeps the pair semantics', {since: '3.73.55'}, () => {
     equal(world.native.of('selectMode').slice(-1)[0].args[0], 'double-pinyin', 'pair[1] flips back');
 });
 
-test('quick switch: first-load migration classifies the saved pair', {since: '3.73.55'}, () => {
-    // 迁移（codex 二轮 §2.5，2026-11-05 用户裁定后简化）：hello 不带
-    // policy（旧壳/首载）时统一迁移 fixed（默认策略改为固定配对；
-    // native pref 才是权威状态源）。上报一次后不再重判。
-    const factory = fresh();
-    equal(factory.native.of('setQuickSwitchPolicy').length, 1,
-        'no saved pair migrates to fixed (reported once)');
-    equal(factory.native.of('setQuickSwitchPolicy')[0].args[0], 'fixed', 'factory default is fixed');
-    const custom = new KeyboardWorld().build();
-    custom.storage.set('feelime_quick_pair', JSON.stringify(['double-pinyin', 'direct']));
-    custom.hello({});
-    equal(custom.native.of('setQuickSwitchPolicy').slice(-1)[0].args[0], 'fixed',
-        'customized pair migrates to fixed');
-});
-
 test('toggle returns to the last user-selected mode', {
     since: '3.21.2', until: '3.23.0'
 }, () => {
