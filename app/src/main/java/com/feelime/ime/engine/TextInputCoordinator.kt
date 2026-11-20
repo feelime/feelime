@@ -718,7 +718,10 @@ class TextInputCoordinator(
     }
 
     private fun acceptCurrentCompositionNow(): DispatchAck {
-        clearPairedSymbol()
+        // 成对归属跟着宿主文本走，不跟引擎会话走：切输入模式时若没有
+        // 待落地的组合，宿主一个字都没变，成对记录必须留着（用户实测
+        // 2026-11-20：中文里打（（）→切英文打 abc→删回（）后联删丢失）。
+        // 组合落地时由 expectReplacement 按落点裁决。
         if (!composingActive) return DispatchAck.Accepted
 
         val raw = composingRaw.replace(" ", "")
@@ -746,6 +749,7 @@ class TextInputCoordinator(
         editor.finishComposing()
         composingActive = false
         closeEngineSession()
+        clearPairedSymbol()
         editorGeneration += 1
         newSession()
         startEngine(InputMode.DIRECT)
@@ -758,6 +762,7 @@ class TextInputCoordinator(
         warmupQueue.clear()
         closeEngineSession()
         abandonPending()
+        clearPairedSymbol()
         editorGeneration += 1
         newSession()
         startEngine(savedUserMode)
@@ -1204,6 +1209,7 @@ class TextInputCoordinator(
         invalidateWordUndo()
         closeEngineSession()
         abandonPending()
+        clearPairedSymbol()
         newSession()
     }
 
@@ -1571,7 +1577,9 @@ class TextInputCoordinator(
     }
 
     private fun newSession() {
-        clearPairedSymbol()
+        // 不动成对归属：这里换的是引擎会话，宿主编辑器与文本没变（模式
+        // 切换、语音会话、用户数据重建都走这里）。换编辑器/换代的地方
+        // （onEditorStarted、进出密码框、close）各自显式清。
         pairedDelete?.cancel?.invoke()
         pairedDelete = null
         warmupReplayGeneration += 1

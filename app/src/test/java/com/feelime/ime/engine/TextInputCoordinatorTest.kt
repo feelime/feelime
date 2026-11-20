@@ -597,6 +597,33 @@ class TextInputCoordinatorTest {
     }
 
     @Test
+    fun modeSwitchDoesNotDropPairOwnership() {
+        // 用户实测（2026-11-20）：中文里打 （ → （），切英文打 abc 变成
+        // （abc），删回 （）后最后一个退格要把右括号一起删。切模式只换
+        // 引擎，宿主文本没变，成对归属不能丢。
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.selectMode(InputMode.PINYIN)
+        c.inputSymbol("（", isCurrent = { true }, canPair = { true })
+        assertEquals("（）", editor.text)
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.selectMode(InputMode.DIRECT)
+        assertEquals("（）", editor.text)
+        c.pasteExternal("abc")
+        assertEquals("（abc）", editor.text)
+        repeat(3) { c.backspace() }
+        assertEquals("（）", editor.text)
+        assertEquals(1, editor.caret)
+        val delBefore = editor.operations.count { it == "sendDeleteKey" }
+        c.backspace()
+        assertEquals(listOf("moveCaret:2"), editor.operations.filter { it.startsWith("moveCaret") })
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+        assertEquals(0, editor.caret)
+        assertEquals(2, editor.operations.count { it == "sendDeleteKey" } - delBefore)
+    }
+
+    @Test
     fun movingCaretAwayAndBackDiscardsPairOwnership() {
         val c = coordinator()
         c.onEditorStarted(false)
