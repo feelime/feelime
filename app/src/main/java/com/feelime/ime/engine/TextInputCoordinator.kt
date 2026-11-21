@@ -291,27 +291,31 @@ class TextInputCoordinator(
         val wasPredicted = predictedSelectionStart
         predictedSelectionStart = newSelStart
         predictedSelectionEnd = newSelEnd
-        // 对内的普通 DEL 不登记预期，它的回声会落到这里。新光标落在
-        // [中间, 删除标记) 时，成对关系未破坏，记录跨过作废保留——删回
-        // 中间后再退格仍联删（用户要求 2026-11-20）。标记是「在途删除
-        // 可能落到的位置」的上界：每次确认后收紧到实际位置，删除批次
-        // 结束（标记收到中间）后，光标移出再移回不再算自己人（评审 P2）。
+        // 宿主回报折叠光标时先判「还在不在这对里」：光标在中间及之后
+        // 都算没离开（对内的普通 DEL 回声、手指点回对里都是这一类）。
+        // 之前只认「对内删除的回声」（删除标记范围内），点回中间/方向键
+        // 移回中间会被当外部编辑清掉归属，删回中间后不联删（2026-11-21
+        // 用户报告「删除没有成对」的第二现场）。留下记录不等于敢联删：
+        // 两阶段联删前宿主文本核对仍在，位置对不上退回普通退格。
         val insidePair = pendingPairedSymbol?.takeIf { pair ->
-            insideDeletePredicted >= 0 && pair.editorGeneration == editorGeneration &&
-                newSelStart == newSelEnd &&
-                newSelStart >= pair.center && newSelStart < insideDeletePredicted
+            pair.editorGeneration == editorGeneration &&
+                newSelStart == newSelEnd && newSelStart >= pair.center
         }
+        val deleteEcho = insidePair != null && insideDeletePredicted > newSelStart
         onExternalEditorMutation()
         pairedSelectionKnown = true
         if (insidePair != null) {
-            // 作废路径会清掉标记；保留归属时把确认过的位置补回来，并且
-            // 预测只前进不回退：先到的旧 DEL 回声不能把预测推回新删除
-            // 之前的位置（评审 P2 迟到回声反例）。
             pendingPairedSymbol = insidePair
-            insideDeletePredicted = newSelStart
-            if (wasPredicted < newSelStart) {
-                predictedSelectionStart = wasPredicted
-                predictedSelectionEnd = wasPredicted
+            if (deleteEcho) {
+                // 作废路径会清掉标记；确认过的删除位置补回来，并且预测
+                // 只前进不回退：先到的旧 DEL 回声不能把预测推回新删除
+                // 之前的位置（评审 P2 迟到回声反例）。纯移位（点按/方向
+                // 键）不动标记，预测直接采用宿主位置。
+                insideDeletePredicted = newSelStart
+                if (wasPredicted < newSelStart) {
+                    predictedSelectionStart = wasPredicted
+                    predictedSelectionEnd = wasPredicted
+                }
             }
         }
         // 宿主侧移位/编辑：删后现场已不存在，快照作废（删除自身的

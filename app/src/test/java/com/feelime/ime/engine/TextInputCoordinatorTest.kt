@@ -479,7 +479,9 @@ class TextInputCoordinatorTest {
     @Test
     fun insideDeleteMarkerDoesNotLeakIntoTheNextPair() {
         // codex 评审 P2：对内删除标记的生命周期绑在成对记录上，换会话
-        // 后不能拿旧标记保住新的一对。
+        // 后不能拿旧标记保住新的一对。2026-11-21：新一对的归属来自新
+        // 记录本身，「多余回声」不再清记录——但联删仍必须走宿主核对
+        // （两阶段：先移光标、确认后才连发 DEL）。
         val c = coordinator()
         c.onEditorStarted(false)
         c.inputSymbol("(", isCurrent = { true }, canPair = { true })
@@ -494,10 +496,12 @@ class TextInputCoordinatorTest {
         c.inputSymbol("(", isCurrent = { true }, canPair = { true })
         c.onEditorSelectionChanged(0, 0, 1, 1)
         assertEquals("()", editor.text)
-        // 多余的外部回声落在旧标记覆盖范围里：不能凭旧标记保活。
+        // 多余回声不清记录，但也不跳过核对：退格先移光标等宿主确认。
         c.onEditorSelectionChanged(1, 1, 1, 1)
         c.backspace()
-        assertEquals(")", editor.text)
+        assertEquals("()", editor.text)
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
     }
 
     @Test
@@ -545,9 +549,12 @@ class TextInputCoordinatorTest {
     }
 
     @Test
-    fun ownershipEndsWhenTheDeleteBatchIsConfirmed() {
-        // codex 复审 P2：删除批次确认完（标记收到中间）后，光标移到右
-        // 符号之后又移回来，不再是删除回声，归属作废。
+    fun hostCaretMovesAfterTheDeleteBatchKeepOwnershipUntilVerified() {
+        // 2026-11-21 语义调整（用户报告删除不成对）：宿主回报的纯选区
+        // 变化（点按/方向键）不再清成对记录——之前只认删除回声，点一下
+        // 再删回中间就丢了归属。联删安全性改由两阶段宿主文本核对兜底：
+        // 文本/光标对不上就退回普通退格（见 hostIgnoresTheCaretMove 与
+        // keepClosingSymbol 用例）。
         val c = coordinator()
         c.onEditorStarted(false)
         c.inputSymbol("(", isCurrent = { true }, canPair = { true })
@@ -559,11 +566,14 @@ class TextInputCoordinatorTest {
         }
         assertEquals("()", editor.text)
         editor.caret = 2
-        c.onEditorSelectionChanged(1, 1, 2, 2)
+        c.onEditorSelectionChanged(1, 1, 2, 2)   // 移到右符号之后
         editor.caret = 1
-        c.onEditorSelectionChanged(2, 2, 1, 1)
+        c.onEditorSelectionChanged(2, 2, 1, 1)   // 点回中间
         c.backspace()
-        assertEquals(")", editor.text)
+        // 核对通过 → 两阶段联删（先移光标，宿主确认后连发两次 DEL）。
+        assertEquals(listOf("moveCaret:2"), editor.operations.filter { it.startsWith("moveCaret") })
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
     }
 
     @Test
@@ -682,14 +692,15 @@ class TextInputCoordinatorTest {
     }
 
     @Test
-    fun movingCaretAwayAndBackDiscardsPairOwnership() {
+    fun caretMoveBeforeThePairDiscardsPairOwnership() {
+        // 边界（2026-11-21 语义调整后）：光标移到左符号之前才算离开
+        // 这一对，记录作废；移回中间也不再联删。
         val c = coordinator()
         c.onEditorStarted(false)
         c.inputSymbol("(", isCurrent = { true }, canPair = { true })
         c.onEditorSelectionChanged(0, 0, 1, 1)
-        c.onEditorSelectionChanged(1, 1, 2, 2)
-        editor.caret = 1
-        c.onEditorSelectionChanged(2, 2, 1, 1)
+        c.onEditorSelectionChanged(1, 1, 0, 0)
+        c.onEditorSelectionChanged(0, 0, 1, 1)
         c.backspace()
         assertEquals(")", editor.text)
         assertEquals(1, editor.operations.count { it == "sendDeleteKey" })
@@ -3493,6 +3504,38 @@ class TextInputCoordinatorTest {
         c.backspace()
         c.onEditorSelectionChanged(1, 1, 2, 2)
         assertEquals("", editor.text)
+    }
+
+    @Test
+    fun hostCaretMoveInsideThePairKeepsJointDelete() {
+        // 2026-11-21 第二现场：（）里打两个字符后，手指点回对里（宿主
+        // 只回选区、不回文本改动），再一路退格——归属必须还在，删回
+        // 中间仍联删。旧实现把任何非预期回声都当外部编辑，点一下就把
+        // 记录清掉，最后只剩单删。
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.pasteExternal("ab")
+        assertEquals("(ab)", editor.text)
+        // 手指点进对里再点回末尾：宿主只回选区、不回文本改动。
+        editor.caret = 2
+        c.onEditorSelectionChanged(3, 3, 2, 2)
+        editor.caret = 3
+        c.onEditorSelectionChanged(2, 2, 3, 3)
+        // 删掉对里的两个字符，回到中间。
+        c.backspace()
+        c.onEditorSelectionChanged(3, 3, 2, 2)
+        c.backspace()
+        c.onEditorSelectionChanged(2, 2, 1, 1)
+        assertEquals("()", editor.text)
+        // 回到中间：联删。
+        val delBefore = editor.operations.count { it == "sendDeleteKey" }
+        c.backspace()
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+        assertEquals(0, editor.caret)
+        assertEquals(2, editor.operations.count { it == "sendDeleteKey" } - delBefore)
     }
 
     @Test
