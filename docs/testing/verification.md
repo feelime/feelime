@@ -396,6 +396,7 @@ table 实测词频错位到 51.7% 命中）。重编链路（host，无需 NDK�
 | `target hit=… attempt=N` | 锚命中（attempt>0 = 页面慢于首次注入） |
 | `target MISS=…` | 重试耗尽未命中 |
 | `pairSkip …` / `pair` | 成对符号字面回退现场：组合中/位置不可信/开关或分组拒绝/宿主条件（2026-11-20 起；查「偶尔不成对」先看这里） |
+| `pairDel pair=… genOk=… caret=… known=… marker=…` | 每次退格时的成对记录账本：有无归属、代次是否匹配、预测光标、位置可信度、对内删除标记（2026-11-21 起；查「删除不成对」先看这里） |
 
 配合已有 tag：`ui`（insets/焦点/触摸到达，issue #13 v3）、`engine`
 （降级链路）。ace 上应用级 logcat 被 ColorOS 过滤（GC/framework 在、

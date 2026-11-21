@@ -198,6 +198,12 @@ class TextInputCoordinator(
     private var pendingPairedSymbol: PairedSymbol? = null
     // DEL 键、宿主快捷键等操作的位置变化无法预测，等待宿主回报后再补全。
     private var pairedSelectionKnown = false
+    /** 收起键盘/输入会话结束时暂存的成对归属（2026-11-21 用户报告「收起
+     *  再弹出后删除不成对」）：同一编辑器再弹出即复活——坐标是文本里的
+     *  绝对位置，与重开后光标停在哪无关；删除仍以宿主文本核对兜底，
+     *  位置对不上不会联删。 */
+    private var suspendedPair: PairedSymbol? = null
+    private var suspendedIdentity: String? = null
     /** 不可预测编辑的代际：每次 onUntrackedEditorMutation 递增。自身
      *  选区回声只有在「预期的登记晚于最近一次不可预测编辑」时才能证明
      *  光标可信——旧预期在编辑后仍留在队列里，迟到回声会命中它（评审
@@ -350,6 +356,50 @@ class TextInputCoordinator(
      *  若不在这里恢复，补全要等下一次光标移动才复活）。 */
     fun onEditorViewShown() {
         pairedSelectionKnown = true
+        // 收起后重显示但没走 onStartInput（同会话）时，暂存的成对归属
+        // 直接复活：宿主文本与光标都由本次显示前的状态延续。
+        suspendedPair?.let { pair ->
+            if (pendingPairedSymbol == null) {
+                pendingPairedSymbol = pair.copy(editorGeneration = editorGeneration)
+            }
+        }
+        suspendedPair = null
+        suspendedIdentity = null
+    }
+
+    /** 键盘视图收起 / 输入会话结束：位置不可信，但与 onExternalEditorMutation
+     *  不同，成对归属暂存起来而不是丢弃——同一编辑器再弹出时复活
+     *  （onEditorStarted 用 EditorInfo 身份判定）。幂等：收起链会连发
+     *  onFinishInput/onFinishInputView，已暂存的不被第二次（此时 pending
+     *  已清空）覆盖成 null。 */
+    fun onEditorViewHidden(editorIdentity: String? = null) {
+        if (suspendedPair == null && pendingPairedSymbol != null) {
+            suspendedPair = pendingPairedSymbol
+            suspendedIdentity = editorIdentity
+        }
+        clearPairedSymbol()
+        pairedSelectionKnown = false
+        trustEpoch += 1
+        userInputGeneration++
+        expectedSelections.clear()
+        invalidateWordUndo()
+    }
+
+    /** 宿主光标是否可信（成对补全的门闸）。 */
+    val selectionKnown: Boolean get() = pairedSelectionKnown
+
+    /** 输入代际：宿主快照求证期间若有新的用户输入改变预测，快照作废。 */
+    fun inputEpoch(): Long = userInputGeneration
+
+    /** 宿主快照确认光标（补全未知态的求证）：与本地预测完全一致才恢复
+     *  可信；不一致继续按字面回退——commitPaired 会按位置 setSelection，
+     *  用错位置比不补全更糟。 */
+    fun confirmHostSelection(start: Int, end: Int, epoch: Long): Boolean {
+        if (epoch != userInputGeneration) return false
+        if (pairedSelectionKnown) return true
+        if (start != predictedSelectionStart || end != predictedSelectionEnd) return false
+        pairedSelectionKnown = true
+        return true
     }
 
     fun onUntrackedEditorMutation() {
@@ -455,7 +505,14 @@ class TextInputCoordinator(
         lastExpectationEpoch = trustEpoch
     }
 
-    fun onEditorStarted(sensitive: Boolean, terminalLike: Boolean = false, initialSelectionStart: Int = 0, initialSelectionEnd: Int = initialSelectionStart) {
+    fun onEditorStarted(
+        sensitive: Boolean,
+        terminalLike: Boolean = false,
+        initialSelectionStart: Int = 0,
+        initialSelectionEnd: Int = initialSelectionStart,
+        hasEditor: Boolean = true,
+        editorIdentity: String? = null,
+    ) {
         asrGuard()
         invalidateWordUndo()
         // 新编辑会话（含同编辑器 restart）：旧会话的删除快照禁止带进
@@ -464,6 +521,19 @@ class TextInputCoordinator(
         // 上滑→下滑之间不受影响。
         invalidateDeleteSnapshot()
         expectedSelections.clear()
+        // 收起再弹出的同编辑器：身份（包名/输入类型/fieldId）一致就复活
+        // 成对归属——收起键盘不是编辑操作，配对坐标是文本里的绝对位置，
+        // 与重开后光标停在哪无关；误判只影响记录，联删前仍有宿主文本
+        // 核对兜底（位置对不上不会联删）。无编辑器的中间态（inputType=0
+        // 的会话结束回调）不消费暂存。
+        val resumed = suspendedPair?.takeIf {
+            hasEditor && !sensitive && !terminalLike &&
+                editorIdentity != null && editorIdentity == suspendedIdentity
+        }
+        if (hasEditor) {
+            suspendedPair = null
+            suspendedIdentity = null
+        }
         clearPairedSymbol()
         pairedSelectionKnown = true
         predictedSelectionStart = initialSelectionStart
@@ -489,6 +559,11 @@ class TextInputCoordinator(
         closeEngineSession()
         editorGeneration += 1
         newSession()
+        if (resumed != null) {
+            // 重新挂到新会话（坐标是文本里的绝对位置，与 initialSel 无关）；
+            // 后续联删仍由宿主文本核对兜底。
+            pendingPairedSymbol = resumed.copy(editorGeneration = editorGeneration)
+        }
         inPasswordField = sensitive
         diag("editorStart gen=$editorGeneration sensitive=$sensitive terminal=$terminalLike")
         if (sensitive) {
@@ -1993,6 +2068,14 @@ class TextInputCoordinator(
         // 免得落进移光标/连删的窗口多删一个。
         if (pairedDelete != null) return
         val pair = pendingPairedSymbol
+        // 用户报「删除没有成对删除」（2026-11-21）：删除路径此前没有诊断，
+        // 现场只能靠猜。每次退格留一行（含无成对时的状态），pair/null 也
+        // 是证据：成对记录是否还在、光标在不在中间、位置是否可信。
+        diag(
+            "pairDel pair=${pair != null} genOk=${pair != null && pair.editorGeneration == editorGeneration} " +
+                "caret=$predictedSelectionStart/$predictedSelectionEnd known=$pairedSelectionKnown " +
+                "marker=$insideDeletePredicted",
+        )
         if (pairedDeleteStarted != null && pair != null && pair.editorGeneration == editorGeneration &&
             predictedSelectionStart == pair.center && predictedSelectionEnd == pair.center
         ) {

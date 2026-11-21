@@ -3425,4 +3425,106 @@ class TextInputCoordinatorTest {
         val recovered = events.last { it.degrade != null && !it.degradedActive }
         assertEquals(InputMode.PINYIN, recovered.degrade?.failedMode)
     }
+
+    // 用户 2026-11-21 报告：收起键盘再弹出后，删回中间不再联删；以及
+    // 清空/删除后输入（不成对（pairSkip known=false）。下面四条覆盖
+    // 两条修复链路：成对归属跨收起复活、宿主快照求证恢复位置可信。
+
+    @Test
+    fun pairResumesAcrossKeyboardHideWhenIdentityAndCaretMatch() {
+        val c = coordinator()
+        c.onEditorStarted(false, editorIdentity = "pkg/1/7")
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        assertEquals("()", editor.text)
+        // 收起：ColorOS 会先回一条「无编辑器」的会话开始，再回真编辑器。
+        c.onEditorViewHidden("pkg/1/7")
+        c.onEditorStarted(false, hasEditor = false)
+        c.onEditorStarted(false, initialSelectionStart = 1, editorIdentity = "pkg/1/7")
+        c.backspace()
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+        assertEquals(0, editor.caret)
+    }
+
+    @Test
+    fun pairDoesNotResumeForADifferentEditor() {
+        val c = coordinator()
+        c.onEditorStarted(false, editorIdentity = "pkg/1/7")
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.onEditorViewHidden("pkg/1/7")
+        // 换了输入框（身份不同）：不复活，退格照常只删一个字符。
+        c.onEditorStarted(false, initialSelectionStart = 1, editorIdentity = "pkg/9/3")
+        c.backspace()
+        assertEquals(")", editor.text)
+    }
+
+    @Test
+    fun pairResumesWhenTheCaretMovedInsideTheSameEditor() {
+        // 收起期间点了别处（光标从中间挪到末尾）：文本没变，配对坐标
+        // 仍然有效——重开后删回中间照样联删（用户 2026-11-21 场景）。
+        val c = coordinator()
+        c.onEditorStarted(false, editorIdentity = "pkg/1/7")
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.onEditorViewHidden("pkg/1/7")
+        c.onEditorStarted(false, initialSelectionStart = 2, editorIdentity = "pkg/1/7")
+        editor.caret = 2
+        // 光标在右符号之后：删掉右符号，不算对内删除，但归属保留。
+        c.backspace()
+        assertEquals("(", editor.text)
+        c.onEditorSelectionChanged(2, 2, 1, 1)
+        // 回到中间：下一次退格联删。
+        c.backspace()
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+    }
+
+    @Test
+    fun viewShownWithoutANewSessionResumesThePair() {
+        val c = coordinator()
+        c.onEditorStarted(false, editorIdentity = "pkg/1/7")
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        c.onEditorViewHidden("pkg/1/7")
+        // 同会话重显示（宿主不发 onStartInput 的场合）。
+        c.onEditorViewShown()
+        c.backspace()
+        c.onEditorSelectionChanged(1, 1, 2, 2)
+        assertEquals("", editor.text)
+    }
+
+    @Test
+    fun hostSnapshotConfirmationRestoresPairingAfterUnknownSelection() {
+        val c = coordinator()
+        c.onEditorStarted(false)
+        c.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        c.onEditorSelectionChanged(0, 0, 1, 1)
+        assertEquals("()", editor.text)
+        // 未知态（自己删过字/清空后宿主不回选区回调）。
+        c.onUntrackedEditorMutation()
+        assertFalse(c.selectionKnown)
+        val epoch = c.inputEpoch()
+        // 代际不符（期间有新的用户输入）或位置不符都拒绝恢复。
+        assertFalse(c.confirmHostSelection(1, 1, epoch + 1))
+        assertFalse(c.confirmHostSelection(0, 0, epoch))
+        assertFalse(c.selectionKnown)
+        assertTrue(c.confirmHostSelection(1, 1, epoch))
+        assertTrue(c.selectionKnown)
+
+        // 未求证前仍按字面回退（不拿错位置 setSelection）。
+        val d = coordinator()
+        d.onEditorStarted(false)
+        d.onUntrackedEditorMutation()
+        d.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        assertEquals("(", editor.text)
+        // 求证通过后同一入口恢复补全。
+        val e = coordinator()
+        e.onEditorStarted(false)
+        e.onUntrackedEditorMutation()
+        assertTrue(e.confirmHostSelection(0, 0, e.inputEpoch()))
+        e.inputSymbol("(", isCurrent = { true }, canPair = { true })
+        assertEquals("()", editor.text)
+    }
 }

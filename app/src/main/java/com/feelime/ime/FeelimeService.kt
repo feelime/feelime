@@ -1465,7 +1465,9 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
 
     override fun onFinishInput() {
         super.onFinishInput()
-        coordinator.onUntrackedEditorMutation()
+        // 同编辑器收起再弹出不丢成对归属（2026-11-21）：暂存而非丢弃，
+        // 由下一次 onStartInput 的编辑器身份判定是否复活。
+        coordinator.onEditorViewHidden(editorIdentity(currentInputEditorInfo))
         // #H（design §5.1，codex 评审 P1-1）：输入会话结束即作废在途 hw
         // 请求——无新 onStartInput 也拦住迟到桥调用（gen 终检对照当前值）。
         hwInputGeneration += 1
@@ -1476,6 +1478,10 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         coordinator.onUntrackedEditorMutation()
         hwInputGeneration += 1
     }
+
+    /** 编辑器身份（收起/重开是否同一个输入框）：包名 + 输入类型 + fieldId。 */
+    private fun editorIdentity(info: EditorInfo?): String? =
+        info?.let { "${it.packageName}/${it.inputType}/${it.fieldId}" }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
@@ -1525,7 +1531,13 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         panelInputActive = false
         panelInputRequested = false
         panelRouteGeneration += 1
-        coordinator.onEditorStarted(sensitive, terminalLike, hostSelectionStart, hostSelectionEnd)
+        // attribute 为空/inputType=0 = 无编辑器的会话结束回调（ColorOS 收起
+        // 键盘时会走一条），不算换框——成对归属的暂存留到真编辑器回来。
+        coordinator.onEditorStarted(
+            sensitive, terminalLike, hostSelectionStart, hostSelectionEnd,
+            hasEditor = attribute != null && attribute.inputType != 0,
+            editorIdentity = editorIdentity(attribute),
+        )
         // 编辑器切换，上一字段末尾的联想词失效（association.md §3）。
         clearAssociation()
         main.post { pushEditorInfo() }
@@ -1600,7 +1612,11 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
         cursorQueryActive = false
         expectedCursorSelections.clear()
         cursorSnapshotSupport.reset()
-        if (::coordinator.isInitialized) coordinator.onExternalEditorMutation()
+        // 收起键盘不是编辑：成对归属暂存（见 onEditorViewHidden），
+        // 同编辑器重开时按身份 + 光标位置复活。
+        if (::coordinator.isInitialized) {
+            coordinator.onEditorViewHidden(editorIdentity(currentInputEditorInfo))
+        }
         stopVoice(discardResults = true)
         // No focused editor: never record (password managers' copies stay out).
         clipboardStore.collectEnabled = false
@@ -2077,6 +2093,55 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
             main.post {
                 main.removeCallbacks(timeout)
                 finish(matches)
+            }
+        }
+    }
+
+    /** 宿主光标快照（成对补全的未知态求证，2026-11-21）：与
+     *  verifyHostPairedSymbol 同一条 worker + 150ms 超时通道；返回绝对
+     *  光标（startOffset 已换算），失败/超时回 (-1,-1)。只在
+     *  pairedSelectionKnown=false 时调用（自己删过字、清空输入框等
+     *  宿主不回选区回调的场合），所以绝不在热路径上。 */
+    private fun probeHostSelection(onResult: (Int, Int) -> Unit) {
+        val connection = currentInputConnection ?: return onResult(-1, -1)
+        val request = inputConnectionGeneration
+        var finished = false
+        fun finish(start: Int, end: Int) {
+            if (finished) return
+            finished = true
+            onResult(start, end)
+        }
+        val timeout = Runnable { finish(-1, -1) }
+        main.postDelayed(timeout, 150)
+        cursorQueryExecutor.execute {
+            val around = if (Build.VERSION.SDK_INT >= 31) runCatching {
+                connection.getSurroundingText(0, 0, 0)
+            }.getOrNull() else null
+            var sel: Triple<Int, Int, Int>? = null
+            if (around != null && around.offset >= 0) {
+                sel = Triple(around.selectionStart, around.selectionEnd, around.offset)
+            } else {
+                runCatching {
+                    connection.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
+                }.getOrNull()?.let { extracted ->
+                    // partialStartOffset == -1 才是完整文本（Chromium 会把
+                    // partialEndOffset 填成长度，不能用它判增量——评审 P1）。
+                    if (extracted.partialStartOffset < 0) {
+                        sel = Triple(extracted.selectionStart, extracted.selectionEnd,
+                            extracted.startOffset)
+                    }
+                }
+            }
+            main.post {
+                main.removeCallbacks(timeout)
+                val s = sel
+                if (s == null || connection !== currentInputConnection ||
+                    request != inputConnectionGeneration
+                ) {
+                    finish(-1, -1)
+                } else {
+                    finish(s.third + s.first, s.third + s.second)
+                }
             }
         }
     }
@@ -3716,34 +3781,50 @@ class FeelimeService : InputMethodService(), AsrEngine.Listener, InkEngineListen
                 }
                 val connection = currentInputConnection
                 val route = panelRouteGeneration
-                coordinator.inputSymbol(
-                    text,
-                    isCurrent = {
-                        generation == hwInputGeneration && connection === currentInputConnection &&
-                            route == panelRouteGeneration && token == pageToken
-                    },
-                    canPair = {
-                        // 执行时复核分组勾选（评审 P2）：符号可能是入队后
-                        // 才被取消勾选的，或不认识 pairedSet 的旧 JS 调进来
-                        // 的——一律按当前中/英两组的并集裁决。
-                        val master = readPairedSymbols(this@FeelimeService)
-                        val inGroup = text in (readPairedSymbolsCn(this@FeelimeService) +
-                            readPairedSymbolsEn(this@FeelimeService))
-                        val keyCursor = isKeyEventCursorEditor(currentInputEditorInfo)
-                        val sensitive = isSensitiveEditor()
-                        val ok = connection != null && master && inGroup && !panelInputActive &&
-                            !sensitive && !keyCursor && !cursorQueryActive && voiceSession == null
-                        if (!ok) {
-                            val reason = "canPair=false text=$text conn=${connection != null} " +
-                                "master=$master group=$inGroup panel=$panelInputActive " +
-                                "sensitive=$sensitive keyCursor=$keyCursor " +
-                                "query=$cursorQueryActive voice=${voiceSession != null}"
-                            Diagnostics.log("pair", reason)
-                            android.util.Log.i("FeelimePair", reason)
-                        }
-                        ok
-                    },
-                )
+                val isCurrent = {
+                    generation == hwInputGeneration && connection === currentInputConnection &&
+                        route == panelRouteGeneration && token == pageToken
+                }
+                val canPair = {
+                    // 执行时复核分组勾选（评审 P2）：符号可能是入队后
+                    // 才被取消勾选的，或不认识 pairedSet 的旧 JS 调进来
+                    // 的——一律按当前中/英两组的并集裁决。
+                    val master = readPairedSymbols(this@FeelimeService)
+                    val inGroup = text in (readPairedSymbolsCn(this@FeelimeService) +
+                        readPairedSymbolsEn(this@FeelimeService))
+                    val keyCursor = isKeyEventCursorEditor(currentInputEditorInfo)
+                    val sensitive = isSensitiveEditor()
+                    val ok = connection != null && master && inGroup && !panelInputActive &&
+                        !sensitive && !keyCursor && !cursorQueryActive && voiceSession == null
+                    if (!ok) {
+                        val reason = "canPair=false text=$text conn=${connection != null} " +
+                            "master=$master group=$inGroup panel=$panelInputActive " +
+                            "sensitive=$sensitive keyCursor=$keyCursor " +
+                            "query=$cursorQueryActive voice=${voiceSession != null}"
+                        Diagnostics.log("pair", reason)
+                        android.util.Log.i("FeelimePair", reason)
+                    }
+                    ok
+                }
+                fun dispatch() {
+                    coordinator.inputSymbol(text, isCurrent = isCurrent, canPair = canPair)
+                }
+                // 光标位置未知（自己删过字/清空输入框后宿主不回选区回调，
+                // 用户 2026-11-21 报告「输入（ 不成对」）：先向宿主求证
+                // 一次光标，与本地预测一致才恢复可信再补全；超时/不一致
+                // 照旧字面回退（inputSymbolNow 自己打 pairSkip 日志）。
+                // 只在这条未知分支付出一次主机 RPC。
+                if (coordinator.selectionKnown || !isCurrent()) {
+                    dispatch()
+                    return@guarded
+                }
+                val epoch = coordinator.inputEpoch()
+                probeHostSelection { start, end ->
+                    if (start >= 0 && isCurrent()) {
+                        coordinator.confirmHostSelection(start, end, epoch)
+                    }
+                    dispatch()
+                }
             }
         }
 
