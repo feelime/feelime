@@ -118,6 +118,22 @@ val checkEngineArtifacts = tasks.register("checkEngineArtifacts") {
             }
         }
 
+        // 反向守卫：engine-data 下只允许运行时清单登记过的文件（外加清单
+        // 自身）。上一条只核对「清单里有的文件」——多出来的文件静默打包
+        // 进 APK。2026-11-09 #91 全链重编时，生成脚本把词库源
+        // luna_pinyin.table.txt（18MB，txt 还在 noCompress 名单里）拷回
+        // assets，APK 凭空胖 18MB，直到 1.4.12 查包体积才被发现；运行时
+        // 部署只读 MANIFEST，这份文件从头到尾没被消费过。
+        val engineDataDir = File(projectDir, "src/main/assets/engine-data")
+        val listed = runtimeFiles.keys.map { it.toString().replace('\\', '/') }.toSet()
+        engineDataDir.walkTopDown().filter { it.isFile }.forEach { f ->
+            val rel = f.relativeTo(engineDataDir).invariantSeparatorsPath
+            if (rel != "MANIFEST.json" && rel !in listed) {
+                failures += "unlisted engine-data/$rel is packaged but not in runtime MANIFEST.json " +
+                    "(move it out of assets or register it)"
+            }
+        }
+
         if (failures.isNotEmpty()) {
             throw GradleException("engine artifact audit failed:\n  " + failures.joinToString("\n  "))
         }

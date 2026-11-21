@@ -205,10 +205,18 @@ panelEditor/phraseCard）语义上是叠放小部件，不进表。
 pinned 管线（输入全部是上游开源归档，哈希钉死）：
 
 **手加/改 engine-data 文件必须同步登记 `MANIFEST.json`**（bytes+sha256）：
-`checkEngineArtifacts` 只校验已列出的文件，多出的新文件不报错也不进部署
-清单——设备端 `EngineDataStore` 按 MANIFEST 部署，不登记 = 永远不落位
-（2026-09-28 #20 实录：手加 feelime_flypy.schema.yaml 后设备报
-`missing input schema`，登记后即好）。
+`checkEngineArtifacts` 校验已列出文件的字节与哈希；设备端 `EngineDataStore`
+按 MANIFEST 部署，不登记 = 永远不落位（2026-09-28 #20 实录：手加
+feelime_flypy.schema.yaml 后设备报 `missing input schema`，登记后即好）。
+
+**反向守卫（2026-11-21）**：`checkEngineArtifacts` 同时拒绝 `engine-data/`
+下**未登记**的文件（`MANIFEST.json` 自身除外），构建直接失败。此前只管
+「清单里有的文件」，多出来的会静默进包：#91 全链重编时生成脚本把
+`luna_pinyin.table.txt`（18MB，`txt` 在 noCompress 名单里=原样进包）和
+`rime/fuzzy/` 下 31 个与顶层重复的 fuzzy prism 拷回了 assets，APK 白胖
+19MB，直到 1.4.12 查包体积才发现（运行时零消费）。如果 §4c 重编后又
+冒出来，把文件挪回 `scripts/data/` 或删掉，别加登记——它们本来就不该
+部署。
 
 **词库导入/编译类功能的部署依赖**：`EngineDataStore.ensureAsync` 只挂在
 IME service 的 onCreate——装新 APK 后直接进设置页（service 未起）时部署
