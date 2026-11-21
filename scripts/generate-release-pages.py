@@ -121,13 +121,14 @@ def render_index(meta, art):
 def github_notes(meta):
     if meta.get("githubNotes"):
         return meta["githubNotes"]
-    feats = [c for c in meta["changes"] if c["type"] == "新功能"]
-    fixes = [c for c in meta["changes"] if c["type"] == "修复"]
+    # 三组固定顺序；旧脚本只渲染新功能/修复，优化条目会静默丢失
+    # （1.4.12 首次出现「优化」类型时发现）。
     parts = []
-    if feats:
-        parts.append("## 新功能\n\n" + "\n".join(f"- **{c['text']}**" for c in feats))
-    if fixes:
-        parts.append("## 修复\n\n" + "\n".join(f"- **{c['text']}**" for c in fixes))
+    for type_name in ("新功能", "优化", "修复"):
+        items = [c for c in meta["changes"] if c["type"] == type_name]
+        if items:
+            parts.append(f"## {type_name}\n\n" +
+                         "\n".join(f"- **{c['text']}**" for c in items))
     parts.append(f"\n键盘热更版本 {meta['keyboardVersion']}。")
     return "\n\n".join(parts)
 
