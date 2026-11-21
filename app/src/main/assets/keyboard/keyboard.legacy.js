@@ -351,7 +351,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
     });
   }
   __name(translateStaticUi, "translateStaticUi");
-  const KEYBOARD_VERSION = "3.73.131";
+  const KEYBOARD_VERSION = "3.73.132";
   const PAIR_OPEN_SYMBOLS = /* @__PURE__ */ new Set(["(", "\uFF08", "[", "\u3010", "{", "\u300A", "\u300C", "\u300E"]);
   const EXCLUSIVE_VIEWS = {
     settings: { el: "settingsPanel", openClass: "open", close: "closeSettingsPanel", returnField: "settingsReturnLayer" },
@@ -2690,7 +2690,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
       if (/[一-鿿]/.test(def.main) && def.main.length > 1) {
         group.classList.add("t9-cjk");
       }
-      group.textContent = t(def.main);
+      group.textContent = def.main === "\u5206\u8BCD" ? t("\u5206\u8BCD") : def.main;
       button.append(hint, sup, group);
       button.addEventListener("click", () => this.strokeActivate(digit));
       this.bindTouch(button);

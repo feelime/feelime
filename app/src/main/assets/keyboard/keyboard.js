@@ -360,7 +360,7 @@
         });
     }
 
-    const KEYBOARD_VERSION = '3.73.131';
+    const KEYBOARD_VERSION = '3.73.132';
     const PAIR_OPEN_SYMBOLS = new Set(['(', '（', '[', '【', '{', '《', '「', '『']);
     // #39-12 收口：整屏级互斥视图注册表（单一事实源）。统计浮层、
     // 定制面板两轮同款叠层事故的根因是互关调用散装在各个 toggle 里，
@@ -2948,9 +2948,10 @@ const TOOLBAR_DEFAULT = { left: ['ctrl', 'ime'], right: ['clipboard', 'favorites
             if (/[一-鿿]/.test(def.main) && def.main.length > 1) {
                 group.classList.add('t9-cjk');
             }
-            // t() 过一遍让「分词」跟界面语言走（其余部件字形无翻译条目，
-            // 原样返回）；模块级表不能预求值，locale 切换后重渲染即更新。
-            group.textContent = t(def.main);
+            // 只有「分词」跟界面语言走；部件字形必须原样显示——全局
+            // 词表里「一」是输入统计的星期缩写（Su/Mo/…），整表翻译会
+            // 把横笔键面翻成 "Mo"（2026-11-21 9r 段英文界面上抓到）。
+            group.textContent = def.main === '分词' ? t('分词') : def.main;
             button.append(hint, sup, group);
             button.addEventListener('click', () => this.strokeActivate(digit));
             this.bindTouch(button);
